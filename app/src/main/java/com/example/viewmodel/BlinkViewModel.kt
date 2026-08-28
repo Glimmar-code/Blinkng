@@ -67,6 +67,8 @@ data class BlinkUiState(
     val stories: List<Story> = emptyList(),
     val posts: List<FeedPost> = emptyList(),
     val reels: List<FeedPost> = emptyList(),
+    val savedDrafts: List<PostDraft> = emptyList(),
+    val scheduledPosts: List<ScheduledPost> = emptyList(),
 
     val marketItems: List<MarketItem> = emptyList(),
     val leaderboardUsers: List<LeaderboardUser> = emptyList(),
@@ -199,6 +201,7 @@ class BlinkViewModel(
         }
 
         startServerStatusMonitoring()
+        loadDraftsFromPrefs()
 
         viewModelScope.launch {
             delay(700)
@@ -1568,8 +1571,122 @@ class BlinkViewModel(
     }
 
     // ============================================================
-    // CREATE POST / REEL
+    // CREATE POST / REEL & DRAFTS & SCHEDULING
     // ============================================================
+
+    private fun loadDraftsFromPrefs() {
+        try {
+            val json = prefs.getString("blink_saved_drafts_data", null)
+            if (!json.isNullOrBlank()) {
+                // Simple delimited parser for offline drafts
+                val drafts = mutableListOf<PostDraft>()
+                val items = json.split(";;;DRAFT_DELIM;;;")
+                for (item in items) {
+                    if (item.isBlank()) continue
+                    val parts = item.split(":::FIELD:::")
+                    if (parts.size >= 8) {
+                        drafts.add(
+                            PostDraft(
+                                id = parts.getOrNull(0) ?: "draft_${System.currentTimeMillis()}",
+                                text = parts.getOrNull(1) ?: "",
+                                faculty = parts.getOrNull(2) ?: "SIMME",
+                                imageUri = parts.getOrNull(3)?.takeIf { it.isNotBlank() },
+                                videoUri = parts.getOrNull(4)?.takeIf { it.isNotBlank() },
+                                isReel = parts.getOrNull(5)?.toBoolean() ?: false,
+                                category = parts.getOrNull(6) ?: "Campus Life",
+                                audience = parts.getOrNull(7) ?: "Everyone",
+                                tags = parts.getOrNull(8)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
+                                mentions = parts.getOrNull(9)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
+                                savedAtTimestamp = parts.getOrNull(10)?.toLongOrNull() ?: System.currentTimeMillis()
+                            )
+                        )
+                    }
+                }
+                _uiState.value = _uiState.value.copy(savedDrafts = drafts)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load drafts from prefs", e)
+        }
+    }
+
+    private fun saveDraftsToPrefs(drafts: List<PostDraft>) {
+        try {
+            val serialized = drafts.joinToString(";;;DRAFT_DELIM;;;") { d ->
+                listOf(
+                    d.id,
+                    d.text,
+                    d.faculty,
+                    d.imageUri ?: "",
+                    d.videoUri ?: "",
+                    d.isReel.toString(),
+                    d.category,
+                    d.audience,
+                    d.tags.joinToString(","),
+                    d.mentions.joinToString(","),
+                    d.savedAtTimestamp.toString()
+                ).joinToString(":::FIELD:::")
+            }
+            prefs.edit().putString("blink_saved_drafts_data", serialized).apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save drafts to prefs", e)
+        }
+    }
+
+    fun saveDraft(draft: PostDraft) {
+        val updated = listOf(draft) + _uiState.value.savedDrafts.filter { it.id != draft.id }
+        _uiState.value = _uiState.value.copy(savedDrafts = updated)
+        saveDraftsToPrefs(updated)
+        showToast("💾 Draft saved to phone storage")
+    }
+
+    fun deleteDraft(draftId: String) {
+        val updated = _uiState.value.savedDrafts.filter { it.id != draftId }
+        _uiState.value = _uiState.value.copy(savedDrafts = updated)
+        saveDraftsToPrefs(updated)
+        showToast("🗑️ Draft deleted")
+    }
+
+    fun schedulePost(
+        post: FeedPost,
+        timeMillis: Long,
+        timeFormatted: String
+    ) {
+        val sched = ScheduledPost(
+            id = "sched_${System.currentTimeMillis()}",
+            post = post,
+            scheduledTimeMillis = timeMillis,
+            scheduledTimeFormatted = timeFormatted
+        )
+        val updated = listOf(sched) + _uiState.value.scheduledPosts
+        _uiState.value = _uiState.value.copy(
+            scheduledPosts = updated,
+            isCreatePostOpen = false
+        )
+        showToast("⏰ Post scheduled for $timeFormatted")
+    }
+
+    fun deleteScheduledPost(id: String) {
+        val updated = _uiState.value.scheduledPosts.filter { it.id != id }
+        _uiState.value = _uiState.value.copy(scheduledPosts = updated)
+        showToast("🗑️ Scheduled post removed")
+    }
+
+    fun publishScheduledPostNow(id: String) {
+        val sched = _uiState.value.scheduledPosts.find { it.id == id } ?: return
+        val updated = _uiState.value.scheduledPosts.filter { it.id != id }
+        val updatedPosts = listOf(sched.post) + _uiState.value.posts
+        val updatedReels = if (sched.post.isReel || sched.post.videoUrl != null) {
+            listOf(sched.post) + _uiState.value.reels
+        } else {
+            _uiState.value.reels
+        }
+        _uiState.value = _uiState.value.copy(
+            scheduledPosts = updated,
+            posts = updatedPosts,
+            reels = updatedReels
+        )
+        showToast("✨ Post published to campus feed")
+    }
 
     fun addPost(
         text: String,
@@ -1579,22 +1696,78 @@ class BlinkViewModel(
         tags: List<String> = emptyList(),
         mentions: List<String> = emptyList(),
         poll: PostPoll? = null,
-        isReel: Boolean = false
+        isReel: Boolean = false,
+        audience: String = "Everyone",
+        category: String = "Campus Life",
+        location: String? = null,
+        linkUrl: String? = null,
+        allowComments: Boolean = true,
+        hideLikes: Boolean = false,
+        isPinned: Boolean = false,
+        isDisappearing: Boolean = false,
+        audioTitle: String? = null,
+        altText: String? = null
     ) {
+        val profile = _uiState.value.myProfile
+        val userId = supabaseService.getCurrentUserId()
+            ?: profile.id.takeIf { it.isNotBlank() && it != "user_me" }
+            ?: "user_${profile.username}"
 
-        viewModelScope.launch {
+        val postId = "post_${System.currentTimeMillis()}"
+        val newPost = FeedPost(
+            id = postId,
+            author = profile.username,
+            authorAvatar = profile.avatarUrl,
+            facultyTag = faculty.ifBlank { profile.faculty.ifBlank { "SIMME" } },
+            isVerified = profile.verificationBadge != VerificationBadge.NONE,
+            verificationBadge = profile.verificationBadge,
+            timeAgo = "Just now",
+            text = text,
+            images = if (!imageUri.isNullOrBlank()) listOf(imageUri) else emptyList(),
+            videoUrl = videoUri,
+            tags = tags,
+            mentions = mentions,
+            poll = poll,
+            isReel = isReel,
+            likes = 0,
+            isLiked = false,
+            commentsCount = 0,
+            sharesCount = 0,
+            viewsCount = 1,
+            audience = audience,
+            category = category,
+            location = location,
+            linkUrl = linkUrl,
+            allowComments = allowComments,
+            hideLikes = hideLikes,
+            isPinned = isPinned,
+            isDisappearing = isDisappearing,
+            audioTitle = audioTitle,
+            altText = altText
+        )
 
+        // INSTANT OPTIMISTIC PUBLISHING: Feed and profile update instantly!
+        val newPosts = listOf(newPost) + _uiState.value.posts
+        val newReels = if (isReel || !videoUri.isNullOrBlank()) {
+            listOf(newPost) + _uiState.value.reels
+        } else {
+            _uiState.value.reels
+        }
+
+        _uiState.value = _uiState.value.copy(
+            posts = newPosts,
+            reels = newReels,
+            isCreatePostOpen = false
+        )
+
+        showToast(
+            if (isReel) "✨ Reel published to Campus!"
+            else "✨ Post published to Feed & Profile!"
+        )
+
+        // Background asynchronous media upload and cloud persistence
+        viewModelScope.launch(Dispatchers.IO) {
             try {
-                val profile =
-                    _uiState.value
-                        .myProfile
-
-                val userId =
-                    supabaseService
-                        .getCurrentUserId()
-                        ?: profile.id.takeIf { it.isNotBlank() && it != "user_me" }
-                        ?: "user_${profile.username}"
-
                 var uploadedImageUrl: String? = null
                 var uploadedVideoUrl: String? = null
 
@@ -1603,7 +1776,7 @@ class BlinkViewModel(
                         userId = userId,
                         uriString = imageUri,
                         isVideo = false
-                    ) ?: imageUri
+                    )
                 }
 
                 if (!videoUri.isNullOrBlank()) {
@@ -1611,117 +1784,23 @@ class BlinkViewModel(
                         userId = userId,
                         uriString = videoUri,
                         isVideo = true
-                    ) ?: videoUri
+                    )
                 }
 
-                val finalImageUrl = uploadedImageUrl ?: imageUri
-                val finalVideoUrl = uploadedVideoUrl ?: videoUri
-
-                val newPost =
-                    FeedPost(
-                        id =
-                            "post_${System.currentTimeMillis()}",
-                        author =
-                            profile.username,
-                        authorAvatar =
-                            profile.avatarUrl,
-                        facultyTag =
-                            faculty.ifBlank { profile.faculty.ifBlank { "SIMME" } },
-                        isVerified =
-                            profile.verificationBadge !=
-                                    VerificationBadge.NONE,
-                        verificationBadge =
-                            profile.verificationBadge,
-                        timeAgo =
-                            "Just now",
-                        text =
-                            text,
-                        images =
-                            if (
-                                !finalImageUrl.isNullOrBlank()
-                            ) {
-                                listOf(
-                                    finalImageUrl
-                                )
-                            } else {
-                                emptyList()
-                            },
-                        videoUrl =
-                            finalVideoUrl,
-                        tags =
-                            tags,
-                        mentions =
-                            mentions,
-                        poll =
-                            poll,
-                        isReel =
-                            isReel,
-                        likes =
-                            0,
-                        isLiked =
-                            false,
-                        commentsCount =
-                            0,
-                        sharesCount =
-                            0,
-                        viewsCount =
-                            0
-                    )
-
-                val newPosts = listOf(newPost) + _uiState.value.posts
-                val newReels = if (isReel || !finalVideoUrl.isNullOrBlank()) {
-                    listOf(newPost) + _uiState.value.reels
-                } else {
-                    _uiState.value.reels
-                }
-
-                _uiState.value =
-                    _uiState.value.copy(
-                        posts =
-                            newPosts,
-                        reels =
-                            newReels,
-                        isCreatePostOpen =
-                            false
-                    )
-
-                showToast(
-                    if (isReel)
-                        "✨ Reel published."
-                    else
-                        "✨ Post published."
+                supabaseService.createFeedPost(
+                    author = profile.username,
+                    authorAvatar = profile.avatarUrl,
+                    facultyTag = faculty,
+                    text = text,
+                    imageUrl = uploadedImageUrl ?: imageUri,
+                    videoUrl = uploadedVideoUrl ?: videoUri,
+                    tags = tags,
+                    mentions = mentions,
+                    poll = poll,
+                    isReel = isReel
                 )
-
-                // Background sync
-                try {
-                    supabaseService.createFeedPost(
-                        author = profile.username,
-                        authorAvatar = profile.avatarUrl,
-                        facultyTag = faculty,
-                        text = text,
-                        imageUrl = uploadedImageUrl,
-                        videoUrl = uploadedVideoUrl,
-                        tags = tags,
-                        mentions = mentions,
-                        poll = poll,
-                        isReel = isReel
-                    )
-                } catch (e: Exception) {
-                    Log.e(TAG, "createFeedPost sync error", e)
-                }
-
             } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "addPost failed",
-                    e
-                )
-
-                showToast(
-                    e.message
-                        ?: "Unable to publish post."
-                )
+                Log.e(TAG, "Background sync for post creation notice (local post remains live)", e)
             }
         }
     }

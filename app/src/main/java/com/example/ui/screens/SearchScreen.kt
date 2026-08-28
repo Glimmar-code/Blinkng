@@ -56,6 +56,7 @@ import com.example.ui.components.FacultyBadge
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.BlinkGold
 import com.example.ui.theme.BlinkPink
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -716,7 +717,7 @@ private fun BouncyTagChip(text: String, selected: Boolean, onClick: () -> Unit) 
         label = "tagChipScale"
     )
     val bg by animateColorAsState(
-        targetValue = if (selected) BlinkPink else MaterialTheme.colorScheme.surfaceVariant,
+        targetValue = if (selected) BlinkPink else Color(0xFFECEFF1),
         animationSpec = tween(180),
         label = "tagChipBg"
     )
@@ -732,7 +733,7 @@ private fun BouncyTagChip(text: String, selected: Boolean, onClick: () -> Unit) 
             text = text,
             fontSize = 12.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (selected) Color.White else Color.Black,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
         )
     }
@@ -743,14 +744,14 @@ private fun FacultyFilterChip(text: String, selected: Boolean, color: Color, onC
     Surface(
         shape = RoundedCornerShape(8.dp),
         color = if (selected) color.copy(alpha = 0.18f) else Color.Transparent,
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) color else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) color else Color.Gray.copy(alpha = 0.3f)),
         modifier = Modifier.clickable { onClick() }
     ) {
         Text(
             text = text,
             fontSize = 10.5.sp,
             fontWeight = FontWeight.Bold,
-            color = if (selected) color else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (selected) color else Color.Gray,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
         )
     }

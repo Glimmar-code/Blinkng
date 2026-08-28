@@ -61,7 +61,8 @@ fun FloatingBottomBar(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 14.dp)
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 10.dp)
     ) {
         Surface(
             shape = RoundedCornerShape(100.dp),

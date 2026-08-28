@@ -11,6 +11,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -137,6 +138,13 @@ fun MainAppContent(
     uiState: com.example.viewmodel.BlinkUiState,
     viewModel: BlinkViewModel
 ) {
+    // Auto-hide bottom bar on scroll down and reappear on scroll up
+    var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
+
+    LaunchedEffect(uiState.selectedTab) {
+        isBottomBarVisibleByScroll = true
+    }
+
     // Handle back button presses for sub-views
     BackHandler(
         enabled = uiState.viewingProduct != null ||
@@ -199,6 +207,9 @@ fun MainAppContent(
                         onVotePoll = { postId, optId -> viewModel.votePoll(postId, optId) },
                         onDirectMessage = { partner, partnerName, partnerAvatar ->
                             viewModel.openChatWithUser(partner, partnerName, partnerAvatar)
+                        },
+                        onBottomBarVisibilityChange = { isVisible ->
+                            isBottomBarVisibleByScroll = isVisible
                         }
                     )
                 }
@@ -249,24 +260,44 @@ fun MainAppContent(
             }
         }
 
-        // Floating Bottom Nav (Visible on all main tabs & sub-tabs, hidden only on modal sheets/fullscreen details)
+        // Floating Bottom Nav (Visible on all main tabs, auto-hides on feed scroll down, re-appears on scroll up)
         val shouldShowBottomBar = uiState.viewingProduct == null &&
                 uiState.viewingProfile == null &&
                 !uiState.isPostItemOpen &&
                 !uiState.isBecomeSellerOpen &&
                 !uiState.isEditProfileOpen &&
                 !uiState.isConversationFullScreen &&
-                !uiState.isActivityOpen
+                !uiState.isActivityOpen &&
+                isBottomBarVisibleByScroll
 
         androidx.compose.animation.AnimatedVisibility(
             visible = shouldShowBottomBar,
-            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it }) + androidx.compose.animation.fadeIn(),
-            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it }) + androidx.compose.animation.fadeOut(),
+            enter = androidx.compose.animation.slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = androidx.compose.animation.core.spring(
+                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy,
+                    stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+                )
+            ) + androidx.compose.animation.fadeIn(
+                animationSpec = androidx.compose.animation.core.tween(durationMillis = 220)
+            ),
+            exit = androidx.compose.animation.slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec = androidx.compose.animation.core.tween(
+                    durationMillis = 240,
+                    easing = androidx.compose.animation.core.FastOutLinearInEasing
+                )
+            ) + androidx.compose.animation.fadeOut(
+                animationSpec = androidx.compose.animation.core.tween(durationMillis = 180)
+            ),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             FloatingBottomBar(
                 currentTab = uiState.selectedTab,
-                onTabSelected = { viewModel.setTab(it) },
+                onTabSelected = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.setTab(it)
+                },
                 isDark = uiState.isDarkMode
             )
         }
@@ -480,9 +511,39 @@ fun MainAppContent(
         if (uiState.isCreatePostOpen) {
             CreatePostSheet(
                 profile = uiState.myProfile,
+                savedDrafts = uiState.savedDrafts,
+                scheduledPosts = uiState.scheduledPosts,
                 onDismiss = { viewModel.openCreatePost(false) },
-                onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel ->
-                    viewModel.addPost(text, faculty, imageUri, videoUri, tags, mentions, poll, isReel)
+                onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText ->
+                    viewModel.addPost(
+                        text = text,
+                        faculty = faculty,
+                        imageUri = imageUri,
+                        videoUri = videoUri,
+                        tags = tags,
+                        mentions = mentions,
+                        poll = poll,
+                        isReel = isReel,
+                        audience = audience,
+                        category = category,
+                        location = location,
+                        linkUrl = linkUrl,
+                        allowComments = allowComments,
+                        hideLikes = hideLikes,
+                        isPinned = isPinned,
+                        isDisappearing = isDisappearing,
+                        audioTitle = audioTitle,
+                        altText = altText
+                    )
+                },
+                onSaveDraft = { draft ->
+                    viewModel.saveDraft(draft)
+                },
+                onDeleteDraft = { draftId ->
+                    viewModel.deleteDraft(draftId)
+                },
+                onSchedulePost = { post, timeMillis, timeFormatted ->
+                    viewModel.schedulePost(post, timeMillis, timeFormatted)
                 },
                 isDark = uiState.isDarkMode
             )

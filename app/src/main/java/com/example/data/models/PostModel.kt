@@ -42,7 +42,45 @@ data class FeedPost(
     val videoUrl: String? = null,
     val tags: List<String> = emptyList(),
     val mentions: List<String> = emptyList(),
-    val poll: PostPoll? = null
+    val poll: PostPoll? = null,
+    val audience: String = "Everyone",
+    val category: String = "Campus Life",
+    val location: String? = null,
+    val linkUrl: String? = null,
+    val allowComments: Boolean = true,
+    val hideLikes: Boolean = false,
+    val isPinned: Boolean = false,
+    val isDisappearing: Boolean = false,
+    val audioTitle: String? = null,
+    val altText: String? = null
+)
+
+data class PostDraft(
+    val id: String = "draft_${System.currentTimeMillis()}",
+    val text: String = "",
+    val faculty: String = "SIMME",
+    val imageUri: String? = null,
+    val videoUri: String? = null,
+    val isReel: Boolean = false,
+    val tags: List<String> = emptyList(),
+    val mentions: List<String> = emptyList(),
+    val category: String = "Campus Life",
+    val audience: String = "Everyone",
+    val location: String? = null,
+    val linkUrl: String? = null,
+    val allowComments: Boolean = true,
+    val hideLikes: Boolean = false,
+    val pollQuestion: String = "",
+    val pollOptions: List<String> = emptyList(),
+    val savedAtTimestamp: Long = System.currentTimeMillis(),
+    val audioTrack: String? = null
+)
+
+data class ScheduledPost(
+    val id: String = "sched_${System.currentTimeMillis()}",
+    val post: FeedPost,
+    val scheduledTimeMillis: Long,
+    val scheduledTimeFormatted: String
 )
 
 data class Story(

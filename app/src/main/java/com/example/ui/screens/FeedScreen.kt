@@ -43,15 +43,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -98,7 +104,8 @@ fun FeedScreen(
     onSearchClick: () -> Unit = {},
     onLeaderboardClick: () -> Unit = {},
     onMarketClick: () -> Unit = {},
-    onMessageClick: () -> Unit = {}
+    onMessageClick: () -> Unit = {},
+    onBottomBarVisibilityChange: (Boolean) -> Unit = {}
 ) {
 
     var selectedTopTab by remember(currentSubTab) {
@@ -106,6 +113,38 @@ fun FeedScreen(
     }
 
     val listState = rememberLazyListState()
+
+    // Smooth scroll detection to hide bottom navigation bar on scroll down and reveal on scroll up
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                val delta = available.y
+                if (delta < -8f) {
+                    // Scrolling DOWN -> hide bottom bar (fade out downward)
+                    onBottomBarVisibilityChange(false)
+                } else if (delta > 8f) {
+                    // Scrolling UP -> reveal bottom bar (fade in upward)
+                    onBottomBarVisibilityChange(true)
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    // Always show bottom bar when near the top of the feed
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (index, offset) ->
+                if (index == 0 && offset < 50) {
+                    onBottomBarVisibilityChange(true)
+                }
+            }
+    }
+
+    // Always show bottom bar when switching sub-tabs
+    LaunchedEffect(selectedTopTab) {
+        onBottomBarVisibilityChange(true)
+    }
 
     Box(
         modifier = Modifier
@@ -200,7 +239,9 @@ fun FeedScreen(
             else -> {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(nestedScrollConnection),
                     contentPadding = PaddingValues(
                         bottom = 115.dp
                     )
