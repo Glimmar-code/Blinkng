@@ -4,9 +4,14 @@ on:
   push:
     branches: [fix/supabase-sync]
 
+concurrency:
+  group: blink-supabase-verification
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     permissions:
       contents: write
 
