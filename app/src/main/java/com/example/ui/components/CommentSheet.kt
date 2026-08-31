@@ -40,7 +40,7 @@ fun CommentSheet(
     isDark: Boolean,
     onDismiss: () -> Unit,
     onSendComment: (text: String, replyToUser: String?) -> Unit,
-    onToggleCommentLike: (Long) -> Unit,
+    onToggleCommentLike: (String) -> Unit,
     onProfileClick: (String) -> Unit
 ) {
     var textInput by remember { mutableStateOf("") }

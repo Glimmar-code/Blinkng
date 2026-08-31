@@ -124,10 +124,9 @@ class AuthRepository(
         persistSession(profile)
         _authState.value = AuthState.Authenticated(profile, token)
     }
-
-    fun signOut() {
+    suspend fun signOut() {
+        try { supabaseService.revokeCurrentSupabaseSession() } catch (e: Exception) { Log.w("AuthRepository","Supabase logout failed",e); SupabaseService.clearSession() }
         prefs.edit().clear().apply()
-        SupabaseService.clearSession()
         _authState.value = AuthState.Unauthenticated()
     }
 

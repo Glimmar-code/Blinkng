@@ -373,7 +373,7 @@ object BlinkDemoData {
 
     fun initialComments(): List<Comment> = listOf(
         Comment(
-            id = 1L,
+            id = "1",
             user = "marco_v",
             avatar = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop",
             text = "This is fire 🔥🔥 @sophia_kim you have to see this design!",
@@ -381,11 +381,11 @@ object BlinkDemoData {
             likes = 84,
             isLiked = false,
             replies = listOf(
-                CommentReply(11L, "sophia_kim", "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop", "I'm totally obsessed 😍 clean execution!", "5m ago", 12, true)
+                CommentReply("11", "sophia_kim", "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop", "I'm totally obsessed 😍 clean execution!", "5m ago", 12, true)
             )
         ),
         Comment(
-            id = 2L,
+            id = "2",
             user = "luna.style",
             avatar = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop",
             text = "The typography and lighting on this is unreal ✨ #editorial",
@@ -394,7 +394,7 @@ object BlinkDemoData {
             isLiked = true
         ),
         Comment(
-            id = 3L,
+            id = "3",
             user = "kai.lens",
             avatar = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop",
             text = "Need the camera and lighting setup breakdown please 🙏",

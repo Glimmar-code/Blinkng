@@ -303,46 +303,14 @@ class BlinkViewModel(
             }
         }
     }
-
     private suspend fun restoreSupabaseSession() {
-
         try {
-
-            val restored =
-                supabaseService.restoreSession()
-
-            if (restored) {
-
-                Log.d(
-                    TAG,
-                    "Supabase session restored."
-                )
-
-                refreshMyProfileFromSupabase(
-                    showErrorToast = false
-                )
-
-                fetchSupabaseData()
-
-                return
-            }
-
-            /*
-             * Only fall back to local profile data when there is no
-             * valid Supabase session.
-             */
-            restoreLocalSession()
-
-        } catch (e: Exception) {
-
-            Log.e(
-                TAG,
-                "restoreSupabaseSession failed",
-                e
-            )
-
-            restoreLocalSession()
-        }
+            if (!supabaseService.restoreSession()) throw IllegalStateException("No valid Supabase session.")
+            val uid=supabaseService.getCurrentUserId() ?: throw IllegalStateException("Session has no authenticated UUID.")
+            val profile=profileRepository.fetchById(uid) ?: throw IllegalStateException("Authenticated user has no profile row.")
+            _uiState.value=_uiState.value.copy(myProfile=profile,destination=AppDestination.MAIN)
+            saveLocalProfile(profile);authRepository.markAuthenticated(profile);fetchSupabaseData()
+        }catch(e:Exception){Log.e(TAG,"restoreSupabaseSession failed",e);prefs.edit().clear().apply();SupabaseService.clearSession();_uiState.value=_uiState.value.copy(destination=AppDestination.SIGN_IN);viewModelScope.launch{authRepository.signOut()}}
     }
 
     private fun restoreLocalSession() {
@@ -575,21 +543,8 @@ class BlinkViewModel(
                                 !it.videoUrl.isNullOrBlank()
                     }
 
-                val localPosts =
-                    _uiState.value.posts.filter {
-                        it.id.startsWith("post_") || it.id.startsWith("local_")
-                    }
-
-                val localReels =
-                    _uiState.value.reels.filter {
-                        it.id.startsWith("post_") || it.id.startsWith("local_")
-                    }
-
-                val mergedPosts =
-                    (localPosts + normalPosts).distinctBy { it.id }
-
-                val mergedReels =
-                    (localReels + fetchedReels).distinctBy { it.id }
+                val mergedPosts = normalPosts.distinctBy { it.id }
+                val mergedReels = fetchedReels.distinctBy { it.id }
 
                 val market =
                     supabaseService
@@ -2443,7 +2398,7 @@ fun sharePost(
     }
 
     fun toggleCommentLike(
-        commentId: Long
+        commentId: String
     ) {
         var nextLiked = false
         var nextCount = 0

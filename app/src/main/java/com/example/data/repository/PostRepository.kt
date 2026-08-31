@@ -112,7 +112,7 @@ class PostRepository(
         supabaseService.addComment(postId, text, replyToUser)
     }
 
-    suspend fun toggleCommentLike(commentId: Long, liked: Boolean, newLikeCount: Int): Boolean = withContext(Dispatchers.IO) {
+    suspend fun toggleCommentLike(commentId: String, liked: Boolean, newLikeCount: Int): Boolean = withContext(Dispatchers.IO) {
         supabaseService.toggleCommentLike(commentId, liked, newLikeCount)
     }
 suspend fun togglePostLike(
