@@ -1,0 +1,47 @@
+name: Verify Blink Supabase synchronization
+
+on:
+  push:
+    branches: [fix/supabase-sync]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Apply source repairs
+        run: python tools/repair_supabase_sync.py && python tools/finalize_supabase_sync.py
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Generate Gradle wrapper
+        run: gradle wrapper --gradle-version 9.3.1 --distribution-type bin
+
+      - name: Assemble debug
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Commit verified source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm --cached tools/repair_supabase_sync.py 2>/dev/null || true
+          git rm --cached tools/finalize_supabase_sync.py 2>/dev/null || true
+          rm -f tools/repair_supabase_sync.py tools/finalize_supabase_sync.py .github/workflows/repair-supabase-sync.yml
+          git add .
+          git commit -m "fix: synchronize Blink with Supabase" || exit 0
+          git push origin HEAD:fix/supabase-sync
