@@ -52,7 +52,10 @@ data class FeedPost(
     val isPinned: Boolean = false,
     val isDisappearing: Boolean = false,
     val audioTitle: String? = null,
-    val altText: String? = null
+    val altText: String? = null,
+    val isSponsored: Boolean = false,
+    val adLabel: String? = null,
+    val adCta: String? = null
 )
 
 data class PostDraft(
