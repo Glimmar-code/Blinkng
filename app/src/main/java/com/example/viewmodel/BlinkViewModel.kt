@@ -1486,14 +1486,10 @@ class BlinkViewModel(
         return clean.equals("you", ignoreCase = true) ||
                 clean.equals("me", ignoreCase = true) ||
                 clean.equals("self", ignoreCase = true) ||
-                clean.equals("user_me", ignoreCase = true) ||
                 clean.equals("Your Story", ignoreCase = true) ||
                 clean.equals(myUser, ignoreCase = true) ||
                 clean.equals(myName, ignoreCase = true) ||
                 clean.equals(myId, ignoreCase = true) ||
-                clean.equals("efe.design", ignoreCase = true) ||
-                clean.equals("Efe Chukwu", ignoreCase = true) ||
-                clean.equals("golowosile", ignoreCase = true) ||
                 clean.replace(" ", ".").equals(myUser, ignoreCase = true) ||
                 myUser.replace(".", " ").equals(clean, ignoreCase = true)
     }
@@ -1852,7 +1848,7 @@ class BlinkViewModel(
     ) {
         val profile = _uiState.value.myProfile
         val userId = supabaseService.getCurrentUserId()
-            ?: profile.id.takeIf { it.isNotBlank() && it != "user_me" }
+            ?: profile.id.takeIf { it.isNotBlank() }
             ?: "user_${profile.username}"
 
         val postId = "post_${System.currentTimeMillis()}"

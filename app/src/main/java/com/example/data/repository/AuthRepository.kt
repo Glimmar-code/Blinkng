@@ -64,13 +64,14 @@ class AuthRepository(
 
     private fun checkCachedSession() {
         val isLoggedIn = prefs.getBoolean("is_logged_in", false)
-        if (isLoggedIn) {
-            val email = prefs.getString("email", "golowosile@gmail.com") ?: "golowosile@gmail.com"
-            val fullName = prefs.getString("full_name", "Gbolahan Olowosile") ?: "Gbolahan Olowosile"
-            val username = prefs.getString("username", "golowosile") ?: "golowosile"
-            val faculty = prefs.getString("faculty", "SIMME") ?: "SIMME"
-            val university = prefs.getString("university", "University of Lagos") ?: "University of Lagos"
-            val avatarUrl = prefs.getString("avatar_url", "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&h=300&fit=crop") ?: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&h=300&fit=crop"
+        val hasToken = !SupabaseService.accessToken().isNullOrBlank()
+        if (isLoggedIn && hasToken) {
+            val email = prefs.getString("email", "") ?: ""
+            val fullName = prefs.getString("full_name", "") ?: ""
+            val username = prefs.getString("username", "") ?: ""
+            val faculty = prefs.getString("faculty", "") ?: ""
+            val university = prefs.getString("university", "") ?: ""
+            val avatarUrl = prefs.getString("avatar_url", "") ?: ""
 
             val cachedProfile = UserProfile(
                 email = ContactField(email, true),
@@ -158,9 +159,8 @@ class AuthRepository(
     suspend fun signInWithGoogle(email: String): AuthResult = withContext(Dispatchers.IO) {
         try {
             _authState.value = AuthState.Loading
-            val effectiveEmail = email.trim().lowercase(Locale.US).ifBlank {
-                "therealglimmar@gmail.com"
-            }
+            val effectiveEmail = email.trim().lowercase(Locale.US)
+            if (effectiveEmail.isBlank()) throw Exception("Email is required.")
             val derivedUsername = effectiveEmail.substringBefore("@").replace(".", "_").replace(" ", "_")
             val derivedName = derivedUsername.replace("_", " ").split(" ")
                 .joinToString(" ") { it.replaceFirstChar { char -> char.uppercase() } }

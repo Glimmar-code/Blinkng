@@ -330,7 +330,7 @@ fun MainAppContent(
             exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
         ) {
             uiState.viewingProfile?.let { profile ->
-                val isMyProfile = viewModel.isMe(profile.username) || viewModel.isMe(profile.fullName) || viewModel.isMe(profile.id) || profile.id == "user_me"
+                val isMyProfile = viewModel.isMe(profile.username)
                 val currentProfileToDisplay = if (isMyProfile) uiState.myProfile else profile
 
                 val profilePosts = if (isMyProfile) {
@@ -445,7 +445,7 @@ fun MainAppContent(
             val post = uiState.activePostOptionsPost!!
             PostOptionsMenuSheet(
                 post = post,
-                isAuthor = post.author == uiState.myProfile.username || post.author == "efe.design" || post.author == "you",
+                isAuthor = post.author == uiState.myProfile.username,
                 isDark = uiState.isDarkMode,
                 onDismiss = { viewModel.openPostOptions(null) },
                 onToggleSave = { viewModel.toggleBookmark(post.id) },

@@ -17,6 +17,8 @@ import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -192,6 +194,10 @@ class SupabaseService {
                     "Accept",
                     "application/json"
                 )
+                
+        if (authenticated) {
+            builder.addHeader("X-Authenticated", "true")
+        }
 
         val token =
             if (authenticated) {
@@ -208,6 +214,48 @@ class SupabaseService {
         )
 
         return builder
+    }
+
+    
+    private val refreshMutex = Mutex()
+
+    private suspend fun executeRequest(request: Request): okhttp3.Response {
+        val isAuthenticated = request.header("X-Authenticated") == "true"
+        var activeRequest = request
+        if (isAuthenticated) {
+            activeRequest = request.newBuilder().removeHeader("X-Authenticated").build()
+        }
+
+        var response = withContext(Dispatchers.IO) { client.newCall(activeRequest).execute() }
+        
+        if (isAuthenticated && response.code == 401) {
+            response.close()
+            refreshMutex.withLock {
+                val currentToken = activeRequest.header("Authorization")?.removePrefix("Bearer ") ?: ""
+                val storedToken = accessToken() ?: anonKey
+                
+                if (storedToken != anonKey && storedToken != currentToken) {
+                    // Token was refreshed by another thread
+                    activeRequest = activeRequest.newBuilder()
+                        .header("Authorization", "Bearer $storedToken")
+                        .build()
+                    response = withContext(Dispatchers.IO) { client.newCall(activeRequest).execute() }
+                } else {
+                    val refreshed = refreshSession()
+                    if (refreshed) {
+                        val refreshedToken = accessToken() ?: anonKey
+                        activeRequest = activeRequest.newBuilder()
+                            .header("Authorization", "Bearer $refreshedToken")
+                            .build()
+                        response = withContext(Dispatchers.IO) { client.newCall(activeRequest).execute() }
+                    } else {
+                        clearSession()
+                        throw java.io.IOException("Unauthorized - Refresh failed")
+                    }
+                }
+            }
+        }
+        return response
     }
 
     private fun requestJson(
@@ -279,9 +327,7 @@ class SupabaseService {
                         )
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val responseBody =
                         response.body
@@ -486,7 +532,7 @@ class SupabaseService {
                     .post(body.toString().toRequestBody(jsonMediaType))
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                executeRequest(request).use { response ->
                     val responseBody = response.body?.string().orEmpty()
 
                     if (!response.isSuccessful) {
@@ -571,9 +617,7 @@ class SupabaseService {
                         )
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val responseBody =
                         response.body
@@ -706,9 +750,7 @@ class SupabaseService {
                         )
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val responseBody =
                         response.body
@@ -771,7 +813,7 @@ class SupabaseService {
                 .addHeader("apikey", SupabaseConfig.anonKey)
                 .get()
                 .build()
-            client.newCall(request).execute().use { response ->
+            executeRequest(request).use { response ->
                 response.isSuccessful || response.code == 401 || response.code == 400 || response.code == 404
             }
         } catch (e: Exception) {
@@ -905,9 +947,7 @@ class SupabaseService {
                     )
                     .build()
 
-            client.newCall(
-                request
-            ).execute().use { response ->
+            executeRequest(request).use { response ->
 
                 val body =
                     response.body
@@ -1089,9 +1129,7 @@ class SupabaseService {
                         .get()
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -1176,9 +1214,7 @@ class SupabaseService {
                         .get()
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -1251,9 +1287,7 @@ class SupabaseService {
                         .get()
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -1339,9 +1373,7 @@ class SupabaseService {
                         .get()
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -1414,7 +1446,7 @@ class SupabaseService {
             try {
                 val currentUserId =
                     getCurrentUserId()
-                        ?: profile.id.takeIf { it.isNotBlank() && it != "user_me" }
+                        ?: profile.id.takeIf { it.isNotBlank() }
 
                 val json =
                     JSONObject().apply {
@@ -1582,7 +1614,7 @@ class SupabaseService {
                         .patch(json.toString().toRequestBody(jsonMediaType))
                         .build()
 
-                    val (success, body) = client.newCall(request).execute().use { resp ->
+                    val (success, body) = executeRequest(request).use { resp ->
                         Pair(resp.isSuccessful, resp.body?.string().orEmpty())
                     }
                     if (success && body.isNotBlank() && body != "[]") {
@@ -1599,7 +1631,7 @@ class SupabaseService {
                         .patch(json.toString().toRequestBody(jsonMediaType))
                         .build()
 
-                    val (success, body) = client.newCall(reqUser).execute().use { resp ->
+                    val (success, body) = executeRequest(reqUser).use { resp ->
                         Pair(resp.isSuccessful, resp.body?.string().orEmpty())
                     }
                     if (success && body.isNotBlank() && body != "[]") {
@@ -1625,7 +1657,7 @@ class SupabaseService {
                     .post(upsertJson.toString().toRequestBody(jsonMediaType))
                     .build()
 
-                val (upsertSuccess, _) = client.newCall(upsertReq).execute().use { resp ->
+                val (upsertSuccess, _) = executeRequest(upsertReq).use { resp ->
                     Pair(resp.isSuccessful, resp.body?.string().orEmpty())
                 }
 
@@ -1742,9 +1774,7 @@ class SupabaseService {
                         )
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -1812,9 +1842,7 @@ class SupabaseService {
                         .get()
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -2048,9 +2076,7 @@ class SupabaseService {
                         )
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -2169,9 +2195,7 @@ class SupabaseService {
                         )
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -2244,9 +2268,7 @@ class SupabaseService {
                         )
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -2318,7 +2340,7 @@ class SupabaseService {
                     .addHeader("Prefer", "resolution=merge-duplicates")
                     .post(likeObj.toString().toRequestBody(jsonMediaType))
                     .build()
-                client.newCall(likeRequest).execute().close()
+                executeRequest(likeRequest).close()
             } else {
                 val filter = when {
                     currentUserId.isNotBlank() -> "user_id=eq.$currentUserId"
@@ -2336,7 +2358,7 @@ class SupabaseService {
                 )
                     .delete()
                     .build()
-                client.newCall(unlikeRequest).execute().close()
+                executeRequest(unlikeRequest).close()
             }
 
             // 2. Persist updated like count to feed_posts table
@@ -2351,7 +2373,7 @@ class SupabaseService {
                 .patch(updateJson.toString().toRequestBody(jsonMediaType))
                 .build()
 
-            client.newCall(updateRequest).execute().use { resp ->
+            executeRequest(updateRequest).use { resp ->
                 resp.isSuccessful
             }
         } catch (e: Exception) {
@@ -2371,7 +2393,7 @@ class SupabaseService {
                 .delete()
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            executeRequest(request).use { response ->
                 response.isSuccessful
             }
         } catch (e: Exception) {
@@ -2393,7 +2415,7 @@ class SupabaseService {
                 .get()
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            executeRequest(request).use { response ->
                 val body = response.body?.string().orEmpty()
                 if (!response.isSuccessful || body.isBlank() || body == "[]") {
                     return@withContext emptyList()
@@ -2453,7 +2475,7 @@ class SupabaseService {
                 .post(json.toString().toRequestBody(jsonMediaType))
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            executeRequest(request).use { response ->
                 response.isSuccessful
             }
         } catch (e: Exception) {
@@ -2481,9 +2503,7 @@ class SupabaseService {
                         .get()
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -2551,9 +2571,7 @@ class SupabaseService {
                         .get()
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -2615,9 +2633,7 @@ class SupabaseService {
                         .get()
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -2768,9 +2784,7 @@ class SupabaseService {
                         )
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     if (!response.isSuccessful) {
 
@@ -2822,9 +2836,7 @@ class SupabaseService {
                         .get()
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -3096,9 +3108,7 @@ class SupabaseService {
                         )
                         .build()
 
-                client.newCall(
-                    request
-                ).execute().use { response ->
+                executeRequest(request).use { response ->
 
                     val body =
                         response.body
@@ -3227,7 +3237,7 @@ class SupabaseService {
             id =
                 obj.optString(
                     "id",
-                    "user_me"
+                    ""
                 ),
 
             fullName =
@@ -3532,18 +3542,13 @@ class SupabaseService {
                 obj.optBoolean("is_verified", false) ||
                         obj.optString("verification_badge", "").equals("GOLD", ignoreCase = true) ||
                         obj.optString("verification_badge", "").equals("BLUE", ignoreCase = true) ||
-                        author.contains("verified", ignoreCase = true) ||
-                        author.equals("gbolahan", ignoreCase = true) ||
-                        author.equals("golowosile", ignoreCase = true) ||
-                        author.equals("efe.design", ignoreCase = true),
+                        author.contains("verified", ignoreCase = true),
 
             verificationBadge =
                 when (obj.optString("verification_badge", "").uppercase(Locale.US)) {
                     "GOLD" -> VerificationBadge.GOLD
                     "BLUE" -> VerificationBadge.BLUE
-                    else -> if (author.equals("golowosile", ignoreCase = true) || author.equals("gbolahan", ignoreCase = true) || author.equals("efe.design", ignoreCase = true)) {
-                        VerificationBadge.GOLD
-                    } else if (obj.optBoolean("is_verified", false)) {
+                    else -> if (obj.optBoolean("is_verified", false)) {
                         VerificationBadge.BLUE
                     } else {
                         VerificationBadge.NONE

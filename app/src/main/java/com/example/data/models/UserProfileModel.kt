@@ -40,9 +40,9 @@ data class AchievementBadge(
 )
 
 data class UserProfile(
-    var id: String = "user_me",
-    var fullName: String = "Efe Chukwu",
-    var username: String = "efe.design",
+    var id: String = "",
+    var fullName: String = "",
+    var username: String = "",
     var avatarUrl: String = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&h=300&fit=crop",
     var coverPhotoUrl: String = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000&h=400&fit=crop",
     var verificationBadge: VerificationBadge = VerificationBadge.BLUE,
