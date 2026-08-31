@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import com.example.auth.AccountSessionStore
 import com.example.data.models.ContactField
 import com.example.data.models.UserProfile
 import com.example.data.supabase.SupabaseConfig
@@ -75,7 +76,7 @@ class AuthRepository(private val context: Context, private val supabaseService: 
 
     private fun persistSession(profile: UserProfile) {
         prefs.edit().apply { putBoolean("is_logged_in", true); putString("email", profile.email.value); putString("full_name", profile.fullName); putString("username", profile.username); putString("faculty", profile.faculty); putString("university", profile.university); putString("avatar_url", profile.avatarUrl); putString("cover_url", profile.coverPhotoUrl); apply() }
-        // Token generation may happen before login; explicitly request/sync it after login as well.
+        AccountSessionStore.recordCurrentSession(context.applicationContext, profile.id, profile.username, profile.fullName, profile.email.value, profile.avatarUrl)
         BlinkFirebaseMessagingService.syncCurrentToken(context.applicationContext)
     }
 }
