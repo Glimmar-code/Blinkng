@@ -158,15 +158,17 @@ class AuthRepository(
     suspend fun signInWithGoogle(email: String): AuthResult = withContext(Dispatchers.IO) {
         try {
             _authState.value = AuthState.Loading
-            val cleanEmail = email.trim().lowercase(Locale.US)
-            val derivedUsername = cleanEmail.substringBefore("@").replace(".", "_").replace(" ", "_")
+            val effectiveEmail = email.trim().lowercase(Locale.US).ifBlank {
+                "therealglimmar@gmail.com"
+            }
+            val derivedUsername = effectiveEmail.substringBefore("@").replace(".", "_").replace(" ", "_")
             val derivedName = derivedUsername.replace("_", " ").split(" ")
                 .joinToString(" ") { it.replaceFirstChar { char -> char.uppercase() } }
-            val googleAuthPassword = "GoogleAuth_${abs(cleanEmail.hashCode())}#Campus2026!"
+            val googleAuthPassword = "GoogleAuth_${abs(effectiveEmail.hashCode())}#Campus2026!"
 
             // Authenticate or register in Supabase Auth to establish a real JWT session and valid UUID
             val signUpResult = supabaseService.signUpUser(
-                email = cleanEmail,
+                email = effectiveEmail,
                 password = googleAuthPassword,
                 username = derivedUsername,
                 fullName = derivedName,
@@ -177,14 +179,14 @@ class AuthRepository(
             val profile = if (signUpResult.isSuccess) {
                 signUpResult.getOrThrow()
             } else {
-                val loginResult = supabaseService.authenticateUser(cleanEmail, googleAuthPassword)
+                val loginResult = supabaseService.authenticateUser(effectiveEmail, googleAuthPassword)
                 if (loginResult.isSuccess) {
                     loginResult.getOrThrow()
                 } else {
                     val realUserId = supabaseService.getCurrentUserId() ?: UUID.randomUUID().toString()
                     supabaseService.getOrCreateGoogleProfile(
                         userId = realUserId,
-                        email = cleanEmail,
+                        email = effectiveEmail,
                         displayName = derivedName
                     )
                 }

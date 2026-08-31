@@ -233,6 +233,12 @@ class SupabaseService {
                         .trim()
                         .lowercase(Locale.US)
 
+                if (cleanInput.isBlank()) {
+                    return@withContext Result.failure(
+                        Exception("Email or username is required.")
+                    )
+                }
+
                 val loginEmail =
                     if (cleanInput.contains("@")) {
                         cleanInput
@@ -455,6 +461,9 @@ class SupabaseService {
         withContext(Dispatchers.IO) {
             try {
                 val cleanEmail = email.trim().lowercase(Locale.US)
+                if (cleanEmail.isBlank()) {
+                    return@withContext Result.failure(Exception("Email address is required."))
+                }
                 val cleanUsername = username.trim().lowercase(Locale.US).replace("@", "").replace(" ", "_")
                 val cleanFullName = fullName.trim().ifBlank { cleanUsername }
 
