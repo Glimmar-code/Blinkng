@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -39,7 +40,6 @@ class SupabaseRealtimeManager private constructor() {
         @Volatile private var instance: SupabaseRealtimeManager? = null
         fun getInstance(): SupabaseRealtimeManager = instance ?: synchronized(this) { instance ?: SupabaseRealtimeManager().also { instance = it } }
     }
-
     private val client = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).writeTimeout(10, TimeUnit.SECONDS).pingInterval(20, TimeUnit.SECONDS).build()
     private val scope = CoroutineScope(Dispatchers.IO + Job())
     private var webSocket: WebSocket? = null
@@ -58,8 +58,7 @@ class SupabaseRealtimeManager private constructor() {
         if (username.isBlank() && userId.isBlank()) return
         activeUsername = username; activeUserId = userId
         if (isConnected.get() || isConnecting.get()) return
-        isConnecting.set(true)
-        scope.launch { doConnect() }
+        isConnecting.set(true); scope.launch { doConnect() }
     }
 
     private fun doConnect() {
@@ -71,10 +70,7 @@ class SupabaseRealtimeManager private constructor() {
     }
 
     private fun createListener() = object : WebSocketListener() {
-        override fun onOpen(webSocket: WebSocket, response: Response) {
-            isConnected.set(true); isConnecting.set(false)
-            startHeartbeat(); sendAccessToken(); subscribeToTables(); setPresence(true)
-        }
+        override fun onOpen(webSocket: WebSocket, response: Response) { isConnected.set(true); isConnecting.set(false); startHeartbeat(); sendAccessToken(); subscribeToTables(); setPresence(true) }
         override fun onMessage(webSocket: WebSocket, text: String) = handleIncomingMessage(text)
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { handleDisconnected() }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { Log.e(TAG, "WebSocket Failure: ${t.message}", t); handleDisconnected(); scheduleReconnect() }
@@ -87,11 +83,11 @@ class SupabaseRealtimeManager private constructor() {
             try {
                 val body = JSONObject().apply { put("is_online", online); put("online_now", online); put("last_seen", nowIso()); put("last_seen_at", nowIso()) }
                 val request = Request.Builder()
-                    .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/profiles?id=eq.$uid")
+                    .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/profiles?id=$uid")
                     .addHeader("apikey", SupabaseConfig.anonKey)
                     .addHeader("Authorization", "Bearer ${SupabaseService.accessToken() ?: SupabaseConfig.anonKey}")
                     .addHeader("Content-Type", "application/json")
-                    .patch(okhttp3.RequestBody.create("application/json".toMediaTypeCompat(), body.toString()))
+                    .patch(body.toString().toRequestBody("application/json".toMediaType()))
                     .build()
                 client.newCall(request).execute().use { response -> if (!response.isSuccessful) Log.w(TAG, "Presence update failed: ${response.code}") }
             } catch (e: Exception) { Log.w(TAG, "Presence update exception", e) }
@@ -117,11 +113,10 @@ class SupabaseRealtimeManager private constructor() {
     private fun subscribeToTables() {
         val tables = listOf("messages","conversations","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","roommate_profiles","roommate_applications","skill_endorsements","poll_votes")
         tables.forEach { table ->
-            val ref = refCounter.getAndIncrement().toString()
             val join = JSONObject().apply {
                 put("topic", "realtime:public:$table"); put("event", "phx_join")
                 put("payload", JSONObject().apply { put("config", JSONObject().apply { put("postgres_changes", org.json.JSONArray().apply { put(JSONObject().apply { put("event", "*"); put("schema", "public"); put("table", table) }) }) }) })
-                put("ref", ref)
+                put("ref", refCounter.getAndIncrement().toString())
             }
             webSocket?.send(join.toString())
         }
@@ -144,28 +139,9 @@ class SupabaseRealtimeManager private constructor() {
         } catch (e: Exception) { Log.e(TAG, "Error parsing realtime message", e) }
     }
 
-    private fun handleDisconnected() {
-        isConnected.set(false); isConnecting.set(false); heartbeatJob?.cancel(); setPresence(false)
-    }
-
-    private fun scheduleReconnect() {
-        reconnectJob?.cancel(); reconnectJob = scope.launch { delay(5_000L); if (!isConnected.get() && activeUsername.isNotBlank()) connect(activeUsername, activeUserId) }
-    }
-
-    fun disconnect() {
-        setPresence(false); activeUsername = ""; activeUserId = ""; heartbeatJob?.cancel(); reconnectJob?.cancel()
-        try { webSocket?.close(1000, "User logged out") } catch (_: Exception) {}
-        webSocket = null; isConnected.set(false); isConnecting.set(false)
-    }
-
+    private fun handleDisconnected() { isConnected.set(false); isConnecting.set(false); heartbeatJob?.cancel(); setPresence(false) }
+    private fun scheduleReconnect() { reconnectJob?.cancel(); reconnectJob = scope.launch { delay(5_000L); if (!isConnected.get() && activeUsername.isNotBlank()) connect(activeUsername, activeUserId) } }
+    fun disconnect() { setPresence(false); activeUsername = ""; activeUserId = ""; heartbeatJob?.cancel(); reconnectJob?.cancel(); try { webSocket?.close(1000, "User logged out") } catch (_: Exception) {}; webSocket = null; isConnected.set(false); isConnecting.set(false) }
     private fun nowIso(): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date())
-    private fun formatTimestamp(value: String): String = try {
-        if (value.isBlank()) return "Just now"
-        val normalized = value.trim().replace("Z", "+0000")
-        val sdf = if (value.contains(".")) SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US) else SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US)
-        sdf.timeZone = TimeZone.getTimeZone("UTC")
-        SimpleDateFormat("h:mm a", Locale.US).format(sdf.parse(normalized) ?: Date())
-    } catch (_: Exception) { "Just now" }
+    private fun formatTimestamp(value: String): String = try { if (value.isBlank()) return "Just now"; val normalized = value.trim().replace("Z", "+0000"); val sdf = if (value.contains(".")) SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US) else SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US); sdf.timeZone = TimeZone.getTimeZone("UTC"); SimpleDateFormat("h:mm a", Locale.US).format(sdf.parse(normalized) ?: Date()) } catch (_: Exception) { "Just now" }
 }
-
-private fun String.toMediaTypeCompat(): okhttp3.MediaType = this.toMediaType()
