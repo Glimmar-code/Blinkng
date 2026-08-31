@@ -13,13 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
-import java.util.UUID
-import java.util.Locale
 import java.util.concurrent.TimeUnit
-import kotlin.math.abs
 
 sealed class AuthState {
     object Initial : AuthState()
@@ -153,53 +147,16 @@ class AuthRepository(
     }
 
     /**
-     * Handles Google OAuth / Google sign in asynchronously and updates authState.
-     * Note: Navigation is handled reactively by observing authState in ViewModel/UI.
+     * Google sign-in must use a real Google OAuth/ID-token exchange.
+     * The previous implementation generated a deterministic password and could
+     * fall back to a random UUID, which could create a profile not backed by
+     * auth.users. Do not fabricate an identity for a social provider.
      */
     suspend fun signInWithGoogle(email: String): AuthResult = withContext(Dispatchers.IO) {
-        try {
-            _authState.value = AuthState.Loading
-            val effectiveEmail = email.trim().lowercase(Locale.US)
-            if (effectiveEmail.isBlank()) throw Exception("Email is required.")
-            val derivedUsername = effectiveEmail.substringBefore("@").replace(".", "_").replace(" ", "_")
-            val derivedName = derivedUsername.replace("_", " ").split(" ")
-                .joinToString(" ") { it.replaceFirstChar { char -> char.uppercase() } }
-            val googleAuthPassword = "GoogleAuth_${abs(effectiveEmail.hashCode())}#Campus2026!"
-
-            // Authenticate or register in Supabase Auth to establish a real JWT session and valid UUID
-            val signUpResult = supabaseService.signUpUser(
-                email = effectiveEmail,
-                password = googleAuthPassword,
-                username = derivedUsername,
-                fullName = derivedName,
-                faculty = "SIMME",
-                university = "University of Lagos"
-            )
-
-            val profile = if (signUpResult.isSuccess) {
-                signUpResult.getOrThrow()
-            } else {
-                val loginResult = supabaseService.authenticateUser(effectiveEmail, googleAuthPassword)
-                if (loginResult.isSuccess) {
-                    loginResult.getOrThrow()
-                } else {
-                    val realUserId = supabaseService.getCurrentUserId() ?: UUID.randomUUID().toString()
-                    supabaseService.getOrCreateGoogleProfile(
-                        userId = realUserId,
-                        email = effectiveEmail,
-                        displayName = derivedName
-                    )
-                }
-            }
-
-            persistSession(profile)
-            _authState.value = AuthState.Authenticated(profile)
-            return@withContext AuthResult.success(profile)
-        } catch (e: Exception) {
-            Log.e("AuthRepository", "signInWithGoogle error: ${e.message}")
-            _authState.value = AuthState.Unauthenticated(e.message)
-            return@withContext AuthResult.failure(e.message ?: "Google sign in failed.")
-        }
+        _authState.value = AuthState.Unauthenticated()
+        AuthResult.failure(
+            "Google sign-in is not connected to Supabase Auth yet. Use email/password or configure the Google OAuth flow before enabling this button."
+        )
     }
 
     suspend fun recoverPassword(email: String): Boolean = withContext(Dispatchers.IO) {
@@ -208,6 +165,7 @@ class AuthRepository(
 
     fun signOut() {
         prefs.edit().clear().apply()
+        SupabaseService.clearSession()
         _authState.value = AuthState.Unauthenticated()
     }
 
