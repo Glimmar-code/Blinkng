@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -72,22 +73,45 @@ private fun ReelPage(reel: FeedPost, isActive: Boolean, onLike: (String) -> Unit
 @Composable
 private fun ReelVideo(url: String, isActive: Boolean) {
     val context = LocalContext.current
+    var playbackError by remember(url) { mutableStateOf<String?>(null) }
     val player = remember(url) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(url))
             repeatMode = Player.REPEAT_MODE_ONE
+            playWhenReady = isActive
+            addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    playbackError = error.errorCodeName
+                }
+            })
+            setMediaItem(MediaItem.fromUri(url.trim()))
             prepare()
         }
     }
     LaunchedEffect(isActive, player) {
+        player.playWhenReady = isActive
         if (isActive) player.play() else player.pause()
     }
-    DisposableEffect(player) { onDispose { player.release() } }
-    AndroidView(
-        factory = { ctx -> PlayerView(ctx).apply { useController = true; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM; player = player } },
-        update = { it.player = player },
-        modifier = Modifier.fillMaxSize()
-    )
+    DisposableEffect(player) { onDispose { player.stop(); player.release() } }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        AndroidView(
+            factory = { ctx -> PlayerView(ctx).apply { useController = true; controllerAutoShow = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; player = this@applyPlayer } },
+            update = { view -> view.player = player },
+            modifier = Modifier.fillMaxSize()
+        )
+        if (playbackError != null) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Unable to play this video", color = Color.White, fontWeight = FontWeight.Bold)
+                Text(playbackError ?: "Playback error", color = Color.LightGray, fontSize = 11.sp)
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = {
+                    playbackError = null
+                    player.seekTo(0)
+                    player.prepare()
+                    player.playWhenReady = isActive
+                }) { Text("Retry") }
+            }
+        }
+    }
 }
 
 @Composable
