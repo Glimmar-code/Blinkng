@@ -1,12 +1,15 @@
-// import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
-
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
-  // alias(libs.plugins.google.services)
+}
+
+// google-services.json is intentionally optional in source control.
+// When the Firebase config file is supplied locally, apply the Google Services plugin.
+if (file("google-services.json").exists()) {
+  apply(plugin = "com.google.gms.google-services")
 }
 
 android {
@@ -65,8 +68,8 @@ dependencies {
   implementation(libs.okhttp)
   implementation(libs.retrofit)
   implementation(libs.media3.exoplayer)
-  implementation(libs.media3.ui)
-  // Existing optional integrations remain available.
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.messaging)
   implementation(libs.accompanist.permissions)
   implementation(libs.play.services.location)
   implementation(libs.androidx.camera.camera2)
