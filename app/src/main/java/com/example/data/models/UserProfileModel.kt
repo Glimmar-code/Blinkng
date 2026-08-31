@@ -61,14 +61,7 @@ data class UserProfile(
     var email: ContactField = ContactField("", true),
     var phone: ContactField = ContactField("", false),
     var whatsapp: ContactField = ContactField("", false),
-    var links: SocialLinks = SocialLinks(
-        website = "https://efechukwu.design",
-        linkedin = "linkedin.com/in/efechukwu",
-        twitter = "x.com/efe_creative",
-        instagram = "instagram.com/efe.lens",
-        featuredLink = "https://github.com/efe-dev",
-        featuredLinkLabel = "Portfolio & GitHub"
-    ),
+    var links: SocialLinks = SocialLinks(),
     var coreSkills: MutableList<String> = mutableListOf(),
     var skillEndorsements: MutableList<SkillEndorsement> = mutableListOf(),
     var hobbies: List<String> = listOf(),
