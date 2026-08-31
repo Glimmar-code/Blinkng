@@ -32,21 +32,28 @@ import com.example.ui.theme.BlinkPink
 @Composable
 fun VideoReelsScreen(reels: List<FeedPost>, isDark: Boolean, onLike: (String) -> Unit, onComment: (String) -> Unit, onBookmark: (String) -> Unit, onShare: (String) -> Unit, onProfileClick: (String) -> Unit, onBackToPosts: () -> Unit, onHomeClick: () -> Unit = onBackToPosts, onConnectClick: () -> Unit = {}, onGameClick: () -> Unit = {}) {
     if (reels.isEmpty()) {
-        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("No reels yet", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp); Spacer(Modifier.height(10.dp)); Button(onClick = onBackToPosts) { Text("Back to feed") } } }
+        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("No reels yet", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(Modifier.height(10.dp)); Button(onClick = onBackToPosts) { Text("Back to feed") }
+            }
+        }
         return
     }
     val pager = rememberPagerState(pageCount = { reels.size })
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { index -> ReelPage(reels[index], onLike, onComment, onBookmark, onShare, onProfileClick) }
+        VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { index ->
+            ReelPage(reels[index], index == pager.currentPage, onLike, onComment, onBookmark, onShare, onProfileClick)
+        }
         Text("Reels", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 19.sp, modifier = Modifier.align(Alignment.TopCenter).padding(top = 45.dp))
     }
 }
 
 @Composable
-private fun ReelPage(reel: FeedPost, onLike: (String) -> Unit, onComment: (String) -> Unit, onBookmark: (String) -> Unit, onShare: (String) -> Unit, onProfileClick: (String) -> Unit) {
+private fun ReelPage(reel: FeedPost, isActive: Boolean, onLike: (String) -> Unit, onComment: (String) -> Unit, onBookmark: (String) -> Unit, onShare: (String) -> Unit, onProfileClick: (String) -> Unit) {
     Box(Modifier.fillMaxSize()) {
         val url = reel.videoUrl
-        if (!url.isNullOrBlank()) ReelVideo(url) else Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { Text("Video unavailable", color = Color.White) }
+        if (!url.isNullOrBlank()) ReelVideo(url, isActive) else Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { Text("Video unavailable", color = Color.White) }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .18f)))
         Column(Modifier.align(Alignment.CenterEnd).padding(end = 10.dp, bottom = 70.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             AsyncAvatar(reel.authorAvatar) { onProfileClick(reel.author) }
@@ -63,11 +70,24 @@ private fun ReelPage(reel: FeedPost, onLike: (String) -> Unit, onComment: (Strin
 }
 
 @Composable
-private fun ReelVideo(url: String) {
+private fun ReelVideo(url: String, isActive: Boolean) {
     val context = LocalContext.current
-    val player = remember(url) { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(url)); repeatMode = Player.REPEAT_MODE_ONE; prepare(); playWhenReady = true } }
+    val player = remember(url) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(url))
+            repeatMode = Player.REPEAT_MODE_ONE
+            prepare()
+        }
+    }
+    LaunchedEffect(isActive, player) {
+        if (isActive) player.play() else player.pause()
+    }
     DisposableEffect(player) { onDispose { player.release() } }
-    AndroidView(factory = { ctx -> PlayerView(ctx).apply { useController = true; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM; player = player } }, update = { it.player = player }, modifier = Modifier.fillMaxSize())
+    AndroidView(
+        factory = { ctx -> PlayerView(ctx).apply { useController = true; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM; player = player } },
+        update = { it.player = player },
+        modifier = Modifier.fillMaxSize()
+    )
 }
 
 @Composable
@@ -77,5 +97,8 @@ private fun AsyncAvatar(url: String, onClick: () -> Unit) {
 
 @Composable
 private fun ReelAction(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, tint: Color, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) { IconButton(onClick = onClick) { Icon(icon, text, tint = tint, modifier = Modifier.size(28.dp)) }; Text(text, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(onClick = onClick) { Icon(icon, text, tint = tint, modifier = Modifier.size(28.dp)) }
+        Text(text, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+    }
 }
