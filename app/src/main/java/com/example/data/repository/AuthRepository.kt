@@ -8,6 +8,7 @@ import com.example.data.models.ContactField
 import com.example.data.models.UserProfile
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
+import com.example.notification.BlinkFirebaseMessagingService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -58,7 +59,23 @@ class AuthRepository(private val context: Context, private val supabaseService: 
     }
 
     suspend fun recoverPassword(email: String): Boolean = withContext(Dispatchers.IO) { supabaseService.recoverPassword(email) }
-    fun markAuthenticated(profile: UserProfile) { val token = SupabaseService.accessToken(); if (token.isNullOrBlank()) { _authState.value = AuthState.Unauthenticated("No Supabase session is available."); return }; persistSession(profile); _authState.value = AuthState.Authenticated(profile, token) }
-    suspend fun signOut() { try { supabaseService.revokeCurrentSupabaseSession() } catch (e: Exception) { Log.w("AuthRepository", "Supabase logout failed", e); SupabaseService.clearSession() }; prefs.edit().clear().apply(); _authState.value = AuthState.Unauthenticated() }
-    private fun persistSession(profile: UserProfile) { prefs.edit().apply { putBoolean("is_logged_in", true); putString("email", profile.email.value); putString("full_name", profile.fullName); putString("username", profile.username); putString("faculty", profile.faculty); putString("university", profile.university); putString("avatar_url", profile.avatarUrl); putString("cover_url", profile.coverPhotoUrl); apply() } }
+
+    fun markAuthenticated(profile: UserProfile) {
+        val token = SupabaseService.accessToken()
+        if (token.isNullOrBlank()) { _authState.value = AuthState.Unauthenticated("No Supabase session is available."); return }
+        persistSession(profile)
+        _authState.value = AuthState.Authenticated(profile, token)
+    }
+
+    suspend fun signOut() {
+        try { supabaseService.revokeCurrentSupabaseSession() } catch (e: Exception) { Log.w("AuthRepository", "Supabase logout failed", e); SupabaseService.clearSession() }
+        prefs.edit().clear().apply()
+        _authState.value = AuthState.Unauthenticated()
+    }
+
+    private fun persistSession(profile: UserProfile) {
+        prefs.edit().apply { putBoolean("is_logged_in", true); putString("email", profile.email.value); putString("full_name", profile.fullName); putString("username", profile.username); putString("faculty", profile.faculty); putString("university", profile.university); putString("avatar_url", profile.avatarUrl); putString("cover_url", profile.coverPhotoUrl); apply() }
+        // Token generation may happen before login; explicitly request/sync it after login as well.
+        BlinkFirebaseMessagingService.syncCurrentToken(context.applicationContext)
+    }
 }
