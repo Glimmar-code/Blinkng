@@ -2,7 +2,6 @@ package com.example.data.repository
 
 import android.content.Context
 import android.util.Log
-import com.example.data.models.AuthResult
 import com.example.data.models.ContactField
 import com.example.data.models.UserProfile
 import com.example.data.supabase.SupabaseConfig
@@ -54,8 +53,6 @@ class AuthRepository(
     private val anonKey = SupabaseConfig.anonKey
 
     init {
-        // Local profile/session preferences are cache only. The UI is not allowed
-        // to become authenticated until the real Supabase session is restored.
         _authState.value = AuthState.Initial
     }
 
@@ -69,39 +66,26 @@ class AuthRepository(
         val cleanEmail = email.trim().lowercase()
         val cleanUsername = username.trim().lowercase().replace("@", "")
         val cleanName = fullName?.trim()?.ifBlank { null } ?: cleanUsername.replace(".", " ")
-
         if (cleanEmail.isBlank() || password.isBlank() || cleanUsername.isBlank()) {
             return@withContext AuthResult.failure("Please complete all required fields.")
         }
-
         try {
-            val result = supabaseService.signUpUser(
-                email = cleanEmail,
-                password = password,
-                username = cleanUsername,
-                fullName = cleanName,
-                faculty = faculty
-            )
+            val result = supabaseService.signUpUser(cleanEmail, password, cleanUsername, cleanName, faculty)
             if (result.isSuccess) {
                 val profile = result.getOrThrow()
                 persistSession(profile)
                 _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken())
                 AuthResult.success(profile)
             } else {
-                val error = result.exceptionOrNull()?.message ?: "Sign up failed."
-                Log.e("AuthRepository", "signUpWithEmail failed: $error")
-                AuthResult.failure(error)
+                AuthResult.failure(result.exceptionOrNull()?.message ?: "Sign up failed.")
             }
         } catch (e: Exception) {
-            Log.e("AuthRepository", "signUpWithEmail error: ${e.message}")
+            Log.e("AuthRepository", "signUpWithEmail error", e)
             AuthResult.failure(e.message ?: "Sign up failed.")
         }
     }
 
-    suspend fun signInWithEmail(
-        emailOrUsername: String,
-        password: String
-    ): AuthResult = withContext(Dispatchers.IO) {
+    suspend fun signInWithEmail(emailOrUsername: String, password: String): AuthResult = withContext(Dispatchers.IO) {
         val cleanInput = emailOrUsername.trim().lowercase()
         if (cleanInput.isBlank() || password.isBlank()) {
             return@withContext AuthResult.failure("Please enter both email/username and password.")
@@ -117,23 +101,20 @@ class AuthRepository(
                 AuthResult.failure(result.exceptionOrNull()?.message ?: "Invalid email or password.")
             }
         } catch (e: Exception) {
-            Log.e("AuthRepository", "signInWithEmail error: ${e.message}")
+            Log.e("AuthRepository", "signInWithEmail error", e)
             AuthResult.failure(e.message ?: "Connection error. Please try again.")
         }
     }
 
     suspend fun signInWithGoogle(email: String): AuthResult = withContext(Dispatchers.IO) {
         _authState.value = AuthState.Unauthenticated()
-        AuthResult.failure(
-            "Google sign-in is not connected to Supabase Auth yet. Use email/password or configure the Google OAuth flow before enabling this button."
-        )
+        AuthResult.failure("Google sign-in is not connected to Supabase Auth yet. Configure the Google OAuth flow before enabling this button.")
     }
 
     suspend fun recoverPassword(email: String): Boolean = withContext(Dispatchers.IO) {
         supabaseService.recoverPassword(email)
     }
 
-    /** Mark authenticated only after a real Supabase JWT/session has been validated. */
     fun markAuthenticated(profile: UserProfile) {
         val token = SupabaseService.accessToken()
         if (token.isNullOrBlank()) {
