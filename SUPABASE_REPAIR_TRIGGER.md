@@ -1,1 +1,0 @@
-Temporary CI trigger for the Supabase synchronization repair. The repair workflow removes itself after a successful build.
