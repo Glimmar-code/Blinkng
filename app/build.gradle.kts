@@ -6,12 +6,12 @@ plugins {
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
+  // alias(libs.plugins.google.services)
 }
 
 android {
   namespace = "com.example"
   compileSdk { version = release(37) }
-
   defaultConfig {
     applicationId = "com.aistudio.blink.appvtwo"
     minSdk = 24
@@ -20,55 +20,24 @@ android {
     versionName = "1.0"
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
-
   signingConfigs {
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+      storeFile = file(keystorePath); storePassword = System.getenv("STORE_PASSWORD"); keyAlias = "upload"; keyPassword = System.getenv("KEY_PASSWORD")
     }
-    create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
-    }
+    create("debugConfig") { storeFile = file("${rootDir}/debug.keystore"); storePassword = "android"; keyAlias = "androiddebugkey"; keyPassword = "android" }
   }
-
   buildTypes {
-    release {
-      isCrunchPngs = false
-      isMinifyEnabled = false
-      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
-    }
+    release { isCrunchPngs = false; isMinifyEnabled = false; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"); signingConfig = signingConfigs.getByName("release") }
     debug { }
   }
-
-  compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-  }
-
-  buildFeatures {
-    compose = true
-    buildConfig = true
-  }
-
+  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+  buildFeatures { compose = true; buildConfig = true }
   testOptions { unitTests { isIncludeAndroidResources = true } }
-  dependenciesInfo {
-    includeInApk = false
-    includeInBundle = true
-  }
+  dependenciesInfo { includeInApk = false; includeInBundle = true }
 }
 
-secrets {
-  propertiesFileName = ".env"
-  defaultPropertiesFileName = ".env.example"
-  ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
-}
+secrets { propertiesFileName = ".env"; defaultPropertiesFileName = ".env.example"; ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN") }
 
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
@@ -96,6 +65,13 @@ dependencies {
   implementation(libs.retrofit)
   implementation(libs.media3.exoplayer)
   implementation(libs.media3.ui)
+  // Existing optional integrations remain available.
+  implementation(libs.accompanist.permissions)
+  implementation(libs.play.services.location)
+  implementation(libs.androidx.camera.camera2)
+  implementation(libs.androidx.camera.lifecycle)
+  implementation(libs.androidx.camera.view)
+  implementation(libs.androidx.camera.core)
 
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
