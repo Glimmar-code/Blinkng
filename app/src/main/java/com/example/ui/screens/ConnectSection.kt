@@ -43,58 +43,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.data.models.CampusPeer
 import com.example.data.models.NigerianUniversities
+import com.example.data.models.RoommateApplicant
+import com.example.data.models.StudyCircle
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
-
-// ─────────────────────────────────────────────────────────────────────────
-// DATA MODELS
-// ─────────────────────────────────────────────────────────────────────────
-
-data class CampusPeer(
-    val id: String,
-    val name: String,
-    val username: String,
-    val avatarUrl: String,
-    val university: String,
-    val faculty: String,
-    val department: String,
-    val level: String,
-    val bio: String,
-    val interests: List<String>,
-    val badge: VerificationBadge = VerificationBadge.NONE,
-    val mutualFriends: Int = 3
-)
-
-data class RoommateApplicant(
-    val id: String,
-    val name: String,
-    val username: String,
-    val avatarUrl: String,
-    val university: String,
-    val faculty: String,
-    val level: String,
-    val gender: String, // "Male" | "Female"
-    val budget: String,
-    val preferredLocation: String,
-    val moveInDate: String,
-    val bio: String,
-    val badge: VerificationBadge = VerificationBadge.NONE
-)
-
-data class StudyCircle(
-    val id: String,
-    val name: String,
-    val faculty: String,
-    val membersCount: Int,
-    val description: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
-    val isJoined: Boolean = false
-)
 
 private enum class RoommateTab { BROWSE, APPLY }
 

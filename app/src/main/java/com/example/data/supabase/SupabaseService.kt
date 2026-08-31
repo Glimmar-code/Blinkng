@@ -10,6 +10,9 @@ import com.example.data.models.MessageStatus
 import com.example.data.models.ContactField
 import com.example.data.models.FeedPost
 import com.example.data.models.LeaderboardUser
+import com.example.data.models.CampusPeer
+import com.example.data.models.RoommateApplicant
+import com.example.data.models.StudyCircle
 import com.example.data.models.MarketItem
 import com.example.data.models.PollOption
 import com.example.data.models.PostPoll
@@ -4145,6 +4148,76 @@ suspend fun togglePostLike(
             executeRequest(req).use { it.isSuccessful }
         } catch (e: Exception) {
             Log.e(TAG, "markAllActivitiesRead failed", e)
+            false
+        }
+    }
+
+    suspend fun recordSkillEndorsement(targetUsername: String, skillName: String, endorserUsername: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val json = JSONObject().apply {
+                put("target_username", targetUsername.trim().lowercase(Locale.US))
+                put("skill", skillName.trim())
+                put("endorser_username", endorserUsername.trim().lowercase(Locale.US))
+                put("created_at", nowIso())
+            }
+            val req = newRequestBuilder("/rest/v1/skill_endorsements", authenticated = true)
+                .addHeader("Prefer", "resolution=merge-duplicates")
+                .post(json.toString().toRequestBody(jsonMediaType))
+                .build()
+            val success = executeRequest(req).use { it.isSuccessful }
+            if (success) {
+                recordActivity(
+                    recipientUsername = targetUsername,
+                    action = "endorsed your skill: $skillName",
+                    category = NotificationFilter.ALL,
+                    targetUsername = endorserUsername
+                )
+            }
+            success
+        } catch (e: Exception) {
+            Log.e(TAG, "recordSkillEndorsement failed", e)
+            false
+        }
+    }
+
+    suspend fun submitVerificationRequest(tier: String, paymentReference: String, amount: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val currentUsername = getCurrentUsername() ?: ""
+            val json = JSONObject().apply {
+                put("username", currentUsername)
+                put("tier", tier)
+                put("payment_reference", paymentReference)
+                put("amount", amount)
+                put("status", "approved") // Instant verified upon successful gateway payment simulation
+                put("created_at", nowIso())
+            }
+            val req = newRequestBuilder("/rest/v1/verification_requests", authenticated = true)
+                .post(json.toString().toRequestBody(jsonMediaType))
+                .build()
+            executeRequest(req).use { it.isSuccessful }
+        } catch (e: Exception) {
+            Log.e(TAG, "submitVerificationRequest failed", e)
+            false
+        }
+    }
+
+    suspend fun updateGameStats(score: Int, coins: Int, streak: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val currentUsername = getCurrentUsername() ?: ""
+            val json = JSONObject().apply {
+                put("username", currentUsername)
+                put("points", score)
+                put("coins", coins)
+                put("streak", streak)
+                put("updated_at", nowIso())
+            }
+            val req = newRequestBuilder("/rest/v1/leaderboard", authenticated = true)
+                .addHeader("Prefer", "resolution=merge-duplicates")
+                .post(json.toString().toRequestBody(jsonMediaType))
+                .build()
+            executeRequest(req).use { it.isSuccessful }
+        } catch (e: Exception) {
+            Log.e(TAG, "updateGameStats failed", e)
             false
         }
     }

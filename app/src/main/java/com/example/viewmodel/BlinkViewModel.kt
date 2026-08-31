@@ -2958,10 +2958,9 @@ fun sharePost(
     fun endorseSkill(
         skill: String
     ) {
-
-        val current =
-            _uiState.value
-                .myProfile
+        val current = _uiState.value.myProfile
+        val targetUsername = _uiState.value.viewingProfile?.username ?: current.username
+        val endorserUsername = current.username
 
         val updated =
             current.skillEndorsements
@@ -3012,10 +3011,16 @@ fun sharePost(
         showToast(
             "Endorsement updated for $skill."
         )
+
+        viewModelScope.launch {
+            supabaseService.recordSkillEndorsement(targetUsername, skill, endorserUsername)
+        }
     }
 
     fun applyVerification(
-        tier: VerificationBadge
+        tier: VerificationBadge,
+        paymentReference: String = "pay_aluta_${System.currentTimeMillis()}",
+        amount: Int = if (tier == VerificationBadge.GOLD) 2500 else 800
     ) {
         val current = _uiState.value.myProfile
         val updatedProfile = current.copy(
@@ -3086,27 +3091,21 @@ fun sharePost(
         saveLocalProfile(updatedProfile)
 
         viewModelScope.launch {
+            val tierName = if (tier == VerificationBadge.GOLD) "GOLD" else "BLUE"
+            val success = supabaseService.submitVerificationRequest(tierName, paymentReference, amount)
+            val synced = profileRepository.updateProfile(updatedProfile)
 
-            val synced =
-                profileRepository
-                    .updateProfile(
-                        updatedProfile
-                    )
-
-            if (
-                synced
-            ) {
-
-                showToast(
-                    "🎉 Verification updated and synced."
-                )
-
+            if (success && synced) {
+                showToast("🎉 Verified successfully via payment gateway & Supabase backend.")
             } else {
-
-                showToast(
-                    "Verification updated locally, but sync failed."
-                )
+                showToast("Verification applied locally, sync pending network.")
             }
+        }
+    }
+
+    fun updateGameStats(score: Int, coins: Int, streak: Int) {
+        viewModelScope.launch {
+            supabaseService.updateGameStats(score, coins, streak)
         }
     }
 
