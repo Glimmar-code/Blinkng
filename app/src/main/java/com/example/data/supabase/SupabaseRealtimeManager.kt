@@ -60,7 +60,6 @@ class SupabaseRealtimeManager private constructor() {
         if (isConnected.get() || isConnecting.get()) return
         isConnecting.set(true); scope.launch { doConnect() }
     }
-
     private fun doConnect() {
         try {
             val baseUrl = SupabaseConfig.url.trimEnd('/')
@@ -68,77 +67,45 @@ class SupabaseRealtimeManager private constructor() {
             webSocket = client.newWebSocket(Request.Builder().url(wsUrl).build(), createListener())
         } catch (e: Exception) { Log.e(TAG, "Failed to initiate WebSocket connection", e); isConnecting.set(false); scheduleReconnect() }
     }
-
     private fun createListener() = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) { isConnected.set(true); isConnecting.set(false); startHeartbeat(); sendAccessToken(); subscribeToTables(); setPresence(true) }
         override fun onMessage(webSocket: WebSocket, text: String) = handleIncomingMessage(text)
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { handleDisconnected() }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { Log.e(TAG, "WebSocket Failure: ${t.message}", t); handleDisconnected(); scheduleReconnect() }
     }
-
     private fun setPresence(online: Boolean) {
         val uid = activeUserId
         if (uid.isBlank()) return
         scope.launch {
             try {
                 val body = JSONObject().apply { put("is_online", online); put("online_now", online); put("last_seen", nowIso()); put("last_seen_at", nowIso()) }
-                val request = Request.Builder()
-                    .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/profiles?id=$uid")
-                    .addHeader("apikey", SupabaseConfig.anonKey)
-                    .addHeader("Authorization", "Bearer ${SupabaseService.accessToken() ?: SupabaseConfig.anonKey}")
-                    .addHeader("Content-Type", "application/json")
-                    .patch(body.toString().toRequestBody("application/json".toMediaType()))
-                    .build()
+                val request = Request.Builder().url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/profiles?id=$uid").addHeader("apikey", SupabaseConfig.anonKey).addHeader("Authorization", "Bearer ${SupabaseService.accessToken() ?: SupabaseConfig.anonKey}").addHeader("Content-Type", "application/json").patch(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString())).build()
                 client.newCall(request).execute().use { response -> if (!response.isSuccessful) Log.w(TAG, "Presence update failed: ${response.code}") }
             } catch (e: Exception) { Log.w(TAG, "Presence update exception", e) }
         }
     }
-
     private fun startHeartbeat() {
-        heartbeatJob?.cancel()
-        heartbeatJob = scope.launch {
-            while (isActive && isConnected.get()) {
-                delay(25_000L)
-                webSocket?.send(JSONObject().apply { put("topic", "phoenix"); put("event", "heartbeat"); put("payload", JSONObject()); put("ref", "hb_${refCounter.getAndIncrement()}") }.toString())
-                setPresence(true)
-            }
+        heartbeatJob?.cancel(); heartbeatJob = scope.launch {
+            while (isActive && isConnected.get()) { delay(25_000L); webSocket?.send(JSONObject().apply { put("topic", "phoenix"); put("event", "heartbeat"); put("payload", JSONObject()); put("ref", "hb_${refCounter.getAndIncrement()}") }.toString()); setPresence(true) }
         }
     }
-
-    private fun sendAccessToken() {
-        val token = SupabaseService.accessToken() ?: return
-        webSocket?.send(JSONObject().apply { put("topic", "realtime"); put("event", "access_token"); put("payload", JSONObject().put("access_token", token)); put("ref", refCounter.getAndIncrement().toString()) }.toString())
-    }
-
+    private fun sendAccessToken() { val token = SupabaseService.accessToken() ?: return; webSocket?.send(JSONObject().apply { put("topic", "realtime"); put("event", "access_token"); put("payload", JSONObject().put("access_token", token)); put("ref", refCounter.getAndIncrement().toString()) }.toString()) }
     private fun subscribeToTables() {
         val tables = listOf("messages","conversations","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","roommate_profiles","roommate_applications","skill_endorsements","poll_votes")
-        tables.forEach { table ->
-            val join = JSONObject().apply {
-                put("topic", "realtime:public:$table"); put("event", "phx_join")
-                put("payload", JSONObject().apply { put("config", JSONObject().apply { put("postgres_changes", org.json.JSONArray().apply { put(JSONObject().apply { put("event", "*"); put("schema", "public"); put("table", table) }) }) }) })
-                put("ref", refCounter.getAndIncrement().toString())
-            }
-            webSocket?.send(join.toString())
-        }
+        tables.forEach { table -> val join = JSONObject().apply { put("topic", "realtime:public:$table"); put("event", "phx_join"); put("payload", JSONObject().apply { put("config", JSONObject().apply { put("postgres_changes", org.json.JSONArray().apply { put(JSONObject().apply { put("event", "*"); put("schema", "public"); put("table", table) }) }) }) }); put("ref", refCounter.getAndIncrement().toString()) }; webSocket?.send(join.toString()) }
     }
-
     private fun handleIncomingMessage(text: String) {
         try {
-            val json = JSONObject(text); val event = json.optString("event"); val payload = json.optJSONObject("payload") ?: return
-            if (event != "postgres_changes") return
+            val json = JSONObject(text); val event = json.optString("event"); val payload = json.optJSONObject("payload") ?: return; if (event != "postgres_changes") return
             val data = payload.optJSONObject("data") ?: return; val type = data.optString("type"); val table = data.optString("table"); val record = data.optJSONObject("record") ?: data.optJSONObject("old_record") ?: JSONObject()
             when (table) {
-                "messages" -> {
-                    val senderId = record.optString("sender_id"); val senderUsername = record.optString("sender_username"); val createdAt = record.optString("created_at")
-                    _events.tryEmit(RealtimeEvent.MessageEvent(type, ChatMessage(id = record.optString("id"), senderId = senderId.ifBlank { senderUsername }, senderUsername = senderUsername, receiverId = record.optString("receiver_id").ifBlank { record.optString("receiver_username") }, receiverUsername = record.optString("receiver_username"), text = record.optString("content", record.optString("text")), rawTimestamp = createdAt, timestamp = formatTimestamp(createdAt), isFromMe = senderId == activeUserId || senderUsername.equals(activeUsername, true), isRead = record.optBoolean("is_read", false), status = MessageStatus.SENT)))
-                }
+                "messages" -> { val senderId = record.optString("sender_id"); val senderUsername = record.optString("sender_username"); val createdAt = record.optString("created_at"); _events.tryEmit(RealtimeEvent.MessageEvent(type, ChatMessage(id = record.optString("id"), senderId = senderId.ifBlank { senderUsername }, senderUsername = senderUsername, receiverId = record.optString("receiver_id").ifBlank { record.optString("receiver_username") }, receiverUsername = record.optString("receiver_username"), text = record.optString("content", record.optString("text")), rawTimestamp = createdAt, timestamp = formatTimestamp(createdAt), isFromMe = senderId == activeUserId || senderUsername.equals(activeUsername, true), isRead = record.optBoolean("is_read", false), status = MessageStatus.SENT))) }
                 "conversations" -> _events.tryEmit(RealtimeEvent.ConversationEvent(type, record.optString("id"), record.optString("last_message"), record.optString("updated_at", record.optString("last_message_at"))))
                 "notifications" -> _events.tryEmit(RealtimeEvent.NotificationEvent(type, record.optString("id"), record.optString("user_id"), record.optString("username"), record.optString("type"), record.optString("title"), record.optString("content")))
                 "feed_posts" -> _events.tryEmit(RealtimeEvent.FeedPostEvent(type, record.optString("id")))
             }
         } catch (e: Exception) { Log.e(TAG, "Error parsing realtime message", e) }
     }
-
     private fun handleDisconnected() { isConnected.set(false); isConnecting.set(false); heartbeatJob?.cancel(); setPresence(false) }
     private fun scheduleReconnect() { reconnectJob?.cancel(); reconnectJob = scope.launch { delay(5_000L); if (!isConnected.get() && activeUsername.isNotBlank()) connect(activeUsername, activeUserId) } }
     fun disconnect() { setPresence(false); activeUsername = ""; activeUserId = ""; heartbeatJob?.cancel(); reconnectJob?.cancel(); try { webSocket?.close(1000, "User logged out") } catch (_: Exception) {}; webSocket = null; isConnected.set(false); isConnecting.set(false) }
