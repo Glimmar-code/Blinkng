@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
+import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -23,7 +24,12 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
 
         /** Call after a real Supabase login so a token generated earlier is not lost. */
         fun syncCurrentToken(context: Context) {
-            FirebaseMessaging.getInstance().token
+            val firebaseApp = FirebaseApp.initializeApp(context.applicationContext)
+                ?: run {
+                    Log.i(TAG, "Firebase is not configured; skipping FCM token sync.")
+                    return
+                }
+            FirebaseMessaging.getInstance(firebaseApp).token
                 .addOnSuccessListener { token ->
                     context.getSharedPreferences("blink_push", Context.MODE_PRIVATE).edit().putString("fcm_token", token).apply()
                     CoroutineScope(Dispatchers.IO).launch { syncTokenNow(context, token) }
