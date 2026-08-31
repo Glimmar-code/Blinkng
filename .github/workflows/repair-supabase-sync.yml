@@ -22,7 +22,7 @@ jobs:
           python-version: '3.x'
 
       - name: Apply source repairs
-        run: python tools/repair_supabase_sync.py && python tools/compile_import_patch.py && python tools/fix_build.py && python tools/finalize_supabase_sync.py
+        run: python tools/repair_supabase_sync.py && python tools/compile_import_patch.py && python tools/finalize_supabase_sync.py && python tools/fix_build.py
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
