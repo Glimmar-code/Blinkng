@@ -21,9 +21,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
+      - name: Generate Gradle wrapper
+        run: gradle wrapper --gradle-version 9.3.1 --distribution-type bin
       - name: Build debug APK
-        run: gradle assembleDebug --stacktrace --no-daemon
-      - name: Commit verified source
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
+      - name: Commit verified source and wrapper
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
