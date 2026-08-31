@@ -17,9 +17,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,7 +31,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.MainActivity
+import com.example.data.supabase.SupabaseService
 import com.example.ui.theme.BlinkTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class AccountSwitcherActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,51 +43,58 @@ class AccountSwitcherActivity : ComponentActivity() {
         setContent {
             BlinkTheme {
                 val accounts = remember { AccountSessionStore.list(this@AccountSwitcherActivity) }
+                var switchingUserId by remember { mutableStateOf<String?>(null) }
+                var error by remember { mutableStateOf<String?>(null) }
+
                 Column(
                     modifier = Modifier.fillMaxSize().padding(24.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text("Switch account", style = MaterialTheme.typography.headlineSmall)
-                    Text(
-                        "Recently logged in accounts",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Recently logged in accounts", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.weight(1f)) {
                         items(accounts, key = { it.userId }) { account ->
                             Card(modifier = Modifier.fillMaxWidth()) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    AsyncImage(
-                                        model = account.avatarUrl,
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.size(52.dp).clip(CircleShape)
-                                    )
+                                Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    AsyncImage(model = account.avatarUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(52.dp).clip(CircleShape))
                                     Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                                        Text(account.fullName, style = MaterialTheme.typography.titleMedium)
+                                        Text(account.fullName.ifBlank { account.username }, style = MaterialTheme.typography.titleMedium)
                                         Text("@${account.username}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         if (account.email.isNotBlank()) Text(account.email, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
-                                    Button(onClick = {
-                                        AccountSessionStore.switchTo(this@AccountSwitcherActivity, account)
-                                        startActivity(Intent(this@AccountSwitcherActivity, MainActivity::class.java).apply {
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                        })
-                                        finish()
-                                    }) { Text("Use") }
+                                    if (switchingUserId == account.userId) {
+                                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                                    } else {
+                                        Button(onClick = {
+                                            error = null
+                                            switchingUserId = account.userId
+                                            CoroutineScope(Dispatchers.IO).launch {
+                                                val refreshed = SupabaseSessionRefresher.refresh(account.refreshToken)
+                                                runOnUiThread {
+                                                    refreshed.fold(
+                                                        onSuccess = { session ->
+                                                            AccountSessionStore.switchTo(this@AccountSwitcherActivity, account, session.accessToken, session.refreshToken)
+                                                            startActivity(Intent(this@AccountSwitcherActivity, MainActivity::class.java).apply {
+                                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                                            })
+                                                            finish()
+                                                        },
+                                                        onFailure = {
+                                                            switchingUserId = null
+                                                            error = "${account.username}: session expired. Please sign in again."
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }) { Text("Use") }
+                                    }
                                 }
                             }
                         }
                     }
-                    Button(
-                        onClick = {
-                            setResult(Activity.RESULT_CANCELED)
-                            finish()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Cancel") }
+                    Button(onClick = { setResult(Activity.RESULT_CANCELED); finish() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
                 }
             }
         }
