@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -62,7 +63,10 @@ fun PostCard(post: FeedPost, isDark: Boolean, onLike: () -> Unit, onComment: () 
                     IconButton(onClick = { showImageFullscreen = true }, Modifier.align(Alignment.BottomEnd).padding(6.dp)) { Surface(CircleShape, Color.Black.copy(alpha = .55f)) { Icon(Icons.Default.Fullscreen, "Open image fullscreen", tint = Color.White, Modifier.padding(8.dp)) } }
                 }
             }
-            post.videoUrl?.takeIf { it.isNotBlank() }?.let { url -> Spacer(Modifier.height(10.dp)); VideoPreview(url, Modifier.fillMaxWidth().padding(horizontal = 10.dp).height(330.dp).clip(RoundedCornerShape(14.dp))) { showVideoFullscreen = true } }
+            // Video posts belong to Reels. Normal feed cards do not render video players.
+            post.videoUrl?.takeIf { it.isNotBlank() && post.isReel }?.let { url ->
+                Spacer(Modifier.height(10.dp)); VideoPreview(url, Modifier.fillMaxWidth().padding(horizontal = 10.dp).height(330.dp).clip(RoundedCornerShape(14.dp))) { showVideoFullscreen = true }
+            }
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 Text("${post.likes} likes", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 TextButton(onClick = onLike) { Icon(if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null, tint = if (post.isLiked) BlinkPink else MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("Like", fontSize = 10.sp) }
@@ -73,7 +77,7 @@ fun PostCard(post: FeedPost, isDark: Boolean, onLike: () -> Unit, onComment: () 
         }
     }
     if (showImageFullscreen) ImageFullscreenDialog(post.images, imagePage) { showImageFullscreen = false }
-    if (showVideoFullscreen && !post.videoUrl.isNullOrBlank()) VideoFullscreenDialog(post.videoUrl!!, { showVideoFullscreen = false })
+    if (showVideoFullscreen && !post.videoUrl.isNullOrBlank() && post.isReel) VideoFullscreenDialog(post.videoUrl!!, { showVideoFullscreen = false })
 }
 
 @Composable
@@ -96,18 +100,19 @@ private fun PollCard(poll: PostPoll, onVote: (String) -> Unit) {
 @Composable
 private fun VideoPreview(url: String, modifier: Modifier, onFullscreen: () -> Unit) {
     val context = LocalContext.current
-    val player = remember(url) { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(url)); repeatMode = Player.REPEAT_MODE_ONE; prepare(); playWhenReady = true } }
+    val player = remember(url) { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(url)); repeatMode = Player.REPEAT_MODE_ONE; prepare(); playWhenReady = false } }
     DisposableEffect(player) { onDispose { player.release() } }
     Box(modifier.background(Color.Black)) {
         AndroidView(factory = { ctx -> PlayerView(ctx).apply { useController = true; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; player = player } }, update = { it.player = player }, modifier = Modifier.fillMaxSize())
-        IconButton(onClick = onFullscreen, Modifier.align(Alignment.TopEnd).padding(8.dp)) { Surface(CircleShape, Color.Black.copy(alpha = .55f)) { Icon(Icons.Default.Fullscreen, "Fullscreen video", tint = Color.White, Modifier.padding(8.dp)) } }
+        IconButton(onClick = { player.play() ; onFullscreen() }, Modifier.align(Alignment.TopEnd).padding(8.dp)) { Surface(CircleShape, Color.Black.copy(alpha = .55f)) { Icon(Icons.Default.Fullscreen, "Fullscreen video", tint = Color.White, Modifier.padding(8.dp)) } }
     }
 }
 
 @Composable
 private fun ImageFullscreenDialog(images: List<String>, initialPage: Int, onDismiss: () -> Unit) {
+    val state = rememberLazyListState(initialFirstVisibleItemIndex = initialPage.coerceIn(0, (images.size - 1).coerceAtLeast(0)))
     Dialog(onDismissRequest = onDismiss) { Surface(Modifier.fillMaxSize(), Color.Black) { Box(Modifier.fillMaxSize()) {
-        LazyRow(Modifier.fillMaxSize()) { itemsIndexed(images) { _, image -> AsyncImage(model = image, contentDescription = "Fullscreen image", contentScale = ContentScale.Fit, modifier = Modifier.fillParentMaxWidth().fillMaxHeight()) } }
+        LazyRow(state = state, Modifier.fillMaxSize()) { itemsIndexed(images) { _, image -> AsyncImage(model = image, contentDescription = "Fullscreen image", contentScale = ContentScale.Fit, modifier = Modifier.fillParentMaxWidth().fillMaxHeight()) } }
         IconButton(onClick = onDismiss, Modifier.align(Alignment.TopEnd).padding(12.dp)) { Surface(CircleShape, Color.Black.copy(alpha = .6f)) { Icon(Icons.Default.Close, "Close", tint = Color.White, Modifier.padding(9.dp)) } }
     } } }
 }
