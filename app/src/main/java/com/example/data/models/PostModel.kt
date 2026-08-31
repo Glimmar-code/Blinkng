@@ -90,6 +90,12 @@ data class Story(
     val hasUnseen: Boolean = true,
     val isUser: Boolean = false,
     val storyImage: String = "",
+    val caption: String = "",
+    val timeAgo: String = "2h ago",
+    val faculty: String = "SIMME",
+    val university: String = "University of Lagos",
+    val likesCount: Int = 24,
+    val isLiked: Boolean = false,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE
 )
 

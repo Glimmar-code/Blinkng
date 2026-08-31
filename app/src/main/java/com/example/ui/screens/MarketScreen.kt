@@ -48,6 +48,7 @@ import java.util.Locale
 fun MarketScreen(
     items: List<MarketItem>,
     isSellerActive: Boolean,
+    sellerStoreName: String = "",
     verificationBadge: VerificationBadge = VerificationBadge.NONE,
     onItemClick: (MarketItem) -> Unit,
     onOpenPostItem: () -> Unit,
@@ -92,7 +93,7 @@ fun MarketScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -118,25 +119,49 @@ fun MarketScreen(
                         )
                     }
 
-                    // Post Item Button (Gated by Verification)
-                    Button(
-                        onClick = {
-                            if (!isVerified) {
-                                showVerificationRequiredDialog = true
-                            } else if (isSellerActive) {
-                                onOpenPostItem()
-                            } else {
-                                onOpenBecomeSeller()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = BlinkPink),
-                        shape = RoundedCornerShape(100.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                        modifier = Modifier.testTag("market_post_item_btn")
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Sell", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Primary Action Button: "Become a Seller" (if not active) or "Create a Post" (if active)
+                    if (!isSellerActive) {
+                        Button(
+                            onClick = onOpenBecomeSeller,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = BlinkGold,
+                                contentColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(100.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.testTag("market_become_seller_btn")
+                        ) {
+                            Icon(
+                                Icons.Default.Storefront,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color.Black
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text("Become a Seller", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        Button(
+                            onClick = onOpenPostItem,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = BlinkPink,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(100.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.testTag("market_create_post_btn")
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color.White
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text("Create a Post", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -223,22 +248,16 @@ fun MarketScreen(
             }
         }
 
-        // Become Seller Promo Banner (if not seller yet)
-        if (!isSellerActive) {
-            item {
+        // Seller Action Banner: Become a Seller or Create a Post
+        item {
+            if (!isSellerActive) {
                 Card(
                     shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = Color.Transparent),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .clickable { 
-                            if (!isVerified) {
-                                showVerificationRequiredDialog = true
-                            } else {
-                                onOpenBecomeSeller() 
-                            }
-                        }
+                        .clickable { onOpenBecomeSeller() }
                 ) {
                     Box(
                         modifier = Modifier
@@ -248,7 +267,7 @@ fun MarketScreen(
                                     listOf(Color(0xFF2C103D), Color(0xFF160A24))
                                 )
                             )
-                            .border(1.dp, BlinkPink.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
+                            .border(1.dp, BlinkGold.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
                             .padding(16.dp)
                     ) {
                         Row(
@@ -261,29 +280,102 @@ fun MarketScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Icon(Icons.Default.Verified, contentDescription = null, tint = BlinkGold, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Verified, contentDescription = null, tint = BlinkGold, modifier = Modifier.size(18.dp))
                                     Text(
                                         text = "Become a Verified Seller",
-                                        fontSize = 14.sp,
+                                        fontSize = 14.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Get verified badge, unlock direct WhatsApp chat & post unlimited products.",
+                                    text = "Post unlimited listings, get verified merchant badge, & connect via WhatsApp.",
                                     fontSize = 12.sp,
-                                    color = Color.White.copy(alpha = 0.8f),
+                                    color = Color.White.copy(alpha = 0.85f),
                                     lineHeight = 16.sp
                                 )
                             }
+                            Spacer(modifier = Modifier.width(10.dp))
                             Button(
                                 onClick = onOpenBecomeSeller,
-                                colors = ButtonDefaults.buttonColors(containerColor = BlinkGold),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = BlinkGold,
+                                    contentColor = Color.Black
+                                ),
                                 shape = RoundedCornerShape(100.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                modifier = Modifier.testTag("market_banner_become_seller_btn")
                             ) {
-                                Text("Join", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("Become a Seller", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            } else {
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .clickable { onOpenPostItem() }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF1E1338), Color(0xFF2A153E))
+                                )
+                            )
+                            .border(1.dp, BlinkPink.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.Default.Storefront, contentDescription = null, tint = BlinkPink, modifier = Modifier.size(18.dp))
+                                    Text(
+                                        text = "Store: ${sellerStoreName.ifBlank { "Verified Merchant" }}",
+                                        fontSize = 14.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Your store is active! List new gadgets, textbooks, hostels or campus services.",
+                                    fontSize = 12.sp,
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    lineHeight = 16.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Button(
+                                onClick = onOpenPostItem,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = BlinkPink,
+                                    contentColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(100.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                modifier = Modifier.testTag("market_banner_create_post_btn")
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                    Text("Create a Post", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                }
                             }
                         }
                     }

@@ -3,37 +3,13 @@ package com.example.data.repository
 import android.util.Log
 import com.example.data.models.FeedPost
 import com.example.data.models.PostPoll
-import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import java.util.concurrent.TimeUnit
 
 class PostRepository(
     private val supabaseService: SupabaseService = SupabaseService()
 ) {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
-        .build()
-
-    private val baseUrl = SupabaseConfig.url.trimEnd('/')
-    private val anonKey = SupabaseConfig.anonKey
-
-    private fun newRequestBuilder(endpoint: String): Request.Builder {
-        val fullUrl = if (endpoint.startsWith("http")) endpoint else "$baseUrl$endpoint"
-        return Request.Builder()
-            .url(fullUrl)
-            .addHeader("apikey", anonKey)
-            .addHeader("Authorization", "Bearer $anonKey")
-            .addHeader("Accept", "application/json")
-    }
-
     suspend fun fetchFeed(isReel: Boolean? = null): List<FeedPost> = withContext(Dispatchers.IO) {
         try {
             val allPosts = supabaseService.fetchFeedPosts()
@@ -93,41 +69,28 @@ class PostRepository(
         isVideo: Boolean,
         mimeType: String
     ): String? = withContext(Dispatchers.IO) {
-        try {
-            val folder = if (isVideo) "videos" else "images"
-            val ext = if (isVideo) "mp4" else "jpg"
-            val fileName = "${System.currentTimeMillis()}_media.$ext"
-            val path = "users/$userId/posts/$folder/$fileName"
-            val mediaType = mimeType.toMediaType()
-            val body = bytes.toRequestBody(mediaType)
+        supabaseService.uploadPostMedia(
+            userId = userId,
+            bytes = bytes,
+            mimeType = mimeType,
+            isVideo = isVideo
+        )
+    }
 
-            val req = newRequestBuilder("/storage/v1/object/post-media/$path")
-                .post(body)
-                .build()
-
-            client.newCall(req).execute().use { resp ->
-                if (resp.isSuccessful) {
-                    return@withContext "$baseUrl/storage/v1/object/public/post-media/$path"
-                }
-            }
-        } catch (e: Exception) {
-            Log.e("PostRepository", "uploadPostMedia error: ${e.message}")
-        }
-        null
+    suspend fun togglePostLike(
+        postId: String,
+        liked: Boolean,
+        newLikeCount: Int
+    ): Boolean = withContext(Dispatchers.IO) {
+        supabaseService.togglePostLike(
+            postId = postId,
+            liked = liked,
+            newLikeCount = newLikeCount
+        )
     }
 
     suspend fun deletePost(postId: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val req = newRequestBuilder("/rest/v1/feed_posts?id=eq.$postId")
-                .delete()
-                .build()
-            client.newCall(req).execute().use { resp ->
-                resp.isSuccessful
-            }
-        } catch (e: Exception) {
-            Log.e("PostRepository", "deletePost error: ${e.message}")
-            false
-        }
+        supabaseService.deleteFeedPost(postId)
     }
 
     suspend fun recordView(postId: String, viewerUsername: String): Int = withContext(Dispatchers.IO) {

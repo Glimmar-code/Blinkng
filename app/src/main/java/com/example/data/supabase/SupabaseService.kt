@@ -13,6 +13,7 @@ import com.example.data.models.MarketItem
 import com.example.data.models.PollOption
 import com.example.data.models.PostPoll
 import com.example.data.models.SocialLinks
+import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import kotlinx.coroutines.Dispatchers
@@ -436,6 +437,86 @@ class SupabaseService {
                             ?: "Authentication failed."
                     )
                 )
+            }
+        }
+
+    /**
+     * Creates a new user in Supabase Auth via /auth/v1/signup, saves the JWT session,
+     * and initializes the user profile in the profiles table.
+     */
+    suspend fun signUpUser(
+        email: String,
+        password: String,
+        username: String,
+        fullName: String,
+        faculty: String = "SIMME",
+        university: String = "University of Lagos"
+    ): Result<UserProfile> =
+        withContext(Dispatchers.IO) {
+            try {
+                val cleanEmail = email.trim().lowercase(Locale.US)
+                val cleanUsername = username.trim().lowercase(Locale.US).replace("@", "").replace(" ", "_")
+                val cleanFullName = fullName.trim().ifBlank { cleanUsername }
+
+                val body = JSONObject().apply {
+                    put("email", cleanEmail)
+                    put("password", password)
+                    put("data", JSONObject().apply {
+                        put("username", cleanUsername)
+                        put("full_name", cleanFullName)
+                        put("name", cleanFullName)
+                        put("faculty", faculty)
+                        put("university", university)
+                    })
+                }
+
+                val request = newRequestBuilder(
+                    "/auth/v1/signup",
+                    authenticated = false
+                )
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string().orEmpty()
+
+                    if (!response.isSuccessful) {
+                        Log.e(TAG, "AUTH_SIGN_UP failed status=${response.code} body=$responseBody")
+                        if (responseBody.contains("already registered", ignoreCase = true) ||
+                            responseBody.contains("already exists", ignoreCase = true)
+                        ) {
+                            return@withContext authenticateUser(cleanEmail, password)
+                        }
+
+                        return@withContext Result.failure(
+                            Exception(parseSupabaseError(responseBody, "Sign up failed."))
+                        )
+                    }
+
+                    val json = JSONObject(responseBody)
+                    val accessToken = json.optString("access_token", "")
+                    val refreshToken = json.optString("refresh_token", "")
+                    val userObj = json.optJSONObject("user") ?: json
+                    val userId = userObj.optString("id", "")
+
+                    if (accessToken.isNotBlank()) {
+                        saveSession(accessToken = accessToken, refreshToken = refreshToken)
+                    }
+
+                    val profile = ensureAuthenticatedProfile(
+                        userId = userId.ifBlank { "user_${System.currentTimeMillis()}" },
+                        email = cleanEmail,
+                        username = cleanUsername,
+                        fullName = cleanFullName,
+                        faculty = faculty,
+                        university = university
+                    )
+
+                    Result.success(profile)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "AUTH_SIGN_UP exception", e)
+                Result.failure(Exception(e.message ?: "Sign up failed."))
             }
         }
 
@@ -2081,6 +2162,187 @@ class SupabaseService {
                 0
             }
         }
+
+    // ============================================================
+    // POST LIKES & DELETION
+    // ============================================================
+
+    /**
+     * Persists a post like/unlike action to both post_likes table (for user-specific state)
+     * and updates like_count in feed_posts table using authenticated JWT headers.
+     */
+    suspend fun togglePostLike(
+        postId: String,
+        liked: Boolean,
+        newLikeCount: Int
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val currentUserId = getCurrentUserId() ?: ""
+            val currentUsername = appContext
+                ?.getSharedPreferences("blink_auth_prefs", Context.MODE_PRIVATE)
+                ?.getString("username", "") ?: ""
+
+            // 1. Manage user record in post_likes table
+            if (liked) {
+                val likeObj = JSONObject().apply {
+                    put("post_id", postId)
+                    if (currentUserId.isNotBlank()) {
+                        put("user_id", currentUserId)
+                    }
+                    if (currentUsername.isNotBlank()) {
+                        put("username", currentUsername)
+                    }
+                }
+                val likeRequest = newRequestBuilder(
+                    "/rest/v1/post_likes",
+                    authenticated = true
+                )
+                    .addHeader("Prefer", "resolution=merge-duplicates")
+                    .post(likeObj.toString().toRequestBody(jsonMediaType))
+                    .build()
+                client.newCall(likeRequest).execute().close()
+            } else {
+                val filter = when {
+                    currentUserId.isNotBlank() -> "user_id=eq.$currentUserId"
+                    currentUsername.isNotBlank() -> "username=eq.$currentUsername"
+                    else -> ""
+                }
+                val deleteUrl = if (filter.isNotBlank()) {
+                    "/rest/v1/post_likes?post_id=eq.$postId&$filter"
+                } else {
+                    "/rest/v1/post_likes?post_id=eq.$postId"
+                }
+                val unlikeRequest = newRequestBuilder(
+                    deleteUrl,
+                    authenticated = true
+                )
+                    .delete()
+                    .build()
+                client.newCall(unlikeRequest).execute().close()
+            }
+
+            // 2. Persist updated like count to feed_posts table
+            val updateJson = JSONObject().apply {
+                put("like_count", newLikeCount.coerceAtLeast(0))
+                put("likes", newLikeCount.coerceAtLeast(0))
+            }
+            val updateRequest = newRequestBuilder(
+                "/rest/v1/feed_posts?id=eq.$postId",
+                authenticated = true
+            )
+                .patch(updateJson.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(updateRequest).execute().use { resp ->
+                resp.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "togglePostLike failed for postId=$postId", e)
+            false
+        }
+    }
+
+    suspend fun deleteFeedPost(
+        postId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val request = newRequestBuilder(
+                "/rest/v1/feed_posts?id=eq.$postId",
+                authenticated = true
+            )
+                .delete()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteFeedPost failed for postId=$postId", e)
+            false
+        }
+    }
+
+    // ============================================================
+    // STORIES
+    // ============================================================
+
+    suspend fun fetchStories(): List<Story> = withContext(Dispatchers.IO) {
+        try {
+            val request = newRequestBuilder(
+                "/rest/v1/stories?select=*&order=created_at.desc&limit=30",
+                authenticated = true
+            )
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful || body.isBlank() || body == "[]") {
+                    return@withContext emptyList()
+                }
+
+                val array = JSONArray(body)
+                val list = mutableListOf<Story>()
+                for (i in 0 until array.length()) {
+                    val obj = array.optJSONObject(i) ?: continue
+                    val id = obj.optString("id", UUID.randomUUID().toString())
+                    val username = obj.optString("username", "Student")
+                    val avatar = obj.optString("avatar", obj.optString("avatar_url", ""))
+                    val storyImage = obj.optString("story_image", obj.optString("image_url", ""))
+                    val caption = obj.optString("caption", "")
+                    val faculty = obj.optString("faculty", "SIMME")
+                    val university = obj.optString("university", "University of Lagos")
+                    val likesCount = obj.optInt("likes_count", obj.optInt("likes", 0))
+
+                    list.add(
+                        Story(
+                            id = id,
+                            username = username,
+                            avatar = avatar.ifBlank { "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&h=300&fit=crop" },
+                            hasUnseen = true,
+                            storyImage = storyImage,
+                            caption = caption,
+                            faculty = faculty,
+                            university = university,
+                            likesCount = likesCount
+                        )
+                    )
+                }
+                list
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchStories exception", e)
+            emptyList()
+        }
+    }
+
+    suspend fun createStory(story: Story): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val json = JSONObject().apply {
+                put("id", story.id)
+                put("username", story.username)
+                put("avatar", story.avatar)
+                put("story_image", story.storyImage)
+                put("caption", story.caption)
+                put("faculty", story.faculty)
+                put("university", story.university)
+                put("likes_count", story.likesCount)
+            }
+            val request = newRequestBuilder(
+                "/rest/v1/stories",
+                authenticated = true
+            )
+                .post(json.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "createStory exception", e)
+            false
+        }
+    }
 
     // ============================================================
     // PROFILES LIST

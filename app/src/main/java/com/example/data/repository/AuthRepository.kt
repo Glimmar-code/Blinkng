@@ -99,73 +99,27 @@ class AuthRepository(
         }
 
         try {
-            val json = JSONObject().apply {
-                put("email", cleanEmail)
-                put("password", password)
-                put("data", JSONObject().apply {
-                    put("username", cleanUsername)
-                    put("full_name", cleanName)
-                    put("display_name", cleanName)
-                    put("faculty", faculty)
-                })
-            }
+            val result = supabaseService.signUpUser(
+                email = cleanEmail,
+                password = password,
+                username = cleanUsername,
+                fullName = cleanName,
+                faculty = faculty
+            )
 
-            val request = Request.Builder()
-                .url("$baseUrl/auth/v1/signup")
-                .addHeader("apikey", anonKey)
-                .addHeader("Authorization", "Bearer $anonKey")
-                .addHeader("Content-Type", "application/json")
-                .post(json.toString().toRequestBody(jsonMediaType))
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                val body = response.body?.string().orEmpty()
-                if (response.isSuccessful) {
-                    val authObj = JSONObject(body)
-                    val userObj = authObj.optJSONObject("user")
-                    val userId = userObj?.optString("id", "user_${System.currentTimeMillis()}") ?: "user_${System.currentTimeMillis()}"
-
-                    val profile = UserProfile(
-                        id = userId,
-                        email = ContactField(cleanEmail, true),
-                        fullName = cleanName,
-                        username = cleanUsername,
-                        faculty = faculty,
-                        university = "University of Lagos"
-                    )
-
-                    persistSession(profile)
-                    _authState.value = AuthState.Authenticated(profile)
-                    return@withContext AuthResult.success(profile)
-                } else {
-                    // Try fallback user creation or parse error
-                    val errorObj = try { JSONObject(body) } catch (_: Exception) { null }
-                    val errorMsg = errorObj?.optString("msg", errorObj.optString("error_description", "Sign up failed.")) ?: "Sign up failed."
-                    
-                    // If user already exists, try direct profile initialization
-                    val fallbackProfile = UserProfile(
-                        id = "user_${System.currentTimeMillis()}",
-                        email = ContactField(cleanEmail, true),
-                        fullName = cleanName,
-                        username = cleanUsername,
-                        faculty = faculty
-                    )
-                    persistSession(fallbackProfile)
-                    _authState.value = AuthState.Authenticated(fallbackProfile)
-                    return@withContext AuthResult.success(fallbackProfile)
-                }
+            if (result.isSuccess) {
+                val profile = result.getOrThrow()
+                persistSession(profile)
+                _authState.value = AuthState.Authenticated(profile)
+                return@withContext AuthResult.success(profile)
+            } else {
+                val error = result.exceptionOrNull()?.message ?: "Sign up failed."
+                Log.e("AuthRepository", "signUpWithEmail failed: $error")
+                return@withContext AuthResult.failure(error)
             }
         } catch (e: Exception) {
             Log.e("AuthRepository", "signUpWithEmail error: ${e.message}")
-            val fallbackProfile = UserProfile(
-                email = ContactField(cleanEmail, true),
-                fullName = cleanName,
-                username = cleanUsername,
-                faculty = faculty
-            )
-            persistSession(fallbackProfile)
-            _authState.value = AuthState.Authenticated(fallbackProfile)
-            return@withContext AuthResult.success(fallbackProfile)
+            return@withContext AuthResult.failure(e.message ?: "Sign up failed.")
         }
     }
 

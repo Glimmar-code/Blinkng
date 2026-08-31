@@ -742,6 +742,7 @@ fun SignUpScreen(
         fullName: String,
         username: String,
         email: String,
+        password: String,
         faculty: String
     ) -> Unit,
     onGoogleSignUp: (String) -> Unit,
@@ -1068,6 +1069,7 @@ fun SignUpScreen(
                                     fullName.trim(),
                                     username.trim(),
                                     email.trim(),
+                                    password,
                                     faculty
                                 )
                         }

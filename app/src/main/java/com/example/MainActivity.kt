@@ -100,8 +100,8 @@ class MainActivity : ComponentActivity() {
                                 AppDestination.SIGN_UP -> {
                                     SignUpScreen(
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
-                                        onSuccess = { name, user, email, fac ->
-                                            viewModel.signUp(name, user, email, fac)
+                                        onSuccess = { name, user, email, pass, fac ->
+                                            viewModel.signUp(name, user, email, pass, fac)
                                         },
                                         onGoogleSignUp = { email -> viewModel.loginWithGoogle(email) },
                                         onSwitchToSignIn = { viewModel.setDestination(AppDestination.SIGN_IN) }
@@ -197,7 +197,7 @@ fun MainAppContent(
                         onOptionsClick = { viewModel.openPostOptions(it) },
                         onProfileClick = { viewModel.openProfile(it) },
                         onAddStoryClick = { viewModel.openCreatePost(true) },
-                        onStoryClick = { story -> viewModel.showToast("Viewing story by @${story.username}") },
+                        onStoryClick = { story -> viewModel.openStory(story) },
                         onOpenCreatePost = { viewModel.openCreatePost(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
                         onOpenMenu = { viewModel.openMenu(true) },
@@ -226,6 +226,7 @@ fun MainAppContent(
                 MainTab.LEADERBOARD -> {
                     LeaderboardScreen(
                         users = uiState.leaderboardUsers,
+                        userProfile = uiState.myProfile,
                         onProfileClick = { viewModel.openProfile(it) },
                         isDark = uiState.isDarkMode
                     )
@@ -235,6 +236,7 @@ fun MainAppContent(
                     MarketScreen(
                         items = uiState.marketItems,
                         isSellerActive = uiState.myProfile.isSellerActive,
+                        sellerStoreName = uiState.myProfile.sellerStoreName,
                         verificationBadge = uiState.myProfile.verificationBadge,
                         onItemClick = { viewModel.openProductDetail(it) },
                         onOpenPostItem = { viewModel.openPostItem(true) },
@@ -567,6 +569,34 @@ fun MainAppContent(
                 onLogout = { viewModel.logout() },
                 onShowToast = { viewModel.showToast(it) },
                 onSimulateNotification = { viewModel.simulateBackgroundNotification(context) }
+            )
+        }
+
+        // Modals: Interactive Fullscreen Story Viewer
+        if (uiState.activeViewingStory != null) {
+            StoryViewerDialog(
+                stories = uiState.stories,
+                initialStory = uiState.activeViewingStory!!,
+                currentUserId = "you",
+                onDismiss = { viewModel.closeStory() },
+                onStoryViewed = { storyId -> viewModel.markStoryViewed(storyId) },
+                onLikeStory = { storyId -> viewModel.toggleStoryLike(storyId) },
+                onReactStory = { storyId, emoji -> viewModel.reactToStory(storyId, emoji) },
+                onReplyStory = { username, text -> viewModel.replyToStory(username, text) },
+                onProfileClick = { username -> viewModel.openProfile(username) }
+            )
+        }
+
+        // Modals: Seller Congratulations Dialog
+        if (uiState.showSellerCongratulationsDialog) {
+            SellerCongratulationsDialog(
+                storeName = uiState.myProfile.sellerStoreName,
+                onDismiss = { viewModel.dismissSellerCongratulations() },
+                onCreatePost = {
+                    viewModel.dismissSellerCongratulations()
+                    viewModel.openPostItem(true)
+                },
+                isDark = uiState.isDarkMode
             )
         }
     }

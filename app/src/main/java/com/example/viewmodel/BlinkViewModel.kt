@@ -52,6 +52,7 @@ data class BlinkUiState(
 
     val isPostItemOpen: Boolean = false,
     val isBecomeSellerOpen: Boolean = false,
+    val showSellerCongratulationsDialog: Boolean = false,
     val isEditProfileOpen: Boolean = false,
     val isActivityOpen: Boolean = false,
     val isMenuOpen: Boolean = false,
@@ -61,10 +62,103 @@ data class BlinkUiState(
     val activeCommentsPostId: String? = null,
     val activePostOptionsPost: FeedPost? = null,
     val activeConversationPartner: String? = null,
+    val activeViewingStory: Story? = null,
 
     val isConversationFullScreen: Boolean = false,
 
-    val stories: List<Story> = emptyList(),
+    val stories: List<Story> = listOf(
+        Story(
+            id = "story_me",
+            username = "Your Story",
+            avatar = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80",
+            hasUnseen = false,
+            isUser = true
+        ),
+        Story(
+            id = "story_1",
+            username = "zara_codes",
+            avatar = "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500&auto=format&fit=crop&q=80",
+            hasUnseen = true,
+            storyImage = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=80",
+            caption = "Late night hackathon prep with the team! 🚀💻 #UnilagTech",
+            timeAgo = "45m ago",
+            faculty = "Computer Science",
+            university = "University of Lagos",
+            likesCount = 42,
+            isLiked = false,
+            verificationBadge = VerificationBadge.GOLD
+        ),
+        Story(
+            id = "story_2",
+            username = "aluta_daily",
+            avatar = "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=500&auto=format&fit=crop&q=80",
+            hasUnseen = true,
+            storyImage = "https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=800&auto=format&fit=crop&q=80",
+            caption = "Campus faculty week kickoff today! Don't miss out 🎉🔥",
+            timeAgo = "2h ago",
+            faculty = "Engineering",
+            university = "UNILAG Main Campus",
+            likesCount = 128,
+            isLiked = true,
+            verificationBadge = VerificationBadge.GOLD
+        ),
+        Story(
+            id = "story_3",
+            username = "kemi.adeleke",
+            avatar = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=500&auto=format&fit=crop&q=80",
+            hasUnseen = true,
+            storyImage = "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&auto=format&fit=crop&q=80",
+            caption = "Study group session at the Central Library 📚✨",
+            timeAgo = "3h ago",
+            faculty = "Law & Social Sciences",
+            university = "University of Lagos",
+            likesCount = 35,
+            isLiked = false,
+            verificationBadge = VerificationBadge.BLUE
+        ),
+        Story(
+            id = "story_4",
+            username = "tunde_shots",
+            avatar = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&auto=format&fit=crop&q=80",
+            hasUnseen = true,
+            storyImage = "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&auto=format&fit=crop&q=80",
+            caption = "Sunset view from the Sports Complex 🌅📸",
+            timeAgo = "5h ago",
+            faculty = "Arts & Humanities",
+            university = "Unilag Lagoon Front",
+            likesCount = 89,
+            isLiked = false,
+            verificationBadge = VerificationBadge.NONE
+        ),
+        Story(
+            id = "story_5",
+            username = "amara.creatives",
+            avatar = "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=500&auto=format&fit=crop&q=80",
+            hasUnseen = true,
+            storyImage = "https://images.unsplash.com/photo-1513542789411-b6a5d4f31634?w=800&auto=format&fit=crop&q=80",
+            caption = "New batch of handmade tote bags just dropped on Aluta Market! 👜✨",
+            timeAgo = "6h ago",
+            faculty = "Environmental Design",
+            university = "University of Lagos",
+            likesCount = 64,
+            isLiked = false,
+            verificationBadge = VerificationBadge.BLUE
+        ),
+        Story(
+            id = "story_6",
+            username = "campus_vibes",
+            avatar = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=500&auto=format&fit=crop&q=80",
+            hasUnseen = false,
+            storyImage = "https://images.unsplash.com/photo-1511578314322-379afb476865?w=800&auto=format&fit=crop&q=80",
+            caption = "Inter-faculty soccer finals this weekend ⚽🏆",
+            timeAgo = "8h ago",
+            faculty = "Sports & Fitness",
+            university = "Sports Pavilion",
+            likesCount = 110,
+            isLiked = false,
+            verificationBadge = VerificationBadge.NONE
+        )
+    ),
     val posts: List<FeedPost> = emptyList(),
     val reels: List<FeedPost> = emptyList(),
     val savedDrafts: List<PostDraft> = emptyList(),
@@ -580,6 +674,21 @@ class BlinkViewModel(
                     supabaseService
                         .fetchLeaderboard()
 
+                val cloudStories =
+                    supabaseService
+                        .fetchStories()
+
+                val mergedStories = if (cloudStories.isNotEmpty()) {
+                    val myStory = _uiState.value.stories.firstOrNull { it.isUser || it.id == "story_me" }
+                    if (myStory != null) {
+                        listOf(myStory) + cloudStories.filter { it.id != myStory.id && it.username != myStory.username }
+                    } else {
+                        cloudStories
+                    }
+                } else {
+                    _uiState.value.stories
+                }
+
                 _uiState.value =
                     _uiState.value.copy(
                         posts =
@@ -592,6 +701,8 @@ class BlinkViewModel(
                             conversations,
                         leaderboardUsers =
                             leaderboard,
+                        stories =
+                            mergedStories,
                         isLiveSupabaseConnected =
                             true
                     )
@@ -936,9 +1047,9 @@ class BlinkViewModel(
         fullName: String,
         username: String,
         email: String,
-        faculty: String
+        password: String = "",
+        faculty: String = "SIMME"
     ) {
-
         val cleanName =
             fullName
                 .trim()
@@ -966,6 +1077,13 @@ class BlinkViewModel(
                 .lowercase()
                 .ifBlank {
                     "$cleanUsername@unilag.edu.ng"
+                }
+
+        val cleanPassword =
+            password
+                .trim()
+                .ifBlank {
+                    "CampusPass123!"
                 }
 
         val initialProfile =
@@ -999,8 +1117,32 @@ class BlinkViewModel(
         )
 
         showToast(
-            "Welcome to Blink! Complete your campus profile."
+            "Creating your campus account..."
         )
+
+        viewModelScope.launch {
+            try {
+                val result = authRepository.signUpWithEmail(
+                    email = cleanEmail,
+                    password = cleanPassword,
+                    username = cleanUsername,
+                    fullName = cleanName,
+                    faculty = faculty.trim()
+                )
+                if (result.isSuccess && result.userProfile != null) {
+                    val synced = result.userProfile
+                    _uiState.value = _uiState.value.copy(
+                        myProfile = synced
+                    )
+                    saveLocalProfile(synced)
+                    showToast("Account created! Set up your campus profile.")
+                } else if (!result.errorMessage.isNullOrBlank()) {
+                    showToast(result.errorMessage)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "signUp Supabase Auth failed", e)
+            }
+        }
     }
 
     // ============================================================
@@ -1888,31 +2030,31 @@ class BlinkViewModel(
     fun togglePostLike(
         postId: String
     ) {
+        var nextLiked = false
+        var nextCount = 0
 
         val updatedPosts =
             _uiState.value
                 .posts
                 .map { post ->
-
                     if (
                         post.id == postId
                     ) {
-
                         val liked =
                             !post.isLiked
+                        nextLiked = liked
+                        val likes = (
+                            post.likes +
+                                    if (liked) 1 else -1
+                            ).coerceAtLeast(0)
+                        nextCount = likes
 
                         post.copy(
                             isLiked =
                                 liked,
                             likes =
-                                (
-                                    post.likes +
-                                            if (liked) 1 else -1
-                                    ).coerceAtLeast(
-                                    0
-                                )
+                                likes
                         )
-
                     } else {
                         post
                     }
@@ -1922,26 +2064,24 @@ class BlinkViewModel(
             _uiState.value
                 .reels
                 .map { reel ->
-
                     if (
                         reel.id == postId
                     ) {
-
                         val liked =
                             !reel.isLiked
+                        nextLiked = liked
+                        val likes = (
+                            reel.likes +
+                                    if (liked) 1 else -1
+                            ).coerceAtLeast(0)
+                        nextCount = likes
 
                         reel.copy(
                             isLiked =
                                 liked,
                             likes =
-                                (
-                                    reel.likes +
-                                            if (liked) 1 else -1
-                                    ).coerceAtLeast(
-                                    0
-                                )
+                                likes
                         )
-
                     } else {
                         reel
                     }
@@ -1955,11 +2095,17 @@ class BlinkViewModel(
                     updatedReels
             )
 
-        /*
-         * Your Supabase service currently doesn't expose the required
-         * RPC/table operation for persistent likes. The UI state is updated
-         * immediately; persistence should be added through a likes RPC next.
-         */
+        viewModelScope.launch {
+            try {
+                postRepository.togglePostLike(
+                    postId = postId,
+                    liked = nextLiked,
+                    newLikeCount = nextCount
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "togglePostLike Supabase persistence failed", e)
+            }
+        }
     }
 
     fun toggleBookmark(
@@ -2717,66 +2863,38 @@ class BlinkViewModel(
         state: String,
         city: String
     ) {
+        val current = _uiState.value.myProfile
+        val updated = current.copy(
+            isSellerActive = true,
+            sellerStoreName = storeName.trim().ifBlank { "Verified Campus Store" },
+            phone = ContactField(phone.trim(), true),
+            whatsapp = ContactField(whatsapp.trim(), true),
+            currentCityState = "$city, $state"
+        )
 
-        val current =
-            _uiState.value
-                .myProfile
-
-        val updated =
-            current.copy(
-                isSellerActive =
-                    true,
-                sellerStoreName =
-                    storeName.trim(),
-                phone =
-                    ContactField(
-                        phone.trim(),
-                        true
-                    ),
-                whatsapp =
-                    ContactField(
-                        whatsapp.trim(),
-                        true
-                    ),
-                currentCityState =
-                    "$city, $state"
-            )
+        // Optimistically activate immediately, close become seller screen, and show congratulations
+        _uiState.value = _uiState.value.copy(
+            myProfile = updated,
+            isBecomeSellerOpen = false,
+            showSellerCongratulationsDialog = true
+        )
+        saveLocalProfile(updated)
+        showToast("🎉 Congratulations! You are now a verified seller.")
 
         viewModelScope.launch {
-
-            val success =
-                profileRepository
-                    .updateProfile(
-                        updated
-                    )
-
-            if (
-                success
-            ) {
-
-                _uiState.value =
-                    _uiState.value.copy(
-                        myProfile =
-                            updated,
-                        isBecomeSellerOpen =
-                            false
-                    )
-
-                saveLocalProfile(
-                    updated
-                )
-
-                showToast(
-                    "🏪 Seller account activated and synced."
-                )
-
-            } else {
-
-                showToast(
-                    "Seller activation could not sync."
-                )
+            try {
+                val success = profileRepository.updateProfile(updated)
+                if (success) {
+                    Log.d(TAG, "Seller account updated and synced to Supabase.")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Background sync for seller activation", e)
             }
         }
+    }
+
+    fun dismissSellerCongratulations() {
+        _uiState.value = _uiState.value.copy(showSellerCongratulationsDialog = false)
     }
 
     // ============================================================
@@ -3247,6 +3365,79 @@ class BlinkViewModel(
                 notificationId = 1050
             )
         }
+    }
+
+    // ============================================================
+    // STORY INTERACTIONS
+    // ============================================================
+
+    fun openStory(story: Story) {
+        // Mark as viewed in state
+        val updatedStories = _uiState.value.stories.map {
+            if (it.id == story.id) it.copy(hasUnseen = false) else it
+        }
+        val targetStory = updatedStories.find { it.id == story.id } ?: story.copy(hasUnseen = false)
+
+        _uiState.value = _uiState.value.copy(
+            stories = updatedStories,
+            activeViewingStory = targetStory
+        )
+    }
+
+    fun closeStory() {
+        _uiState.value = _uiState.value.copy(
+            activeViewingStory = null
+        )
+    }
+
+    fun markStoryViewed(storyId: String) {
+        val updated = _uiState.value.stories.map {
+            if (it.id == storyId) it.copy(hasUnseen = false) else it
+        }
+        _uiState.value = _uiState.value.copy(stories = updated)
+    }
+
+    fun toggleStoryLike(storyId: String) {
+        val updated = _uiState.value.stories.map { story ->
+            if (story.id == storyId) {
+                val next = !story.isLiked
+                story.copy(
+                    isLiked = next,
+                    likesCount = (story.likesCount + if (next) 1 else -1).coerceAtLeast(0)
+                )
+            } else {
+                story
+            }
+        }
+        val active = updated.find { it.id == storyId }
+        _uiState.value = _uiState.value.copy(
+            stories = updated,
+            activeViewingStory = active ?: _uiState.value.activeViewingStory
+        )
+        showToast("❤️ Story liked")
+    }
+
+    fun reactToStory(storyId: String, emoji: String) {
+        val story = _uiState.value.stories.find { it.id == storyId }
+        if (story != null && !story.isUser) {
+            // Also register as a quick chat message / reaction if needed
+            sendMessage(
+                partnerUsername = story.username,
+                text = "Reacted $emoji to your story",
+                isFromMe = true
+            )
+        }
+        showToast("Reacted $emoji")
+    }
+
+    fun replyToStory(storyUsername: String, replyText: String) {
+        if (replyText.isBlank()) return
+        sendMessage(
+            partnerUsername = storyUsername,
+            text = "Replied to story: $replyText",
+            isFromMe = true
+        )
+        showToast("💬 Reply sent to @$storyUsername")
     }
 
     // ============================================================

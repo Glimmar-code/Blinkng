@@ -580,7 +580,7 @@ fun ProfileScreen(
                         }
 
                         // ==========================================================
-                        // STATS
+                        // STATS & RANKS
                         // ==========================================================
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
@@ -594,7 +594,7 @@ fun ProfileScreen(
                                     .padding(vertical = 14.dp),
                                 horizontalArrangement = Arrangement.SpaceEvenly
                             ) {
-                                ProfileMetric(value = userPosts.size, label = "Posts")
+                                ProfileMetric(value = userPosts.size, label = "Posts", animateCount = true)
                                 DividerMetric()
                                 ProfileMetric(
                                     value = profile.followerCount + if (isFollowing) 1 else 0,
@@ -602,9 +602,56 @@ fun ProfileScreen(
                                     animateCount = true
                                 )
                                 DividerMetric()
-                                ProfileMetric(value = profile.followingCount, label = "Following")
+                                ProfileMetric(value = profile.followingCount, label = "Following", animateCount = true)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Daily Streak, World Rank & Campus Rank Showcase Card
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            color = cardBg,
+                            border = BorderStroke(1.dp, borderColor)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp, horizontal = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("🔥", fontSize = 16.sp)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("${profile.dailyStreak}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkPink)
+                                    }
+                                    Text("Daily Streak", fontSize = 9.5.sp, color = textSecondary)
+                                }
+
                                 DividerMetric()
-                                ProfileMetric(value = profile.profileViewsThisWeek, label = "Views")
+
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("🏛️", fontSize = 15.sp)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("#${profile.campusRank}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkGold)
+                                    }
+                                    Text("Campus Rank", fontSize = 9.5.sp, color = textSecondary)
+                                }
+
+                                DividerMetric()
+
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("🌐", fontSize = 15.sp)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("#${profile.worldRank}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkBlue)
+                                    }
+                                    Text("World Rank", fontSize = 9.5.sp, color = textSecondary)
+                                }
                             }
                         }
                     }

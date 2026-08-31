@@ -480,8 +480,8 @@ fun PostCard(
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.10f)
             )
 
-            // 36-45. Instagram/Threads-style action rail:
-            // Like • Comment • Views • Save • Share — all on one line.
+            // 36-45. Action rail:
+            // Views • Like • Comment • Save • Share — Views first from left.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -489,6 +489,17 @@ fun PostCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
+                AnimatedPostAction(
+                    icon = Icons.Default.Visibility,
+                    text = formatNumber(animatedViews),
+                    tint = if (showStats) BlinkPurple else MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = {
+                        feedback()
+                        showStats = !showStats
+                    },
+                    tag = "views_button_${post.id}"
+                )
+
                 AnimatedPostAction(
                     icon = if (post.isLiked) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
                     text = formatNumber(animatedLikes),
@@ -511,17 +522,6 @@ fun PostCard(
                         onComment()
                     },
                     tag = "comment_button_${post.id}"
-                )
-
-                AnimatedPostAction(
-                    icon = Icons.Default.Visibility,
-                    text = formatNumber(animatedViews),
-                    tint = if (showStats) BlinkPurple else MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = {
-                        feedback()
-                        showStats = !showStats
-                    },
-                    tag = "views_button_${post.id}"
                 )
 
                 AnimatedPostAction(
