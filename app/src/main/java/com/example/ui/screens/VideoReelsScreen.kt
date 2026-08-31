@@ -53,9 +53,9 @@ fun VideoReelsScreen(reels: List<FeedPost>, isDark: Boolean, onLike: (String) ->
 @Composable
 private fun ReelPage(reel: FeedPost, isActive: Boolean, onLike: (String) -> Unit, onComment: (String) -> Unit, onBookmark: (String) -> Unit, onShare: (String) -> Unit, onProfileClick: (String) -> Unit) {
     Box(Modifier.fillMaxSize()) {
-        val url = reel.videoUrl
+        val url = reel.videoUrl?.trim()
         if (!url.isNullOrBlank()) ReelVideo(url, isActive) else Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { Text("Video unavailable", color = Color.White) }
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .18f)))
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .12f)))
         Column(Modifier.align(Alignment.CenterEnd).padding(end = 10.dp, bottom = 70.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             AsyncAvatar(reel.authorAvatar) { onProfileClick(reel.author) }
             Spacer(Modifier.height(10.dp)); ReelAction(Icons.Default.Favorite, formatNumber(reel.likes), BlinkPink) { onLike(reel.id) }
@@ -83,7 +83,7 @@ private fun ReelVideo(url: String, isActive: Boolean) {
                     playbackError = error.errorCodeName
                 }
             })
-            setMediaItem(MediaItem.fromUri(url.trim()))
+            setMediaItem(MediaItem.fromUri(url))
             prepare()
         }
     }
@@ -94,7 +94,7 @@ private fun ReelVideo(url: String, isActive: Boolean) {
     DisposableEffect(player) { onDispose { player.stop(); player.release() } }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         AndroidView(
-            factory = { ctx -> PlayerView(ctx).apply { useController = true; controllerAutoShow = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; player = this@applyPlayer } },
+            factory = { ctx -> PlayerView(ctx).apply { useController = true; controllerAutoShow = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; this.player = player } },
             update = { view -> view.player = player },
             modifier = Modifier.fillMaxSize()
         )
@@ -105,7 +105,8 @@ private fun ReelVideo(url: String, isActive: Boolean) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = {
                     playbackError = null
-                    player.seekTo(0)
+                    player.stop()
+                    player.setMediaItem(MediaItem.fromUri(url))
                     player.prepare()
                     player.playWhenReady = isActive
                 }) { Text("Retry") }
