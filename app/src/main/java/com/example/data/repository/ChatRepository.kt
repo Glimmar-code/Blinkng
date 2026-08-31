@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import com.example.data.models.ChatConversation
+import com.example.data.models.ChatMessage
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,7 +13,11 @@ class ChatRepository(
         supabaseService.fetchMessages()
     }
 
-    suspend fun sendMessage(receiverUsername: String, text: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun sendMessage(receiverUsername: String, text: String): Result<ChatMessage> = withContext(Dispatchers.IO) {
         supabaseService.sendMessage(receiverUsername, text)
+    }
+
+    suspend fun markConversationRead(partnerUsername: String): Boolean = withContext(Dispatchers.IO) {
+        supabaseService.markMessagesRead(partnerUsername)
     }
 }

@@ -125,8 +125,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Schedule
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
+import com.example.data.models.MessageStatus
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.FacultyBadge
 import com.example.ui.components.VerifiedMark
@@ -2488,7 +2491,8 @@ fun ChatConversationView(
     onBack: () -> Unit,
     onSendMessage: (String) -> Unit,
     onProfileClick: (String) -> Unit,
-    isDark: Boolean
+    isDark: Boolean,
+    onRetryMessage: ((ChatMessage) -> Unit)? = null
 ) {
 
     var messageText by rememberSaveable {
@@ -2840,6 +2844,9 @@ fun ChatConversationView(
                                 onMore = {
                                     showChatMoreSheet =
                                         true
+                                },
+                                onRetry = {
+                                    onRetryMessage?.invoke(message)
                                 }
                             )
 
@@ -3328,7 +3335,8 @@ private fun MessageRow(
     onEdit: () -> Unit,
     onCopy: () -> Unit,
     onReaction: () -> Unit,
-    onMore: () -> Unit
+    onMore: () -> Unit,
+    onRetry: () -> Unit = {}
 ) {
 
     var pressed by rememberSaveable(
@@ -3471,28 +3479,35 @@ private fun MessageRow(
                     )
 
                     if (message.isFromMe) {
-
-                        Spacer(
-                            modifier =
-                                Modifier.width(
-                                    4.dp
+                        Spacer(modifier = Modifier.width(4.dp))
+                        when (message.status) {
+                            MessageStatus.SENDING -> {
+                                Icon(
+                                    imageVector = Icons.Default.Schedule,
+                                    contentDescription = "Sending",
+                                    tint = Color.White.copy(alpha = 0.60f),
+                                    modifier = Modifier.size(12.dp)
                                 )
-                        )
-
-                        Icon(
-                            imageVector =
-                                Icons.Default.DoneAll,
-                            contentDescription =
-                                "Delivered and read",
-                            tint =
-                                Color.White.copy(
-                                    alpha = 0.80f
-                                ),
-                            modifier =
-                                Modifier.size(
-                                    12.dp
+                            }
+                            MessageStatus.FAILED -> {
+                                Icon(
+                                    imageVector = Icons.Default.ErrorOutline,
+                                    contentDescription = "Failed. Tap to retry",
+                                    tint = Color(0xFFFF5252),
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .clickable { onRetry() }
                                 )
-                        )
+                            }
+                            MessageStatus.SENT -> {
+                                Icon(
+                                    imageVector = Icons.Default.DoneAll,
+                                    contentDescription = if (message.isRead) "Read" else "Sent",
+                                    tint = if (message.isRead) Color(0xFF40C4FF) else Color.White.copy(alpha = 0.80f),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }

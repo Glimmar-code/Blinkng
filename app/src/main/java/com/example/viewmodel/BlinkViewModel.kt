@@ -8,7 +8,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.models.*
 import com.example.data.repository.*
+import com.example.data.supabase.RealtimeEvent
+import com.example.data.supabase.SupabaseRealtimeManager
 import com.example.data.supabase.SupabaseService
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -66,97 +69,13 @@ data class BlinkUiState(
 
     val isConversationFullScreen: Boolean = false,
 
-    val stories: List<Story> = listOf(
+        val stories: List<Story> = listOf(
         Story(
             id = "story_me",
             username = "Your Story",
             avatar = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80",
             hasUnseen = false,
             isUser = true
-        ),
-        Story(
-            id = "story_1",
-            username = "zara_codes",
-            avatar = "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500&auto=format&fit=crop&q=80",
-            hasUnseen = true,
-            storyImage = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=80",
-            caption = "Late night hackathon prep with the team! 🚀💻 #UnilagTech",
-            timeAgo = "45m ago",
-            faculty = "Computer Science",
-            university = "University of Lagos",
-            likesCount = 42,
-            isLiked = false,
-            verificationBadge = VerificationBadge.GOLD
-        ),
-        Story(
-            id = "story_2",
-            username = "aluta_daily",
-            avatar = "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=500&auto=format&fit=crop&q=80",
-            hasUnseen = true,
-            storyImage = "https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=800&auto=format&fit=crop&q=80",
-            caption = "Campus faculty week kickoff today! Don't miss out 🎉🔥",
-            timeAgo = "2h ago",
-            faculty = "Engineering",
-            university = "UNILAG Main Campus",
-            likesCount = 128,
-            isLiked = true,
-            verificationBadge = VerificationBadge.GOLD
-        ),
-        Story(
-            id = "story_3",
-            username = "kemi.adeleke",
-            avatar = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=500&auto=format&fit=crop&q=80",
-            hasUnseen = true,
-            storyImage = "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&auto=format&fit=crop&q=80",
-            caption = "Study group session at the Central Library 📚✨",
-            timeAgo = "3h ago",
-            faculty = "Law & Social Sciences",
-            university = "University of Lagos",
-            likesCount = 35,
-            isLiked = false,
-            verificationBadge = VerificationBadge.BLUE
-        ),
-        Story(
-            id = "story_4",
-            username = "tunde_shots",
-            avatar = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&auto=format&fit=crop&q=80",
-            hasUnseen = true,
-            storyImage = "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&auto=format&fit=crop&q=80",
-            caption = "Sunset view from the Sports Complex 🌅📸",
-            timeAgo = "5h ago",
-            faculty = "Arts & Humanities",
-            university = "Unilag Lagoon Front",
-            likesCount = 89,
-            isLiked = false,
-            verificationBadge = VerificationBadge.NONE
-        ),
-        Story(
-            id = "story_5",
-            username = "amara.creatives",
-            avatar = "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=500&auto=format&fit=crop&q=80",
-            hasUnseen = true,
-            storyImage = "https://images.unsplash.com/photo-1513542789411-b6a5d4f31634?w=800&auto=format&fit=crop&q=80",
-            caption = "New batch of handmade tote bags just dropped on Aluta Market! 👜✨",
-            timeAgo = "6h ago",
-            faculty = "Environmental Design",
-            university = "University of Lagos",
-            likesCount = 64,
-            isLiked = false,
-            verificationBadge = VerificationBadge.BLUE
-        ),
-        Story(
-            id = "story_6",
-            username = "campus_vibes",
-            avatar = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=500&auto=format&fit=crop&q=80",
-            hasUnseen = false,
-            storyImage = "https://images.unsplash.com/photo-1511578314322-379afb476865?w=800&auto=format&fit=crop&q=80",
-            caption = "Inter-faculty soccer finals this weekend ⚽🏆",
-            timeAgo = "8h ago",
-            faculty = "Sports & Fitness",
-            university = "Sports Pavilion",
-            likesCount = 110,
-            isLiked = false,
-            verificationBadge = VerificationBadge.NONE
         )
     ),
     val posts: List<FeedPost> = emptyList(),
@@ -168,6 +87,8 @@ data class BlinkUiState(
     val leaderboardUsers: List<LeaderboardUser> = emptyList(),
     val conversations: List<ChatConversation> = emptyList(),
     val activities: List<ActivityItem> = emptyList(),
+    val activitiesLoading: Boolean = false,
+    val activitiesError: String? = null,
     val comments: List<Comment> = emptyList(),
 
     val mutedUsers: Set<String> = emptySet(),
@@ -260,6 +181,8 @@ class BlinkViewModel(
             supabaseService
         )
 
+    val realtimeManager = SupabaseRealtimeManager.getInstance()
+
     private val _uiState =
         MutableStateFlow(
             BlinkUiState()
@@ -296,6 +219,12 @@ class BlinkViewModel(
 
         startServerStatusMonitoring()
         loadDraftsFromPrefs()
+
+        viewModelScope.launch {
+            realtimeManager.events.collect { event ->
+                handleRealtimeEvent(event)
+            }
+        }
 
         viewModelScope.launch {
             delay(700)
@@ -678,16 +607,37 @@ class BlinkViewModel(
                     supabaseService
                         .fetchStories()
 
+                val myProfile = _uiState.value.myProfile
+                val userStoryHeader = Story(
+                    id = "story_me",
+                    username = "Your Story",
+                    avatar = myProfile.avatarUrl.ifBlank { "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80" },
+                    hasUnseen = false,
+                    isUser = true
+                )
                 val mergedStories = if (cloudStories.isNotEmpty()) {
-                    val myStory = _uiState.value.stories.firstOrNull { it.isUser || it.id == "story_me" }
-                    if (myStory != null) {
-                        listOf(myStory) + cloudStories.filter { it.id != myStory.id && it.username != myStory.username }
-                    } else {
-                        cloudStories
-                    }
+                    val userStories = cloudStories.filter { it.isUser || it.username.equals(myProfile.username, ignoreCase = true) }
+                    val otherStories = cloudStories.filter { !it.isUser && !it.username.equals(myProfile.username, ignoreCase = true) }
+                    if (userStories.isNotEmpty()) userStories + otherStories else listOf(userStoryHeader) + otherStories
                 } else {
-                    _uiState.value.stories
+                    listOf(userStoryHeader)
                 }
+
+                _uiState.value = _uiState.value.copy(activitiesLoading = true, activitiesError = null)
+
+                val activitiesResult = supabaseService.fetchActivities()
+                var fetchedActivities = _uiState.value.activities
+                var activitiesErr: String? = null
+                activitiesResult.fold(
+                    onSuccess = { list ->
+                        fetchedActivities = list
+                        activitiesErr = null
+                    },
+                    onFailure = { err ->
+                        Log.w(TAG, "Failed to fetch activities: ${err.message}")
+                        activitiesErr = err.message
+                    }
+                )
 
                 _uiState.value =
                     _uiState.value.copy(
@@ -703,9 +653,21 @@ class BlinkViewModel(
                             leaderboard,
                         stories =
                             mergedStories,
+                        activities =
+                            fetchedActivities,
+                        activitiesLoading =
+                            false,
+                        activitiesError =
+                            activitiesErr,
                         isLiveSupabaseConnected =
                             true
                     )
+
+                val curUser = supabaseService.getCurrentUsername() ?: myProfile.username
+                val curUid = supabaseService.getCurrentUserId() ?: ""
+                if (curUser.isNotBlank() || curUid.isNotBlank()) {
+                    realtimeManager.connect(curUser, curUid)
+                }
 
             } catch (e: Exception) {
 
@@ -1396,12 +1358,17 @@ class BlinkViewModel(
     fun openCommentsForPost(
         postId: String?
     ) {
-
         _uiState.value =
             _uiState.value.copy(
                 activeCommentsPostId =
                     postId
             )
+        if (postId != null) {
+            viewModelScope.launch {
+                val fetched = postRepository.fetchComments(postId)
+                _uiState.value = _uiState.value.copy(comments = fetched)
+            }
+        }
     }
 
     fun openPostOptions(
@@ -1568,46 +1535,53 @@ class BlinkViewModel(
     fun updateProfile(
         updated: UserProfile
     ) {
-        _uiState.value =
-            _uiState.value.copy(
-                myProfile =
-                    updated,
-                isEditProfileOpen =
-                    false,
-                viewingProfile =
-                    if (
-                        _uiState.value
-                            .viewingProfile
-                            ?.username
-                            ?.equals(
-                                updated.username,
-                                ignoreCase = true
-                            ) == true
-                    ) {
-                        updated
-                    } else {
-                        _uiState.value
-                            .viewingProfile
-                    }
-            )
-
-        saveLocalProfile(
-            updated
-        )
-
-        updateLocalAuthorData(
-            updated
-        )
-
-        showToast(
-            "✅ Profile saved successfully."
-        )
-
         viewModelScope.launch {
             try {
-                profileRepository.updateProfile(updated)
+                val success = profileRepository.updateProfile(updated)
+                if (success) {
+                    // Fetch authoritative profile after update
+                    val authoritativeProfile = profileRepository.fetchCurrent(updated.username) ?: updated
+                    
+                    _uiState.value =
+                        _uiState.value.copy(
+                            myProfile =
+                                authoritativeProfile,
+                            isEditProfileOpen =
+                                false,
+                            viewingProfile =
+                                if (
+                                    _uiState.value
+                                        .viewingProfile
+                                        ?.username
+                                        ?.equals(
+                                            authoritativeProfile.username,
+                                            ignoreCase = true
+                                        ) == true
+                                ) {
+                                    authoritativeProfile
+                                } else {
+                                    _uiState.value
+                                        .viewingProfile
+                                }
+                        )
+
+                    saveLocalProfile(
+                        authoritativeProfile
+                    )
+
+                    updateLocalAuthorData(
+                        authoritativeProfile
+                    )
+
+                    showToast(
+                        "✅ Profile saved successfully."
+                    )
+                } else {
+                    showToast("❌ Failed to update profile.")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "updateProfile background sync error", e)
+                showToast("❌ Failed to update profile: ${e.message}")
             }
         }
     }
@@ -1850,58 +1824,9 @@ class BlinkViewModel(
         val userId = supabaseService.getCurrentUserId()
             ?: profile.id.takeIf { it.isNotBlank() }
             ?: "user_${profile.username}"
-
-        val postId = "post_${System.currentTimeMillis()}"
-        val newPost = FeedPost(
-            id = postId,
-            author = profile.username,
-            authorAvatar = profile.avatarUrl,
-            facultyTag = faculty.ifBlank { profile.faculty.ifBlank { "SIMME" } },
-            isVerified = profile.verificationBadge != VerificationBadge.NONE,
-            verificationBadge = profile.verificationBadge,
-            timeAgo = "Just now",
-            text = text,
-            images = if (!imageUri.isNullOrBlank()) listOf(imageUri) else emptyList(),
-            videoUrl = videoUri,
-            tags = tags,
-            mentions = mentions,
-            poll = poll,
-            isReel = isReel,
-            likes = 0,
-            isLiked = false,
-            commentsCount = 0,
-            sharesCount = 0,
-            viewsCount = 1,
-            audience = audience,
-            category = category,
-            location = location,
-            linkUrl = linkUrl,
-            allowComments = allowComments,
-            hideLikes = hideLikes,
-            isPinned = isPinned,
-            isDisappearing = isDisappearing,
-            audioTitle = audioTitle,
-            altText = altText
-        )
-
-        // INSTANT OPTIMISTIC PUBLISHING: Feed and profile update instantly!
-        val newPosts = listOf(newPost) + _uiState.value.posts
-        val newReels = if (isReel || !videoUri.isNullOrBlank()) {
-            listOf(newPost) + _uiState.value.reels
-        } else {
-            _uiState.value.reels
-        }
-
-        _uiState.value = _uiState.value.copy(
-            posts = newPosts,
-            reels = newReels,
-            isCreatePostOpen = false
-        )
-
-        showToast(
-            if (isReel) "✨ Reel published to Campus!"
-            else "✨ Post published to Feed & Profile!"
-        )
+        
+        val originalPosts = _uiState.value.posts
+        val originalReels = _uiState.value.reels
 
         // Background asynchronous media upload and cloud persistence
         viewModelScope.launch(Dispatchers.IO) {
@@ -1910,35 +1835,108 @@ class BlinkViewModel(
                 var uploadedVideoUrl: String? = null
 
                 if (!imageUri.isNullOrBlank()) {
-                    uploadedImageUrl = uploadPostUri(
-                        userId = userId,
-                        uriString = imageUri,
-                        isVideo = false
-                    )
+                    if (imageUri.startsWith("content://")) {
+                        uploadedImageUrl = uploadPostUri(
+                            userId = userId,
+                            uriString = imageUri,
+                            isVideo = false
+                        )
+                        if (uploadedImageUrl == null) {
+                            showToast("Failed to upload image. Post not saved.")
+                            return@launch
+                        }
+                    } else {
+                        uploadedImageUrl = imageUri
+                    }
                 }
 
                 if (!videoUri.isNullOrBlank()) {
-                    uploadedVideoUrl = uploadPostUri(
-                        userId = userId,
-                        uriString = videoUri,
-                        isVideo = true
-                    )
+                    if (videoUri.startsWith("content://")) {
+                        uploadedVideoUrl = uploadPostUri(
+                            userId = userId,
+                            uriString = videoUri,
+                            isVideo = true
+                        )
+                        if (uploadedVideoUrl == null) {
+                            showToast("Failed to upload video. Post not saved.")
+                            return@launch
+                        }
+                    } else {
+                        uploadedVideoUrl = videoUri
+                    }
                 }
 
-                supabaseService.createFeedPost(
+                val resultPost = supabaseService.createFeedPost(
                     author = profile.username,
                     authorAvatar = profile.avatarUrl,
                     facultyTag = faculty,
                     text = text,
-                    imageUrl = uploadedImageUrl ?: imageUri,
-                    videoUrl = uploadedVideoUrl ?: videoUri,
+                    imageUrl = uploadedImageUrl,
+                    videoUrl = uploadedVideoUrl,
                     tags = tags,
                     mentions = mentions,
                     poll = poll,
-                    isReel = isReel
+                    isReel = isReel,
+                    audience = audience,
+                    category = category,
+                    location = location,
+                    linkUrl = linkUrl,
+                    allowComments = allowComments,
+                    hideLikes = hideLikes,
+                    isPinned = isPinned,
+                    isDisappearing = isDisappearing,
+                    audioTitle = audioTitle,
+                    altText = altText
                 )
+
+                if (category.contains("Story", ignoreCase = true)) {
+                    val storyObj = Story(
+                        id = "story_${java.util.UUID.randomUUID()}",
+                        username = profile.username,
+                        avatar = profile.avatarUrl.ifBlank { "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&fit=crop" },
+                        hasUnseen = false,
+                        isUser = true,
+                        storyImage = uploadedImageUrl.orEmpty(),
+                        caption = text,
+                        timeAgo = "Just now",
+                        faculty = faculty.ifBlank { profile.faculty },
+                        university = profile.university,
+                        likesCount = 0,
+                        isLiked = false,
+                        verificationBadge = profile.verificationBadge
+                    )
+                    postRepository.createStory(storyObj)
+                    withContext(Dispatchers.Main) {
+                        val existingOtherStories = _uiState.value.stories.filter { !it.isUser && it.id != "story_me" }
+                        _uiState.value = _uiState.value.copy(
+                            stories = listOf(storyObj) + existingOtherStories
+                        )
+                    }
+                }
+
+                if (resultPost != null) {
+                    // Prepend the new post and refresh UI
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = _uiState.value.copy(
+                            posts = listOf(resultPost) + originalPosts,
+                            reels = if (isReel || !uploadedVideoUrl.isNullOrBlank()) listOf(resultPost) + originalReels else originalReels,
+                            isCreatePostOpen = false
+                        )
+                        showToast(
+                            if (isReel) "✨ Reel published to Campus!"
+                            else "✨ Post published to Feed & Profile!"
+                        )
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        showToast("Failed to create post on server.")
+                    }
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Background sync for post creation notice (local post remains live)", e)
+                withContext(Dispatchers.Main) {
+                    showToast("Failed to create post: ${e.message}")
+                }
             }
         }
     }
@@ -2029,133 +2027,127 @@ class BlinkViewModel(
         var nextLiked = false
         var nextCount = 0
 
-        val updatedPosts =
-            _uiState.value
-                .posts
-                .map { post ->
-                    if (
-                        post.id == postId
-                    ) {
-                        val liked =
-                            !post.isLiked
-                        nextLiked = liked
-                        val likes = (
-                            post.likes +
-                                    if (liked) 1 else -1
-                            ).coerceAtLeast(0)
-                        nextCount = likes
+        val updatedPosts = _uiState.value.posts.map { post ->
+            if (post.id == postId) {
+                val liked = !post.isLiked
+                nextLiked = liked
+                val likes = (post.likes + if (liked) 1 else -1).coerceAtLeast(0)
+                nextCount = likes
+                post.copy(isLiked = liked, likes = likes)
+            } else {
+                post
+            }
+        }
 
-                        post.copy(
-                            isLiked =
-                                liked,
-                            likes =
-                                likes
-                        )
-                    } else {
-                        post
-                    }
-                }
+        val updatedReels = _uiState.value.reels.map { reel ->
+            if (reel.id == postId) {
+                val liked = !reel.isLiked
+                nextLiked = liked
+                val likes = (reel.likes + if (liked) 1 else -1).coerceAtLeast(0)
+                nextCount = likes
+                reel.copy(isLiked = liked, likes = likes)
+            } else {
+                reel
+            }
+        }
 
-        val updatedReels =
-            _uiState.value
-                .reels
-                .map { reel ->
-                    if (
-                        reel.id == postId
-                    ) {
-                        val liked =
-                            !reel.isLiked
-                        nextLiked = liked
-                        val likes = (
-                            reel.likes +
-                                    if (liked) 1 else -1
-                            ).coerceAtLeast(0)
-                        nextCount = likes
-
-                        reel.copy(
-                            isLiked =
-                                liked,
-                            likes =
-                                likes
-                        )
-                    } else {
-                        reel
-                    }
-                }
-
-        _uiState.value =
-            _uiState.value.copy(
-                posts =
-                    updatedPosts,
-                reels =
-                    updatedReels
-            )
+        _uiState.value = _uiState.value.copy(
+            posts = updatedPosts,
+            reels = updatedReels
+        )
 
         viewModelScope.launch {
-            try {
+            val success = try {
                 postRepository.togglePostLike(
                     postId = postId,
                     liked = nextLiked,
                     newLikeCount = nextCount
                 )
             } catch (e: Exception) {
-                Log.e(TAG, "togglePostLike Supabase persistence failed", e)
+                false
+            }
+            if (success) {
+                if (nextLiked) {
+                    val targetPost = (_uiState.value.posts + _uiState.value.reels).find { it.id == postId }
+                    if (targetPost != null && targetPost.author.isNotBlank()) {
+                        supabaseService.recordActivity(
+                            recipientUsername = targetPost.author,
+                            action = "liked your post",
+                            category = NotificationFilter.LIKES,
+                            targetPostId = postId,
+                            targetType = "POST"
+                        )
+                    }
+                }
+            } else {
+                // Rollback
+                val revertedPosts = _uiState.value.posts.map { post ->
+                    if (post.id == postId) {
+                        post.copy(isLiked = !nextLiked, likes = (post.likes + if (!nextLiked) 1 else -1).coerceAtLeast(0))
+                    } else post
+                }
+                val revertedReels = _uiState.value.reels.map { reel ->
+                    if (reel.id == postId) {
+                        reel.copy(isLiked = !nextLiked, likes = (reel.likes + if (!nextLiked) 1 else -1).coerceAtLeast(0))
+                    } else reel
+                }
+                _uiState.value = _uiState.value.copy(posts = revertedPosts, reels = revertedReels)
+                showToast("Failed to update like.")
             }
         }
     }
 
-    fun toggleBookmark(
-        postId: String
-    ) {
+    fun toggleBookmark(postId: String) {
+        var nextBookmarked = false
 
-        val updatedPosts =
-            _uiState.value
-                .posts
-                .map { post ->
+        val updatedPosts = _uiState.value.posts.map { post ->
+            if (post.id == postId) {
+                nextBookmarked = !post.isBookmarked
+                post.copy(isBookmarked = nextBookmarked)
+            } else {
+                post
+            }
+        }
 
-                    if (
-                        post.id == postId
-                    ) {
+        val updatedReels = _uiState.value.reels.map { reel ->
+            if (reel.id == postId) {
+                nextBookmarked = !reel.isBookmarked
+                reel.copy(isBookmarked = nextBookmarked)
+            } else {
+                reel
+            }
+        }
 
-                        post.copy(
-                            isBookmarked =
-                                !post.isBookmarked
-                        )
+        _uiState.value = _uiState.value.copy(
+            posts = updatedPosts,
+            reels = updatedReels
+        )
 
-                    } else {
-                        post
-                    }
+        viewModelScope.launch {
+            val success = try {
+                postRepository.togglePostBookmark(postId, nextBookmarked)
+            } catch (e: Exception) {
+                false
+            }
+            if (!success) {
+                // Rollback
+                val revertedPosts = _uiState.value.posts.map { post ->
+                    if (post.id == postId) {
+                        post.copy(isBookmarked = !nextBookmarked)
+                    } else post
                 }
-
-        val updatedReels =
-            _uiState.value
-                .reels
-                .map { reel ->
-
-                    if (
-                        reel.id == postId
-                    ) {
-
-                        reel.copy(
-                            isBookmarked =
-                                !reel.isBookmarked
-                        )
-
-                    } else {
-                        reel
-                    }
+                val revertedReels = _uiState.value.reels.map { reel ->
+                    if (reel.id == postId) {
+                        reel.copy(isBookmarked = !nextBookmarked)
+                    } else reel
                 }
-
-        _uiState.value =
-            _uiState.value.copy(
-                posts =
-                    updatedPosts,
-                reels =
-                    updatedReels
-            )
+                _uiState.value = _uiState.value.copy(posts = revertedPosts, reels = revertedReels)
+                showToast("Failed to update bookmark.")
+            }
+        }
     }
 
-    fun sharePost(
+fun sharePost(
         postId: String
     ) {
 
@@ -2206,35 +2198,33 @@ class BlinkViewModel(
         )
     }
 
-    fun deletePost(
-        postId: String
-    ) {
+    fun deletePost(postId: String) {
+        val originalPosts = _uiState.value.posts
+        val originalReels = _uiState.value.reels
 
-        _uiState.value =
-            _uiState.value.copy(
-                posts =
-                    _uiState.value
-                        .posts
-                        .filterNot {
-                            it.id == postId
-                        },
-                reels =
-                    _uiState.value
-                        .reels
-                        .filterNot {
-                            it.id == postId
-                        },
-                activePostOptionsPost =
-                    null
-            )
-
-        /*
-         * Add a Supabase DELETE/RPC operation here once your RLS policy
-         * for deleting user-owned posts is confirmed.
-         */
-        showToast(
-            "Post removed from your feed."
+        _uiState.value = _uiState.value.copy(
+            posts = originalPosts.filterNot { it.id == postId },
+            reels = originalReels.filterNot { it.id == postId },
+            activePostOptionsPost = null
         )
+
+        viewModelScope.launch {
+            val success = try {
+                supabaseService.deleteFeedPost(postId)
+            } catch (e: Exception) {
+                false
+            }
+            if (success) {
+                showToast("Post removed from your feed.")
+            } else {
+                showToast("Failed to delete post.")
+                // Rollback
+                _uiState.value = _uiState.value.copy(
+                    posts = originalPosts,
+                    reels = originalReels
+                )
+            }
+        }
     }
 
     fun reportPost(
@@ -2398,6 +2388,13 @@ class BlinkViewModel(
                     updated
             )
 
+        val updatedPost = updated.find { it.id == postId }
+        updatedPost?.poll?.let { pollState ->
+            viewModelScope.launch(Dispatchers.IO) {
+                postRepository.votePoll(postId, optionId, pollState)
+            }
+        }
+
         showToast(
             "🗳️ Vote recorded."
         )
@@ -2412,121 +2409,86 @@ class BlinkViewModel(
         text: String,
         replyToUser: String? = null
     ) {
+        if (text.isBlank()) return
 
-        if (
-            text.isBlank()
-        ) {
-            return
-        }
-
-        val profile =
-            _uiState.value
-                .myProfile
-
-        val newComment =
-            Comment(
-                id =
-                    System.currentTimeMillis(),
-                user =
-                    profile.username,
-                avatar =
-                    profile.avatarUrl,
-                text =
-                    text.trim(),
-                time =
-                    "Just now",
-                likes =
-                    0,
-                isLiked =
-                    false
-            )
-
-        val updatedComments =
-            listOf(
-                newComment
-            ) +
-                    _uiState.value
-                        .comments
-
-        val updatedPosts =
-            _uiState.value
-                .posts
-                .map { post ->
-
-                    if (
-                        post.id == postId
-                    ) {
-
-                        post.copy(
-                            commentsCount =
-                                post.commentsCount + 1
-                        )
-
-                    } else {
-                        post
-                    }
+        viewModelScope.launch {
+            val newComment = postRepository.addComment(postId, text, replyToUser)
+            if (newComment != null) {
+                _uiState.value = _uiState.value.copy(
+                    comments = listOf(newComment) + _uiState.value.comments
+                )
+                val updatedPosts = _uiState.value.posts.map { post ->
+                    if (post.id == postId) post.copy(commentsCount = post.commentsCount + 1) else post
                 }
-
-        _uiState.value =
-            _uiState.value.copy(
-                comments =
-                    updatedComments,
-                posts =
-                    updatedPosts
-            )
-
-        showToast(
-            if (
-                replyToUser.isNullOrBlank()
-            )
-                "💬 Comment posted."
-            else
-                "↩️ Reply posted."
-        )
+                val updatedReels = _uiState.value.reels.map { reel ->
+                    if (reel.id == postId) reel.copy(commentsCount = reel.commentsCount + 1) else reel
+                }
+                _uiState.value = _uiState.value.copy(posts = updatedPosts, reels = updatedReels)
+                showToast(if (replyToUser.isNullOrBlank()) "💬 Comment posted." else "↩️ Reply posted.")
+                val targetPost = (_uiState.value.posts + _uiState.value.reels).find { it.id == postId }
+                if (targetPost != null && targetPost.author.isNotBlank()) {
+                    supabaseService.recordActivity(
+                        recipientUsername = targetPost.author,
+                        action = if (replyToUser.isNullOrBlank()) "commented on your post" else "replied to comment",
+                        category = NotificationFilter.COMMENTS,
+                        targetPostId = postId,
+                        previewText = text,
+                        targetType = "POST"
+                    )
+                }
+            } else {
+                showToast("Failed to post comment.")
+            }
+        }
     }
 
     fun toggleCommentLike(
         commentId: Long
     ) {
+        var nextLiked = false
+        var nextCount = 0
 
-        val updated =
-            _uiState.value
-                .comments
-                .map { comment ->
+        val updated = _uiState.value.comments.map { comment ->
+            if (comment.id == commentId) {
+                nextLiked = !comment.isLiked
+                nextCount = (comment.likes + if (nextLiked) 1 else -1).coerceAtLeast(0)
+                comment.copy(isLiked = nextLiked, likes = nextCount)
+            } else comment
+        }
+        _uiState.value = _uiState.value.copy(comments = updated)
 
-                    if (
-                        comment.id == commentId
-                    ) {
-
-                        val liked =
-                            !comment.isLiked
-
-                        comment.copy(
-                            isLiked =
-                                liked,
-                            likes =
-                                (
-                                    comment.likes +
-                                            if (liked) 1 else -1
-                                    ).coerceAtLeast(
-                                    0
-                                )
+        viewModelScope.launch {
+            val success = try {
+                postRepository.toggleCommentLike(commentId, nextLiked, nextCount)
+            } catch (e: Exception) { false }
+            
+            if (success) {
+                if (nextLiked) {
+                    val comment = _uiState.value.comments.find { it.id == commentId }
+                    if (comment != null && comment.user.isNotBlank()) {
+                        supabaseService.recordActivity(
+                            recipientUsername = comment.user,
+                            action = "liked your comment",
+                            category = NotificationFilter.LIKES,
+                            previewText = comment.text,
+                            targetType = "POST"
                         )
-
-                    } else {
-                        comment
                     }
                 }
-
-        _uiState.value =
-            _uiState.value.copy(
-                comments =
-                    updated
-            )
+            } else {
+                val reverted = _uiState.value.comments.map { comment ->
+                    if (comment.id == commentId) {
+                        comment.copy(isLiked = !nextLiked, likes = (comment.likes + if (!nextLiked) 1 else -1).coerceAtLeast(0))
+                    } else comment
+                }
+                _uiState.value = _uiState.value.copy(comments = reverted)
+                showToast("Failed to update comment like.")
+            }
+        }
     }
 
     // ============================================================
-    // CHAT
+    // CHAT & REALTIME MESSAGING
     // ============================================================
 
     fun openChatWithUser(
@@ -2534,90 +2496,60 @@ class BlinkViewModel(
         sellerName: String? = null,
         sellerAvatar: String? = null
     ) {
+        val cleanUsername = username.trim()
+        val state = _uiState.value
 
-        val state =
-            _uiState.value
+        val existing = state.conversations.find {
+            it.partnerUsername.equals(cleanUsername, ignoreCase = true)
+        }
 
-        val existing =
-            state.conversations
-                .find {
-                    it.partnerUsername
-                        .equals(
-                            username,
-                            ignoreCase = true
-                        )
-                }
-
-        if (
-            existing != null
-        ) {
-
-            _uiState.value =
-                state.copy(
-                    activeConversationPartner =
-                        username,
-                    isConversationFullScreen =
-                        true
-                )
-
+        if (existing != null) {
+            val clearedConversations = state.conversations.map {
+                if (it.partnerUsername.equals(cleanUsername, ignoreCase = true)) {
+                    it.copy(unreadCount = 0)
+                } else it
+            }
+            _uiState.value = state.copy(
+                conversations = clearedConversations,
+                activeConversationPartner = cleanUsername,
+                isConversationFullScreen = true
+            )
+            viewModelScope.launch {
+                chatRepository.markConversationRead(cleanUsername)
+            }
             return
         }
 
-        val newConversation =
-            ChatConversation(
-                id =
-                    "c_${System.currentTimeMillis()}",
-                partnerUsername =
-                    username,
-                partnerName =
-                    sellerName
-                        ?: username
-                            .replace(
-                                ".",
-                                " "
-                            )
-                            .capitalizeWords(),
-                partnerAvatar =
-                    sellerAvatar.orEmpty(),
-                isOnline =
-                    true,
-                lastMessage =
-                    "",
-                lastMessageTime =
-                    "New",
-                unreadCount =
-                    0,
-                isVerified =
-                    false,
-                faculty =
-                    "",
-                messages =
-                    mutableListOf()
-            )
+        val newConversation = ChatConversation(
+            id = "c_${System.currentTimeMillis()}",
+            partnerUsername = cleanUsername,
+            partnerName = sellerName ?: cleanUsername.replace(".", " ").replace("_", " ").capitalizeWords(),
+            partnerAvatar = sellerAvatar.orEmpty(),
+            isOnline = true,
+            lastMessage = "",
+            lastMessageTime = "New",
+            unreadCount = 0,
+            isVerified = false,
+            faculty = "",
+            messages = mutableListOf()
+        )
 
-        _uiState.value =
-            state.copy(
-                conversations =
-                    listOf(
-                        newConversation
-                    ) +
-                            state.conversations,
-                activeConversationPartner =
-                    username,
-                isConversationFullScreen =
-                    true
-            )
+        _uiState.value = state.copy(
+            conversations = listOf(newConversation) + state.conversations,
+            activeConversationPartner = cleanUsername,
+            isConversationFullScreen = true
+        )
+
+        viewModelScope.launch {
+            chatRepository.markConversationRead(cleanUsername)
+        }
     }
 
     fun closeConversation() {
-
-        _uiState.value =
-            _uiState.value.copy(
-                activeConversationPartner =
-                    null,
-                isConversationFullScreen =
-                    false
-            )
+        _uiState.value = _uiState.value.copy(
+            activeConversationPartner = null,
+            isConversationFullScreen = false
+        )
     }
 
     fun sendMessage(
@@ -2625,99 +2557,225 @@ class BlinkViewModel(
         text: String,
         isFromMe: Boolean = true
     ) {
+        val cleanText = text.trim()
+        val cleanPartner = partnerUsername.trim()
 
-        if (
-            text.isBlank()
-        ) {
-            return
+        if (cleanText.isBlank() || cleanPartner.isBlank()) return
+
+        val currentUserId = supabaseService.getCurrentUserId() ?: "local_user"
+        val currentUsername = supabaseService.getCurrentUsername() ?: "you"
+
+        val tempId = "temp_${UUID.randomUUID()}"
+        val tempMessage = ChatMessage(
+            id = tempId,
+            senderId = currentUserId,
+            senderUsername = currentUsername,
+            receiverUsername = cleanPartner,
+            text = cleanText,
+            rawTimestamp = "",
+            timestamp = "Sending...",
+            isFromMe = true,
+            isRead = false,
+            status = MessageStatus.SENDING
+        )
+
+        appendMessageToState(cleanPartner, tempMessage)
+
+        viewModelScope.launch {
+            val result = chatRepository.sendMessage(cleanPartner, cleanText)
+            result.fold(
+                onSuccess = { serverMsg ->
+                    replaceMessageInState(cleanPartner, tempId, serverMsg.copy(status = MessageStatus.SENT))
+                    supabaseService.recordActivity(
+                        recipientUsername = cleanPartner,
+                        action = "sent you a direct message",
+                        category = NotificationFilter.ALL,
+                        targetUsername = currentUsername,
+                        previewText = cleanText,
+                        targetType = "CHAT"
+                    )
+                },
+                onFailure = { err ->
+                    updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
+                    showToast("Failed to send message. Tap message to retry.")
+                }
+            )
         }
+    }
 
-        val currentUserId =
-            supabaseService
-                .getCurrentUserId()
+    fun retrySendMessage(partnerUsername: String, failedMessage: ChatMessage) {
+        if (failedMessage.status != MessageStatus.FAILED) return
+        val cleanText = failedMessage.text.trim()
+        val tempId = failedMessage.id
+        val cleanPartner = partnerUsername.trim()
 
-        val conversations =
-            _uiState.value
-                .conversations
-                .map { conversation ->
+        updateMessageStatusInState(cleanPartner, tempId, MessageStatus.SENDING)
 
-                    if (
-                        conversation.partnerUsername
-                            .equals(
-                                partnerUsername,
-                                ignoreCase = true
-                            )
-                    ) {
+        viewModelScope.launch {
+            val result = chatRepository.sendMessage(cleanPartner, cleanText)
+            result.fold(
+                onSuccess = { serverMsg ->
+                    replaceMessageInState(cleanPartner, tempId, serverMsg.copy(status = MessageStatus.SENT))
+                    val currentUsername = supabaseService.getCurrentUsername() ?: "you"
+                    supabaseService.recordActivity(
+                        recipientUsername = cleanPartner,
+                        action = "sent you a direct message",
+                        category = NotificationFilter.ALL,
+                        targetUsername = currentUsername,
+                        previewText = cleanText,
+                        targetType = "CHAT"
+                    )
+                },
+                onFailure = { err ->
+                    updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
+                    showToast("Retry failed. Check network connection.")
+                }
+            )
+        }
+    }
 
-                        val newMessage =
-                            ChatMessage(
-                                id =
-                                    "msg_${System.currentTimeMillis()}",
-                                senderId =
-                                    currentUserId
-                                        ?: "local_user",
-                                text =
-                                    text.trim(),
-                                timestamp =
-                                    "Just now",
-                                isFromMe =
-                                    isFromMe
-                            )
-
-                        conversation.copy(
-                            lastMessage =
-                                text.trim(),
-                            lastMessageTime =
-                                "Just now",
-                            unreadCount =
-                                if (
-                                    isFromMe
-                                ) {
-                                    conversation.unreadCount
-                                } else {
-                                    conversation.unreadCount + 1
-                                },
-                            messages =
-                                (
-                                    conversation
-                                        .messages +
-                                            newMessage
-                                    ).toMutableList()
-                        )
-
-                    } else {
-                        conversation
+    private fun handleRealtimeEvent(event: RealtimeEvent) {
+        when (event) {
+            is RealtimeEvent.MessageEvent -> {
+                handleIncomingRealtimeMessage(event.message)
+            }
+            is RealtimeEvent.ConversationEvent -> {
+                viewModelScope.launch {
+                    val conversations = chatRepository.fetchConversations()
+                    if (conversations.isNotEmpty()) {
+                        _uiState.value = _uiState.value.copy(conversations = conversations)
                     }
                 }
-
-        _uiState.value =
-            _uiState.value.copy(
-                conversations =
-                    conversations
-            )
-
-        if (
-            isFromMe
-        ) {
-
-            viewModelScope.launch {
-
-                val sent =
-                    supabaseService
-                        .sendMessage(
-                            partnerUsername,
-                            text.trim()
-                        )
-
-                if (
-                    !sent
-                ) {
-
-                    showToast(
-                        "Message saved locally but could not sync."
-                    )
+            }
+            is RealtimeEvent.NotificationEvent -> {
+                viewModelScope.launch {
+                    fetchSupabaseData()
                 }
             }
+            is RealtimeEvent.FeedPostEvent -> {
+                viewModelScope.launch {
+                    val freshPosts = postRepository.fetchFeed()
+                    if (freshPosts.isNotEmpty()) {
+                        _uiState.value = _uiState.value.copy(posts = freshPosts)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun handleIncomingRealtimeMessage(msg: ChatMessage) {
+        val currentUsername = supabaseService.getCurrentUsername() ?: ""
+        val partnerUsername = if (msg.isFromMe || (currentUsername.isNotBlank() && msg.senderUsername.equals(currentUsername, ignoreCase = true))) {
+            msg.receiverUsername
+        } else {
+            msg.senderUsername
+        }
+
+        if (partnerUsername.isBlank()) return
+
+        val conversations = _uiState.value.conversations.toMutableList()
+        val existingIndex = conversations.indexOfFirst {
+            it.partnerUsername.equals(partnerUsername, ignoreCase = true)
+        }
+        val isActivePartner = _uiState.value.activeConversationPartner?.equals(partnerUsername, ignoreCase = true) == true
+
+        if (existingIndex >= 0) {
+            val oldConvo = conversations[existingIndex]
+            val msgs = oldConvo.messages.toMutableList()
+            val existingMsgIdx = msgs.indexOfFirst { it.id == msg.id || (it.status == MessageStatus.SENDING && it.text == msg.text) }
+
+            if (existingMsgIdx >= 0) {
+                msgs[existingMsgIdx] = msg
+            } else {
+                msgs.add(msg)
+            }
+
+            val sortedMsgs = msgs.sortedBy { it.rawTimestamp.ifBlank { it.timestamp } }.toMutableList()
+            val unreadIncrement = if (!msg.isFromMe && !isActivePartner) 1 else 0
+
+            conversations[existingIndex] = oldConvo.copy(
+                lastMessage = msg.text,
+                lastMessageTime = msg.timestamp,
+                lastMessageRawTime = msg.rawTimestamp,
+                unreadCount = if (isActivePartner) 0 else oldConvo.unreadCount + unreadIncrement,
+                messages = sortedMsgs
+            )
+        } else {
+            val newConvo = ChatConversation(
+                id = "conv_$partnerUsername",
+                partnerUsername = partnerUsername,
+                partnerName = partnerUsername.replace(".", " ").replace("_", " ").capitalizeWords(),
+                partnerAvatar = "",
+                lastMessage = msg.text,
+                lastMessageTime = msg.timestamp,
+                lastMessageRawTime = msg.rawTimestamp,
+                unreadCount = if (!msg.isFromMe && !isActivePartner) 1 else 0,
+                messages = mutableListOf(msg)
+            )
+            conversations.add(0, newConvo)
+        }
+
+        _uiState.value = _uiState.value.copy(conversations = conversations)
+
+        if (!msg.isFromMe && isActivePartner) {
+            viewModelScope.launch {
+                chatRepository.markConversationRead(partnerUsername)
+            }
+        }
+    }
+
+    private fun appendMessageToState(partnerUsername: String, message: ChatMessage) {
+        val conversations = _uiState.value.conversations.toMutableList()
+        val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, ignoreCase = true) }
+        if (index >= 0) {
+            val old = conversations[index]
+            val newMsgs = (old.messages + message).toMutableList()
+            conversations[index] = old.copy(
+                lastMessage = message.text,
+                lastMessageTime = message.timestamp,
+                lastMessageRawTime = message.rawTimestamp,
+                messages = newMsgs
+            )
+        } else {
+            val newConvo = ChatConversation(
+                id = "conv_$partnerUsername",
+                partnerUsername = partnerUsername,
+                partnerName = partnerUsername.replace(".", " ").replace("_", " ").capitalizeWords(),
+                partnerAvatar = "",
+                lastMessage = message.text,
+                lastMessageTime = message.timestamp,
+                lastMessageRawTime = message.rawTimestamp,
+                messages = mutableListOf(message)
+            )
+            conversations.add(0, newConvo)
+        }
+        _uiState.value = _uiState.value.copy(conversations = conversations)
+    }
+
+    private fun replaceMessageInState(partnerUsername: String, oldId: String, newMsg: ChatMessage) {
+        val conversations = _uiState.value.conversations.toMutableList()
+        val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, ignoreCase = true) }
+        if (index >= 0) {
+            val old = conversations[index]
+            val newMsgs = old.messages.map { if (it.id == oldId) newMsg else it }.toMutableList()
+            conversations[index] = old.copy(
+                lastMessage = newMsg.text,
+                lastMessageTime = newMsg.timestamp,
+                lastMessageRawTime = newMsg.rawTimestamp,
+                messages = newMsgs
+            )
+            _uiState.value = _uiState.value.copy(conversations = conversations)
+        }
+    }
+
+    private fun updateMessageStatusInState(partnerUsername: String, messageId: String, status: MessageStatus) {
+        val conversations = _uiState.value.conversations.toMutableList()
+        val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, ignoreCase = true) }
+        if (index >= 0) {
+            val old = conversations[index]
+            val newMsgs = old.messages.map { if (it.id == messageId) it.copy(status = status) else it }.toMutableList()
+            conversations[index] = old.copy(messages = newMsgs)
+            _uiState.value = _uiState.value.copy(conversations = conversations)
         }
     }
 
@@ -3227,6 +3285,7 @@ class BlinkViewModel(
     // ============================================================
 
     fun logout() {
+        realtimeManager.disconnect()
 
         viewModelScope.launch {
 
@@ -3364,11 +3423,10 @@ class BlinkViewModel(
     }
 
     // ============================================================
-    // STORY INTERACTIONS
+    // STORY INTERACTIONS & SUPABASE PERSISTENCE
     // ============================================================
 
     fun openStory(story: Story) {
-        // Mark as viewed in state
         val updatedStories = _uiState.value.stories.map {
             if (it.id == story.id) it.copy(hasUnseen = false) else it
         }
@@ -3378,6 +3436,7 @@ class BlinkViewModel(
             stories = updatedStories,
             activeViewingStory = targetStory
         )
+        markStoryViewed(story.id)
     }
 
     fun closeStory() {
@@ -3386,20 +3445,65 @@ class BlinkViewModel(
         )
     }
 
+    fun createStory(
+        storyImage: String,
+        caption: String,
+        faculty: String = ""
+    ) {
+        val profile = _uiState.value.myProfile
+        val storyId = "story_${java.util.UUID.randomUUID()}"
+        val newStory = Story(
+            id = storyId,
+            username = profile.username,
+            avatar = profile.avatarUrl.ifBlank { "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&fit=crop" },
+            hasUnseen = false,
+            isUser = true,
+            storyImage = storyImage,
+            caption = caption,
+            timeAgo = "Just now",
+            faculty = faculty.ifBlank { profile.faculty },
+            university = profile.university,
+            likesCount = 0,
+            isLiked = false,
+            verificationBadge = profile.verificationBadge
+        )
+
+        val existingStories = _uiState.value.stories.filter { !it.isUser && it.id != "story_me" }
+        val updatedStories = listOf(newStory) + existingStories
+        _uiState.value = _uiState.value.copy(stories = updatedStories)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = postRepository.createStory(newStory)
+            if (!success) {
+                showToast("Failed to persist story to Supabase.")
+            } else {
+                showToast("✨ Story published!")
+            }
+        }
+    }
+
     fun markStoryViewed(storyId: String) {
         val updated = _uiState.value.stories.map {
             if (it.id == storyId) it.copy(hasUnseen = false) else it
         }
         _uiState.value = _uiState.value.copy(stories = updated)
+        if (storyId != "story_me") {
+            viewModelScope.launch(Dispatchers.IO) {
+                postRepository.markStoryViewed(storyId)
+            }
+        }
     }
 
     fun toggleStoryLike(storyId: String) {
+        var nextLiked = false
+        var nextCount = 0
         val updated = _uiState.value.stories.map { story ->
             if (story.id == storyId) {
-                val next = !story.isLiked
+                nextLiked = !story.isLiked
+                nextCount = (story.likesCount + if (nextLiked) 1 else -1).coerceAtLeast(0)
                 story.copy(
-                    isLiked = next,
-                    likesCount = (story.likesCount + if (next) 1 else -1).coerceAtLeast(0)
+                    isLiked = nextLiked,
+                    likesCount = nextCount
                 )
             } else {
                 story
@@ -3410,29 +3514,55 @@ class BlinkViewModel(
             stories = updated,
             activeViewingStory = active ?: _uiState.value.activeViewingStory
         )
-        showToast("❤️ Story liked")
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = postRepository.toggleStoryLike(storyId, nextLiked, nextCount)
+            if (ok && nextLiked && active != null && !active.username.equals(_uiState.value.myProfile.username, ignoreCase = true)) {
+                supabaseService.recordActivity(
+                    recipientUsername = active.username,
+                    action = "liked your story",
+                    category = NotificationFilter.LIKES,
+                    targetPostId = storyId,
+                    targetType = "STORY"
+                )
+            }
+        }
+        showToast(if (nextLiked) "❤️ Story liked" else "Unliked story")
     }
 
     fun reactToStory(storyId: String, emoji: String) {
         val story = _uiState.value.stories.find { it.id == storyId }
-        if (story != null && !story.isUser) {
-            // Also register as a quick chat message / reaction if needed
-            sendMessage(
-                partnerUsername = story.username,
-                text = "Reacted $emoji to your story",
-                isFromMe = true
-            )
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = postRepository.reactToStory(storyId, emoji)
+            if (ok && story != null && !story.username.equals(_uiState.value.myProfile.username, ignoreCase = true)) {
+                supabaseService.recordActivity(
+                    recipientUsername = story.username,
+                    action = "reacted $emoji to your story",
+                    category = NotificationFilter.COMMENTS,
+                    targetPostId = storyId,
+                    targetType = "STORY"
+                )
+            }
         }
         showToast("Reacted $emoji")
     }
 
     fun replyToStory(storyUsername: String, replyText: String) {
         if (replyText.isBlank()) return
-        sendMessage(
-            partnerUsername = storyUsername,
-            text = "Replied to story: $replyText",
-            isFromMe = true
-        )
+        val story = _uiState.value.stories.find { it.username.equals(storyUsername, ignoreCase = true) }
+        val storyId = story?.id ?: "story_${System.currentTimeMillis()}"
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = postRepository.replyToStory(storyId, storyUsername, replyText)
+            if (ok && !storyUsername.equals(_uiState.value.myProfile.username, ignoreCase = true)) {
+                supabaseService.recordActivity(
+                    recipientUsername = storyUsername,
+                    action = "replied to your story",
+                    category = NotificationFilter.COMMENTS,
+                    targetPostId = storyId,
+                    previewText = replyText,
+                    targetType = "STORY"
+                )
+            }
+        }
         showToast("💬 Reply sent to @$storyUsername")
     }
 

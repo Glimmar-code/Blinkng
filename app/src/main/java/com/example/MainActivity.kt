@@ -472,7 +472,10 @@ fun MainAppContent(
                         viewModel.closeConversation()
                         viewModel.openProfile(it) 
                     },
-                    isDark = uiState.isDarkMode
+                    isDark = uiState.isDarkMode,
+                    onRetryMessage = { msg ->
+                        viewModel.retrySendMessage(convo.partnerUsername, msg)
+                    }
                 )
             }
         }
@@ -493,7 +496,10 @@ fun MainAppContent(
                 onNotificationClick = { activity ->
                     viewModel.handleNotificationClick(activity)
                 },
-                isDark = uiState.isDarkMode
+                isDark = uiState.isDarkMode,
+                isLoading = uiState.activitiesLoading,
+                errorMessage = uiState.activitiesError,
+                onRefresh = { viewModel.fetchSupabaseData() }
             )
         }
 

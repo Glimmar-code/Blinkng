@@ -105,10 +105,13 @@ data class ActivityItem(
     val avatar: String,
     val action: String,
     val time: String,
+    val rawTimestamp: String = "",
     val isUnread: Boolean = false,
     val category: NotificationFilter = NotificationFilter.ALL,
     val targetPostId: String? = null,
     val targetMarketId: String? = null,
+    val targetUsername: String? = null,
+    val targetType: String? = null,
     val previewText: String? = null,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE
 )
@@ -173,13 +176,25 @@ data class Comment(
     val verificationBadge: VerificationBadge = VerificationBadge.NONE
 )
 
+enum class MessageStatus {
+    SENDING,
+    SENT,
+    FAILED
+}
+
 data class ChatMessage(
-    val id: String,
-    val senderId: String,
-    val text: String,
-    val timestamp: String,
-    val isFromMe: Boolean,
+    val id: String = "",
+    val senderId: String = "",
+    val text: String = "",
+    val timestamp: String = "Just now",
+    val isFromMe: Boolean = false,
+    val conversationId: String? = null,
+    val senderUsername: String = "",
+    val receiverId: String = "",
+    val receiverUsername: String = "",
+    val rawTimestamp: String = "",
     val isRead: Boolean = true,
+    val status: MessageStatus = MessageStatus.SENT,
     val isVoiceNote: Boolean = false,
     val voiceDuration: String = "",
     val attachedImageUrl: String? = null
@@ -188,11 +203,13 @@ data class ChatMessage(
 data class ChatConversation(
     val id: String,
     val partnerUsername: String,
+    val partnerId: String = "",
     val partnerName: String,
     val partnerAvatar: String,
-    val isOnline: Boolean,
-    val lastMessage: String,
-    val lastMessageTime: String,
+    val isOnline: Boolean = false,
+    val lastMessage: String = "",
+    val lastMessageTime: String = "",
+    val lastMessageRawTime: String = "",
     val unreadCount: Int = 0,
     val isVerified: Boolean = false,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE,

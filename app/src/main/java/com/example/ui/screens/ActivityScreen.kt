@@ -40,7 +40,10 @@ fun ActivityScreen(
     onBack: () -> Unit,
     onProfileClick: (String) -> Unit,
     onNotificationClick: (ActivityItem) -> Unit,
-    isDark: Boolean
+    isDark: Boolean,
+    isLoading: Boolean = false,
+    errorMessage: String? = null,
+    onRefresh: () -> Unit = {}
 ) {
     var selectedFilter by remember { mutableStateOf(NotificationFilter.ALL) }
 
@@ -124,7 +127,43 @@ fun ActivityScreen(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             // Notifications Feed
-            if (filteredActivities.isEmpty()) {
+            if (isLoading) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
+            } else if (!errorMessage.isNullOrBlank()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "Failed to load notifications",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = errorMessage,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = onRefresh) {
+                            Text("Retry")
+                        }
+                    }
+                }
+            } else if (filteredActivities.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .weight(1f)

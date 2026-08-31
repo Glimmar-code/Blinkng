@@ -6,6 +6,7 @@ import android.util.Log
 import com.example.data.models.AchievementBadge
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
+import com.example.data.models.MessageStatus
 import com.example.data.models.ContactField
 import com.example.data.models.FeedPost
 import com.example.data.models.LeaderboardUser
@@ -15,7 +16,13 @@ import com.example.data.models.PostPoll
 import com.example.data.models.SocialLinks
 import com.example.data.models.Story
 import com.example.data.models.UserProfile
+import com.example.data.models.SkillEndorsement
+import com.example.data.models.AvailabilityStatus
 import com.example.data.models.VerificationBadge
+import com.example.data.models.Comment
+import com.example.data.models.CommentReply
+import com.example.data.models.ActivityItem
+import com.example.data.models.NotificationFilter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Mutex
@@ -791,7 +798,13 @@ class SupabaseService {
     // SESSION / CURRENT USER
     // ============================================================
 
-    fun getCurrentUserId(): String? {
+        fun getCurrentUsername(): String? {
+        val context = SupabaseService.appContext ?: return null
+        return context.getSharedPreferences("blink_auth_prefs", Context.MODE_PRIVATE)
+            .getString("username", null)
+    }
+
+fun getCurrentUserId(): String? {
 
         val token =
             accessToken()
@@ -1442,7 +1455,6 @@ class SupabaseService {
         profile: UserProfile
     ): Boolean =
         withContext(Dispatchers.IO) {
-
             try {
                 val currentUserId =
                     getCurrentUserId()
@@ -1450,160 +1462,77 @@ class SupabaseService {
 
                 val json =
                     JSONObject().apply {
-
-                        put(
-                            "full_name",
-                            profile.fullName.trim()
-                        )
-
-                        put(
-                            "username",
-                            profile.username
-                                .trim()
-                                .lowercase(
-                                    Locale.US
-                                )
-                        )
-
-                        put(
-                            "avatar_url",
-                            profile.avatarUrl
-                        )
-
-                        put(
-                            "cover_photo",
-                            profile.coverPhotoUrl
-                        )
-
-                        put(
-                            "professional_headline",
-                            profile.professionalHeadline
-                        )
-
-                        put(
-                            "current_job_title",
-                            profile.currentJobTitle
-                        )
-
-                        put(
-                            "bio",
-                            profile.bio
-                        )
-
-                        put(
-                            "university",
-                            profile.university
-                        )
-
-                        put(
-                            "faculty",
-                            profile.faculty
-                        )
-
-                        put(
-                            "department",
-                            profile.department
-                        )
-
-                        put(
-                            "course_of_study",
-                            profile.courseOfStudy
-                        )
-
-                        put(
-                            "academic_level",
-                            profile.academicLevel
-                        )
-
-                        put(
-                            "graduation_year",
-                            profile.graduationYear
-                        )
-
-                        put(
-                            "country_of_origin",
-                            profile.countryOfOrigin
-                        )
-
-                        put(
-                            "current_city_state",
-                            profile.currentCityState
-                        )
-
-                        put(
-                            "email",
-                            profile.email.value
-                        )
-
-                        put(
-                            "phone",
-                            profile.phone.value
-                        )
-
-                        put(
-                            "whatsapp",
-                            profile.whatsapp.value
-                        )
-
-                        put(
-                            "website",
-                            profile.links.website
-                        )
-
-                        put(
-                            "linkedin",
-                            profile.links.linkedin
-                        )
-
-                        put(
-                            "twitter",
-                            profile.links.twitter
-                        )
-
-                        put(
-                            "instagram",
-                            profile.links.instagram
-                        )
-
-                        put(
-                            "featured_link",
-                            profile.links.featuredLink
-                        )
-
-                        put(
-                            "featured_link_label",
-                            profile.links.featuredLinkLabel
-                        )
-
-                        put(
-                            "favorite_quote",
-                            profile.favoriteQuote
-                        )
-
-                        put(
-                            "custom_status",
-                            profile.availability.label
-                        )
-
-                        put(
-                            "profile_views_this_week",
-                            profile.profileViewsThisWeek
-                        )
-
-                        put(
-                            "verification_badge",
-                            profile.verificationBadge.name
-                        )
-
-                        put(
-                            "is_verified",
-                            profile.verificationBadge != VerificationBadge.NONE
-                        )
-
-                        put(
-                            "updated_at",
-                            nowIso()
-                        )
+                        put("full_name", profile.fullName.trim())
+                        put("username", profile.username.trim().lowercase(Locale.US))
+                        put("avatar_url", profile.avatarUrl)
+                        put("cover_photo", profile.coverPhotoUrl)
+                        put("professional_headline", profile.professionalHeadline)
+                        put("current_job_title", profile.currentJobTitle)
+                        put("bio", profile.bio)
+                        put("university", profile.university)
+                        put("faculty", profile.faculty)
+                        put("department", profile.department)
+                        put("course_of_study", profile.courseOfStudy)
+                        put("academic_level", profile.academicLevel)
+                        put("graduation_year", profile.graduationYear)
+                        put("country_of_origin", profile.countryOfOrigin)
+                        put("current_city_state", profile.currentCityState)
+                        put("email", profile.email.value)
+                        put("phone", profile.phone.value)
+                        put("whatsapp", profile.whatsapp.value)
+                        put("website", profile.links.website)
+                        put("linkedin", profile.links.linkedin)
+                        put("twitter", profile.links.twitter)
+                        put("instagram", profile.links.instagram)
+                        put("featured_link", profile.links.featuredLink)
+                        put("featured_link_label", profile.links.featuredLinkLabel)
+                        put("favorite_quote", profile.favoriteQuote)
+                        put("custom_status", profile.availability.name)
+                        put("profile_views_this_week", profile.profileViewsThisWeek)
+                        put("verification_badge", profile.verificationBadge.name)
+                        put("is_verified", profile.verificationBadge != VerificationBadge.NONE)
+                        put("updated_at", nowIso())
+                        
+                        val skillsArray = JSONArray()
+                        profile.coreSkills.forEach { skillsArray.put(it) }
+                        put("core_skills", skillsArray)
+                        
+                        val hobbiesArray = JSONArray()
+                        profile.hobbies.forEach { hobbiesArray.put(it) }
+                        put("hobbies", hobbiesArray)
+                        
+                        val languagesArray = JSONArray()
+                        profile.languages.forEach { languagesArray.put(it) }
+                        put("languages", languagesArray)
+                        
+                        val skillEndorsementsArray = JSONArray()
+                        profile.skillEndorsements.forEach {
+                            val seObj = JSONObject()
+                            seObj.put("skill", it.skill)
+                            seObj.put("endorsements", it.endorsements)
+                            seObj.put("endorsed_by_me", it.endorsedByMe)
+                            skillEndorsementsArray.put(seObj)
+                        }
+                        put("skill_endorsements", skillEndorsementsArray)
+                        
+                        val badgesArray = JSONArray()
+                        profile.badges.forEach {
+                            val bObj = JSONObject()
+                            bObj.put("id", it.id)
+                            bObj.put("title", it.title)
+                            bObj.put("description", it.description)
+                            bObj.put("iconName", it.iconName)
+                            badgesArray.put(bObj)
+                        }
+                        put("badges", badgesArray)
+                        
+                        put("daily_streak", profile.dailyStreak)
+                        put("world_rank", profile.worldRank)
+                        put("campus_rank", profile.campusRank)
+                        put("verified_at_millis", profile.verifiedAtMillis)
+                        put("is_seller_active", profile.isSellerActive)
+                        put("seller_store_name", profile.sellerStoreName)
+                        put("joined_label", profile.joinedLabel)
                     }
 
                 // 1. Try update by user_id if present and valid UUID
@@ -1652,6 +1581,7 @@ class SupabaseService {
                 val upsertJson = JSONObject(json.toString()).apply {
                     put("id", validProfileId)
                 }
+
                 val upsertReq = newRequestBuilder("/rest/v1/profiles", authenticated = true)
                     .addHeader("Prefer", "resolution=merge-duplicates,return=representation")
                     .post(upsertJson.toString().toRequestBody(jsonMediaType))
@@ -1662,7 +1592,7 @@ class SupabaseService {
                 }
 
                 Log.d(TAG, "PROFILE_UPDATE upsert result: $upsertSuccess")
-                true
+                return@withContext upsertSuccess
 
             } catch (e: Exception) {
                 Log.e(
@@ -1670,10 +1600,9 @@ class SupabaseService {
                     "PROFILE_UPDATE exception",
                     e
                 )
-                true
+                return@withContext false
             }
         }
-
     // ============================================================
     // PROFILE MEDIA / STORAGE
     // ============================================================
@@ -1829,79 +1758,92 @@ class SupabaseService {
 
     suspend fun fetchFeedPosts(): List<FeedPost> =
         withContext(Dispatchers.IO) {
-
             try {
+                val currentUserId = getCurrentUserId() ?: ""
+                val currentUsername = appContext
+                    ?.getSharedPreferences("blink_auth_prefs", android.content.Context.MODE_PRIVATE)
+                    ?.getString("username", "") ?: ""
 
-                val request =
-                    newRequestBuilder(
-                        "/rest/v1/feed_posts" +
-                                "?select=*" +
-                                "&order=created_at.desc" +
-                                "&limit=100"
-                    )
-                        .get()
-                        .build()
+                // 1. Fetch posts
+                val request = newRequestBuilder(
+                    "/rest/v1/feed_posts?select=*&order=created_at.desc&limit=100"
+                ).get().build()
 
-                executeRequest(request).use { response ->
-
-                    val body =
-                        response.body
-                            ?.string()
-                            .orEmpty()
-
+                val postsStr = executeRequest(request).use { response ->
+                    val body = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
-                        if (response.code != 401) {
-                            Log.e(
-                                TAG,
-                                "FEED_FETCH failed " +
-                                        "status=${response.code} " +
-                                        "body=$body"
-                            )
-                        } else {
-                            Log.d(
-                                TAG,
-                                "FEED_FETCH: table protected by RLS; requires authenticated session."
-                            )
-                        }
-
+                        Log.e(TAG, "FEED_FETCH failed status=${response.code} body=$body")
                         return@withContext emptyList()
                     }
+                    if (body.isBlank() || body == "[]") return@withContext emptyList()
+                    body
+                }
 
-                    if (
-                        body.isBlank() ||
-                        body == "[]"
-                    ) {
-                        return@withContext emptyList()
+                // 2. Fetch my likes
+                val myLikes = mutableSetOf<String>()
+                if (currentUserId.isNotBlank() || currentUsername.isNotBlank()) {
+                    val filter = when {
+                        currentUserId.isNotBlank() -> "user_id=eq.$currentUserId"
+                        currentUsername.isNotBlank() -> "username=eq.$currentUsername"
+                        else -> ""
                     }
-
-                    val json =
-                        JSONArray(
-                            body
-                        )
-
-                    buildList {
-
-                        for (
-                            i in 0 until json.length()
-                        ) {
-
-                            parseFeedPost(
-                                json.getJSONObject(i)
-                            )?.let {
-                                add(it)
+                    val likesReq = newRequestBuilder("/rest/v1/post_likes?select=post_id&$filter").get().build()
+                    executeRequest(likesReq).use { response ->
+                        if (response.isSuccessful) {
+                            val body = response.body?.string().orEmpty()
+                            if (body.isNotBlank() && body != "[]") {
+                                val arr = JSONArray(body)
+                                for (i in 0 until arr.length()) {
+                                    myLikes.add(arr.getJSONObject(i).optString("post_id"))
+                                }
                             }
                         }
                     }
                 }
 
+                // 3. Fetch my bookmarks
+                val myBookmarks = mutableSetOf<String>()
+                if (currentUserId.isNotBlank() || currentUsername.isNotBlank()) {
+                    val filter = when {
+                        currentUserId.isNotBlank() -> "user_id=eq.$currentUserId"
+                        currentUsername.isNotBlank() -> "username=eq.$currentUsername"
+                        else -> ""
+                    }
+                    val bmkReq = newRequestBuilder("/rest/v1/post_bookmarks?select=post_id&$filter").get().build()
+                    executeRequest(bmkReq).use { response ->
+                        if (response.isSuccessful) {
+                            val body = response.body?.string().orEmpty()
+                            if (body.isNotBlank() && body != "[]") {
+                                val arr = JSONArray(body)
+                                for (i in 0 until arr.length()) {
+                                    myBookmarks.add(arr.getJSONObject(i).optString("post_id"))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. Parse and map
+                val json = JSONArray(postsStr)
+                buildList {
+                    for (i in 0 until json.length()) {
+                        try {
+                            val obj = json.getJSONObject(i)
+                            var post = parseFeedPost(obj)
+                            if (myLikes.contains(post.id)) {
+                                post = post.copy(isLiked = true)
+                            }
+                            if (myBookmarks.contains(post.id)) {
+                                post = post.copy(isBookmarked = true)
+                            }
+                            add(post)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "FEED_FETCH item parse error", e)
+                        }
+                    }
+                }
             } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "FEED_FETCH exception",
-                    e
-                )
-
+                Log.e(TAG, "FEED_FETCH exception", e)
                 emptyList()
             }
         }
@@ -1909,7 +1851,7 @@ class SupabaseService {
     /**
      * Creates a feed post using the authenticated Supabase user's ID.
      */
-    suspend fun createFeedPost(
+        suspend fun createFeedPost(
         author: String,
         authorAvatar: String,
         facultyTag: String,
@@ -1919,10 +1861,19 @@ class SupabaseService {
         tags: List<String> = emptyList(),
         mentions: List<String> = emptyList(),
         poll: PostPoll? = null,
-        isReel: Boolean = false
-    ): Boolean =
+        isReel: Boolean = false,
+        audience: String = "Everyone",
+        category: String = "Campus Life",
+        location: String? = null,
+        linkUrl: String? = null,
+        allowComments: Boolean = true,
+        hideLikes: Boolean = false,
+        isPinned: Boolean = false,
+        isDisappearing: Boolean = false,
+        audioTitle: String? = null,
+        altText: String? = null
+    ): FeedPost? =
         withContext(Dispatchers.IO) {
-
             try {
                 val userId =
                     getCurrentUserId()
@@ -1930,133 +1881,73 @@ class SupabaseService {
 
                 val json =
                     JSONObject().apply {
-
-                        put(
-                            "user_id",
-                            userId
-                        )
-
-                        put(
-                            "type",
-                            when {
-                                isReel || !videoUrl.isNullOrBlank() -> "reel"
-                                !imageUrl.isNullOrBlank() -> "photo"
-                                else -> "text"
-                            }
-                        )
-
-                        put(
-                            "faculty",
-                            facultyTag
-                                .trim()
-                                .ifBlank {
-                                    "SIMME"
-                                }
-                        )
-
-                        put(
-                            "text",
-                            text.trim()
-                        )
-
-                        put(
-                            "content",
-                            text.trim()
-                        )
-
+                        put("user_id", userId)
+                        put("type", when {
+                            isReel || !videoUrl.isNullOrBlank() -> "reel"
+                            !imageUrl.isNullOrBlank() -> "photo"
+                            else -> "text"
+                        })
+                        put("faculty", facultyTag.trim().ifBlank { "SIMME" })
+                        put("text", text.trim())
+                        put("content", text.trim())
+                        
                         if (!imageUrl.isNullOrBlank()) {
-                            put(
-                                "image_url",
-                                imageUrl
-                            )
-                            put(
-                                "media_url",
-                                imageUrl
-                            )
+                            put("image_url", imageUrl)
+                            put("media_url", imageUrl)
                         }
-
                         if (!videoUrl.isNullOrBlank()) {
-                            put(
-                                "video_url",
-                                videoUrl
-                            )
+                            put("video_url", videoUrl)
                         }
-
-                        put(
-                            "is_reel",
-                            isReel
-                        )
-
-                        put(
-                            "like_count",
-                            0
-                        )
-
-                        put(
-                            "comment_count",
-                            0
-                        )
-
-                        put(
-                            "share_count",
-                            0
-                        )
-
-                        put(
-                            "view_count",
-                            0
-                        )
-
-                        put(
-                            "username",
-                            author
-                        )
-
-                        put(
-                            "author",
-                            author
-                        )
-
-                        put(
-                            "avatar_url",
-                            authorAvatar
-                        )
-
-                        put(
-                            "author_avatar",
-                            authorAvatar
-                        )
-
+                        
+                        put("is_reel", isReel)
+                        put("like_count", 0)
+                        put("comment_count", 0)
+                        put("share_count", 0)
+                        put("view_count", 0)
+                        put("username", author)
+                        put("author", author)
+                        put("avatar_url", authorAvatar)
+                        put("author_avatar", authorAvatar)
+                        
                         if (tags.isNotEmpty()) {
-                            put(
-                                "tags",
-                                JSONArray(tags)
-                            )
+                            val tagsArray = JSONArray()
+                            tags.forEach { tagsArray.put(it) }
+                            put("tags", tagsArray)
                         }
-
                         if (mentions.isNotEmpty()) {
-                            put(
-                                "mentions",
-                                JSONArray(mentions)
-                            )
+                            val mentionsArray = JSONArray()
+                            mentions.forEach { mentionsArray.put(it) }
+                            put("mentions", mentionsArray)
                         }
-
+                        
                         if (poll != null) {
-                            val pollJson = JSONObject()
-                            pollJson.put("question", poll.question)
-                            val options = JSONArray()
-                            poll.options.forEach { option ->
-                                options.put(
-                                    JSONObject().apply {
-                                        put("id", option.id)
-                                        put("text", option.text)
-                                        put("votes", option.votes)
-                                    }
-                                )
+                            val pollObj = JSONObject()
+                            pollObj.put("question", poll.question)
+                            pollObj.put("total_votes", poll.totalVotes)
+                            pollObj.put("has_voted", poll.hasVoted)
+                            val optionsArray = JSONArray()
+                            poll.options.forEach { opt ->
+                                val optObj = JSONObject()
+                                optObj.put("id", opt.id)
+                                optObj.put("text", opt.text)
+                                optObj.put("votes", opt.votes)
+                                optObj.put("is_voted_by_me", opt.isVotedByMe)
+                                optionsArray.put(optObj)
                             }
-                            pollJson.put("options", options)
-                            put("poll_data", pollJson.toString())
+                            pollObj.put("options", optionsArray)
+                            put("poll_data", pollObj)
                         }
+                        
+                        put("audience", audience)
+                        put("category", category)
+                        location?.let { put("location", it) }
+                        linkUrl?.let { put("link_url", it) }
+                        put("allow_comments", allowComments)
+                        put("hide_likes", hideLikes)
+                        put("is_pinned", isPinned)
+                        put("is_disappearing", isDisappearing)
+                        audioTitle?.let { put("audio_title", it) }
+                        altText?.let { put("alt_text", it) }
                     }
 
                 val request =
@@ -2064,57 +1955,37 @@ class SupabaseService {
                         "/rest/v1/feed_posts",
                         authenticated = true
                     )
-                        .addHeader(
-                            "Prefer",
-                            "return=representation"
-                        )
+                        .addHeader("Prefer", "return=representation")
                         .post(
-                            json.toString()
-                                .toRequestBody(
-                                    jsonMediaType
-                                )
+                            json.toString().toRequestBody(jsonMediaType)
                         )
                         .build()
 
                 executeRequest(request).use { response ->
-
-                    val body =
-                        response.body
-                            ?.string()
-                            .orEmpty()
-
-                    if (!response.isSuccessful) {
-                        Log.e(
-                            TAG,
-                            "POST_CREATE failed " +
-                                    "status=${response.code} " +
-                                    "body=$body"
-                        )
-                    } else {
-                        Log.d(
-                            TAG,
-                            "POST_CREATE success userId=$userId"
-                        )
+                    val body = response.body?.string().orEmpty()
+                    if (response.isSuccessful && body.isNotBlank()) {
+                        try {
+                            val arr = JSONArray(body)
+                            if (arr.length() > 0) {
+                                return@withContext parseFeedPost(arr.getJSONObject(0))
+                            }
+                        } catch (e: Exception) {
+                            try {
+                                return@withContext parseFeedPost(JSONObject(body))
+                            } catch (e2: Exception) {
+                                Log.e(TAG, "Failed to parse created post", e2)
+                            }
+                        }
                     }
-
-                    response.isSuccessful
+                    Log.e(TAG, "POST_CREATE failed: ${response.code} $body")
+                    null
                 }
-
             } catch (e: Exception) {
-                Log.e(
-                    TAG,
-                    "POST_CREATE exception",
-                    e
-                )
-                true
+                Log.e(TAG, "POST_CREATE exception", e)
+                null
             }
         }
-
-    // ============================================================
-    // POST MEDIA UPLOAD
-    // ============================================================
-
-    suspend fun uploadPostMedia(
+suspend fun uploadPostMedia(
         userId: String,
         bytes: ByteArray,
         mimeType: String,
@@ -2311,7 +2182,44 @@ class SupabaseService {
      * Persists a post like/unlike action to both post_likes table (for user-specific state)
      * and updates like_count in feed_posts table using authenticated JWT headers.
      */
-    suspend fun togglePostLike(
+    
+    suspend fun togglePostBookmark(
+        postId: String,
+        bookmarked: Boolean
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val currentUserId = getCurrentUserId() ?: ""
+            val currentUsername = appContext
+                ?.getSharedPreferences("blink_auth_prefs", android.content.Context.MODE_PRIVATE)
+                ?.getString("username", "") ?: ""
+
+            if (bookmarked) {
+                val obj = JSONObject().apply {
+                    put("post_id", postId)
+                    if (currentUserId.isNotBlank()) put("user_id", currentUserId)
+                    if (currentUsername.isNotBlank()) put("username", currentUsername)
+                }
+                val req = newRequestBuilder("/rest/v1/post_bookmarks", authenticated = true)
+                    .addHeader("Prefer", "resolution=merge-duplicates")
+                    .post(obj.toString().toRequestBody(jsonMediaType))
+                    .build()
+                executeRequest(req).use { it.isSuccessful }
+            } else {
+                val filter = when {
+                    currentUserId.isNotBlank() -> "user_id=eq.$currentUserId"
+                    currentUsername.isNotBlank() -> "username=eq.$currentUsername"
+                    else -> ""
+                }
+                val url = if (filter.isNotBlank()) "/rest/v1/post_bookmarks?post_id=eq.$postId&$filter" else "/rest/v1/post_bookmarks?post_id=eq.$postId"
+                val req = newRequestBuilder(url, authenticated = true).delete().build()
+                executeRequest(req).use { it.isSuccessful }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "togglePostBookmark failed", e)
+            false
+        }
+    }
+suspend fun togglePostLike(
         postId: String,
         liked: Boolean,
         newLikeCount: Int
@@ -2403,13 +2311,97 @@ class SupabaseService {
     }
 
     // ============================================================
-    // STORIES
+
+    // ============================================================
+    // POLL & STORY HELPERS
+    // ============================================================
+
+    private suspend fun fetchUserStoryViews(username: String): Set<String> = withContext(Dispatchers.IO) {
+        try {
+            val req = newRequestBuilder(
+                "/rest/v1/story_views?viewer_username=eq.${URLEncoder.encode(username, "UTF-8")}&select=story_id",
+                authenticated = true
+            ).get().build()
+            executeRequest(req).use { resp ->
+                if (!resp.isSuccessful) return@withContext emptySet()
+                val body = resp.body?.string().orEmpty()
+                if (body.isBlank() || body == "[]") return@withContext emptySet()
+                val arr = JSONArray(body)
+                val set = mutableSetOf<String>()
+                for (i in 0 until arr.length()) {
+                    val sid = arr.optJSONObject(i)?.optString("story_id", "")
+                    if (!sid.isNullOrBlank()) set.add(sid)
+                }
+                set
+            }
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
+
+    private suspend fun fetchUserStoryLikes(username: String): Set<String> = withContext(Dispatchers.IO) {
+        try {
+            val req = newRequestBuilder(
+                "/rest/v1/story_likes?username=eq.${URLEncoder.encode(username, "UTF-8")}&select=story_id",
+                authenticated = true
+            ).get().build()
+            executeRequest(req).use { resp ->
+                if (!resp.isSuccessful) return@withContext emptySet()
+                val body = resp.body?.string().orEmpty()
+                if (body.isBlank() || body == "[]") return@withContext emptySet()
+                val arr = JSONArray(body)
+                val set = mutableSetOf<String>()
+                for (i in 0 until arr.length()) {
+                    val sid = arr.optJSONObject(i)?.optString("story_id", "")
+                    if (!sid.isNullOrBlank()) set.add(sid)
+                }
+                set
+            }
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
+
+    private suspend fun fetchUserPollVotes(username: String): Map<String, String> = withContext(Dispatchers.IO) {
+        try {
+            val req = newRequestBuilder(
+                "/rest/v1/poll_votes?username=eq.${URLEncoder.encode(username, "UTF-8")}&select=post_id,option_id",
+                authenticated = true
+            ).get().build()
+            executeRequest(req).use { resp ->
+                if (!resp.isSuccessful) return@withContext emptyMap()
+                val body = resp.body?.string().orEmpty()
+                if (body.isBlank() || body == "[]") return@withContext emptyMap()
+                val arr = JSONArray(body)
+                val map = mutableMapOf<String, String>()
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    val pid = obj.optString("post_id", "")
+                    val optId = obj.optString("option_id", "")
+                    if (pid.isNotBlank() && optId.isNotBlank()) {
+                        map[pid] = optId
+                    }
+                }
+                map
+            }
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+
+    // ============================================================
+    // STORIES & POLLS
     // ============================================================
 
     suspend fun fetchStories(): List<Story> = withContext(Dispatchers.IO) {
         try {
+            val currentUsername = getCurrentUsername() ?: ""
+            val viewedIds = fetchUserStoryViews(currentUsername)
+            val likedIds = fetchUserStoryLikes(currentUsername)
+
             val request = newRequestBuilder(
-                "/rest/v1/stories?select=*&order=created_at.desc&limit=30",
+                "/rest/v1/stories?select=*&order=created_at.desc&limit=50",
                 authenticated = true
             )
                 .get()
@@ -2433,18 +2425,22 @@ class SupabaseService {
                     val faculty = obj.optString("faculty", "SIMME")
                     val university = obj.optString("university", "University of Lagos")
                     val likesCount = obj.optInt("likes_count", obj.optInt("likes", 0))
+                    val isLiked = likedIds.contains(id) || obj.optBoolean("is_liked", false)
+                    val hasUnseen = !viewedIds.contains(id)
 
                     list.add(
                         Story(
                             id = id,
                             username = username,
                             avatar = avatar.ifBlank { "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&h=300&fit=crop" },
-                            hasUnseen = true,
+                            hasUnseen = hasUnseen,
+                            isUser = username.equals(currentUsername, ignoreCase = true),
                             storyImage = storyImage,
                             caption = caption,
                             faculty = faculty,
                             university = university,
-                            likesCount = likesCount
+                            likesCount = likesCount,
+                            isLiked = isLiked
                         )
                     )
                 }
@@ -2467,6 +2463,9 @@ class SupabaseService {
                 put("faculty", story.faculty)
                 put("university", story.university)
                 put("likes_count", story.likesCount)
+                put("created_at", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }.format(Date()))
             }
             val request = newRequestBuilder(
                 "/rest/v1/stories",
@@ -2483,6 +2482,198 @@ class SupabaseService {
             false
         }
     }
+
+    suspend fun markStoryViewed(storyId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val username = getCurrentUsername() ?: "user"
+            val userId = getCurrentUserId() ?: "user"
+
+            val json = JSONObject().apply {
+                put("story_id", storyId)
+                put("viewer_id", userId)
+                put("viewer_username", username)
+                put("created_at", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }.format(Date()))
+            }
+            val request = newRequestBuilder(
+                "/rest/v1/story_views",
+                authenticated = true
+            )
+                .post(json.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            executeRequest(request).use { response ->
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "markStoryViewed exception", e)
+            false
+        }
+    }
+
+    suspend fun toggleStoryLike(storyId: String, nextLiked: Boolean, newCount: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val username = getCurrentUsername() ?: "user"
+            val userId = getCurrentUserId() ?: "user"
+
+            if (nextLiked) {
+                val json = JSONObject().apply {
+                    put("story_id", storyId)
+                    put("user_id", userId)
+                    put("username", username)
+                    put("created_at", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                        timeZone = TimeZone.getTimeZone("UTC")
+                    }.format(Date()))
+                }
+                val req = newRequestBuilder("/rest/v1/story_likes", authenticated = true)
+                    .post(json.toString().toRequestBody(jsonMediaType))
+                    .build()
+                executeRequest(req).close()
+            } else {
+                val req = newRequestBuilder(
+                    "/rest/v1/story_likes?story_id=eq.${URLEncoder.encode(storyId, "UTF-8")}&username=eq.${URLEncoder.encode(username, "UTF-8")}",
+                    authenticated = true
+                )
+                    .delete()
+                    .build()
+                executeRequest(req).close()
+            }
+
+            val patchJson = JSONObject().apply { put("likes_count", newCount) }
+            val patchReq = newRequestBuilder(
+                "/rest/v1/stories?id=eq.${URLEncoder.encode(storyId, "UTF-8")}",
+                authenticated = true
+            )
+                .patch(patchJson.toString().toRequestBody(jsonMediaType))
+                .build()
+            executeRequest(patchReq).use { resp -> resp.isSuccessful }
+        } catch (e: Exception) {
+            Log.e(TAG, "toggleStoryLike exception", e)
+            false
+        }
+    }
+
+    suspend fun reactToStory(storyId: String, emoji: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val username = getCurrentUsername() ?: "user"
+            val userId = getCurrentUserId() ?: "user"
+
+            val json = JSONObject().apply {
+                put("story_id", storyId)
+                put("user_id", userId)
+                put("username", username)
+                put("emoji", emoji)
+                put("created_at", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }.format(Date()))
+            }
+            val request = newRequestBuilder(
+                "/rest/v1/story_reactions",
+                authenticated = true
+            )
+                .post(json.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            executeRequest(request).use { response ->
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "reactToStory exception", e)
+            false
+        }
+    }
+
+    suspend fun replyToStory(storyId: String, recipientUsername: String, replyText: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val username = getCurrentUsername() ?: "user"
+            val userId = getCurrentUserId() ?: "user"
+
+            val json = JSONObject().apply {
+                put("story_id", storyId)
+                put("sender_id", userId)
+                put("sender_username", username)
+                put("recipient_username", recipientUsername)
+                put("reply_text", replyText)
+                put("created_at", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }.format(Date()))
+            }
+            val request = newRequestBuilder(
+                "/rest/v1/story_replies",
+                authenticated = true
+            )
+                .post(json.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            executeRequest(request).use { response ->
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "replyToStory exception", e)
+            false
+        }
+    }
+
+    suspend fun votePoll(postId: String, optionId: String, updatedPoll: PostPoll): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val username = getCurrentUsername() ?: "user"
+            val userId = getCurrentUserId() ?: "user"
+
+            val voteJson = JSONObject().apply {
+                put("post_id", postId)
+                put("option_id", optionId)
+                put("user_id", userId)
+                put("username", username)
+                put("created_at", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }.format(Date()))
+            }
+            val voteReq = newRequestBuilder(
+                "/rest/v1/poll_votes",
+                authenticated = true
+            )
+                .post(voteJson.toString().toRequestBody(jsonMediaType))
+                .build()
+            try { executeRequest(voteReq).close() } catch (e: Exception) { Log.w(TAG, "poll_votes error", e) }
+
+            val pollObj = JSONObject().apply {
+                put("question", updatedPoll.question)
+                put("total_votes", updatedPoll.totalVotes)
+                put("has_voted", true)
+                val optionsArray = JSONArray()
+                updatedPoll.options.forEach { opt ->
+                    val optObj = JSONObject().apply {
+                        put("id", opt.id)
+                        put("text", opt.text)
+                        put("votes", opt.votes)
+                        put("is_voted_by_me", opt.isVotedByMe)
+                    }
+                    optionsArray.put(optObj)
+                }
+                put("options", optionsArray)
+            }
+
+            val patchJson = JSONObject().apply {
+                put("poll_data", pollObj)
+            }
+
+            val patchReq = newRequestBuilder(
+                "/rest/v1/feed_posts?id=eq.${URLEncoder.encode(postId, "UTF-8")}",
+                authenticated = true
+            )
+                .patch(patchJson.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            executeRequest(patchReq).use { response ->
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "votePoll exception", e)
+            false
+        }
+    }
+
 
     // ============================================================
     // PROFILES LIST
@@ -2817,1144 +3008,529 @@ class SupabaseService {
     // MESSAGES
     // ============================================================
 
-    suspend fun fetchMessages():
-        List<ChatConversation> =
-        withContext(Dispatchers.IO) {
+    suspend fun fetchMessages(): List<ChatConversation> = withContext(Dispatchers.IO) {
+        try {
+            val currentUserId = getCurrentUserId() ?: ""
+            val currentUsername = getCurrentUsername() ?: ""
 
-            try {
+            val request = newRequestBuilder(
+                "/rest/v1/messages" +
+                        "?select=*" +
+                        "&order=created_at.asc" +
+                        "&limit=300"
+            )
+                .get()
+                .build()
 
-                val currentUserId =
-                    getCurrentUserId()
-
-                val request =
-                    newRequestBuilder(
-                        "/rest/v1/messages" +
-                                "?select=*" +
-                                "&order=created_at.asc" +
-                                "&limit=200"
-                    )
-                        .get()
-                        .build()
-
-                executeRequest(request).use { response ->
-
-                    val body =
-                        response.body
-                            ?.string()
-                            .orEmpty()
-
-                    if (!response.isSuccessful) {
-                        return@withContext emptyList()
-                    }
-
-                    if (
-                        body.isBlank() ||
-                        body == "[]"
-                    ) {
-                        return@withContext emptyList()
-                    }
-
-                    val array =
-                        JSONArray(body)
-
-                    val conversationMap =
-                        mutableMapOf<
-                                String,
-                                MutableList<ChatMessage>
-                                >()
-
-                    for (
-                        i in 0 until array.length()
-                    ) {
-
-                        val obj =
-                            array.getJSONObject(i)
-
-                        val senderId =
-                            obj.optString(
-                                "sender_id",
-                                ""
-                            )
-
-                        val receiverId =
-                            obj.optString(
-                                "receiver_id",
-                                ""
-                            )
-
-                        val senderUsername =
-                            obj.optString(
-                                "sender_username",
-                                ""
-                            )
-
-                        val receiverUsername =
-                            obj.optString(
-                                "receiver_username",
-                                ""
-                            )
-
-                        val isMine =
-                            if (
-                                !currentUserId.isNullOrBlank()
-                            ) {
-                                senderId ==
-                                        currentUserId
-                            } else {
-                                senderUsername.equals(
-                                    "you",
-                                    ignoreCase = true
-                                )
-                            }
-
-                        val partner =
-                            if (isMine) {
-                                receiverUsername
-                                    .ifBlank {
-                                        receiverId
-                                    }
-                            } else {
-                                senderUsername
-                                    .ifBlank {
-                                        senderId
-                                    }
-                            }
-
-                        if (
-                            partner.isBlank()
-                        ) {
-                            continue
-                        }
-
-                        val text =
-                            obj.optString(
-                                "text",
-                                obj.optString(
-                                    "content",
-                                    obj.optString(
-                                        "message",
-                                        ""
-                                    )
-                                )
-                            )
-
-                        val timestamp =
-                            obj.optString(
-                                "created_at",
-                                ""
-                            )
-
-                        val message =
-                            ChatMessage(
-                                id =
-                                    obj.optString(
-                                        "id",
-                                        UUID.randomUUID()
-                                            .toString()
-                                    ),
-                                senderId =
-                                    senderId
-                                        .ifBlank {
-                                            senderUsername
-                                        },
-                                text =
-                                    text,
-                                timestamp =
-                                    formatTimeAgo(
-                                        timestamp
-                                    ),
-                                isFromMe =
-                                    isMine
-                            )
-
-                        conversationMap
-                            .getOrPut(
-                                partner
-                            ) {
-                                mutableListOf()
-                            }
-                            .add(
-                                message
-                            )
-                    }
-
-                    conversationMap.map {
-                        entry ->
-
-                        val partner =
-                            entry.key
-
-                        val messages =
-                            entry.value
-                                .sortedBy {
-                                    it.timestamp
-                                }
-
-                        ChatConversation(
-                            id =
-                                "conv_$partner",
-                            partnerUsername =
-                                partner,
-                            partnerName =
-                                partner
-                                    .replace(
-                                        ".",
-                                        " "
-                                    )
-                                    .replace(
-                                        "_",
-                                        " "
-                                    )
-                                    .capitalizeWords(),
-                            partnerAvatar =
-                                "",
-                            isOnline =
-                                false,
-                            lastMessage =
-                                messages
-                                    .lastOrNull()
-                                    ?.text
-                                    .orEmpty(),
-                            lastMessageTime =
-                                messages
-                                    .lastOrNull()
-                                    ?.timestamp
-                                    ?: "Recent",
-                            unreadCount =
-                                0,
-                            isVerified =
-                                false,
-                            verificationBadge =
-                                VerificationBadge.NONE,
-                            messages =
-                                messages.toMutableList()
-                        )
-                    }
+            executeRequest(request).use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful || body.isBlank() || body == "[]") {
+                    return@withContext emptyList()
                 }
 
-            } catch (e: Exception) {
+                val array = JSONArray(body)
+                val conversationMap = mutableMapOf<String, MutableList<ChatMessage>>()
 
-                Log.e(
-                    TAG,
-                    "MESSAGES_FETCH exception",
-                    e
-                )
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val senderId = obj.optString("sender_id", "")
+                    val receiverId = obj.optString("receiver_id", "")
+                    val senderUsername = obj.optString("sender_username", "")
+                    val receiverUsername = obj.optString("receiver_username", "")
 
-                emptyList()
+                    val isMine = if (currentUserId.isNotBlank()) {
+                        senderId == currentUserId || (senderUsername.isNotBlank() && senderUsername.equals(currentUsername, ignoreCase = true))
+                    } else if (currentUsername.isNotBlank()) {
+                        senderUsername.equals(currentUsername, ignoreCase = true)
+                    } else {
+                        senderUsername.equals("you", ignoreCase = true)
+                    }
+
+                    val partner = if (isMine) {
+                        receiverUsername.ifBlank { receiverId }
+                    } else {
+                        senderUsername.ifBlank { senderId }
+                    }
+
+                    if (partner.isBlank()) continue
+
+                    val text = obj.optString(
+                        "text",
+                        obj.optString("content", obj.optString("message", ""))
+                    )
+                    val isoCreatedAt = obj.optString("created_at", "")
+                    val isRead = obj.optBoolean("is_read", false)
+
+                    val message = ChatMessage(
+                        id = obj.optString("id", UUID.randomUUID().toString()),
+                        senderId = senderId.ifBlank { senderUsername },
+                        senderUsername = senderUsername,
+                        receiverId = receiverId.ifBlank { receiverUsername },
+                        receiverUsername = receiverUsername,
+                        text = text,
+                        rawTimestamp = isoCreatedAt,
+                        timestamp = formatTimeAgo(isoCreatedAt),
+                        isFromMe = isMine,
+                        isRead = isRead,
+                        status = MessageStatus.SENT
+                    )
+
+                    conversationMap.getOrPut(partner) { mutableListOf() }.add(message)
+                }
+
+                conversationMap.map { entry ->
+                    val partner = entry.key
+                    val messages = entry.value.sortedBy { it.rawTimestamp.ifBlank { it.timestamp } }
+                    val unread = messages.count { !it.isFromMe && !it.isRead }
+                    val lastMsg = messages.lastOrNull()
+
+                    ChatConversation(
+                        id = "conv_$partner",
+                        partnerUsername = partner,
+                        partnerName = partner.replace(".", " ").replace("_", " ").capitalizeWords(),
+                        partnerAvatar = "",
+                        isOnline = false,
+                        lastMessage = lastMsg?.text.orEmpty(),
+                        lastMessageTime = lastMsg?.timestamp ?: "Recent",
+                        lastMessageRawTime = lastMsg?.rawTimestamp.orEmpty(),
+                        unreadCount = unread,
+                        isVerified = false,
+                        verificationBadge = VerificationBadge.NONE,
+                        messages = messages.toMutableList()
+                    )
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "MESSAGES_FETCH exception", e)
+            emptyList()
         }
+    }
 
     suspend fun sendMessage(
         receiverUsername: String,
         text: String
-    ): Boolean =
-        withContext(Dispatchers.IO) {
+    ): Result<ChatMessage> = withContext(Dispatchers.IO) {
+        try {
+            val currentUserId = getCurrentUserId() ?: ""
+            val currentUsername = getCurrentUsername() ?: ""
 
-            try {
+            if (receiverUsername.isBlank() || text.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("Receiver username or text is blank"))
+            }
 
-                val currentUserId =
-                    getCurrentUserId()
-                        ?: return@withContext false
+            val json = JSONObject().apply {
+                if (currentUserId.isNotBlank()) put("sender_id", currentUserId)
+                if (currentUsername.isNotBlank()) put("sender_username", currentUsername)
+                put("receiver_username", receiverUsername.trim().lowercase(Locale.US))
+                put("text", text.trim())
+                put("content", text.trim())
+                put("is_read", false)
+                put("created_at", nowIso())
+            }
 
-                if (
-                    receiverUsername.isBlank() ||
-                    text.isBlank()
-                ) {
-                    return@withContext false
+            val request = newRequestBuilder("/rest/v1/messages", authenticated = true)
+                .addHeader("Prefer", "return=representation")
+                .post(json.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            executeRequest(request).use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "MESSAGE_SEND failed status=${response.code} body=$body")
+                    return@withContext Result.failure(Exception("HTTP ${response.code}: $body"))
                 }
 
-                val json =
-                    JSONObject().apply {
-
-                        put(
-                            "sender_id",
-                            currentUserId
-                        )
-
-                        put(
-                            "receiver_username",
-                            receiverUsername
-                                .trim()
-                                .lowercase(
-                                    Locale.US
-                                )
-                        )
-
-                        put(
-                            "text",
-                            text.trim()
-                        )
-
-                        put(
-                            "created_at",
-                            nowIso()
-                        )
-                    }
-
-                val request =
-                    newRequestBuilder(
-                        "/rest/v1/messages",
-                        authenticated = true
-                    )
-                        .addHeader(
-                            "Prefer",
-                            "return=representation"
-                        )
-                        .post(
-                            json.toString()
-                                .toRequestBody(
-                                    jsonMediaType
-                                )
-                        )
-                        .build()
-
-                executeRequest(request).use { response ->
-
-                    val body =
-                        response.body
-                            ?.string()
-                            .orEmpty()
-
-                    if (!response.isSuccessful) {
-
-                        Log.e(
-                            TAG,
-                            "MESSAGE_SEND failed " +
-                                    "status=${response.code} " +
-                                    "body=$body"
-                        )
-                    }
-
-                    response.isSuccessful
-                }
-
-            } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "MESSAGE_SEND exception",
-                    e
+                var createdMsg = ChatMessage(
+                    id = UUID.randomUUID().toString(),
+                    senderId = currentUserId,
+                    senderUsername = currentUsername,
+                    receiverUsername = receiverUsername,
+                    text = text.trim(),
+                    rawTimestamp = nowIso(),
+                    timestamp = "Just now",
+                    isFromMe = true,
+                    isRead = false,
+                    status = MessageStatus.SENT
                 )
 
-                false
+                if (body.isNotBlank() && body != "[]") {
+                    try {
+                        val arr = JSONArray(body)
+                        if (arr.length() > 0) {
+                            val resObj = arr.getJSONObject(0)
+                            val serverId = resObj.optString("id", createdMsg.id)
+                            val createdAt = resObj.optString("created_at", createdMsg.rawTimestamp)
+                            createdMsg = createdMsg.copy(
+                                id = serverId,
+                                rawTimestamp = createdAt,
+                                timestamp = formatTimeAgo(createdAt)
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed parsing created message response", e)
+                    }
+                }
+
+                // Update conversations table as well
+                updateConversationInSupabase(currentUsername, receiverUsername, text.trim(), createdMsg.rawTimestamp)
+
+                Result.success(createdMsg)
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "MESSAGE_SEND exception", e)
+            Result.failure(e)
         }
+    }
+
+    private suspend fun updateConversationInSupabase(
+        senderUsername: String,
+        receiverUsername: String,
+        lastMessageText: String,
+        timestamp: String
+    ) {
+        try {
+            val convoJson = JSONObject().apply {
+                put("user1_username", senderUsername)
+                put("user2_username", receiverUsername)
+                put("last_message", lastMessageText)
+                put("last_message_at", timestamp)
+                put("updated_at", timestamp)
+            }
+            val request = newRequestBuilder("/rest/v1/conversations", authenticated = true)
+                .addHeader("Prefer", "resolution=merge-duplicates")
+                .post(convoJson.toString().toRequestBody(jsonMediaType))
+                .build()
+            executeRequest(request).use { }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to update conversation record", e)
+        }
+    }
+
+    suspend fun markMessagesRead(partnerUsername: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val currentUsername = getCurrentUsername() ?: ""
+            if (partnerUsername.isBlank() || currentUsername.isBlank()) return@withContext false
+
+            val patchObj = JSONObject().apply {
+                put("is_read", true)
+            }
+            val url = "/rest/v1/messages?sender_username=eq.$partnerUsername&receiver_username=eq.$currentUsername&is_read=eq.false"
+            val request = newRequestBuilder(url, authenticated = true)
+                .patch(patchObj.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            executeRequest(request).use { response ->
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "markMessagesRead failed", e)
+            false
+        }
+    }
 
     // ============================================================
     // PARSERS
     // ============================================================
 
-    private fun parseUserProfile(
-        obj: JSONObject
-    ): UserProfile {
 
-        val badge =
-            when (
-                obj.optString(
-                    "verification_badge",
-                    ""
-                ).uppercase(
-                    Locale.US
-                )
-            ) {
-
-                "GOLD" ->
-                    VerificationBadge.GOLD
-
-                "BLUE" ->
-                    VerificationBadge.BLUE
-
-                else ->
-                    VerificationBadge.NONE
+    private fun parseFeedPost(obj: JSONObject): FeedPost {
+        val author = obj.optString("author", obj.optString("username", ""))
+        val imagesArray = obj.optJSONArray("images")
+        val imagesList = mutableListOf<String>()
+        if (imagesArray != null) {
+            for (i in 0 until imagesArray.length()) {
+                val url = imagesArray.optString(i, "")
+                if (url.isNotBlank()) imagesList.add(url)
             }
+        }
+        val imageUrl = obj.optString("image_url", obj.optString("media_url", ""))
+        if (imageUrl.isNotBlank() && !imagesList.contains(imageUrl)) {
+            imagesList.add(imageUrl)
+        }
 
-        val links =
-            SocialLinks(
-                website =
-                    obj.optString(
-                        "website",
-                        ""
-                    ),
-                linkedin =
-                    obj.optString(
-                        "linkedin",
-                        ""
-                    ),
-                twitter =
-                    obj.optString(
-                        "twitter",
-                        ""
-                    ),
-                instagram =
-                    obj.optString(
-                        "instagram",
-                        ""
-                    ),
-                featuredLink =
-                    obj.optString(
-                        "featured_link",
-                        ""
-                    ),
-                featuredLinkLabel =
-                    obj.optString(
-                        "featured_link_label",
-                        ""
-                    )
-            )
+        val tagsArray = obj.optJSONArray("tags")
+        val tagsList = mutableListOf<String>()
+        if (tagsArray != null) {
+            for (i in 0 until tagsArray.length()) {
+                val t = tagsArray.optString(i, "")
+                if (t.isNotBlank()) tagsList.add(t)
+            }
+        }
 
-        val skills =
-            mutableListOf<String>()
+        val mentionsArray = obj.optJSONArray("mentions")
+        val mentionsList = mutableListOf<String>()
+        if (mentionsArray != null) {
+            for (i in 0 until mentionsArray.length()) {
+                val m = mentionsArray.optString(i, "")
+                if (m.isNotBlank()) mentionsList.add(m)
+            }
+        }
 
-        val skillsArray =
-            obj.optJSONArray(
-                "core_skills"
-            )
-
-        if (
-            skillsArray != null
-        ) {
-
-            for (
-                i in 0 until skillsArray.length()
-            ) {
-
-                val skill =
-                    skillsArray.optString(
-                        i,
-                        ""
-                    )
-
-                if (
-                    skill.isNotBlank()
-                ) {
-                    skills.add(skill)
+        var poll: PostPoll? = null
+        val pollObj = obj.optJSONObject("poll_data")
+        if (pollObj != null) {
+            val q = pollObj.optString("question", "")
+            val optsArr = pollObj.optJSONArray("options")
+            val opts = mutableListOf<PollOption>()
+            if (optsArr != null) {
+                for (i in 0 until optsArr.length()) {
+                    val opt = optsArr.optJSONObject(i)
+                    if (opt != null) {
+                        opts.add(PollOption(
+                            id = opt.optString("id", ""),
+                            text = opt.optString("text", ""),
+                            votes = opt.optInt("votes", 0),
+                            isVotedByMe = opt.optBoolean("is_voted_by_me", false)
+                        ))
+                    }
                 }
             }
+            poll = PostPoll(
+                question = q,
+                options = opts,
+                totalVotes = pollObj.optInt("total_votes", 0),
+                hasVoted = pollObj.optBoolean("has_voted", false)
+            )
         }
 
-        return UserProfile(
-
-            id =
-                obj.optString(
-                    "id",
-                    ""
-                ),
-
-            fullName =
-                obj.optString(
-                    "full_name",
-                    obj.optString(
-                        "name",
-                        "Student"
-                    )
-                ),
-
-            username =
-                obj.optString(
-                    "username",
-                    "student"
-                ),
-
-            avatarUrl =
-                obj.optString(
-                    "avatar_url",
-                    ""
-                ),
-
-            coverPhotoUrl =
-                obj.optString(
-                    "cover_photo",
-                    obj.optString(
-                        "cover_photo_url",
-                        obj.optString(
-                            "cover_url",
-                            ""
-                        )
-                    )
-                ),
-
-            verificationBadge =
-                badge,
-
-            professionalHeadline =
-                obj.optString(
-                    "professional_headline",
-                    ""
-                ),
-
-            currentJobTitle =
-                obj.optString(
-                    "current_job_title",
-                    ""
-                ),
-
-            university =
-                obj.optString(
-                    "university",
-                    ""
-                ),
-
-            faculty =
-                obj.optString(
-                    "faculty",
-                    ""
-                ),
-
-            department =
-                obj.optString(
-                    "department",
-                    ""
-                ),
-
-            courseOfStudy =
-                obj.optString(
-                    "course_of_study",
-                    ""
-                ),
-
-            academicLevel =
-                obj.optString(
-                    "academic_level",
-                    ""
-                ),
-
-            graduationYear =
-                obj.optString(
-                    "graduation_year",
-                    ""
-                ),
-
-            bio =
-                obj.optString(
-                    "bio",
-                    ""
-                ),
-
-            countryOfOrigin =
-                obj.optString(
-                    "country_of_origin",
-                    ""
-                ),
-
-            currentCityState =
-                obj.optString(
-                    "current_city_state",
-                    ""
-                ),
-
-            email =
-                ContactField(
-                    obj.optString(
-                        "email",
-                        ""
-                    ),
-                    true
-                ),
-
-            phone =
-                ContactField(
-                    obj.optString(
-                        "phone",
-                        ""
-                    ),
-                    true
-                ),
-
-            whatsapp =
-                ContactField(
-                    obj.optString(
-                        "whatsapp",
-                        ""
-                    ),
-                    true
-                ),
-
-            links =
-                links,
-
-            coreSkills =
-                skills,
-
-            followerCount =
-                obj.optInt(
-                    "follower_count",
-                    0
-                ),
-
-            followingCount =
-                obj.optInt(
-                    "following_count",
-                    0
-                ),
-
-            profileViewsThisWeek =
-                obj.optInt(
-                    "profile_views_this_week",
-                    obj.optInt(
-                        "profile_views",
-                        0
-                    )
-                ),
-
-            onlineNow =
-                obj.optBoolean(
-                    "online_now",
-                    false
-                ),
-
-            isSellerActive =
-                obj.optBoolean(
-                    "is_seller_active",
-                    false
-                ),
-
-            sellerStoreName =
-                obj.optString(
-                    "seller_store_name",
-                    ""
-                ),
-
-            joinedLabel =
-                obj.optString(
-                    "joined_label",
-                    ""
-                )
-        )
-    }
-
-    private fun parseFeedPost(
-        obj: JSONObject
-    ): FeedPost? {
-
-        val id =
-            obj.optString(
-                "id",
-                ""
-            )
-
-        if (
-            id.isBlank()
-        ) {
-            return null
+        val isVerified = obj.optBoolean("is_verified", false) || obj.optString("verification_badge", "").equals("BLUE", ignoreCase = true) || obj.optString("verification_badge", "").equals("GOLD", ignoreCase = true)
+        val badgeStr = obj.optString("verification_badge", "").uppercase(Locale.US)
+        val badge = when (badgeStr) {
+            "GOLD" -> VerificationBadge.GOLD
+            "BLUE" -> VerificationBadge.BLUE
+            else -> if (isVerified) VerificationBadge.BLUE else VerificationBadge.NONE
         }
-
-        val text =
-            obj.optString(
-                "text",
-                obj.optString(
-                    "caption",
-                    obj.optString(
-                        "content",
-                        ""
-                    )
-                )
-            )
-
-        val imageUrl =
-            obj.optString(
-                "image_url",
-                obj.optString(
-                    "media_url",
-                    ""
-                )
-            )
-
-        val videoUrl =
-            obj.optString(
-                "video_url",
-                ""
-            ).ifBlank {
-                null
-            }
-
-        val type =
-            obj.optString(
-                "type",
-                ""
-            ).lowercase(
-                Locale.US
-            )
-
-        val isReel =
-            obj.optBoolean(
-                "is_reel",
-                type == "reel" ||
-                        type == "video"
-            )
-
-        val author =
-            obj.optString(
-                "username",
-                obj.optString(
-                    "author",
-                    obj.optString(
-                        "author_name",
-                        "student"
-                    )
-                )
-            )
-
-        val avatar =
-            obj.optString(
-                "avatar_url",
-                obj.optString(
-                    "author_avatar",
-                    ""
-                )
-            )
-
-        val tags =
-            readStringArray(
-                obj.optJSONArray(
-                    "tags"
-                )
-            )
-
-        val mentions =
-            readStringArray(
-                obj.optJSONArray(
-                    "mentions"
-                )
-            )
-
-        val poll =
-            parsePoll(
-                obj
-            )
 
         return FeedPost(
-            id =
-                id,
-
-            author =
-                author,
-
-            authorAvatar =
-                avatar,
-
-            facultyTag =
-                obj.optString(
-                    "faculty",
-                    "SIMME"
-                ),
-
-            isVerified =
-                obj.optBoolean("is_verified", false) ||
-                        obj.optString("verification_badge", "").equals("GOLD", ignoreCase = true) ||
-                        obj.optString("verification_badge", "").equals("BLUE", ignoreCase = true) ||
-                        author.contains("verified", ignoreCase = true),
-
-            verificationBadge =
-                when (obj.optString("verification_badge", "").uppercase(Locale.US)) {
-                    "GOLD" -> VerificationBadge.GOLD
-                    "BLUE" -> VerificationBadge.BLUE
-                    else -> if (obj.optBoolean("is_verified", false)) {
-                        VerificationBadge.BLUE
-                    } else {
-                        VerificationBadge.NONE
-                    }
-                },
-
-            timeAgo =
-                formatTimeAgo(
-                    obj.optString(
-                        "created_at",
-                        ""
-                    )
-                ),
-
-            text =
-                text,
-
-            images =
-                if (
-                    imageUrl.isBlank()
-                ) {
-                    emptyList()
-                } else {
-                    listOf(
-                        imageUrl
-                    )
-                },
-
-            likes =
-                obj.optInt(
-                    "like_count",
-                    obj.optInt(
-                        "likes",
-                        0
-                    )
-                ),
-
-            isLiked =
-                false,
-
-            commentsCount =
-                obj.optInt(
-                    "comment_count",
-                    obj.optInt(
-                        "comments",
-                        0
-                    )
-                ),
-
-            sharesCount =
-                obj.optInt(
-                    "share_count",
-                    obj.optInt(
-                        "shares",
-                        0
-                    )
-                ),
-
-            viewsCount =
-                obj.optInt(
-                    "view_count",
-                    obj.optInt(
-                        "views",
-                        0
-                    )
-                ),
-
-            isReel =
-                isReel,
-
-            videoUrl =
-                videoUrl,
-
-            tags =
-                tags,
-
-            mentions =
-                mentions,
-
-            poll =
-                poll
+            id = obj.optString("id", ""),
+            author = author,
+            authorAvatar = obj.optString("author_avatar", obj.optString("avatar_url", "")),
+            facultyTag = obj.optString("faculty_tag", obj.optString("faculty", "")),
+            isVerified = isVerified,
+            verificationBadge = badge,
+            timeAgo = obj.optString("time_ago", "Recently"),
+            text = obj.optString("text", obj.optString("content", "")),
+            images = imagesList,
+            tags = tagsList,
+            mentions = mentionsList,
+            poll = poll,
+            likes = obj.optInt("likes_count", obj.optInt("like_count", obj.optInt("likes", 0))),
+            isLiked = obj.optBoolean("is_liked", false),
+            commentsCount = obj.optInt("comments_count", obj.optInt("comment_count", 0)),
+            sharesCount = obj.optInt("shares_count", obj.optInt("share_count", 0)),
+            viewsCount = obj.optInt("views_count", obj.optInt("view_count", 0)),
+            isBookmarked = obj.optBoolean("is_bookmarked", false),
+            isReel = obj.optBoolean("is_reel", false),
+            videoDuration = obj.optString("video_duration", "0:00"),
+            videoUrl = obj.optString("video_url", null),
+            audience = obj.optString("audience", "Everyone"),
+            category = obj.optString("category", "Campus Life"),
+            location = obj.optString("location", null).takeIf { it?.isNotBlank() == true },
+            linkUrl = obj.optString("link_url", null).takeIf { it?.isNotBlank() == true },
+            allowComments = obj.optBoolean("allow_comments", true),
+            hideLikes = obj.optBoolean("hide_likes", false),
+            isPinned = obj.optBoolean("is_pinned", false),
+            isDisappearing = obj.optBoolean("is_disappearing", false),
+            audioTitle = obj.optString("audio_title", null).takeIf { it?.isNotBlank() == true },
+            altText = obj.optString("alt_text", null).takeIf { it?.isNotBlank() == true }
         )
     }
 
-    private fun parsePoll(
-        obj: JSONObject
-    ): PostPoll? {
-        if (obj.isNull("poll_data") && obj.isNull("poll")) {
-            return null
+    private fun parseLeaderboardUser(obj: JSONObject, rank: Int = obj.optInt("rank", 0)): LeaderboardUser {
+        val badgeStr = obj.optString("verification_badge", "").uppercase(Locale.US)
+        val badge = when (badgeStr) {
+            "GOLD" -> VerificationBadge.GOLD
+            "BLUE" -> VerificationBadge.BLUE
+            else -> if (obj.optBoolean("is_verified", false)) VerificationBadge.BLUE else VerificationBadge.NONE
         }
-
-        val pollObject: JSONObject = obj.optJSONObject("poll_data")
-            ?: obj.optJSONObject("poll")
-            ?: run {
-                val raw = obj.optString("poll_data", "").ifBlank {
-                    obj.optString("poll", "")
-                }.trim()
-
-                if (raw.isBlank() || raw.equals("null", ignoreCase = true) || raw == "{}") {
-                    return null
-                }
-
-                try {
-                    JSONObject(raw)
-                } catch (e: Exception) {
-                    return null
-                }
-            } ?: return null
-
-        return try {
-            val question =
-                pollObject.optString(
-                    "question",
-                    "Campus Poll"
-                )
-
-            val optionsArray =
-                pollObject.optJSONArray(
-                    "options"
-                )
-
-            if (
-                optionsArray == null ||
-                optionsArray.length() == 0
-            ) {
-                return null
-            }
-
-            val options =
-                mutableListOf<PollOption>()
-
-            var totalVotes =
-                0
-
-            for (
-                i in 0 until optionsArray.length()
-            ) {
-                val optionObject =
-                    optionsArray
-                        .optJSONObject(
-                            i
-                        )
-                        ?: continue
-
-                val votes =
-                    optionObject.optInt(
-                        "votes",
-                        0
-                    )
-
-                totalVotes +=
-                    votes
-
-                options.add(
-                    PollOption(
-                        id =
-                            optionObject.optString(
-                                "id",
-                                "opt_$i"
-                            ),
-                        text =
-                            optionObject.optString(
-                                "text",
-                                "Option ${i + 1}"
-                            ),
-                        votes =
-                            votes,
-                        isVotedByMe =
-                            false
-                    )
-                )
-            }
-
-            PostPoll(
-                question =
-                    question,
-                options =
-                    options,
-                totalVotes =
-                    totalVotes,
-                hasVoted =
-                    false
-            )
-
-        } catch (e: Exception) {
-            Log.e(
-                TAG,
-                "POLL_PARSE error",
-                e
-            )
-            null
-        }
-    }
-
-    private fun parseLeaderboardUser(
-        obj: JSONObject,
-        defaultRank: Int
-    ): LeaderboardUser? {
-
-        val username =
-            obj.optString(
-                "username",
-                "student_$defaultRank"
-            )
-
-        val fullName =
-            obj.optString(
-                "full_name",
-                username
-                    .replace(
-                        ".",
-                        " "
-                    )
-                    .capitalizeWords()
-            )
-
         return LeaderboardUser(
-
-            rank =
-                obj.optInt(
-                    "rank",
-                    defaultRank
-                ),
-
-            username =
-                username,
-
-            fullName =
-                fullName,
-
-            avatar =
-                obj.optString(
-                    "avatar_url",
-                    ""
-                ),
-
-            points =
-                obj.optInt(
-                    "points",
-                    0
-                ),
-
-            faculty =
-                obj.optString(
-                    "faculty",
-                    ""
-                ),
-
-            university =
-                obj.optString(
-                    "university",
-                    ""
-                ),
-
-            level =
-                obj.optString(
-                    "level",
-                    ""
-                ),
-
-            streakDays =
-                obj.optInt(
-                    "streak_days",
-                    0
-                ),
-
-            verificationBadge =
-                VerificationBadge.NONE
+            rank = rank,
+            username = obj.optString("username", ""),
+            fullName = obj.optString("full_name", obj.optString("name", "")),
+            avatar = obj.optString("avatar_url", ""),
+            points = obj.optInt("points", obj.optInt("follower_count", 0)),
+            faculty = obj.optString("faculty", ""),
+            university = obj.optString("university", ""),
+            level = obj.optString("academic_level", ""),
+            streakDays = obj.optInt("daily_streak", 0),
+            verificationBadge = badge
         )
     }
 
-    private fun parseMarketItem(
-        obj: JSONObject
-    ): MarketItem? {
+    private fun parseMarketItem(obj: JSONObject): MarketItem {
+        val imagesArray = obj.optJSONArray("images")
+        val imagesList = mutableListOf<String>()
+        if (imagesArray != null) {
+            for (i in 0 until imagesArray.length()) {
+                val url = imagesArray.optString(i, "")
+                if (url.isNotBlank()) imagesList.add(url)
+            }
+        } else {
+            val img = obj.optString("image_url", "")
+            if (img.isNotBlank()) imagesList.add(img)
+        }
 
-        val id =
-            obj.optString(
-                "id",
-                ""
-            )
-
-        if (
-            id.isBlank()
-        ) {
-            return null
+        val sellerIsVerified = obj.optBoolean("seller_is_verified", false) || obj.optString("verification_badge", "").equals("BLUE", ignoreCase = true) || obj.optString("verification_badge", "").equals("GOLD", ignoreCase = true)
+        val badgeStr = obj.optString("verification_badge", "").uppercase(Locale.US)
+        val badge = when (badgeStr) {
+            "GOLD" -> VerificationBadge.GOLD
+            "BLUE" -> VerificationBadge.BLUE
+            else -> if (sellerIsVerified) VerificationBadge.BLUE else VerificationBadge.NONE
         }
 
         return MarketItem(
-
-            id =
-                id,
-
-            title =
-                obj.optString(
-                    "title",
-                    obj.optString(
-                        "name",
-                        "Campus Item"
-                    )
-                ),
-
-            price =
-                obj.optLong(
-                    "price",
-                    0L
-                ),
-
-            images =
-                listOfNotNull(
-                    obj.optString(
-                        "image_url",
-                        ""
-                    ).ifBlank {
-                        null
-                    }
-                ),
-
-            sellerUsername =
-                obj.optString(
-                    "seller_username",
-                    ""
-                ),
-
-            sellerAvatar =
-                obj.optString(
-                    "seller_avatar",
-                    ""
-                ),
-
-            sellerName =
-                obj.optString(
-                    "seller_name",
-                    ""
-                ),
-
-            sellerPhone =
-                obj.optString(
-                    "seller_phone",
-                    ""
-                ),
-
-            sellerWhatsapp =
-                obj.optString(
-                    "seller_whatsapp",
-                    ""
-                ),
-
-            sellerIsVerified =
-                false,
-
-            verificationBadge =
-                VerificationBadge.NONE,
-
-            sellerRating =
-                obj.optDouble(
-                    "seller_rating",
-                    0.0
-                ),
-
-            sellerReviewCount =
-                obj.optInt(
-                    "seller_review_count",
-                    0
-                ),
-
-            university =
-                obj.optString(
-                    "university",
-                    ""
-                ),
-
-            location =
-                obj.optString(
-                    "location",
-                    ""
-                ),
-
-            category =
-                obj.optString(
-                    "category",
-                    ""
-                ),
-
-            condition =
-                obj.optString(
-                    "condition",
-                    ""
-                ),
-
-            description =
-                obj.optString(
-                    "description",
-                    ""
-                ),
-
-            postedTime =
-                formatTimeAgo(
-                    obj.optString(
-                        "created_at",
-                        ""
-                    )
-                )
+            id = obj.optString("id", ""),
+            title = obj.optString("title", ""),
+            price = obj.optLong("price", 0L),
+            images = imagesList,
+            sellerUsername = obj.optString("seller_username", ""),
+            sellerAvatar = obj.optString("seller_avatar", ""),
+            sellerName = obj.optString("seller_name", ""),
+            sellerPhone = obj.optString("seller_phone", ""),
+            sellerWhatsapp = obj.optString("seller_whatsapp", ""),
+            sellerIsVerified = sellerIsVerified,
+            verificationBadge = badge,
+            sellerRating = obj.optDouble("seller_rating", 0.0),
+            sellerReviewCount = obj.optInt("seller_review_count", 0),
+            university = obj.optString("university", ""),
+            location = obj.optString("location", ""),
+            category = obj.optString("category", ""),
+            condition = obj.optString("condition", ""),
+            description = obj.optString("description", ""),
+            postedTime = obj.optString("posted_time", obj.optString("time_ago", "Recently")),
+            isFeatured = obj.optBoolean("is_featured", false),
+            isSold = obj.optBoolean("is_sold", false)
         )
     }
 
-    // ============================================================
+    private fun parseUserProfile(obj: JSONObject): UserProfile {
+        val badge = when (obj.optString("verification_badge", "").uppercase(Locale.US)) {
+            "GOLD" -> VerificationBadge.GOLD
+            "BLUE" -> VerificationBadge.BLUE
+            else -> VerificationBadge.NONE
+        }
+
+        val links = SocialLinks(
+            website = obj.optString("website", ""),
+            linkedin = obj.optString("linkedin", ""),
+            twitter = obj.optString("twitter", ""),
+            instagram = obj.optString("instagram", ""),
+            featuredLink = obj.optString("featured_link", ""),
+            featuredLinkLabel = obj.optString("featured_link_label", "")
+        )
+
+        val skills = mutableListOf<String>()
+        obj.optJSONArray("core_skills")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val s = arr.optString(i, "")
+                if (s.isNotBlank()) skills.add(s)
+            }
+        }
+        
+        val hobbiesList = mutableListOf<String>()
+        obj.optJSONArray("hobbies")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val h = arr.optString(i, "")
+                if (h.isNotBlank()) hobbiesList.add(h)
+            }
+        }
+        
+        val languagesList = mutableListOf<String>()
+        obj.optJSONArray("languages")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val l = arr.optString(i, "")
+                if (l.isNotBlank()) languagesList.add(l)
+            }
+        }
+        
+        val endorsementsList = mutableListOf<SkillEndorsement>()
+        obj.optJSONArray("skill_endorsements")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val seObj = arr.optJSONObject(i)
+                if (seObj != null) {
+                    endorsementsList.add(
+                        SkillEndorsement(
+                            skill = seObj.optString("skill", ""),
+                            endorsements = seObj.optInt("endorsements", 0),
+                            endorsedByMe = seObj.optBoolean("endorsed_by_me", false)
+                        )
+                    )
+                }
+            }
+        }
+        
+        val badgesList = mutableListOf<AchievementBadge>()
+        obj.optJSONArray("badges")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val bObj = arr.optJSONObject(i)
+                if (bObj != null) {
+                    badgesList.add(
+                        AchievementBadge(
+                            id = bObj.optString("id", ""),
+                            title = bObj.optString("title", ""),
+                            description = bObj.optString("description", ""),
+                            iconName = bObj.optString("iconName", "trophy")
+                        )
+                    )
+                }
+            }
+        }
+        
+        val availabilityStr = obj.optString("custom_status", "")
+        val availabilityStatus = try {
+            if (availabilityStr.isNotBlank()) {
+                AvailabilityStatus.valueOf(availabilityStr)
+            } else {
+                AvailabilityStatus.NONE
+            }
+        } catch (e: Exception) {
+            AvailabilityStatus.NONE
+        }
+
+        return UserProfile(
+            id = obj.optString("id", ""),
+            fullName = obj.optString("full_name", obj.optString("name", "")),
+            username = obj.optString("username", ""),
+            avatarUrl = obj.optString("avatar_url", ""),
+            coverPhotoUrl = obj.optString("cover_photo", obj.optString("cover_photo_url", obj.optString("cover_url", ""))),
+            verificationBadge = badge,
+            professionalHeadline = obj.optString("professional_headline", ""),
+            currentJobTitle = obj.optString("current_job_title", ""),
+            university = obj.optString("university", ""),
+            faculty = obj.optString("faculty", ""),
+            department = obj.optString("department", ""),
+            courseOfStudy = obj.optString("course_of_study", ""),
+            academicLevel = obj.optString("academic_level", ""),
+            graduationYear = obj.optString("graduation_year", ""),
+            bio = obj.optString("bio", ""),
+            availability = availabilityStatus,
+            countryOfOrigin = obj.optString("country_of_origin", ""),
+            currentCityState = obj.optString("current_city_state", ""),
+            email = ContactField(obj.optString("email", ""), true),
+            phone = ContactField(obj.optString("phone", ""), true),
+            whatsapp = ContactField(obj.optString("whatsapp", ""), true),
+            links = links,
+            coreSkills = skills,
+            skillEndorsements = endorsementsList,
+            hobbies = hobbiesList,
+            languages = languagesList,
+            favoriteQuote = obj.optString("favorite_quote", ""),
+            followerCount = obj.optInt("follower_count", 0),
+            followingCount = obj.optInt("following_count", 0),
+            profileViewsThisWeek = obj.optInt("profile_views_this_week", obj.optInt("profile_views", 0)),
+            dailyStreak = obj.optInt("daily_streak", 0),
+            worldRank = obj.optInt("world_rank", 0),
+            campusRank = obj.optInt("campus_rank", 0),
+            onlineNow = obj.optBoolean("online_now", false),
+            verifiedAtMillis = obj.optLong("verified_at_millis", 0L),
+            joinedLabel = obj.optString("joined_label", ""),
+            isSellerActive = obj.optBoolean("is_seller_active", false),
+            sellerStoreName = obj.optString("seller_store_name", ""),
+            badges = badgesList
+        )
+    }
+
+        // ============================================================
     // PARSING / HELPERS
     // ============================================================
 
@@ -4242,6 +3818,336 @@ class SupabaseService {
             "Recent"
         }
     }
+
+    // COMMENTS
+    // ============================================================
+
+    suspend fun fetchComments(postId: String): List<Comment> = withContext(Dispatchers.IO) {
+        try {
+            val req = newRequestBuilder("/rest/v1/feed_comments?post_id=eq.$postId&order=created_at.asc")
+                .get()
+                .build()
+            val currentUserId = getCurrentUserId() ?: ""
+            val currentUsername = SupabaseService.appContext?.getSharedPreferences("blink_auth_prefs", android.content.Context.MODE_PRIVATE)?.getString("username", "") ?: ""
+
+            var myLikedComments = setOf<Long>()
+            val likeReq = newRequestBuilder("/rest/v1/comment_likes?select=comment_id" + 
+                if (currentUserId.isNotBlank()) "&user_id=eq.$currentUserId" else if (currentUsername.isNotBlank()) "&username=eq.$currentUsername" else "")
+                .get().build()
+            executeRequest(likeReq).use { r ->
+                if (r.isSuccessful) {
+                    val body = r.body?.string().orEmpty()
+                    if (body.isNotBlank() && body != "[]") {
+                        val arr = JSONArray(body)
+                        val set = mutableSetOf<Long>()
+                        for (i in 0 until arr.length()) set.add(arr.getJSONObject(i).optLong("comment_id"))
+                        myLikedComments = set
+                    }
+                }
+            }
+
+            executeRequest(req).use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@withContext emptyList()
+                if (body.isBlank() || body == "[]") return@withContext emptyList()
+
+                val arr = JSONArray(body)
+                buildList {
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        val id = obj.optLong("id")
+                        add(Comment(
+                            id = id,
+                            user = obj.optString("username", ""),
+                            avatar = obj.optString("avatar_url", ""),
+                            text = obj.optString("text", ""),
+                            time = obj.optString("time_ago", "Recently"),
+                            likes = obj.optInt("like_count", 0),
+                            isLiked = myLikedComments.contains(id),
+                            replies = emptyList() // If replies are supported, fetch them
+                        ))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchComments failed", e)
+            emptyList()
+        }
+    }
+
+    suspend fun addComment(postId: String, text: String, replyToUser: String?): Comment? = withContext(Dispatchers.IO) {
+        try {
+            val currentUserId = getCurrentUserId() ?: ""
+            val currentUsername = SupabaseService.appContext?.getSharedPreferences("blink_auth_prefs", android.content.Context.MODE_PRIVATE)?.getString("username", "") ?: ""
+            val currentUserAvatar = SupabaseService.appContext?.getSharedPreferences("blink_auth_prefs", android.content.Context.MODE_PRIVATE)?.getString("avatar_url", "") ?: ""
+
+            val obj = JSONObject().apply {
+                put("post_id", postId)
+                put("user_id", currentUserId)
+                put("username", currentUsername)
+                put("avatar_url", currentUserAvatar)
+                put("text", text)
+                if (replyToUser != null) put("reply_to_user", replyToUser)
+            }
+            val req = newRequestBuilder("/rest/v1/feed_comments", authenticated = true)
+                .addHeader("Prefer", "return=representation")
+                .post(obj.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            executeRequest(req).use { response ->
+                val body = response.body?.string().orEmpty()
+                if (response.isSuccessful && body.isNotBlank()) {
+                    val arr = JSONArray(body)
+                    if (arr.length() > 0) {
+                        val resObj = arr.getJSONObject(0)
+                        return@withContext Comment(
+                            id = resObj.optLong("id"),
+                            user = resObj.optString("username", currentUsername),
+                            avatar = resObj.optString("avatar_url", currentUserAvatar),
+                            text = resObj.optString("text", text),
+                            time = "Just now",
+                            likes = 0,
+                            isLiked = false
+                        )
+                    }
+                }
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "addComment failed", e)
+            null
+        }
+    }
+
+    suspend fun toggleCommentLike(commentId: Long, liked: Boolean, newLikeCount: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val currentUserId = getCurrentUserId() ?: ""
+            val currentUsername = SupabaseService.appContext?.getSharedPreferences("blink_auth_prefs", android.content.Context.MODE_PRIVATE)?.getString("username", "") ?: ""
+
+            if (liked) {
+                val obj = JSONObject().apply {
+                    put("comment_id", commentId)
+                    if (currentUserId.isNotBlank()) put("user_id", currentUserId)
+                    if (currentUsername.isNotBlank()) put("username", currentUsername)
+                }
+                val req = newRequestBuilder("/rest/v1/comment_likes", authenticated = true)
+                    .addHeader("Prefer", "resolution=merge-duplicates")
+                    .post(obj.toString().toRequestBody(jsonMediaType)).build()
+                executeRequest(req).use { it.isSuccessful }
+            } else {
+                val filter = when {
+                    currentUserId.isNotBlank() -> "user_id=eq.$currentUserId"
+                    currentUsername.isNotBlank() -> "username=eq.$currentUsername"
+                    else -> ""
+                }
+                val url = if (filter.isNotBlank()) "/rest/v1/comment_likes?comment_id=eq.$commentId&$filter" else "/rest/v1/comment_likes?comment_id=eq.$commentId"
+                val req = newRequestBuilder(url, authenticated = true).delete().build()
+                executeRequest(req).use { it.isSuccessful }
+            }
+
+            val patchObj = JSONObject().apply { put("like_count", newLikeCount) }
+            val patchReq = newRequestBuilder("/rest/v1/feed_comments?id=eq.$commentId", authenticated = true)
+                .patch(patchObj.toString().toRequestBody(jsonMediaType)).build()
+            executeRequest(patchReq).use { it.isSuccessful }
+        } catch (e: Exception) {
+            Log.e(TAG, "toggleCommentLike failed", e)
+            false
+        }
+    }
+
+    suspend fun fetchActivities(): Result<List<ActivityItem>> = withContext(Dispatchers.IO) {
+        try {
+            val currentUserId = getCurrentUserId() ?: ""
+            val currentUsername = getCurrentUsername() ?: ""
+
+            if (currentUserId.isBlank() && currentUsername.isBlank()) {
+                return@withContext Result.failure(IllegalStateException("User not logged in"))
+            }
+
+            val encodedUsername = encodeValue(currentUsername)
+            val encodedUserId = encodeValue(currentUserId)
+
+            val url = if (currentUserId.isNotBlank() && currentUsername.isNotBlank()) {
+                "/rest/v1/activities?select=*&or=(recipient_username.eq.$encodedUsername,user_id.eq.$encodedUserId)&order=created_at.desc&limit=100"
+            } else if (currentUsername.isNotBlank()) {
+                "/rest/v1/activities?select=*&recipient_username=eq.$encodedUsername&order=created_at.desc&limit=100"
+            } else {
+                "/rest/v1/activities?select=*&user_id=eq.$encodedUserId&order=created_at.desc&limit=100"
+            }
+
+            val request = newRequestBuilder(url, authenticated = true).get().build()
+
+            executeRequest(request).use { response ->
+                var body = response.body?.string().orEmpty()
+
+                if (response.code == 404 || response.code == 400) {
+                    val fallbackUrl = if (currentUsername.isNotBlank()) {
+                        "/rest/v1/notifications?select=*&username=eq.$encodedUsername&order=created_at.desc&limit=100"
+                    } else {
+                        "/rest/v1/notifications?select=*&user_id=eq.$encodedUserId&order=created_at.desc&limit=100"
+                    }
+                    val fallbackReq = newRequestBuilder(fallbackUrl, authenticated = true).get().build()
+                    executeRequest(fallbackReq).use { fallbackResp ->
+                        if (fallbackResp.isSuccessful) {
+                            body = fallbackResp.body?.string().orEmpty()
+                        } else if (!response.isSuccessful) {
+                            return@withContext Result.failure(Exception("HTTP ${response.code}: $body"))
+                        }
+                    }
+                } else if (!response.isSuccessful) {
+                    return@withContext Result.failure(Exception("HTTP ${response.code}: $body"))
+                }
+
+                if (body.isBlank() || body == "[]") {
+                    return@withContext Result.success(emptyList())
+                }
+
+                val array = JSONArray(body)
+                val items = mutableListOf<ActivityItem>()
+
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val id = obj.optString("id", UUID.randomUUID().toString())
+                    val actor = obj.optString("actor_username", obj.optString("username", "campus_user"))
+                    val avatar = obj.optString("actor_avatar", obj.optString("avatar_url", "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80"))
+                    val action = obj.optString("action", obj.optString("content", obj.optString("title", "interacted with you")))
+                    val createdAt = obj.optString("created_at", "")
+                    val isRead = obj.optBoolean("is_read", false)
+                    val catStr = obj.optString("category", obj.optString("type", "ALL")).uppercase(Locale.US)
+                    val category = try {
+                        NotificationFilter.valueOf(catStr)
+                    } catch (_: Exception) {
+                        when {
+                            catStr.contains("LIKE") || catStr.contains("SAVE") -> NotificationFilter.LIKES
+                            catStr.contains("COMMENT") || catStr.contains("MENTION") -> NotificationFilter.COMMENTS
+                            catStr.contains("MARKET") || catStr.contains("ITEM") -> NotificationFilter.MARKET
+                            else -> NotificationFilter.ALL
+                        }
+                    }
+
+                    val targetPostId = obj.optString("target_post_id", obj.optString("post_id", "")).ifBlank { null }
+                    val targetMarketId = obj.optString("target_market_id", obj.optString("market_id", "")).ifBlank { null }
+                    val targetUsername = obj.optString("target_username", obj.optString("actor_username", "")).ifBlank { null }
+                    val targetType = obj.optString("target_type", "").ifBlank { null }
+                    val previewText = obj.optString("preview_text", "").ifBlank { null }
+
+                    items.add(
+                        ActivityItem(
+                            id = id,
+                            user = actor,
+                            avatar = avatar,
+                            action = action,
+                            time = formatTimeAgo(createdAt),
+                            rawTimestamp = createdAt,
+                            isUnread = !isRead,
+                            category = category,
+                            targetPostId = targetPostId,
+                            targetMarketId = targetMarketId,
+                            targetUsername = targetUsername,
+                            targetType = targetType,
+                            previewText = previewText,
+                            verificationBadge = VerificationBadge.NONE
+                        )
+                    )
+                }
+
+                Result.success(items)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchActivities exception", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun recordActivity(
+        recipientUsername: String,
+        action: String,
+        category: NotificationFilter = NotificationFilter.ALL,
+        targetPostId: String? = null,
+        targetMarketId: String? = null,
+        targetUsername: String? = null,
+        targetType: String? = null,
+        previewText: String? = null
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val currentUsername = getCurrentUsername() ?: ""
+            val currentUserId = getCurrentUserId() ?: ""
+            if (recipientUsername.isBlank() || recipientUsername.equals(currentUsername, ignoreCase = true)) {
+                return@withContext false
+            }
+
+            val currentUserAvatar = SupabaseService.appContext?.getSharedPreferences("blink_auth_prefs", android.content.Context.MODE_PRIVATE)?.getString("avatar_url", "") ?: ""
+
+            val json = JSONObject().apply {
+                put("recipient_username", recipientUsername.trim().lowercase(Locale.US))
+                if (currentUserId.isNotBlank()) put("user_id", currentUserId)
+                put("actor_username", currentUsername)
+                if (currentUserAvatar.isNotBlank()) put("actor_avatar", currentUserAvatar)
+                put("action", action)
+                put("category", category.name)
+                targetPostId?.let { put("target_post_id", it) }
+                targetMarketId?.let { put("target_market_id", it) }
+                targetUsername?.let { put("target_username", it) }
+                targetType?.let { put("target_type", it) }
+                previewText?.let { put("preview_text", it) }
+                put("is_read", false)
+                put("created_at", nowIso())
+            }
+
+            val request = newRequestBuilder("/rest/v1/activities", authenticated = true)
+                .addHeader("Prefer", "resolution=merge-duplicates")
+                .post(json.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            executeRequest(request).use { response ->
+                if (!response.isSuccessful) {
+                    val fallbackJson = JSONObject().apply {
+                        put("username", recipientUsername.trim().lowercase(Locale.US))
+                        put("type", category.name)
+                        put("title", "@$currentUsername")
+                        put("content", action)
+                        put("created_at", nowIso())
+                    }
+                    val fallbackReq = newRequestBuilder("/rest/v1/notifications", authenticated = true)
+                        .post(fallbackJson.toString().toRequestBody(jsonMediaType))
+                        .build()
+                    executeRequest(fallbackReq).use { it.isSuccessful }
+                } else {
+                    true
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "recordActivity failed", e)
+            false
+        }
+    }
+
+    suspend fun markActivityRead(activityId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val patchObj = JSONObject().apply { put("is_read", true) }
+            val req = newRequestBuilder("/rest/v1/activities?id=eq.$activityId", authenticated = true)
+                .patch(patchObj.toString().toRequestBody(jsonMediaType))
+                .build()
+            executeRequest(req).use { it.isSuccessful }
+        } catch (e: Exception) {
+            Log.e(TAG, "markActivityRead failed", e)
+            false
+        }
+    }
+
+    suspend fun markAllActivitiesRead(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val currentUsername = getCurrentUsername() ?: ""
+            val patchObj = JSONObject().apply { put("is_read", true) }
+            val req = newRequestBuilder("/rest/v1/activities?recipient_username=eq.$currentUsername&is_read=eq.false", authenticated = true)
+                .patch(patchObj.toString().toRequestBody(jsonMediaType))
+                .build()
+            executeRequest(req).use { it.isSuccessful }
+        } catch (e: Exception) {
+            Log.e(TAG, "markAllActivitiesRead failed", e)
+            false
+        }
+    }
 }
 
 enum class ProfileMediaType {
@@ -4250,20 +4156,9 @@ enum class ProfileMediaType {
 }
 
 private fun String.capitalizeWords(): String {
-
-    return split(
-        " "
-    )
-        .filter {
-            it.isNotBlank()
-        }
-        .joinToString(
-            " "
-        ) { word ->
-
-            word.replaceFirstChar {
-                char ->
-                char.uppercase()
-            }
+    return split(" ")
+        .filter { it.isNotBlank() }
+        .joinToString(" ") { word ->
+            word.replaceFirstChar { char -> char.uppercase() }
         }
 }
