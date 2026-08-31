@@ -1,8 +1,5 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,7 +11,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,274 +43,87 @@ fun ActivityScreen(
     errorMessage: String? = null,
     onRefresh: () -> Unit = {}
 ) {
-    var selectedFilter by remember { mutableStateOf(NotificationFilter.ALL) }
-
-    val filteredActivities = remember(activities, selectedFilter) {
-        if (selectedFilter == NotificationFilter.ALL) {
-            activities
-        } else {
-            activities.filter { it.category == selectedFilter }
-        }
-    }
+    var filter by remember { mutableStateOf(NotificationFilter.ALL) }
+    val visible = remember(activities, filter) { if (filter == NotificationFilter.ALL) activities else activities.filter { it.category == filter } }
+    val unread = activities.count { it.isUnread }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
-                    Text(
-                        "Notifications", 
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    ) 
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Back",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") } },
+                title = {
+                    Column {
+                        Text("Notifications", fontWeight = FontWeight.Bold)
+                        Text(if (unread == 0) "You're all caught up" else "$unread unread", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = if (isDark) MaterialTheme.colorScheme.surface else Color.White
-                )
+                actions = { IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, "Refresh") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         },
-        containerColor = if (isDark) MaterialTheme.colorScheme.surface else Color.White
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            // Notification Category / Column Filter Chips
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp)
-            ) {
-                items(NotificationFilter.values()) { filter ->
-                    val isSelected = selectedFilter == filter
-                    Surface(
-                        shape = RoundedCornerShape(100.dp),
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(
-                            1.dp,
-                            if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                        ),
-                        modifier = Modifier
-                            .clickable { selectedFilter = filter }
-                            .testTag("notification_filter_${filter.name}")
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Text(text = filter.icon, fontSize = 12.sp)
-                            Text(
-                                text = filter.label,
-                                fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
+        containerColor = MaterialTheme.colorScheme.background
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(NotificationFilter.values()) { item ->
+                    val selected = filter == item
+                    FilterChip(selected = selected, onClick = { filter = item }, label = { Text(item.label, fontSize = 12.sp) }, leadingIcon = { Text(item.icon, fontSize = 12.sp) })
                 }
             }
-
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-            // Notifications Feed
-            if (isLoading) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                }
-            } else if (!errorMessage.isNullOrBlank()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
+            when {
+                isLoading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator(color = BlinkPink) }
+                !errorMessage.isNullOrBlank() -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "Failed to load notifications",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = errorMessage,
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = onRefresh) {
-                            Text("Retry")
-                        }
+                        Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(44.dp))
+                        Spacer(Modifier.height(10.dp)); Text("Notifications couldn't load", fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(5.dp)); Text(errorMessage, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(14.dp)); Button(onClick = onRefresh) { Text("Try again") }
                     }
                 }
-            } else if (filteredActivities.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
+                visible.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Notifications,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "No notifications here ✨",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "You're all caught up on campus updates!",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Surface(shape = CircleShape, color = BlinkPink.copy(alpha = .12f), modifier = Modifier.size(72.dp)) { Icon(Icons.Default.Notifications, null, tint = BlinkPink, modifier = Modifier.padding(20.dp)) }
+                        Spacer(Modifier.height(14.dp)); Text("No notifications", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(5.dp)); Text("Likes, follows, comments and other activity will appear here.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                ) {
-                    items(filteredActivities, key = { it.id }) { activity ->
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (activity.isUnread) {
-                                BlinkPink.copy(alpha = 0.08f)
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            },
-                            border = BorderStroke(
-                                1.dp,
-                                if (activity.isUnread) BlinkPink.copy(alpha = 0.3f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onNotificationClick(activity) }
-                                .testTag("notification_item_${activity.id}")
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(12.dp)
-                            ) {
-                                // Author avatar - Tapping avatar opens author profile
-                                Box(
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(CircleShape)
-                                        .clickable { onProfileClick(activity.user) }
-                                        .testTag("notification_avatar_${activity.user}")
-                                ) {
-                                    AsyncImage(
-                                        model = activity.avatar,
-                                        contentDescription = activity.user,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                    // Badge icon for action type
-                                    Box(
-                                        modifier = Modifier
-                                            .size(18.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                when (activity.category) {
-                                                    NotificationFilter.LIKES -> BlinkPink
-                                                    NotificationFilter.COMMENTS -> BlinkPurple
-                                                    NotificationFilter.MARKET -> Color(0xFF22C55E)
-                                                    NotificationFilter.ALL -> BlinkPink
-                                                }
-                                            )
-                                            .align(Alignment.BottomEnd),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = activity.category.icon,
-                                            fontSize = 10.sp
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.width(16.dp))
-
-                                // Notification Text Content - Tapping body opens target post
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text(
-                                            text = "@${activity.user}",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            modifier = Modifier.clickable { onProfileClick(activity.user) }
-                                        )
-                                        VerifiedMark(badge = activity.verificationBadge, size = 12.dp)
-                                        Text(
-                                            text = activity.action,
-                                            fontSize = 13.5.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-
-                                    if (!activity.previewText.isNullOrBlank()) {
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = "\"${activity.previewText}\"",
-                                            fontSize = 12.5.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 2
-                                        )
-                                    }
-
-                                    Spacer(modifier = Modifier.height(4.dp))
-
-                                    Text(
-                                        text = activity.time,
-                                        fontSize = 11.5.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-
-                                if (activity.isUnread) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(10.dp)
-                                            .clip(CircleShape)
-                                            .background(BlinkPink)
-                                    )
-                                }
-                            }
-                        }
+                else -> LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(visible, key = { it.id }) { item ->
+                        NotificationCard(item, onProfileClick, onNotificationClick)
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NotificationCard(item: ActivityItem, onProfileClick: (String) -> Unit, onNotificationClick: (ActivityItem) -> Unit) {
+    val accent = when (item.category) { NotificationFilter.LIKES -> BlinkPink; NotificationFilter.COMMENTS -> BlinkPurple; NotificationFilter.MARKET -> Color(0xFF22C55E); NotificationFilter.ALL -> BlinkPink }
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = if (item.isUnread) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .38f) else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, if (item.isUnread) accent.copy(alpha = .32f) else MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth().clickable { onNotificationClick(item) }
+    ) {
+        Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(48.dp).clip(CircleShape).clickable { onProfileClick(item.user) }) {
+                AsyncImage(model = item.avatar, contentDescription = item.user, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                Surface(shape = CircleShape, color = accent, modifier = Modifier.size(19.dp).align(Alignment.BottomEnd)) { Text(item.category.icon, fontSize = 9.sp, modifier = Modifier.padding(4.dp)) }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("@${item.user}", fontSize = 13.5.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onProfileClick(item.user) })
+                    Spacer(Modifier.width(4.dp)); VerifiedMark(item.verificationBadge, size = 12.dp)
+                }
+                Spacer(Modifier.height(3.dp)); Text(item.action, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+                if (!item.previewText.isNullOrBlank()) { Spacer(Modifier.height(3.dp)); Text(item.previewText!!, maxLines = 2, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Spacer(Modifier.height(5.dp)); Text(item.time, fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (item.isUnread) Surface(shape = CircleShape, color = accent, modifier = Modifier.size(9.dp)) {}
         }
     }
 }
