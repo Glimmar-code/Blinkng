@@ -32,8 +32,6 @@ import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -99,256 +97,106 @@ fun FeedScreen(
     onViewedPost: (String) -> Unit = {},
     onVotePoll: (postId: String, optionId: String) -> Unit = { _, _ -> },
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit = { _, _, _ -> },
-
-    // New bottom navigation actions
     onSearchClick: () -> Unit = {},
     onLeaderboardClick: () -> Unit = {},
     onMarketClick: () -> Unit = {},
     onMessageClick: () -> Unit = {},
     onBottomBarVisibilityChange: (Boolean) -> Unit = {}
 ) {
-
-    var selectedTopTab by remember(currentSubTab) {
-        mutableIntStateOf(currentSubTab)
-    }
-
+    var selectedTopTab by remember(currentSubTab) { mutableIntStateOf(currentSubTab) }
     val listState = rememberLazyListState()
 
-    // Smooth scroll detection to hide bottom navigation bar on scroll down and reveal on scroll up
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 val delta = available.y
-                if (delta < -8f) {
-                    // Scrolling DOWN -> hide bottom bar (fade out downward)
-                    onBottomBarVisibilityChange(false)
-                } else if (delta > 8f) {
-                    // Scrolling UP -> reveal bottom bar (fade in upward)
-                    onBottomBarVisibilityChange(true)
-                }
+                if (delta < -8f) onBottomBarVisibilityChange(false)
+                else if (delta > 8f) onBottomBarVisibilityChange(true)
                 return Offset.Zero
             }
         }
     }
 
-    // Always show bottom bar when near the top of the feed
     LaunchedEffect(listState) {
         snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-            .collect { (index, offset) ->
-                if (index == 0 && offset < 50) {
-                    onBottomBarVisibilityChange(true)
-                }
-            }
+            .collect { (index, offset) -> if (index == 0 && offset < 50) onBottomBarVisibilityChange(true) }
     }
 
-    // Always show bottom bar when switching sub-tabs
-    LaunchedEffect(selectedTopTab) {
-        onBottomBarVisibilityChange(true)
-    }
+    LaunchedEffect(selectedTopTab) { onBottomBarVisibilityChange(true) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         when (selectedTopTab) {
-            1 -> {
-                VideoReelsScreen(
-                    reels = reels,
-                    isDark = isDark,
-                    onLike = onLikePost,
-                    onComment = onCommentPost,
-                    onBookmark = onBookmarkPost,
-                    onShare = onSharePost,
-                    onProfileClick = onProfileClick,
-                    onBackToPosts = {
-                        selectedTopTab = 0
-                        onSubTabChanged(0)
-                    },
-                    onHomeClick = {
-                        selectedTopTab = 0
-                        onSubTabChanged(0)
-                    },
-                    onConnectClick = {
-                        selectedTopTab = 2
-                        onSubTabChanged(2)
-                    },
-                    onGameClick = {
-                        selectedTopTab = 3
-                        onSubTabChanged(3)
-                    }
-                )
-            }
-
-            2 -> {
-                ConnectSection(
-                    userAvatar = userAvatar,
-                    isDark = isDark,
-                    onOpenMenu = onOpenMenu,
-                    onOpenActivity = onOpenActivity,
-                    onProfileClick = onProfileClick,
-                    onDirectMessage = onDirectMessage,
-                    selectedTopTab = 2,
-                    onHomeClick = {
-                        selectedTopTab = 0
-                        onSubTabChanged(0)
-                    },
-                    onReelClick = {
-                        selectedTopTab = 1
-                        onSubTabChanged(1)
-                    },
-                    onConnectClick = {
-                        selectedTopTab = 2
-                        onSubTabChanged(2)
-                    },
-                    onGameClick = {
-                        selectedTopTab = 3
-                        onSubTabChanged(3)
-                    }
-                )
-            }
-
-            3 -> {
-                GameSection(
-                    userAvatar = userAvatar,
-                    isDark = isDark,
-                    onOpenMenu = onOpenMenu,
-                    onOpenActivity = onOpenActivity,
-                    onProfileClick = onProfileClick,
-                    selectedTopTab = 3,
-                    onHomeClick = {
-                        selectedTopTab = 0
-                        onSubTabChanged(0)
-                    },
-                    onReelClick = {
-                        selectedTopTab = 1
-                        onSubTabChanged(1)
-                    },
-                    onConnectClick = {
-                        selectedTopTab = 2
-                        onSubTabChanged(2)
-                    },
-                    onGameClick = {
-                        selectedTopTab = 3
-                        onSubTabChanged(3)
-                    }
-                )
-            }
-
+            1 -> VideoReelsScreen(
+                reels = reels, isDark = isDark, onLike = onLikePost, onComment = onCommentPost,
+                onBookmark = onBookmarkPost, onShare = onSharePost, onProfileClick = onProfileClick,
+                onBackToPosts = { selectedTopTab = 0; onSubTabChanged(0) },
+                onHomeClick = { selectedTopTab = 0; onSubTabChanged(0) },
+                onConnectClick = { selectedTopTab = 2; onSubTabChanged(2) },
+                onGameClick = { selectedTopTab = 3; onSubTabChanged(3) }
+            )
+            2 -> ConnectSection(
+                userAvatar = userAvatar, isDark = isDark, onOpenMenu = onOpenMenu, onOpenActivity = onOpenActivity,
+                onProfileClick = onProfileClick, onDirectMessage = onDirectMessage, selectedTopTab = 2,
+                onHomeClick = { selectedTopTab = 0; onSubTabChanged(0) },
+                onReelClick = { selectedTopTab = 1; onSubTabChanged(1) },
+                onConnectClick = { selectedTopTab = 2; onSubTabChanged(2) },
+                onGameClick = { selectedTopTab = 3; onSubTabChanged(3) }
+            )
+            3 -> GameSection(
+                userAvatar = userAvatar, isDark = isDark, onOpenMenu = onOpenMenu, onOpenActivity = onOpenActivity,
+                onProfileClick = onProfileClick, selectedTopTab = 3,
+                onHomeClick = { selectedTopTab = 0; onSubTabChanged(0) },
+                onReelClick = { selectedTopTab = 1; onSubTabChanged(1) },
+                onConnectClick = { selectedTopTab = 2; onSubTabChanged(2) },
+                onGameClick = { selectedTopTab = 3; onSubTabChanged(3) }
+            )
             else -> {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .nestedScroll(nestedScrollConnection),
-                    contentPadding = PaddingValues(
-                        bottom = 115.dp
-                    )
+                    modifier = Modifier.fillMaxSize().nestedScroll(nestedScrollConnection),
+                    contentPadding = PaddingValues(bottom = 115.dp)
                 ) {
-
-                    // Header / status area
                     item {
                         HomeHeader(
                             userAvatar = userAvatar,
                             onMenuClick = onOpenMenu,
                             onNotificationClick = onOpenActivity,
-                            onProfileClick = {
-                                onProfileClick("you")
-                            }
+                            onProfileClick = { onProfileClick("you") }
                         )
                     }
-
-                    // Top navigation
                     item {
                         TopNavigation(
                             selected = 0,
-                            onHome = {
-                                selectedTopTab = 0
-                                onSubTabChanged(0)
-                            },
-                            onReel = {
-                                selectedTopTab = 1
-                                onSubTabChanged(1)
-                            },
-                            onConnect = {
-                                selectedTopTab = 2
-                                onSubTabChanged(2)
-                            },
-                            onGame = {
-                                selectedTopTab = 3
-                                onSubTabChanged(3)
-                            }
+                            onHome = { selectedTopTab = 0; onSubTabChanged(0) },
+                            onReel = { selectedTopTab = 1; onSubTabChanged(1) },
+                            onConnect = { selectedTopTab = 2; onSubTabChanged(2) },
+                            onGame = { selectedTopTab = 3; onSubTabChanged(3) }
                         )
                     }
-
+                    item { Spacer(Modifier.height(4.dp)) }
                     item {
-                        Spacer(
-                            modifier = Modifier.height(4.dp)
-                        )
+                        StoryBar(stories = stories, userAvatar = userAvatar, onAddStory = onAddStoryClick, onStoryClick = onStoryClick)
                     }
+                    item { Spacer(Modifier.height(6.dp)) }
 
-                    // Stories
-                    item {
-                        StoryBar(
-                            stories = stories,
-                            userAvatar = userAvatar,
-                            onAddStory = onAddStoryClick,
-                            onStoryClick = onStoryClick
-                        )
-                    }
-
-                    item {
-                        Spacer(
-                            modifier = Modifier.height(6.dp)
-                        )
-                    }
-
-                    // Feed
-                    items(
-                        items = posts,
-                        key = { it.id }
-                    ) { post ->
-
-                        onViewedPost(post.id)
-
+                    items(items = posts, key = { it.id }) { post ->
+                        // PostCard owns the visibility event. Do not emit another view here during recomposition.
                         PostCard(
                             post = post,
                             isDark = isDark,
-                            onLike = {
-                                onLikePost(post.id)
-                            },
-                            onComment = {
-                                onCommentPost(post.id)
-                            },
-                            onBookmark = {
-                                onBookmarkPost(post.id)
-                            },
-                            onShare = {
-                                onSharePost(post.id)
-                            },
-                            onOptionsClick = {
-                                onOptionsClick(post)
-                            },
+                            onLike = { onLikePost(post.id) },
+                            onComment = { onCommentPost(post.id) },
+                            onBookmark = { onBookmarkPost(post.id) },
+                            onShare = { onSharePost(post.id) },
+                            onOptionsClick = { onOptionsClick(post) },
                             onProfileClick = onProfileClick,
-                            onViewed = {
-                                onViewedPost(post.id)
-                            },
+                            onViewed = { onViewedPost(post.id) },
                             onVotePoll = onVotePoll
                         )
-
-                        Spacer(
-                            modifier = Modifier.height(8.dp)
-                        )
+                        Spacer(Modifier.height(8.dp))
                     }
 
-                    if (posts.isEmpty()) {
-                        item {
-                            EmptyHomeFeed(
-                                onCreatePost = onOpenCreatePost
-                            )
-                        }
-                    }
+                    if (posts.isEmpty()) item { EmptyHomeFeed(onCreatePost = onOpenCreatePost) }
                 }
 
                 FloatingActionButton(
@@ -356,316 +204,70 @@ fun FeedScreen(
                     containerColor = if (isDark) BlinkCream else BlinkBlack,
                     contentColor = if (isDark) BlinkBlack else BlinkCream,
                     shape = CircleShape,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .navigationBarsPadding()
-                        .padding(
-                            end = 20.dp,
-                            bottom = 90.dp
-                        )
-                        .testTag("create_post_fab")
+                    modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 20.dp, bottom = 90.dp).testTag("create_post_fab")
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Create Post",
-                        modifier = Modifier.size(28.dp)
-                    )
+                    Icon(Icons.Default.Add, contentDescription = "Create Post", modifier = Modifier.size(28.dp))
                 }
             }
         }
     }
 }
 
-/* -------------------------------------------------------------------------- */
-/* HEADER                                                                      */
-/* -------------------------------------------------------------------------- */
-
 @Composable
-private fun HomeHeader(
-    userAvatar: String,
-    onMenuClick: () -> Unit,
-    onNotificationClick: () -> Unit,
-    onProfileClick: () -> Unit
-) {
-
+private fun HomeHeader(userAvatar: String, onMenuClick: () -> Unit, onNotificationClick: () -> Unit, onProfileClick: () -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                start = 8.dp,
-                end = 8.dp,
-                top = 38.dp,
-                bottom = 8.dp
-            ),
+        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 38.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-
-        // Three dots on the left.
-        IconButton(
-            onClick = onMenuClick,
-            modifier = Modifier.size(44.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.MoreHoriz,
-                contentDescription = "Menu",
-                modifier = Modifier.size(27.dp)
-            )
-        }
-
-        Spacer(
-            modifier = Modifier.weight(1f)
-        )
-
-        // Home in the middle.
-        Text(
-            text = "Home",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-
-        Spacer(
-            modifier = Modifier.weight(1f)
-        )
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-
-            // Notification.
-            IconButton(
-                onClick = onNotificationClick,
-                modifier = Modifier.size(44.dp)
-            ) {
-
-                BadgedBox(
-                    badge = {
-                        Badge(
-                            containerColor = BlinkGold,
-                            contentColor = BlinkBlack
-                        ) {
-                            Text("3", fontWeight = FontWeight.Bold)
-                        }
-                    }
-                ) {
-
-                    Icon(
-                        imageVector = Icons.Default.NotificationsNone,
-                        contentDescription = "Notifications",
-                        modifier = Modifier.size(25.dp)
-                    )
-                }
+        IconButton(onClick = onMenuClick, modifier = Modifier.size(44.dp)) { Icon(Icons.Default.MoreHoriz, "Menu", modifier = Modifier.size(27.dp)) }
+        Spacer(Modifier.weight(1f))
+        Text("Home", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+        Spacer(Modifier.weight(1f))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onNotificationClick, modifier = Modifier.size(44.dp)) {
+                Icon(Icons.Default.NotificationsNone, "Notifications", modifier = Modifier.size(25.dp))
             }
-
-            Spacer(
-                modifier = Modifier.width(2.dp)
-            )
-
-            // Profile.
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .clickable {
-                        onProfileClick()
-                    }
-            ) {
-
-                AsyncImage(
-                    model = userAvatar,
-                    contentDescription = "Profile",
-                    modifier = Modifier.fillMaxSize()
-                )
+            Spacer(Modifier.width(2.dp))
+            Box(Modifier.size(36.dp).clip(CircleShape).clickable { onProfileClick() }) {
+                AsyncImage(model = userAvatar, contentDescription = "Profile", modifier = Modifier.fillMaxSize())
             }
-
-            Spacer(
-                modifier = Modifier.width(4.dp)
-            )
+            Spacer(Modifier.width(4.dp))
         }
     }
 }
 
-/* -------------------------------------------------------------------------- */
-/* TOP NAVIGATION                                                              */
-/* -------------------------------------------------------------------------- */
-
 @Composable
-private fun TopNavigation(
-    selected: Int,
-    onHome: () -> Unit,
-    onReel: () -> Unit,
-    onConnect: () -> Unit,
-    onGame: () -> Unit
-) {
-
+private fun TopNavigation(selected: Int, onHome: () -> Unit, onReel: () -> Unit, onConnect: () -> Unit, onGame: () -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(
-                androidx.compose.foundation.rememberScrollState()
-            )
-            .padding(
-                horizontal = 20.dp,
-                vertical = 2.dp
-            ),
+        modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-
-        TopTab(
-            text = "Home",
-            selected = selected == 0,
-            onClick = onHome
-        )
-
-        Spacer(
-            modifier = Modifier.width(8.dp)
-        )
-
-        TopTab(
-            text = "Reel",
-            selected = selected == 1,
-            onClick = onReel
-        )
-
-        Spacer(
-            modifier = Modifier.width(8.dp)
-        )
-
-        TopTab(
-            text = "Connect",
-            selected = selected == 2,
-            onClick = onConnect
-        )
-
-        Spacer(
-            modifier = Modifier.width(8.dp)
-        )
-
-        TopTab(
-            text = "Game",
-            selected = selected == 3,
-            onClick = onGame
-        )
+        TopTab("Home", selected == 0, onHome); Spacer(Modifier.width(8.dp)); TopTab("Reel", selected == 1, onReel); Spacer(Modifier.width(8.dp))
+        TopTab("Connect", selected == 2, onConnect); Spacer(Modifier.width(8.dp)); TopTab("Game", selected == 3, onGame)
     }
 }
 
 @Composable
-private fun TopTab(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-
-    Surface(
-        modifier = Modifier.clickable {
-            onClick()
-        },
-        shape = RoundedCornerShape(100.dp),
-        color = if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            Color.Transparent
-        }
-    ) {
-
-        Text(
-            text = text,
-            color = if (selected) {
-                MaterialTheme.colorScheme.onPrimary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            fontSize = 13.sp,
-            fontWeight = if (selected) {
-                FontWeight.Bold
-            } else {
-                FontWeight.Medium
-            },
-            modifier = Modifier.padding(
-                horizontal = 16.dp,
-                vertical = 8.dp
-            )
-        )
+private fun TopTab(text: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(modifier = Modifier.clickable { onClick() }, shape = RoundedCornerShape(100.dp), color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent) {
+        Text(text, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
     }
 }
 
-/* -------------------------------------------------------------------------- */
-/* EMPTY FEED                                                                  */
-/* -------------------------------------------------------------------------- */
-
 @Composable
-private fun EmptyHomeFeed(
-    onCreatePost: () -> Unit
-) {
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                horizontal = 30.dp,
-                vertical = 60.dp
-            ),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-
-        Surface(
-            shape = CircleShape,
-            color = BlinkPink.copy(alpha = 0.12f)
-        ) {
-
-            Icon(
-                imageVector = Icons.Default.Home,
-                contentDescription = null,
-                tint = BlinkPink,
-                modifier = Modifier
-                    .size(58.dp)
-                    .padding(14.dp)
-            )
+private fun EmptyHomeFeed(onCreatePost: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 30.dp, vertical = 60.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(shape = CircleShape, color = BlinkPink.copy(alpha = 0.12f)) {
+            Icon(Icons.Default.Home, contentDescription = null, tint = BlinkPink, modifier = Modifier.size(58.dp).padding(14.dp))
         }
-
-        Spacer(
-            modifier = Modifier.height(15.dp)
-        )
-
-        Text(
-            text = "Opps nothing here yet",
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp
-        )
-
-        Spacer(
-            modifier = Modifier.height(5.dp)
-        )
-
-        Text(
-            text = "Be the first person to share something.",
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Spacer(
-            modifier = Modifier.height(16.dp)
-        )
-
-        Surface(
-            modifier = Modifier.clickable {
-                onCreatePost()
-            },
-            shape = RoundedCornerShape(100.dp),
-            color = MaterialTheme.colorScheme.primary
-        ) {
-
-            Text(
-                text = "Create Post",
-                color = MaterialTheme.colorScheme.onPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                modifier = Modifier.padding(
-                    horizontal = 20.dp,
-                    vertical = 11.dp
-                )
-            )
+        Spacer(Modifier.height(15.dp))
+        Text("Opps nothing here yet", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Spacer(Modifier.height(5.dp))
+        Text("Be the first person to share something.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(16.dp))
+        Surface(modifier = Modifier.clickable { onCreatePost() }, shape = RoundedCornerShape(100.dp), color = MaterialTheme.colorScheme.primary) {
+            Text("Create Post", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp))
         }
     }
 }
