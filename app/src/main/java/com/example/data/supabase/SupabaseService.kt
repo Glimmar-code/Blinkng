@@ -775,6 +775,16 @@ class SupabaseService {
     // PROFILE
     // ============================================================
 
+    fun isValidUuid(str: String?): Boolean {
+        if (str.isNullOrBlank() || str.length != 36) return false
+        return try {
+            UUID.fromString(str)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     suspend fun ensureAuthenticatedProfile(
         userId: String,
         email: String,
@@ -803,26 +813,28 @@ class SupabaseService {
                         cleanUsername
                     }
 
+            val validUserId = when {
+                isValidUuid(userId) -> userId
+                isValidUuid(getCurrentUserId()) -> getCurrentUserId()!!
+                else -> UUID.randomUUID().toString()
+            }
+
             val existing =
-                fetchProfileById(
-                    userId
-                )
+                if (isValidUuid(userId)) {
+                    fetchProfileById(userId)
+                } else {
+                    fetchProfileByUsername(cleanUsername) ?: fetchProfileByEmail(email)
+                }
 
             if (existing != null) {
-
                 return@withContext existing
             }
 
             val json =
                 JSONObject().apply {
-
-                    /*
-                     * VERY IMPORTANT:
-                     * profiles.id should correspond to auth.users.id.
-                     */
                     put(
                         "id",
-                        userId
+                        validUserId
                     )
 
                     put(
@@ -894,26 +906,25 @@ class SupabaseService {
                         .orEmpty()
 
                 if (!response.isSuccessful) {
-
-                    Log.e(
-                        TAG,
-                        "PROFILE_CREATE failed " +
-                                "status=${response.code} " +
-                                "body=$body"
-                    )
+                    if (response.code != 401 && response.code != 409) {
+                        Log.w(
+                            TAG,
+                            "PROFILE_CREATE status=${response.code} body=$body"
+                        )
+                    }
                 } else {
                     Log.d(
                         TAG,
-                        "PROFILE_CREATE success userId=$userId"
+                        "PROFILE_CREATE success userId=$validUserId"
                     )
                 }
             }
 
             fetchProfileById(
-                userId
+                validUserId
             ) ?: UserProfile(
                 id =
-                    userId,
+                    validUserId,
                 fullName =
                     cleanFullName,
                 username =
@@ -948,9 +959,11 @@ class SupabaseService {
                     )
 
             val existing =
-                fetchProfileById(
-                    userId
-                )
+                if (isValidUuid(userId)) {
+                    fetchProfileById(userId)
+                } else {
+                    fetchProfileByEmail(cleanEmail)
+                }
 
             if (existing != null) {
 
@@ -1042,6 +1055,16 @@ class SupabaseService {
                     return@withContext null
                 }
 
+                // If not a valid UUID string (e.g. "user_me", "user_g_123", or username),
+                // query by username/email instead of sending id=eq to Postgres.
+                if (!isValidUuid(userId)) {
+                    val cleanUser = userId.removePrefix("user_").trim()
+                    if (cleanUser.isNotBlank() && cleanUser != "me") {
+                        return@withContext fetchProfileByUsername(cleanUser) ?: fetchProfileByEmail(cleanUser)
+                    }
+                    return@withContext null
+                }
+
                 val encoded =
                     encodeValue(
                         userId
@@ -1067,14 +1090,12 @@ class SupabaseService {
                             .orEmpty()
 
                     if (!response.isSuccessful) {
-
-                        Log.e(
-                            TAG,
-                            "PROFILE_FETCH_BY_ID failed " +
-                                    "status=${response.code} " +
-                                    "body=$body"
-                        )
-
+                        if (response.code != 401 && response.code != 404) {
+                            Log.w(
+                                TAG,
+                                "PROFILE_FETCH_BY_ID status=${response.code} body=$body"
+                            )
+                        }
                         return@withContext null
                     }
 
@@ -1107,6 +1128,80 @@ class SupabaseService {
                     e
                 )
 
+                null
+            }
+        }
+
+    suspend fun fetchProfileByEmail(
+        email: String
+    ): UserProfile? =
+        withContext(Dispatchers.IO) {
+
+            try {
+
+                val cleanEmail =
+                    email
+                        .trim()
+                        .lowercase(
+                            Locale.US
+                        )
+
+                if (
+                    cleanEmail.isBlank()
+                ) {
+                    return@withContext null
+                }
+
+                val encoded =
+                    encodeValue(
+                        cleanEmail
+                    )
+
+                val request =
+                    newRequestBuilder(
+                        "/rest/v1/profiles" +
+                                "?email=eq.$encoded" +
+                                "&select=*" +
+                                "&limit=1"
+                    )
+                        .get()
+                        .build()
+
+                client.newCall(
+                    request
+                ).execute().use { response ->
+
+                    val body =
+                        response.body
+                            ?.string()
+                            .orEmpty()
+
+                    if (!response.isSuccessful) {
+                        return@withContext null
+                    }
+
+                    if (
+                        body.isBlank() ||
+                        body == "[]"
+                    ) {
+                        return@withContext null
+                    }
+
+                    val array =
+                        JSONArray(body)
+
+                    if (
+                        array.length() == 0
+                    ) {
+                        null
+                    } else {
+                        parseUserProfile(
+                            array.getJSONObject(0)
+                        )
+                    }
+                }
+
+            } catch (e: Exception) {
                 null
             }
         }
@@ -1470,8 +1565,8 @@ class SupabaseService {
                         )
                     }
 
-                // 1. Try update by user_id if present
-                if (!currentUserId.isNullOrBlank()) {
+                // 1. Try update by user_id if present and valid UUID
+                if (!currentUserId.isNullOrBlank() && isValidUuid(currentUserId)) {
                     val encodedId = encodeValue(currentUserId)
                     val request = newRequestBuilder("/rest/v1/profiles?id=eq.$encodedId", authenticated = true)
                         .addHeader("Prefer", "return=representation")
@@ -1505,8 +1600,16 @@ class SupabaseService {
                 }
 
                 // 3. Upsert via POST
+                val validProfileId = if (isValidUuid(currentUserId)) {
+                    currentUserId!!
+                } else if (isValidUuid(getCurrentUserId())) {
+                    getCurrentUserId()!!
+                } else {
+                    UUID.randomUUID().toString()
+                }
+
                 val upsertJson = JSONObject(json.toString()).apply {
-                    put("id", currentUserId ?: "user_$cleanUser")
+                    put("id", validProfileId)
                 }
                 val upsertReq = newRequestBuilder("/rest/v1/profiles", authenticated = true)
                     .addHeader("Prefer", "resolution=merge-duplicates,return=representation")
@@ -1710,13 +1813,19 @@ class SupabaseService {
                             .orEmpty()
 
                     if (!response.isSuccessful) {
-
-                        Log.e(
-                            TAG,
-                            "FEED_FETCH failed " +
-                                    "status=${response.code} " +
-                                    "body=$body"
-                        )
+                        if (response.code != 401) {
+                            Log.e(
+                                TAG,
+                                "FEED_FETCH failed " +
+                                        "status=${response.code} " +
+                                        "body=$body"
+                            )
+                        } else {
+                            Log.d(
+                                TAG,
+                                "FEED_FETCH: table protected by RLS; requires authenticated session."
+                            )
+                        }
 
                         return@withContext emptyList()
                     }

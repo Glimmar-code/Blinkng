@@ -16,7 +16,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.util.UUID
+import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
 sealed class AuthState {
     object Initial : AuthState()
@@ -155,8 +158,38 @@ class AuthRepository(
     suspend fun signInWithGoogle(email: String): AuthResult = withContext(Dispatchers.IO) {
         try {
             _authState.value = AuthState.Loading
-            val userId = supabaseService.getCurrentUserId() ?: "user_g_${System.currentTimeMillis()}"
-            val profile = supabaseService.getOrCreateGoogleProfile(userId = userId, email = email)
+            val cleanEmail = email.trim().lowercase(Locale.US)
+            val derivedUsername = cleanEmail.substringBefore("@").replace(".", "_").replace(" ", "_")
+            val derivedName = derivedUsername.replace("_", " ").split(" ")
+                .joinToString(" ") { it.replaceFirstChar { char -> char.uppercase() } }
+            val googleAuthPassword = "GoogleAuth_${abs(cleanEmail.hashCode())}#Campus2026!"
+
+            // Authenticate or register in Supabase Auth to establish a real JWT session and valid UUID
+            val signUpResult = supabaseService.signUpUser(
+                email = cleanEmail,
+                password = googleAuthPassword,
+                username = derivedUsername,
+                fullName = derivedName,
+                faculty = "SIMME",
+                university = "University of Lagos"
+            )
+
+            val profile = if (signUpResult.isSuccess) {
+                signUpResult.getOrThrow()
+            } else {
+                val loginResult = supabaseService.authenticateUser(cleanEmail, googleAuthPassword)
+                if (loginResult.isSuccess) {
+                    loginResult.getOrThrow()
+                } else {
+                    val realUserId = supabaseService.getCurrentUserId() ?: UUID.randomUUID().toString()
+                    supabaseService.getOrCreateGoogleProfile(
+                        userId = realUserId,
+                        email = cleanEmail,
+                        displayName = derivedName
+                    )
+                }
+            }
+
             persistSession(profile)
             _authState.value = AuthState.Authenticated(profile)
             return@withContext AuthResult.success(profile)
