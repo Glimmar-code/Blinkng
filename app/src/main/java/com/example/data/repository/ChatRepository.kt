@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
+import com.example.data.models.MessageStatus
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +12,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 class ChatRepository(
@@ -28,59 +30,95 @@ class ChatRepository(
         supabaseService.fetchMessages()
     }
 
-    /**
-     * Uses the server-side send_message RPC so conversation creation,
-     * membership and message insertion happen atomically under auth.uid().
-     */
+    /** Sends through auth.uid() on the server; retries once after refreshing an expired JWT. */
     suspend fun sendMessage(receiverUsername: String, text: String): Result<ChatMessage> = withContext(Dispatchers.IO) {
-        try {
-            val uid = supabaseService.getCurrentUserId()
-                ?: return@withContext Result.failure(Exception("Not authenticated."))
-            val cleanReceiver = receiverUsername.trim()
-            val cleanText = text.trim()
-            if (cleanReceiver.isBlank() || cleanText.isBlank()) {
-                return@withContext Result.failure(Exception("Recipient and message are required."))
-            }
+        val receiver = receiverUsername.trim()
+        val cleanText = text.trim()
+        if (receiver.isBlank() || cleanText.isBlank()) {
+            return@withContext Result.failure(Exception("Recipient and message are required."))
+        }
+        val uid = supabaseService.getCurrentUserId()
+            ?: return@withContext Result.failure(Exception("Please sign in again."))
 
+        suspend fun request(): okhttp3.Response {
+            val token = SupabaseService.accessToken()
+                ?: throw IllegalStateException("Your session has expired. Please sign in again.")
             val body = JSONObject().apply {
-                put("p_sender_id", uid)
-                put("p_receiver_username", cleanReceiver)
+                put("p_receiver_username", receiver)
                 put("p_content", cleanText)
             }
-            val request = Request.Builder()
-                .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/send_message")
-                .addHeader("apikey", SupabaseConfig.anonKey)
-                .addHeader("Authorization", "Bearer ${SupabaseService.accessToken().orEmpty()}")
-                .addHeader("Content-Type", "application/json")
-                .post(body.toString().toRequestBody(jsonMediaType))
-                .build()
+            return client.newCall(
+                Request.Builder()
+                    .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/send_message")
+                    .addHeader("apikey", SupabaseConfig.anonKey)
+                    .addHeader("Authorization", "Bearer $token")
+                    .addHeader("Content-Type", "application/json")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).execute()
+        }
 
-            client.newCall(request).execute().use { response ->
-                val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    val message = runCatching { JSONObject(raw).optString("message") }
-                        .getOrNull()
-                        .orEmpty()
-                        .ifBlank { "Message send failed (${response.code})." }
+        try {
+            var response = request()
+            if (response.code == 401) {
+                response.close()
+                val refreshed = refreshSession()
+                if (!refreshed) {
+                    return@withContext Result.failure(Exception("Your session expired. Please sign in again."))
+                }
+                response = request()
+            }
+            response.use { res ->
+                val raw = res.body?.string().orEmpty()
+                if (!res.isSuccessful) {
+                    val message = runCatching { JSONObject(raw).optString("message") }.getOrNull()
+                        .orEmpty().ifBlank { "Unable to send message (${res.code})." }
                     return@withContext Result.failure(Exception(message))
                 }
                 val messageId = raw.trim().removeSurrounding("\"")
-                val now = java.time.Instant.now().toString()
+                if (messageId.isBlank() || messageId == "null") {
+                    return@withContext Result.failure(Exception("Message was not created."))
+                }
                 Result.success(
                     ChatMessage(
                         id = messageId,
                         senderId = uid,
                         text = cleanText,
-                        rawTimestamp = now,
+                        rawTimestamp = Instant.now().toString(),
                         timestamp = "Just now",
                         isFromMe = true,
                         isRead = false,
-                        status = com.example.data.models.MessageStatus.SENT
+                        status = MessageStatus.SENT
                     )
                 )
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(Exception(e.message ?: "Unable to send message.", e))
+        }
+    }
+
+    private suspend fun refreshSession(): Boolean = withContext(Dispatchers.IO) {
+        val refreshToken = SupabaseService.refreshToken() ?: return@withContext false
+        try {
+            val body = "grant_type=refresh_token&refresh_token=${java.net.URLEncoder.encode(refreshToken, "UTF-8")}".toRequestBody("application/x-www-form-urlencoded".toMediaType())
+            client.newCall(
+                Request.Builder()
+                    .url("${SupabaseConfig.url.trimEnd('/')}/auth/v1/token?grant_type=refresh_token")
+                    .addHeader("apikey", SupabaseConfig.anonKey)
+                    .addHeader("Content-Type", "application/x-www-form-urlencoded")
+                    .post(body)
+                    .build()
+            ).execute().use { response ->
+                if (!response.isSuccessful) return@withContext false
+                val json = JSONObject(response.body?.string().orEmpty())
+                val access = json.optString("access_token")
+                val refresh = json.optString("refresh_token").ifBlank { refreshToken }
+                if (access.isBlank()) return@withContext false
+                SupabaseService.saveSession(access, refresh)
+                true
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 
