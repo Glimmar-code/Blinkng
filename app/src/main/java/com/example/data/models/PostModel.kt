@@ -35,10 +35,10 @@ data class FeedPost(
     var isLiked: Boolean = false,
     var commentsCount: Int,
     var sharesCount: Int,
-    var viewsCount: Int = 1450,
+    var viewsCount: Int = 0,
     var isBookmarked: Boolean = false,
     val isReel: Boolean = false,
-    val videoDuration: String = "0:30",
+    val videoDuration: String = "0:00",
     val videoUrl: String? = null,
     val tags: List<String> = emptyList(),
     val mentions: List<String> = emptyList(),
@@ -94,7 +94,7 @@ data class Story(
     val timeAgo: String = "2h ago",
     val faculty: String = "SIMME",
     val university: String = "University of Lagos",
-    val likesCount: Int = 24,
+    val likesCount: Int = 0,
     val isLiked: Boolean = false,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE
 )
@@ -119,23 +119,23 @@ data class ActivityItem(
 data class MarketItem(
     val id: String,
     val title: String,
-    val price: Long, // Price in Nigerian Naira (₦)
+    val price: Long,
     val images: List<String>,
     val sellerUsername: String,
     val sellerAvatar: String,
     val sellerName: String,
-    val sellerPhone: String = "+234 812 345 6789",
-    val sellerWhatsapp: String = "+2348123456789",
-    val sellerIsVerified: Boolean = true,
-    val verificationBadge: VerificationBadge = VerificationBadge.BLUE,
-    val sellerRating: Double = 4.8,
-    val sellerReviewCount: Int = 34,
-    val university: String = "University of Lagos",
-    val location: String = "Akoka Campus, Lagos",
+    val sellerPhone: String = "",
+    val sellerWhatsapp: String = "",
+    val sellerIsVerified: Boolean = false,
+    val verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    val sellerRating: Double = 0.0,
+    val sellerReviewCount: Int = 0,
+    val university: String = "",
+    val location: String = "",
     val category: String,
     val condition: String = "Like New",
     val description: String,
-    val postedTime: String = "2 hours ago",
+    val postedTime: String = "Recently",
     val isFeatured: Boolean = false,
     val isSold: Boolean = false
 )
@@ -149,12 +149,12 @@ data class LeaderboardUser(
     val faculty: String,
     val university: String,
     val level: String,
-    val streakDays: Int = 12,
+    val streakDays: Int = 0,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE
 )
 
 data class CommentReply(
-    val id: Long,
+    val id: String,
     val user: String,
     val avatar: String,
     val text: String,
@@ -165,7 +165,7 @@ data class CommentReply(
 )
 
 data class Comment(
-    val id: Long,
+    val id: String,
     val user: String,
     val avatar: String,
     val text: String,

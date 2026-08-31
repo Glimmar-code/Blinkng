@@ -53,32 +53,7 @@ class AuthRepository(
     private val anonKey = SupabaseConfig.anonKey
 
     init {
-        checkCachedSession()
-    }
-
-    private fun checkCachedSession() {
-        val isLoggedIn = prefs.getBoolean("is_logged_in", false)
-        val hasToken = !SupabaseService.accessToken().isNullOrBlank()
-        if (isLoggedIn && hasToken) {
-            val email = prefs.getString("email", "") ?: ""
-            val fullName = prefs.getString("full_name", "") ?: ""
-            val username = prefs.getString("username", "") ?: ""
-            val faculty = prefs.getString("faculty", "") ?: ""
-            val university = prefs.getString("university", "") ?: ""
-            val avatarUrl = prefs.getString("avatar_url", "") ?: ""
-
-            val cachedProfile = UserProfile(
-                email = ContactField(email, true),
-                fullName = fullName,
-                username = username,
-                faculty = faculty,
-                university = university,
-                avatarUrl = avatarUrl
-            )
-            _authState.value = AuthState.Authenticated(cachedProfile)
-        } else {
-            _authState.value = AuthState.Unauthenticated()
-        }
+        _authState.value = AuthState.Initial
     }
 
     suspend fun signUpWithEmail(
@@ -91,81 +66,67 @@ class AuthRepository(
         val cleanEmail = email.trim().lowercase()
         val cleanUsername = username.trim().lowercase().replace("@", "")
         val cleanName = fullName?.trim()?.ifBlank { null } ?: cleanUsername.replace(".", " ")
-
         if (cleanEmail.isBlank() || password.isBlank() || cleanUsername.isBlank()) {
             return@withContext AuthResult.failure("Please complete all required fields.")
         }
-
         try {
-            val result = supabaseService.signUpUser(
-                email = cleanEmail,
-                password = password,
-                username = cleanUsername,
-                fullName = cleanName,
-                faculty = faculty
-            )
-
+            val result = supabaseService.signUpUser(cleanEmail, password, cleanUsername, cleanName, faculty)
             if (result.isSuccess) {
                 val profile = result.getOrThrow()
                 persistSession(profile)
-                _authState.value = AuthState.Authenticated(profile)
-                return@withContext AuthResult.success(profile)
+                _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken())
+                AuthResult.success(profile)
             } else {
-                val error = result.exceptionOrNull()?.message ?: "Sign up failed."
-                Log.e("AuthRepository", "signUpWithEmail failed: $error")
-                return@withContext AuthResult.failure(error)
+                AuthResult.failure(result.exceptionOrNull()?.message ?: "Sign up failed.")
             }
         } catch (e: Exception) {
-            Log.e("AuthRepository", "signUpWithEmail error: ${e.message}")
-            return@withContext AuthResult.failure(e.message ?: "Sign up failed.")
+            Log.e("AuthRepository", "signUpWithEmail error", e)
+            AuthResult.failure(e.message ?: "Sign up failed.")
         }
     }
 
-    suspend fun signInWithEmail(
-        emailOrUsername: String,
-        password: String
-    ): AuthResult = withContext(Dispatchers.IO) {
+    suspend fun signInWithEmail(emailOrUsername: String, password: String): AuthResult = withContext(Dispatchers.IO) {
         val cleanInput = emailOrUsername.trim().lowercase()
         if (cleanInput.isBlank() || password.isBlank()) {
             return@withContext AuthResult.failure("Please enter both email/username and password.")
         }
-
         try {
             val result = supabaseService.authenticateUser(cleanInput, password)
             if (result.isSuccess) {
                 val profile = result.getOrThrow()
                 persistSession(profile)
-                _authState.value = AuthState.Authenticated(profile)
-                return@withContext AuthResult.success(profile)
+                _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken())
+                AuthResult.success(profile)
             } else {
-                return@withContext AuthResult.failure(result.exceptionOrNull()?.message ?: "Invalid email or password.")
+                AuthResult.failure(result.exceptionOrNull()?.message ?: "Invalid email or password.")
             }
         } catch (e: Exception) {
-            Log.e("AuthRepository", "signInWithEmail error: ${e.message}")
-            return@withContext AuthResult.failure("Connection error. Please try again.")
+            Log.e("AuthRepository", "signInWithEmail error", e)
+            AuthResult.failure(e.message ?: "Connection error. Please try again.")
         }
     }
 
-    /**
-     * Google sign-in must use a real Google OAuth/ID-token exchange.
-     * The previous implementation generated a deterministic password and could
-     * fall back to a random UUID, which could create a profile not backed by
-     * auth.users. Do not fabricate an identity for a social provider.
-     */
     suspend fun signInWithGoogle(email: String): AuthResult = withContext(Dispatchers.IO) {
         _authState.value = AuthState.Unauthenticated()
-        AuthResult.failure(
-            "Google sign-in is not connected to Supabase Auth yet. Use email/password or configure the Google OAuth flow before enabling this button."
-        )
+        AuthResult.failure("Google sign-in is not connected to Supabase Auth yet. Configure the Google OAuth flow before enabling this button.")
     }
 
     suspend fun recoverPassword(email: String): Boolean = withContext(Dispatchers.IO) {
         supabaseService.recoverPassword(email)
     }
 
-    fun signOut() {
+    fun markAuthenticated(profile: UserProfile) {
+        val token = SupabaseService.accessToken()
+        if (token.isNullOrBlank()) {
+            _authState.value = AuthState.Unauthenticated("No Supabase session is available.")
+            return
+        }
+        persistSession(profile)
+        _authState.value = AuthState.Authenticated(profile, token)
+    }
+    suspend fun signOut() {
+        try { supabaseService.revokeCurrentSupabaseSession() } catch (e: Exception) { Log.w("AuthRepository","Supabase logout failed",e); SupabaseService.clearSession() }
         prefs.edit().clear().apply()
-        SupabaseService.clearSession()
         _authState.value = AuthState.Unauthenticated()
     }
 

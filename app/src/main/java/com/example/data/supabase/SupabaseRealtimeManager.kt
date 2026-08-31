@@ -114,6 +114,7 @@ class SupabaseRealtimeManager private constructor() {
             isConnecting.set(false)
 
             startHeartbeat()
+            sendAccessToken()
             subscribeToTables()
         }
 
@@ -133,8 +134,14 @@ class SupabaseRealtimeManager private constructor() {
         }
     }
 
+    private fun sendAccessToken() {
+        val token=SupabaseService.accessToken() ?: return
+        val msg=JSONObject().apply{put("topic","realtime");put("event","access_token");put("payload",JSONObject().put("access_token",token));put("ref",refCounter.getAndIncrement().toString())}
+        webSocket?.send(msg.toString())
+    }
+
     private fun subscribeToTables() {
-        val tables = listOf("messages", "conversations", "notifications", "feed_posts")
+        val tables = listOf("messages","conversations","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","roommate_profiles","roommate_applications","skill_endorsements","poll_votes")
         tables.forEach { table ->
             val ref = refCounter.getAndIncrement().toString()
             val joinMsg = JSONObject().apply {
