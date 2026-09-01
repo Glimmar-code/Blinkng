@@ -19,10 +19,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.example.data.models.FeedPost
@@ -74,42 +78,45 @@ private fun ReelPage(reel: FeedPost, isActive: Boolean, onLike: (String) -> Unit
 private fun ReelVideo(url: String, isActive: Boolean) {
     val context = LocalContext.current
     var playbackError by remember(url) { mutableStateOf<String?>(null) }
+    var buffering by remember(url) { mutableStateOf(true) }
     val player = remember(url) {
-        ExoPlayer.Builder(context).build().apply {
-            repeatMode = Player.REPEAT_MODE_ONE
-            playWhenReady = isActive
-            addListener(object : Player.Listener {
-                override fun onPlayerError(error: PlaybackException) {
-                    playbackError = error.errorCodeName
-                }
-            })
-            setMediaItem(MediaItem.fromUri(url))
-            prepare()
-        }
+        val http = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(20_000)
+            .setReadTimeoutMs(30_000)
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(http))
+            .build().apply {
+                repeatMode = Player.REPEAT_MODE_ONE
+                volume = 1f
+                setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) { buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE }
+                    override fun onPlayerError(error: PlaybackException) { buffering = false; playbackError = error.errorCodeName }
+                })
+                setMediaItem(MediaItem.fromUri(url))
+                prepare()
+                playWhenReady = isActive
+            }
     }
     LaunchedEffect(isActive, player) {
         player.playWhenReady = isActive
         if (isActive) player.play() else player.pause()
     }
-    DisposableEffect(player) { onDispose { player.stop(); player.release() } }
+    DisposableEffect(player) { onDispose { player.release() } }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         AndroidView(
-            factory = { ctx -> PlayerView(ctx).apply { useController = true; controllerAutoShow = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; this.player = player } },
-            update = { view -> view.player = player },
+            factory = { ctx -> PlayerView(ctx).apply { useController = true; controllerAutoShow = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM; keepScreenOn = true; showBuffering = PlayerView.SHOW_BUFFERING_WHEN_PLAYING; this.player = player } },
+            update = { it.player = player },
             modifier = Modifier.fillMaxSize()
         )
+        if (buffering && playbackError == null) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(40.dp))
         if (playbackError != null) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Unable to play this video", color = Color.White, fontWeight = FontWeight.Bold)
-                Text(playbackError ?: "Playback error", color = Color.LightGray, fontSize = 11.sp)
+                Text("Unable to play this reel", color = Color.White, fontWeight = FontWeight.Bold)
+                Text(playbackError!!, color = Color.LightGray, fontSize = 11.sp)
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = {
-                    playbackError = null
-                    player.stop()
-                    player.setMediaItem(MediaItem.fromUri(url))
-                    player.prepare()
-                    player.playWhenReady = isActive
-                }) { Text("Retry") }
+                OutlinedButton(onClick = { playbackError = null; buffering = true; player.stop(); player.clearMediaItems(); player.setMediaItem(MediaItem.fromUri(url)); player.prepare(); player.playWhenReady = isActive; if (isActive) player.play() }) { Text("Retry") }
             }
         }
     }
