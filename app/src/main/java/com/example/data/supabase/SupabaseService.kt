@@ -2405,6 +2405,10 @@ suspend fun uploadPostMedia(
             )
         }
 
+        val parsedVideoUrl = obj.optString("video_url", "").takeIf { it.isNotBlank() }
+        val parsedType = obj.optString("type", "").lowercase(Locale.US)
+        val parsedIsReel = parsedType == "reel" && !parsedVideoUrl.isNullOrBlank() && obj.optBoolean("is_reel", true)
+
         val isVerified = obj.optBoolean("is_verified", false) || obj.optString("verification_badge", "").equals("BLUE", ignoreCase = true) || obj.optString("verification_badge", "").equals("GOLD", ignoreCase = true)
         val badgeStr = obj.optString("verification_badge", "").uppercase(Locale.US)
         val badge = when (badgeStr) {
@@ -2432,9 +2436,9 @@ suspend fun uploadPostMedia(
             sharesCount = obj.optInt("shares_count", obj.optInt("share_count", 0)),
             viewsCount = obj.optInt("views_count", obj.optInt("view_count", 0)),
             isBookmarked = obj.optBoolean("is_bookmarked", false),
-            isReel = obj.optBoolean("is_reel", false),
+            isReel = parsedIsReel,
             videoDuration = obj.optString("video_duration", "0:00"),
-            videoUrl = obj.optString("video_url", null),
+            videoUrl = parsedVideoUrl,
             audience = obj.optString("audience", "Everyone"),
             category = obj.optString("category", "Campus Life"),
             location = obj.optString("location", null).takeIf { it?.isNotBlank() == true },

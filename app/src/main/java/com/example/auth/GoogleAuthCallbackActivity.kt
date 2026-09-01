@@ -27,6 +27,12 @@ class GoogleAuthCallbackActivity : Activity() {
         }.toMap()
         val accessToken = params["access_token"]
         val refreshToken = params["refresh_token"]
+        val errorDescription = params["error_description"] ?: params["error"]
+        if (!errorDescription.isNullOrBlank()) {
+            android.util.Log.e("GoogleAuthCallback", "OAuth failed: $errorDescription")
+            returnToMain()
+            return
+        }
         if (!accessToken.isNullOrBlank()) SupabaseService.saveSession(accessToken, refreshToken)
         startActivity(Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK })
         finish()

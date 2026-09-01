@@ -1,3 +1,5 @@
+import android.content.Intent
+import android.net.Uri
 package com.example.ui.screens
 
 import androidx.compose.material3.MaterialTheme
@@ -2971,6 +2973,9 @@ private fun ChatTopBar(
     onMore: () -> Unit
 ) {
 
+    val callContext = LocalContext.current
+    val callRoom = "https://meet.jit.si/Blink-${convo.id}"
+
     TopAppBar(
         title = {
 
@@ -3119,7 +3124,9 @@ private fun ChatTopBar(
         actions = {
 
             IconButton(
-                onClick = {}
+                onClick = {
+                    callContext.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("$callRoom#config.startWithVideoMuted=true")))
+                }
             ) {
 
                 Icon(
@@ -3130,7 +3137,9 @@ private fun ChatTopBar(
             }
 
             IconButton(
-                onClick = {}
+                onClick = {
+                    callContext.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(callRoom)))
+                }
             ) {
 
                 Icon(
