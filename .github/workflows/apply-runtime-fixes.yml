@@ -22,6 +22,7 @@ jobs:
         run: |
           python3 .github/scripts/apply_runtime_fixes.py
           python3 .github/scripts/apply_account_fix.py
+          python3 .github/scripts/apply_uiux_fixes.py
 
       - name: Commit fixes
         run: |
@@ -38,10 +39,11 @@ jobs:
                   app/src/main/java/com/example/MainActivity.kt \
                   .github/scripts/apply_runtime_fixes.py \
                   .github/scripts/apply_account_fix.py \
+                  .github/scripts/apply_uiux_fixes.py \
                   .github/workflows/apply-runtime-fixes.yml
           if git diff --cached --quiet; then
             echo "No runtime changes needed."
             exit 0
           fi
-          git commit -m "fix: auth reels messaging and navigation"
+          git commit -m "fix: auth reels messaging navigation and ui ux"
           git push origin main
