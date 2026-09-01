@@ -33,10 +33,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,7 +50,6 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.FeedPost
 import com.example.data.models.Story
@@ -108,7 +105,7 @@ fun FeedScreen(
                 onProfileClick = onProfileClick, selectedTopTab = 3,
                 onHomeClick = { navigate(0) }, onReelClick = { navigate(1) }, onConnectClick = { navigate(2) }, onGameClick = { navigate(3) })
             else -> {
-                LazyColumn(state = listState, modifier = Modifier.fillMaxSize().nestedScroll(nestedScrollConnection), contentPadding = PaddingValues(bottom = 115.dp)) {
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize().nestedScroll(nestedScrollConnection), contentPadding = PaddingValues(bottom = 16.dp)) {
                     item { HomeHeader(userAvatar, onOpenMenu, onOpenActivity) { onProfileClick("you") } }
                     item { TopNavigation(selected = selectedTopTab, onHome = { navigate(0) }, onReel = { navigate(1) }, onConnect = { navigate(2) }, onGame = { navigate(3) }) }
                     item { Spacer(Modifier.height(4.dp)) }
@@ -124,7 +121,7 @@ fun FeedScreen(
                 }
                 FloatingActionButton(onClick = onOpenCreatePost, containerColor = if (isDark) BlinkCream else BlinkBlack,
                     contentColor = if (isDark) BlinkBlack else BlinkCream, modifier = Modifier.align(Alignment.BottomEnd)
-                        .navigationBarsPadding().padding(end = 20.dp, bottom = 90.dp).testTag("create_post_fab")) {
+                        .navigationBarsPadding().padding(end = 20.dp, bottom = 16.dp).testTag("create_post_fab")) {
                     Icon(Icons.Default.Add, contentDescription = "Create Post", modifier = Modifier.size(28.dp))
                 }
             }
@@ -135,10 +132,10 @@ fun FeedScreen(
 @Composable
 private fun HomeHeader(userAvatar: String, onMenuClick: () -> Unit, onNotificationClick: () -> Unit, onProfileClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onMenuClick, modifier = Modifier.size(44.dp)) { Icon(Icons.Default.MoreHoriz, "Menu", modifier = Modifier.size(27.dp)) }
-        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { Text("Home", fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+        IconButton(onClick = onMenuClick, modifier = Modifier.size(44.dp)) { Icon(Icons.Default.MoreHoriz, contentDescription = "Menu", modifier = Modifier.size(27.dp)) }
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { Text("Home", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onNotificationClick, modifier = Modifier.size(44.dp)) { Icon(Icons.Default.NotificationsNone, "Notifications", modifier = Modifier.size(25.dp)) }
+            IconButton(onClick = onNotificationClick, modifier = Modifier.size(44.dp)) { Icon(Icons.Default.NotificationsNone, contentDescription = "Notifications", modifier = Modifier.size(25.dp)) }
             Spacer(Modifier.width(2.dp)); Box(Modifier.size(48.dp).clip(androidx.compose.foundation.shape.CircleShape).clickable(role = Role.Button, onClick = onProfileClick).semantics { }, contentAlignment = Alignment.Center) {
                 AsyncImage(model = userAvatar, contentDescription = "Profile", modifier = Modifier.size(36.dp).clip(androidx.compose.foundation.shape.CircleShape))
             }; Spacer(Modifier.width(4.dp))
@@ -158,7 +155,7 @@ private fun TopTab(text: String, selected: Boolean, onClick: () -> Unit) {
     Surface(modifier = Modifier.semantics { this.selected = selected }.clickable(role = Role.Tab, onClick = onClick), shape = androidx.compose.foundation.shape.RoundedCornerShape(100.dp),
         color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent) {
         Text(text, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            style = MaterialTheme.typography.labelLarge, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
     }
 }
 
@@ -168,10 +165,10 @@ private fun EmptyHomeFeed(onCreatePost: () -> Unit) {
         Surface(shape = androidx.compose.foundation.shape.CircleShape, color = BlinkPink.copy(alpha = 0.12f)) {
             Icon(Icons.Default.Home, contentDescription = null, tint = BlinkPink, modifier = Modifier.size(58.dp).padding(14.dp))
         }
-        Spacer(Modifier.height(15.dp)); Text("Oops, nothing here yet.", fontWeight = FontWeight.Bold, fontSize = 18.sp); Spacer(Modifier.height(5.dp))
-        Text("Be the first person to share something.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(15.dp)); Text("Oops, nothing here yet.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold); Spacer(Modifier.height(5.dp))
+        Text("Be the first person to share something.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(16.dp))
         Surface(modifier = Modifier.clickable(role = Role.Button, onClick = onCreatePost), shape = androidx.compose.foundation.shape.RoundedCornerShape(100.dp), color = MaterialTheme.colorScheme.primary) {
-            Text("Create Post", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp))
+            Text("Create Post", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp))
         }
     }
 }
