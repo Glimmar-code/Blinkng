@@ -12,7 +12,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.clip
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -42,7 +44,7 @@ fun VideoReelsScreen(reels: List<FeedPost>, isDark: Boolean, onLike: (String) ->
     if (reels.isEmpty()) {
         Box(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("No reels yet", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("No reels yet", color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(10.dp)); Button(onClick = onBackToPosts) { Text("Back to feed") }
             }
         }
@@ -54,7 +56,7 @@ fun VideoReelsScreen(reels: List<FeedPost>, isDark: Boolean, onLike: (String) ->
             ReelPage(reels[index], index == pager.currentPage, onLike, onComment, onBookmark, onShare, onProfileClick)
         }
         ReelsTopNavigation(onPosts = onBackToPosts, onConnect = onConnectClick, onGame = onGameClick)
-        Text("Reels", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 19.sp, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 8.dp))
+        Text("Reels", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 8.dp))
     }
 }
 
@@ -63,18 +65,18 @@ private fun ReelPage(reel: FeedPost, isActive: Boolean, onLike: (String) -> Unit
     Box(Modifier.fillMaxSize()) {
         val url = reel.videoUrl?.trim()
         if (!url.isNullOrBlank()) ReelVideo(url, isActive) else Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { Text("Video unavailable", color = Color.White) }
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .12f)))
-        Column(Modifier.align(Alignment.CenterEnd).padding(end = 10.dp, bottom = 70.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = .72f)))) )
+        Column(Modifier.align(Alignment.CenterEnd).navigationBarsPadding().padding(end = 10.dp, bottom = 56.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             AsyncAvatar(reel.authorAvatar) { onProfileClick(reel.author) }
             Spacer(Modifier.height(10.dp)); ReelAction(Icons.Default.Favorite, formatNumber(reel.likes), BlinkPink) { onLike(reel.id) }
             Spacer(Modifier.height(10.dp)); ReelAction(Icons.Default.ChatBubble, formatNumber(reel.commentsCount), Color.White) { onComment(reel.id) }
             Spacer(Modifier.height(10.dp)); ReelAction(Icons.Default.Bookmark, "Save", Color.White) { onBookmark(reel.id) }
             Spacer(Modifier.height(10.dp)); ReelAction(Icons.Default.Share, "Share", Color.White) { onShare(reel.id) }
         }
-        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(bottom = 28.dp)) {
+        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().navigationBarsPadding().padding(bottom = 18.dp)) {
             Column(Modifier.padding(start = 16.dp, end = 85.dp)) {
-                Text("@${reel.author}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                if (reel.text.isNotBlank()) { Spacer(Modifier.height(5.dp)); Text(reel.text, color = Color.White, fontSize = 13.sp, maxLines = 4) }
+                Text("@${reel.author}", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+                if (reel.text.isNotBlank()) { Spacer(Modifier.height(5.dp)); Text(reel.text, color = Color.White, style = MaterialTheme.typography.bodyMedium, maxLines = 4) }
             }
         }
     }
@@ -104,8 +106,7 @@ private fun ReelVideo(url: String, isActive: Boolean) {
         if (buffering && playbackError == null) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(40.dp))
         if (playbackError != null) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Unable to play this reel", color = Color.White, fontWeight = FontWeight.Bold)
-                Text(playbackError!!, color = Color.LightGray, fontSize = 11.sp)
+                Text("Unable to play this reel", color = Color.White, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = { playbackError = null; buffering = true; player.stop(); player.clearMediaItems(); player.setMediaItem(MediaItem.fromUri(url)); player.prepare(); player.playWhenReady = isActive; if (isActive) player.play() }) { Text("Retry") }
             }
@@ -115,27 +116,31 @@ private fun ReelVideo(url: String, isActive: Boolean) {
 
 @Composable
 private fun AsyncAvatar(url: String, onClick: () -> Unit) {
-    coil.compose.AsyncImage(model = url, contentDescription = "Creator profile", contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.size(50.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onClick))
+    Box(Modifier.size(56.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
+        coil.compose.AsyncImage(model = url, contentDescription = "Creator profile", contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.size(50.dp).clip(CircleShape))
+    }
 }
 
 @Composable
 private fun ReelAction(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, tint: Color, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        IconButton(onClick = onClick) { Icon(icon, text, tint = tint, modifier = Modifier.size(28.dp)) }
-        Text(text, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) { Icon(icon, text, tint = tint, modifier = Modifier.size(28.dp)) }
+        Text(text, color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
 private fun ReelsTopNavigation(onPosts: () -> Unit, onConnect: () -> Unit, onGame: () -> Unit) {
-    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 42.dp, start = 12.dp, end = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 42.dp, start = 8.dp, end = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
         ReelNavButton("Post", false, onPosts); ReelNavButton("Reel", true, {}); ReelNavButton("Connect", false, onConnect); ReelNavButton("Game", false, onGame)
     }
 }
 
 @Composable
 private fun ReelNavButton(label: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(Modifier.semantics { this.selected = selected }.clickable(role = Role.Tab, onClick = onClick), shape = CircleShape, color = if (selected) Color.White else Color.White.copy(alpha = 0.14f)) {
-        Text(label, color = if (selected) Color.Black else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp))
+    Surface(Modifier.defaultMinSize(minWidth = 64.dp, minHeight = 44.dp).semantics { this.selected = selected }.clickable(role = Role.Tab, onClick = onClick), shape = CircleShape, color = if (selected) Color.White else Color.White.copy(alpha = 0.14f)) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 4.dp)) {
+            Text(label, color = if (selected) Color.Black else Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
+        }
     }
 }
