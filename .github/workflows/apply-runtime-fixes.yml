@@ -23,6 +23,7 @@ jobs:
           python3 .github/scripts/apply_runtime_fixes.py
           python3 .github/scripts/apply_account_fix.py
           python3 .github/scripts/apply_uiux_fixes.py
+          python3 .github/scripts/apply_session_persistence_fix.py
 
       - name: Commit fixes
         run: |
@@ -40,10 +41,11 @@ jobs:
                   .github/scripts/apply_runtime_fixes.py \
                   .github/scripts/apply_account_fix.py \
                   .github/scripts/apply_uiux_fixes.py \
+                  .github/scripts/apply_session_persistence_fix.py \
                   .github/workflows/apply-runtime-fixes.yml
           if git diff --cached --quiet; then
             echo "No runtime changes needed."
             exit 0
           fi
-          git commit -m "fix: auth reels messaging navigation and ui ux"
+          git commit -m "fix: persist auth session across app restarts"
           git push origin main
