@@ -25,6 +25,7 @@ jobs:
           python3 .github/scripts/apply_uiux_fixes.py || echo "apply_uiux_fixes.py reported no applicable change; continuing"
           python3 .github/scripts/apply_session_persistence_fix.py || echo "apply_session_persistence_fix.py reported no applicable change; continuing"
           python3 .github/scripts/apply_feed_message_fix.py
+          python3 .github/scripts/apply_compile_safety_fixes.py
 
       - name: Commit fixes
         run: |
@@ -44,6 +45,7 @@ jobs:
                   .github/scripts/apply_uiux_fixes.py \
                   .github/scripts/apply_session_persistence_fix.py \
                   .github/scripts/apply_feed_message_fix.py \
+                  .github/scripts/apply_compile_safety_fixes.py \
                   .github/workflows/apply-runtime-fixes.yml
           if git diff --cached --quiet; then
             echo "No runtime changes needed."
