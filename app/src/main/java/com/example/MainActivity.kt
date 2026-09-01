@@ -484,6 +484,7 @@ fun MainAppContent(
                     convo = convo,
                     onBack = { viewModel.closeConversation() },
                     onSendMessage = { text -> viewModel.sendMessage(convo.partnerUsername, text) },
+                    onSendVideo = { uri -> viewModel.sendVideoMessage(convo.partnerUsername, uri) },
                     onProfileClick = { 
                         viewModel.closeConversation()
                         viewModel.openProfile(it) 

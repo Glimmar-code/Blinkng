@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.text.style.TextAlign
@@ -2424,7 +2426,7 @@ private fun SectionAction(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clickable {}
+                .clickable { onClick() }
                 .padding(
                     vertical = 10.dp
                 ),
@@ -2493,6 +2495,7 @@ fun ChatConversationView(
     convo: ChatConversation,
     onBack: () -> Unit,
     onSendMessage: (String) -> Unit,
+    onSendVideo: (Uri) -> Unit = {},
     onProfileClick: (String) -> Unit,
     isDark: Boolean,
     onRetryMessage: ((ChatMessage) -> Unit)? = null
@@ -2550,6 +2553,10 @@ fun ChatConversationView(
 
     val clipboard =
         LocalClipboardManager.current
+
+    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) onSendVideo(uri)
+    }
 
     val filteredMessages =
         remember(
@@ -2931,6 +2938,10 @@ fun ChatConversationView(
         AttachmentSheet(
             onDismiss = {
                 showAttachmentSheet = false
+            },
+            onVideo = {
+                showAttachmentSheet = false
+                videoPicker.launch("video/*")
             }
         )
     }
@@ -3446,6 +3457,20 @@ private fun MessageRow(
                             vertical = 9.dp
                         )
             ) {
+                if (!message.attachedVideoUrl.isNullOrBlank()) {
+                    val context = LocalContext.current
+                    Surface(shape = RoundedCornerShape(12.dp), color = Color.Black.copy(alpha = 0.18f), modifier = Modifier.fillMaxWidth().clickable { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(message.attachedVideoUrl))) } }) {
+                        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.PlayCircle, contentDescription = "Play video", tint = if (message.isFromMe) Color.White else BlinkPink, modifier = Modifier.size(30.dp))
+                            Spacer(Modifier.width(9.dp))
+                            Column {
+                                Text("Video message", fontWeight = FontWeight.Bold, color = if (message.isFromMe) Color.White else MaterialTheme.colorScheme.onSurface)
+                                Text("Tap to play", fontSize = 10.sp, color = if (message.isFromMe) Color.White.copy(alpha = 0.72f) else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(5.dp))
+                }
 
                 Text(
                     text =
@@ -3460,6 +3485,8 @@ private fun MessageRow(
                                 .colorScheme
                                 .onSurface
                 )
+
+                }
 
                 Spacer(
                     modifier =
@@ -4084,7 +4111,8 @@ private fun EmojiPanel(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AttachmentSheet(
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onVideo: () -> Unit = {}
 ) {
 
     ModalBottomSheet(
@@ -4112,6 +4140,14 @@ private fun AttachmentSheet(
             Spacer(
                 modifier =
                     Modifier.height(13.dp)
+            )
+
+            AttachmentGridItem(
+                icon = Icons.Default.VideoLibrary,
+                title = "Video",
+                subtitle = "Choose a video from your gallery",
+                tint = BlinkPink,
+                onClick = onVideo
             )
 
             AttachmentGridItem(
@@ -4196,7 +4232,8 @@ private fun AttachmentGridItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     subtitle: String,
-    tint: Color
+    tint: Color,
+    onClick: () -> Unit = {}
 ) {
 
     Row(
