@@ -200,7 +200,8 @@ data class ChatMessage(
     val status: MessageStatus = MessageStatus.SENT,
     val isVoiceNote: Boolean = false,
     val voiceDuration: String = "",
-    val attachedImageUrl: String? = null
+    val attachedImageUrl: String? = null,
+    val attachedVideoUrl: String? = null
 )
 
 data class ChatConversation(

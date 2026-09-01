@@ -50,6 +50,7 @@ fun VideoReelsScreen(reels: List<FeedPost>, isDark: Boolean, onLike: (String) ->
         VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { index ->
             ReelPage(reels[index], index == pager.currentPage, onLike, onComment, onBookmark, onShare, onProfileClick)
         }
+        ReelsTopNavigation(onPosts = onBackToPosts, onConnect = onConnectClick, onGame = onGameClick)
         Text("Reels", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 19.sp, modifier = Modifier.align(Alignment.TopCenter).padding(top = 45.dp))
     }
 }
@@ -132,5 +133,26 @@ private fun ReelAction(icon: androidx.compose.ui.graphics.vector.ImageVector, te
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         IconButton(onClick = onClick) { Icon(icon, text, tint = tint, modifier = Modifier.size(28.dp)) }
         Text(text, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+
+@Composable
+private fun ReelsTopNavigation(onPosts: () -> Unit, onConnect: () -> Unit, onGame: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 82.dp, start = 18.dp, end = 18.dp).align(Alignment.TopCenter), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+        ReelNavButton("Post", false, onPosts)
+        Spacer(Modifier.width(6.dp))
+        ReelNavButton("Reel", true) {}
+        Spacer(Modifier.width(6.dp))
+        ReelNavButton("Connect", false, onConnect)
+        Spacer(Modifier.width(6.dp))
+        ReelNavButton("Game", false, onGame)
+    }
+}
+
+@Composable
+private fun ReelNavButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(Modifier.clickable { onClick() }, shape = CircleShape, color = if (selected) Color.White else Color.White.copy(alpha = 0.14f)) {
+        Text(label, color = if (selected) Color.Black else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp))
     }
 }

@@ -4240,7 +4240,7 @@ private fun AttachmentGridItem(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clickable {}
+                .clickable { onClick() }
                 .padding(
                     vertical = 10.dp
                 ),

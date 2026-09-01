@@ -50,7 +50,7 @@ class AuthRepository(private val context: Context, private val supabaseService: 
     suspend fun signInWithGoogle(email: String): AuthResult = withContext(Dispatchers.IO) {
         try {
             val redirect = URLEncoder.encode(googleRedirect, "UTF-8")
-            val url = "$baseUrl/auth/v1/authorize?provider=google&redirect_to=$redirect"
+            val url = "$baseUrl/auth/v1/authorize?provider=google&redirect_to=$redirect&flow_type=implicit"
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             AuthResult.failure("GOOGLE_OAUTH_STARTED")
         } catch (e: Exception) {

@@ -11,6 +11,7 @@ import com.example.data.repository.*
 import com.example.data.supabase.RealtimeEvent
 import com.example.data.supabase.SupabaseRealtimeManager
 import com.example.data.supabase.SupabaseService
+import com.example.data.supabase.MessageMediaService
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -229,7 +230,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                 val normalPosts = fetched.filter { !it.isReel && it.videoUrl.isNullOrBlank() }.distinctBy { it.id }
                 val fetchedReels = fetched.filter { it.isReel || !it.videoUrl.isNullOrBlank() }.distinctBy { it.id }
                 val market = supabaseService.fetchMarketItems()
-                val conversations = supabaseService.fetchMessages()
+                val conversations = MessageMediaService.hydrateVideos(supabaseService.fetchMessages())
                 val leaderboard = supabaseService.fetchLeaderboard()
                 val cloudStories = supabaseService.fetchStories()
                 val myProfile = _uiState.value.myProfile
@@ -570,6 +571,23 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         appendMessageToState(cleanPartner, ChatMessage(id = tempId, senderId = uid, senderUsername = currentUsername, receiverUsername = cleanPartner, text = cleanText, timestamp = "Sending...", isFromMe = true, isRead = false, status = MessageStatus.SENDING))
         viewModelScope.launch {
             chatRepository.sendMessage(cleanPartner, cleanText).fold({ serverMsg -> replaceMessageInState(cleanPartner, tempId, serverMsg.copy(status = MessageStatus.SENT)); supabaseService.recordActivity(cleanPartner, "sent you a direct message", NotificationFilter.ALL, targetUsername = currentUsername, previewText = cleanText, targetType = "CHAT") }, { updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED); showToast("Failed to send message. Tap message to retry.") })
+        }
+    }
+
+    fun sendVideoMessage(partnerUsername: String, uri: Uri) {
+        val cleanPartner = partnerUsername.trim()
+        if (cleanPartner.isBlank()) return
+        val tempId = "temp_video_${UUID.randomUUID()}"
+        val uid = supabaseService.getCurrentUserId() ?: "local_user"
+        appendMessageToState(cleanPartner, ChatMessage(id = tempId, senderId = uid, receiverUsername = cleanPartner, text = "Video", timestamp = "Sending...", isFromMe = true, isRead = false, status = MessageStatus.SENDING))
+        viewModelScope.launch {
+            MessageMediaService.sendVideoMessage(appContext, cleanPartner, uri).fold({ serverMsg ->
+                replaceMessageInState(cleanPartner, tempId, serverMsg.copy(status = MessageStatus.SENT))
+                fetchSupabaseData()
+            }, {
+                updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
+                showToast("Failed to send video. Tap the message to retry.")
+            })
         }
     }
 
