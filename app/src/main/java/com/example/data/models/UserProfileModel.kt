@@ -78,5 +78,6 @@ data class UserProfile(
     var joinedLabel: String = "",
     var isSellerActive: Boolean = false,
     var sellerStoreName: String = "",
+    var points: Int = 0,
     var badges: List<AchievementBadge> = listOf()
 )

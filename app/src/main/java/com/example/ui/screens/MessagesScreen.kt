@@ -1,7 +1,8 @@
-import android.content.Intent
-import android.net.Uri
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.heightIn

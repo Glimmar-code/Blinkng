@@ -106,7 +106,7 @@ private fun ReelVideo(url: String, isActive: Boolean) {
     DisposableEffect(player) { onDispose { player.release() } }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         AndroidView(
-            factory = { ctx -> PlayerView(ctx).apply { useController = true; controllerAutoShow = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM; keepScreenOn = true; showBuffering = PlayerView.SHOW_BUFFERING_WHEN_PLAYING; this.player = player } },
+            factory = { ctx -> PlayerView(ctx).apply { useController = true; controllerAutoShow = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM; keepScreenOn = true; setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING); this.player = player } },
             update = { it.player = player },
             modifier = Modifier.fillMaxSize()
         )

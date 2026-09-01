@@ -162,3 +162,27 @@ fun VerifiedMark(
         )
     }
 }
+
+fun formatNumber(count: Int): String {
+    return when {
+        count >= 1_000_000 -> String.format(java.util.Locale.US, "%.1fM", count / 1_000_000.0).replace(".0M", "M")
+        count >= 1_000 -> String.format(java.util.Locale.US, "%.1fk", count / 1_000.0).replace(".0k", "k")
+        else -> count.toString()
+    }
+}
+
+@Composable
+fun HighlightedText(
+    text: String,
+    accentColor: Color,
+    textColor: Color,
+    modifier: Modifier = Modifier,
+    fontSize: androidx.compose.ui.unit.TextUnit = 13.5.sp
+) {
+    Text(
+        text = text,
+        color = textColor,
+        fontSize = fontSize,
+        modifier = modifier
+    )
+}

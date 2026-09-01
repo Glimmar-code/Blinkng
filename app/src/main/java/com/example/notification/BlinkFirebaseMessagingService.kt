@@ -29,7 +29,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                     Log.i(TAG, "Firebase is not configured; skipping FCM token sync.")
                     return
                 }
-            FirebaseMessaging.getInstance(firebaseApp).token
+            FirebaseMessaging.getInstance().token
                 .addOnSuccessListener { token ->
                     context.getSharedPreferences("blink_push", Context.MODE_PRIVATE).edit().putString("fcm_token", token).apply()
                     CoroutineScope(Dispatchers.IO).launch { syncTokenNow(context, token) }

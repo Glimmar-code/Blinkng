@@ -45,22 +45,22 @@ fun PostCard(post: FeedPost, isDark: Boolean, onLike: () -> Unit, onComment: () 
     LaunchedEffect(post.id) { onViewed() }
     Card(modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = if (isDark) MaterialTheme.colorScheme.surface else Color.White), elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.dp)) {
         Column(Modifier.fillMaxWidth()) {
-            if (post.isSponsored) Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Campaign, null, tint = BlinkPink, Modifier.size(16.dp)); Spacer(Modifier.width(5.dp)); Text(post.adLabel ?: "Sponsored", color = BlinkPink, fontWeight = FontWeight.Bold, fontSize = 11.sp) }
+            if (post.isSponsored) Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Campaign, contentDescription = null, tint = BlinkPink, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(5.dp)); Text(post.adLabel ?: "Sponsored", color = BlinkPink, fontWeight = FontWeight.Bold, fontSize = 11.sp) }
             Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 AsyncImage(model = post.authorAvatar, contentDescription = "Profile picture", contentScale = ContentScale.Crop, modifier = Modifier.size(44.dp).clip(CircleShape).clickable { onProfileClick(post.author) })
                 Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { Text(post.author, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.clickable { onProfileClick(post.author) }); if (post.isVerified || post.verificationBadge != VerificationBadge.NONE) { Spacer(Modifier.width(4.dp)); Icon(Icons.Default.Verified, null, tint = BlinkPurple, Modifier.size(15.dp)) } }
+                    Row(verticalAlignment = Alignment.CenterVertically) { Text(post.author, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.clickable { onProfileClick(post.author) }); if (post.isVerified || post.verificationBadge != VerificationBadge.NONE) { Spacer(Modifier.width(4.dp)); Icon(Icons.Default.Verified, contentDescription = null, tint = BlinkPurple, modifier = Modifier.size(15.dp)) } }
                     Text("${post.timeAgo} • ${post.facultyTag}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = onOptionsClick) { Icon(Icons.Default.MoreHoriz, "Post options") }
             }
-            if (post.text.isNotBlank()) { Text(post.text, Modifier.padding(horizontal = 14.dp), fontSize = 14.sp, lineHeight = 20.sp, maxLines = if (expanded) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis); if (post.text.length > 300) Text(if (expanded) "Show less" else "See more", color = BlinkPink, fontWeight = FontWeight.Bold, fontSize = 11.sp, Modifier.padding(start = 14.dp, top = 4.dp).clickable { expanded = !expanded }) }
+            if (post.text.isNotBlank()) { Text(post.text, modifier = Modifier.padding(horizontal = 14.dp), fontSize = 14.sp, lineHeight = 20.sp, maxLines = if (expanded) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis); if (post.text.length > 300) Text(if (expanded) "Show less" else "See more", color = BlinkPink, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.padding(start = 14.dp, top = 4.dp).clickable { expanded = !expanded }) }
             post.poll?.let { PollCard(it) { optionId -> onVotePoll(post.id, optionId) } }
             if (post.images.isNotEmpty()) {
                 Spacer(Modifier.height(10.dp)); Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp).clip(RoundedCornerShape(14.dp))) {
                     LazyRow(Modifier.fillMaxWidth()) { itemsIndexed(post.images) { index, image -> AsyncImage(model = image, contentDescription = "Post image ${index + 1}", contentScale = ContentScale.Crop, modifier = Modifier.fillParentMaxWidth().height(300.dp).clickable { imagePage = index; showImageFullscreen = true }) } }
-                    if (post.images.size > 1) Surface(Modifier.align(Alignment.TopEnd).padding(10.dp), CircleShape, Color.Black.copy(alpha = .55f)) { Text("${imagePage + 1}/${post.images.size}", Color.White, fontSize = 10.sp, Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) }
-                    IconButton(onClick = { showImageFullscreen = true }, Modifier.align(Alignment.BottomEnd).padding(6.dp)) { Surface(CircleShape, Color.Black.copy(alpha = .55f)) { Icon(Icons.Default.Fullscreen, "Open image fullscreen", tint = Color.White, Modifier.padding(8.dp)) } }
+                    if (post.images.size > 1) Surface(modifier = Modifier.align(Alignment.TopEnd).padding(10.dp), shape = CircleShape, color = Color.Black.copy(alpha = 0.55f)) { Text("${imagePage + 1}/${post.images.size}", color = Color.White, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) }
+                    IconButton(onClick = { showImageFullscreen = true }, Modifier.align(Alignment.BottomEnd).padding(6.dp)) { Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.55f)) { Icon(imageVector = Icons.Default.Fullscreen, contentDescription = "Open image fullscreen", tint = Color.White, modifier = Modifier.padding(8.dp)) } }
                 }
             }
             post.videoUrl?.takeIf { it.isNotBlank() && post.isReel }?.let { url ->
@@ -68,10 +68,10 @@ fun PostCard(post: FeedPost, isDark: Boolean, onLike: () -> Unit, onComment: () 
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 Text("${post.likes} likes", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TextButton(onClick = onLike) { Icon(if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null, tint = if (post.isLiked) BlinkPink else MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("Like", fontSize = 10.sp) }
-                TextButton(onClick = onComment) { Icon(Icons.Default.ChatBubbleOutline, null, Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("${post.commentsCount}", fontSize = 10.sp) }
-                TextButton(onClick = onBookmark) { Icon(if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, null, Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("Save", fontSize = 10.sp) }
-                TextButton(onClick = onShare) { Icon(Icons.Default.Share, null, Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("${post.sharesCount}", fontSize = 10.sp) }
+                TextButton(onClick = onLike) { Icon(imageVector = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder, contentDescription = null, tint = if (post.isLiked) BlinkPink else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("Like", fontSize = 10.sp) }
+                TextButton(onClick = onComment) { Icon(imageVector = Icons.Default.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("${post.commentsCount}", fontSize = 10.sp) }
+                TextButton(onClick = onBookmark) { Icon(imageVector = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("Save", fontSize = 10.sp) }
+                TextButton(onClick = onShare) { Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("${post.sharesCount}", fontSize = 10.sp) }
             }
         }
     }
@@ -87,7 +87,7 @@ private fun PollCard(poll: PostPoll, onVote: (String) -> Unit) {
             Spacer(Modifier.height(8.dp))
             poll.options.forEach { option ->
                 val total = poll.options.sumOf { it.votes }.coerceAtLeast(1); val progress = option.votes.toFloat() / total
-                Surface(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(enabled = !poll.hasVoted && !option.isVotedByMe) { onVote(option.id) }, RoundedCornerShape(12.dp), MaterialTheme.colorScheme.surface) {
+                Surface(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(enabled = !poll.hasVoted && !option.isVotedByMe) { onVote(option.id) }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface) {
                     Column(Modifier.padding(11.dp)) { Row(verticalAlignment = Alignment.CenterVertically) { Text(option.text, Modifier.weight(1f), fontSize = 12.sp); if (poll.hasVoted || option.isVotedByMe) Text("${(progress * 100).toInt()}%", fontWeight = FontWeight.Bold, fontSize = 11.sp) }; if (poll.hasVoted || option.isVotedByMe) { Spacer(Modifier.height(5.dp)); LinearProgressIndicator({ progress }, Modifier.fillMaxWidth()) } }
                 }
             }
@@ -102,8 +102,8 @@ private fun VideoPreview(url: String, modifier: Modifier, onFullscreen: () -> Un
     val player = remember(url) { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(url)); repeatMode = Player.REPEAT_MODE_ONE; prepare(); playWhenReady = false } }
     DisposableEffect(player) { onDispose { player.release() } }
     Box(modifier.background(Color.Black)) {
-        AndroidView(factory = { ctx -> PlayerView(ctx).apply { useController = true; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; player = player } }, update = { it.player = player }, modifier = Modifier.fillMaxSize())
-        IconButton(onClick = { player.play(); onFullscreen() }, Modifier.align(Alignment.TopEnd).padding(8.dp)) { Surface(CircleShape, Color.Black.copy(alpha = .55f)) { Icon(Icons.Default.Fullscreen, "Fullscreen video", tint = Color.White, Modifier.padding(8.dp)) } }
+        AndroidView(factory = { ctx -> PlayerView(ctx).apply { useController = true; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; this.player = player } }, update = { it.player = player }, modifier = Modifier.fillMaxSize())
+        IconButton(onClick = { player.play(); onFullscreen() }, Modifier.align(Alignment.TopEnd).padding(8.dp)) { Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.55f)) { Icon(imageVector = Icons.Default.Fullscreen, contentDescription = "Fullscreen video", tint = Color.White, modifier = Modifier.padding(8.dp)) } }
     }
 }
 
@@ -111,14 +111,14 @@ private fun VideoPreview(url: String, modifier: Modifier, onFullscreen: () -> Un
 private fun ImageFullscreenDialog(images: List<String>, initialPage: Int, onDismiss: () -> Unit) {
     val state = rememberLazyListState(initialFirstVisibleItemIndex = initialPage.coerceIn(0, (images.size - 1).coerceAtLeast(0)))
     Dialog(onDismissRequest = onDismiss) {
-        Surface(Modifier.fillMaxSize(), Color.Black) {
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
             Box(Modifier.fillMaxSize()) {
                 LazyRow(state = state, modifier = Modifier.fillMaxSize()) {
                     itemsIndexed(images) { _, image ->
                         AsyncImage(model = image, contentDescription = "Fullscreen image", contentScale = ContentScale.Fit, modifier = Modifier.fillParentMaxWidth().fillMaxHeight())
                     }
                 }
-                IconButton(onClick = onDismiss, Modifier.align(Alignment.TopEnd).padding(12.dp)) { Surface(CircleShape, Color.Black.copy(alpha = .6f)) { Icon(Icons.Default.Close, "Close", tint = Color.White, Modifier.padding(9.dp)) } }
+                IconButton(onClick = onDismiss, Modifier.align(Alignment.TopEnd).padding(12.dp)) { Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.6f)) { Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.padding(9.dp)) } }
             }
         }
     }
@@ -126,5 +126,5 @@ private fun ImageFullscreenDialog(images: List<String>, initialPage: Int, onDism
 
 @Composable
 private fun VideoFullscreenDialog(url: String, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss) { Surface(Modifier.fillMaxSize(), Color.Black) { Box(Modifier.fillMaxSize()) { VideoPreview(url, Modifier.fillMaxSize(), onDismiss); IconButton(onClick = onDismiss, Modifier.align(Alignment.TopEnd).padding(12.dp)) { Surface(CircleShape, Color.Black.copy(alpha = .6f)) { Icon(Icons.Default.Close, "Close", tint = Color.White, Modifier.padding(9.dp)) } } } } }
+    Dialog(onDismissRequest = onDismiss) { Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) { Box(Modifier.fillMaxSize()) { VideoPreview(url, Modifier.fillMaxSize(), onDismiss); IconButton(onClick = onDismiss, Modifier.align(Alignment.TopEnd).padding(12.dp)) { Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.6f)) { Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.padding(9.dp)) } } } } }
 }

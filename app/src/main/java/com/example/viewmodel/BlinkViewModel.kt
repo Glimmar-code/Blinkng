@@ -102,7 +102,6 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         startServerStatusMonitoring()
         loadDraftsFromPrefs()
         viewModelScope.launch { realtimeManager.events.collect { handleRealtimeEvent(it) } }
-        viewModelScope.launch { delay(700); fetchSupabaseData() }
     }
 
     private fun observeAuthState() {
@@ -128,25 +127,42 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun restoreSupabaseSession() {
         try {
-            if (!supabaseService.restoreSession()) throw IllegalStateException("No valid Supabase session.")
-            val uid = supabaseService.getCurrentUserId() ?: throw IllegalStateException("Session has no authenticated UUID.")
-            val profile = profileRepository.fetchById(uid) ?: throw IllegalStateException("Authenticated user has no profile row.")
-            _uiState.value = _uiState.value.copy(myProfile = profile, destination = AppDestination.MAIN)
-            saveLocalProfile(profile)
-            authRepository.markAuthenticated(profile)
-            fetchSupabaseData()
-        } catch (e: Exception) {
-            Log.e(TAG, "restoreSupabaseSession failed", e)
-            val hasSession = !SupabaseService.accessToken().isNullOrBlank() || !SupabaseService.refreshToken().isNullOrBlank()
+            val restored = supabaseService.restoreSession()
+            if (restored) {
+                val uid = supabaseService.getCurrentUserId()
+                if (!uid.isNullOrBlank()) {
+                    val profile = profileRepository.fetchById(uid)
+                    if (profile != null) {
+                        _uiState.value = _uiState.value.copy(myProfile = profile, destination = AppDestination.MAIN)
+                        saveLocalProfile(profile)
+                        authRepository.markAuthenticated(profile)
+                        fetchSupabaseData()
+                        return
+                    }
+                }
+            }
+            val hasSession = prefs.getBoolean(KEY_IS_LOGGED_IN, false)
             if (hasSession) {
                 restoreLocalSession()
                 _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN)
                 fetchSupabaseData()
             } else {
+                SupabaseService.clearSession()
+                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                fetchSupabaseData()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "restoreSupabaseSession notice: ${e.message}")
+            val hasSession = prefs.getBoolean(KEY_IS_LOGGED_IN, false)
+            if (hasSession) {
+                restoreLocalSession()
+                _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN)
+            } else {
                 prefs.edit().clear().apply()
                 SupabaseService.clearSession()
                 _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
             }
+            fetchSupabaseData()
         }
     }
 

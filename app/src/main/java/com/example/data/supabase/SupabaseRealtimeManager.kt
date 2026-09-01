@@ -110,5 +110,15 @@ class SupabaseRealtimeManager private constructor() {
     private fun scheduleReconnect() { reconnectJob?.cancel(); reconnectJob = scope.launch { delay(5_000L); if (!isConnected.get() && activeUsername.isNotBlank()) connect(activeUsername, activeUserId) } }
     fun disconnect() { setPresence(false); activeUsername = ""; activeUserId = ""; heartbeatJob?.cancel(); reconnectJob?.cancel(); try { webSocket?.close(1000, "User logged out") } catch (_: Exception) {}; webSocket = null; isConnected.set(false); isConnecting.set(false) }
     private fun nowIso(): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date())
-    private fun formatTimestamp(value: String): String = try { if (value.isBlank()) return "Just now"; val normalized = value.trim().replace("Z", "+0000"); val sdf = if (value.contains(".")) SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US) else SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US); sdf.timeZone = TimeZone.getTimeZone("UTC"); SimpleDateFormat("h:mm a", Locale.US).format(sdf.parse(normalized) ?: Date()) } catch (_: Exception) { "Just now" }
+    private fun formatTimestamp(value: String): String {
+        if (value.isBlank()) return "Just now"
+        return try {
+            val normalized = value.trim().replace("Z", "+0000")
+            val sdf = if (value.contains(".")) SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US) else SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US)
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            SimpleDateFormat("h:mm a", Locale.US).format(sdf.parse(normalized) ?: Date())
+        } catch (_: Exception) {
+            "Just now"
+        }
+    }
 }

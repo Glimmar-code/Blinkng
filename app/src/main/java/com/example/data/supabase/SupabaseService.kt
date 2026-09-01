@@ -1545,32 +1545,54 @@ fun getCurrentUserId(): String? {
     // ============================================================
 
     suspend fun fetchFeedPosts(): List<FeedPost> = withContext(Dispatchers.IO) {
-        val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
-        fun readSet(path: String): Set<String> {
-            return runBlocking(Dispatchers.IO) {
-                executeRequest(newRequestBuilder(path, true).get().build()).use { resp ->
-                    val raw = resp.body?.string().orEmpty(); if (!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Feed relation fetch failed."))
-                    val arr = JSONArray(raw); buildSet { for (i in 0 until arr.length()) add(arr.getJSONObject(i).optString("post_id")) }
+        val uid = getCurrentUserId()
+        val postsRaw = executeRequest(newRequestBuilder("/rest/v1/feed_posts?select=*&order=created_at.desc&limit=100", authenticated = (uid != null)).get().build()).use { resp ->
+            val raw = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Feed fetch failed."))
+            JSONArray(if (raw.isBlank()) "[]" else raw)
+        }
+        val userIds = buildSet { for (i in 0 until postsRaw.length()) postsRaw.getJSONObject(i).optString("user_id").takeIf { isValidUuid(it) }?.let { add(it) } }
+        val profiles = mutableMapOf<String, JSONObject>()
+        if (userIds.isNotEmpty()) {
+            executeRequest(newRequestBuilder("/rest/v1/profiles?id=in.(${userIds.joinToString(",")})&select=id,username,avatar_url,is_verified,verification_badge,full_name", authenticated = (uid != null)).get().build()).use { resp ->
+                val raw = resp.body?.string().orEmpty()
+                if (resp.isSuccessful && raw.isNotBlank() && raw != "[]") {
+                    val a = JSONArray(raw)
+                    for (i in 0 until a.length()) { val p = a.getJSONObject(i); profiles[p.optString("id")] = p }
                 }
             }
         }
-        val postsRaw = executeRequest(newRequestBuilder("/rest/v1/feed_posts?select=*&order=created_at.desc&limit=100", true).get().build()).use { resp ->
-            val raw = resp.body?.string().orEmpty(); if (!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Feed fetch failed.")); JSONArray(raw)
-        }
-        val ids = buildSet { for (i in 0 until postsRaw.length()) postsRaw.getJSONObject(i).optString("id").takeIf { isValidUuid(it) }?.let { add(it) } }
-        val userIds = buildSet { for (i in 0 until postsRaw.length()) postsRaw.getJSONObject(i).optString("user_id").takeIf { isValidUuid(it) }?.let { add(it) } }
-        val profiles = mutableMapOf<String, JSONObject>()
-        if (userIds.isNotEmpty()) executeRequest(newRequestBuilder("/rest/v1/profiles?id=in.(${userIds.joinToString(",")})&select=id,username,avatar_url,is_verified,verification_badge,full_name", true).get().build()).use { resp ->
-            val raw = resp.body?.string().orEmpty(); if (!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Profile fetch failed.")); val a=JSONArray(raw); for (i in 0 until a.length()) { val p=a.getJSONObject(i); profiles[p.optString("id")]=p }
-        }
-        val liked = executeRequest(newRequestBuilder("/rest/v1/post_likes?select=post_id&user_id=eq.${encodeValue(uid)}", true).get().build()).use { resp -> val raw=resp.body?.string().orEmpty(); if(!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(raw,"Like state fetch failed.")); val a=JSONArray(raw); buildSet { for(i in 0 until a.length()) add(a.getJSONObject(i).optString("post_id")) } }
-        val bookmarked = executeRequest(newRequestBuilder("/rest/v1/post_bookmarks?select=post_id&user_id=eq.${encodeValue(uid)}", true).get().build()).use { resp -> val raw=resp.body?.string().orEmpty(); if(!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(raw,"Bookmark state fetch failed.")); val a=JSONArray(raw); buildSet { for(i in 0 until a.length()) add(a.getJSONObject(i).optString("post_id")) } }
+        val liked = if (uid != null) {
+            executeRequest(newRequestBuilder("/rest/v1/post_likes?select=post_id&user_id=eq.${encodeValue(uid)}", true).get().build()).use { resp ->
+                val raw = resp.body?.string().orEmpty()
+                if (resp.isSuccessful && raw.isNotBlank() && raw != "[]") {
+                    val a = JSONArray(raw)
+                    buildSet { for (i in 0 until a.length()) add(a.getJSONObject(i).optString("post_id")) }
+                } else emptySet()
+            }
+        } else emptySet()
+        val bookmarked = if (uid != null) {
+            executeRequest(newRequestBuilder("/rest/v1/post_bookmarks?select=post_id&user_id=eq.${encodeValue(uid)}", true).get().build()).use { resp ->
+                val raw = resp.body?.string().orEmpty()
+                if (resp.isSuccessful && raw.isNotBlank() && raw != "[]") {
+                    val a = JSONArray(raw)
+                    buildSet { for (i in 0 until a.length()) add(a.getJSONObject(i).optString("post_id")) }
+                } else emptySet()
+            }
+        } else emptySet()
         buildList {
             for (i in 0 until postsRaw.length()) {
-                val source = postsRaw.getJSONObject(i); val profile=profiles[source.optString("user_id")]
-                val mapped=JSONObject(source.toString())
-                profile?.let { mapped.put("author", it.optString("username")); mapped.put("author_avatar", it.optString("avatar_url")); mapped.put("username", it.optString("username")); mapped.put("is_verified", it.optBoolean("is_verified")); mapped.put("verification_badge", it.optString("verification_badge")) }
-                add(parseFeedPost(mapped).copy(isLiked=liked.contains(source.optString("id")), isBookmarked=bookmarked.contains(source.optString("id"))))
+                val source = postsRaw.getJSONObject(i)
+                val profile = profiles[source.optString("user_id")]
+                val mapped = JSONObject(source.toString())
+                profile?.let {
+                    mapped.put("author", it.optString("username"))
+                    mapped.put("author_avatar", it.optString("avatar_url"))
+                    mapped.put("username", it.optString("username"))
+                    mapped.put("is_verified", it.optBoolean("is_verified"))
+                    mapped.put("verification_badge", it.optString("verification_badge"))
+                }
+                add(parseFeedPost(mapped).copy(isLiked = liked.contains(source.optString("id")), isBookmarked = bookmarked.contains(source.optString("id"))))
             }
         }
     }
@@ -1932,12 +1954,57 @@ suspend fun uploadPostMedia(
     // STORIES & POLLS
     // ============================================================
     suspend fun fetchStories(): List<Story> = withContext(Dispatchers.IO) {
-        val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
-        val viewed=executeRequest(newRequestBuilder("/rest/v1/story_views?user_id=eq.${encodeValue(uid)}&select=story_id",true).get().build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Story view state fetch failed."));val a=JSONArray(if(b.isBlank())"[]" else b);buildSet{for(i in 0 until a.length())add(a.getJSONObject(i).optString("story_id"))}}
-        val liked=executeRequest(newRequestBuilder("/rest/v1/story_likes?user_id=eq.${encodeValue(uid)}&select=story_id",true).get().build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Story like state fetch failed."));val a=JSONArray(if(b.isBlank())"[]" else b);buildSet{for(i in 0 until a.length())add(a.getJSONObject(i).optString("story_id"))}}
-        val raw=executeRequest(newRequestBuilder("/rest/v1/stories?active=eq.true&order=created_at.desc&limit=50",true).get().build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Stories fetch failed."));b}
-        val arr=JSONArray(raw); val cache=mutableMapOf<String,UserProfile>()
-        buildList { for(i in 0 until arr.length()){ val o=arr.getJSONObject(i); val sid=o.optString("id"); val u=o.optString("user_id"); val prof=if(u.isNotBlank())fetchProfileById(u)?.also{cache[u]=it} else null; add(Story(id=sid,username=prof?.username ?: u,avatar=prof?.avatarUrl.orEmpty(),hasUnseen=!viewed.contains(sid),isUser=u==uid,storyImage=o.optString("image_url",o.optString("media_url",o.optString("video_url",""))),caption=o.optString("caption",o.optString("text","")),timeAgo=formatTimeAgo(o.optString("created_at")),faculty=prof?.faculty.orEmpty(),university=prof?.university.orEmpty(),likesCount=o.optInt("likes_count",0),isLiked=liked.contains(sid),verificationBadge=prof?.verificationBadge?:VerificationBadge.NONE)) } }
+        val uid = getCurrentUserId()
+        val viewed = if (uid != null) {
+            executeRequest(newRequestBuilder("/rest/v1/story_views?user_id=eq.${encodeValue(uid)}&select=story_id", true).get().build()).use { r ->
+                val b = r.body?.string().orEmpty()
+                if (r.isSuccessful && b.isNotBlank() && b != "[]") {
+                    val a = JSONArray(b)
+                    buildSet { for (i in 0 until a.length()) add(a.getJSONObject(i).optString("story_id")) }
+                } else emptySet()
+            }
+        } else emptySet()
+        val liked = if (uid != null) {
+            executeRequest(newRequestBuilder("/rest/v1/story_likes?user_id=eq.${encodeValue(uid)}&select=story_id", true).get().build()).use { r ->
+                val b = r.body?.string().orEmpty()
+                if (r.isSuccessful && b.isNotBlank() && b != "[]") {
+                    val a = JSONArray(b)
+                    buildSet { for (i in 0 until a.length()) add(a.getJSONObject(i).optString("story_id")) }
+                } else emptySet()
+            }
+        } else emptySet()
+        val raw = executeRequest(newRequestBuilder("/rest/v1/stories?active=eq.true&order=created_at.desc&limit=50", uid != null).get().build()).use { r ->
+            val b = r.body?.string().orEmpty()
+            if (!r.isSuccessful) return@withContext emptyList()
+            b
+        }
+        val arr = JSONArray(if (raw.isBlank()) "[]" else raw)
+        val cache = mutableMapOf<String, UserProfile>()
+        buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val sid = o.optString("id")
+                val u = o.optString("user_id")
+                val prof = if (u.isNotBlank()) fetchProfileById(u)?.also { cache[u] = it } else null
+                add(
+                    Story(
+                        id = sid,
+                        username = prof?.username ?: u,
+                        avatar = prof?.avatarUrl.orEmpty(),
+                        hasUnseen = !viewed.contains(sid),
+                        isUser = (uid != null && u == uid),
+                        storyImage = o.optString("image_url", o.optString("media_url", o.optString("video_url", ""))),
+                        caption = o.optString("caption", o.optString("text", "")),
+                        timeAgo = formatTimeAgo(o.optString("created_at")),
+                        faculty = prof?.faculty.orEmpty(),
+                        university = prof?.university.orEmpty(),
+                        likesCount = o.optInt("likes_count", 0),
+                        isLiked = liked.contains(sid),
+                        verificationBadge = prof?.verificationBadge ?: VerificationBadge.NONE
+                    )
+                )
+            }
+        }
     }
 
     suspend fun createStory(story: Story): Boolean = withContext(Dispatchers.IO) {
@@ -2080,8 +2147,17 @@ suspend fun uploadPostMedia(
     // ============================================================
 
     suspend fun fetchLeaderboard(): List<LeaderboardUser> = withContext(Dispatchers.IO) {
-        val raw=executeRequest(newRequestBuilder("/rest/v1/game_leaderboard?select=*&order=score.desc&limit=50",true).get().build()).use{resp->val body=resp.body?.string().orEmpty();if(!resp.isSuccessful)throw IllegalStateException(parseSupabaseError(body,"Leaderboard fetch failed."));body}
-        val arr=JSONArray(raw);buildList{for(i in 0 until arr.length())parseLeaderboardUser(arr.getJSONObject(i),i+1)?.let{add(it)}}
+        try {
+            val raw = executeRequest(newRequestBuilder("/rest/v1/game_leaderboard?select=*&order=score.desc&limit=50", false).get().build()).use { resp ->
+                val body = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) return@withContext emptyList()
+                body
+            }
+            val arr = JSONArray(if (raw.isBlank()) "[]" else raw)
+            buildList { for (i in 0 until arr.length()) parseLeaderboardUser(arr.getJSONObject(i), i + 1)?.let { add(it) } }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     // ============================================================
@@ -2288,11 +2364,56 @@ suspend fun uploadPostMedia(
     // MESSAGES
     // ============================================================
     suspend fun fetchMessages(): List<ChatConversation> = withContext(Dispatchers.IO) {
-        val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
-        val raw=executeRequest(newRequestBuilder("/rest/v1/messages?select=*&order=created_at.asc&limit=300",true).get().build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Messages fetch failed."));b}
-        val arr=JSONArray(raw); val groups=mutableMapOf<String,MutableList<ChatMessage>>()
-        for(i in 0 until arr.length()){ val o=arr.getJSONObject(i); val cid=o.optString("conversation_id"); val sender=o.optString("sender_id"); if(cid.isBlank()||sender.isBlank())continue; val isMine=sender==uid; val msg=ChatMessage(id=o.optString("id"),senderId=sender,text=o.optString("content"),timestamp=formatTimeAgo(o.optString("created_at")),isFromMe=isMine,conversationId=cid,rawTimestamp=o.optString("created_at"),isRead=o.optBoolean("is_read",false),status=MessageStatus.SENT); groups.getOrPut(cid){mutableListOf()}.add(msg) }
-        groups.map { (cid,msgs) -> val sorted=msgs.sortedBy{it.rawTimestamp}; val other=executeRequest(newRequestBuilder("/rest/v1/conversation_participants?conversation_id=eq.${encodeValue(cid)}&user_id=neq.${encodeValue(uid)}&select=user_id&limit=1",true).get().build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful||b=="[]")"" else JSONArray(b).optJSONObject(0)?.optString("user_id").orEmpty()}; val prof=other.takeIf{isValidUuid(it)}?.let{fetchProfileById(it)}; ChatConversation(id=cid,partnerUsername=prof?.username?:other,partnerId=other,partnerName=prof?.fullName?:other,partnerAvatar=prof?.avatarUrl.orEmpty(),isOnline=prof?.onlineNow?:false,lastMessage=sorted.lastOrNull()?.text.orEmpty(),lastMessageTime=sorted.lastOrNull()?.timestamp?:("Recent"),lastMessageRawTime=sorted.lastOrNull()?.rawTimestamp.orEmpty(),unreadCount=sorted.count{!it.isFromMe&&!it.isRead},isVerified=prof?.verificationBadge!=VerificationBadge.NONE,verificationBadge=prof?.verificationBadge?:VerificationBadge.NONE,messages=sorted.toMutableList()) }
+        val uid = getCurrentUserId() ?: return@withContext emptyList()
+        val raw = executeRequest(newRequestBuilder("/rest/v1/messages?select=*&order=created_at.asc&limit=300", true).get().build()).use { r ->
+            val b = r.body?.string().orEmpty()
+            if (!r.isSuccessful) return@withContext emptyList()
+            b
+        }
+        val arr = JSONArray(if (raw.isBlank()) "[]" else raw)
+        val groups = mutableMapOf<String, MutableList<ChatMessage>>()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            val cid = o.optString("conversation_id")
+            val sender = o.optString("sender_id")
+            if (cid.isBlank() || sender.isBlank()) continue
+            val isMine = sender == uid
+            val msg = ChatMessage(
+                id = o.optString("id"),
+                senderId = sender,
+                text = o.optString("content"),
+                timestamp = formatTimeAgo(o.optString("created_at")),
+                isFromMe = isMine,
+                conversationId = cid,
+                rawTimestamp = o.optString("created_at"),
+                isRead = o.optBoolean("is_read", false),
+                status = MessageStatus.SENT
+            )
+            groups.getOrPut(cid) { mutableListOf() }.add(msg)
+        }
+        groups.map { (cid, msgs) ->
+            val sorted = msgs.sortedBy { it.rawTimestamp }
+            val other = executeRequest(newRequestBuilder("/rest/v1/conversation_participants?conversation_id=eq.${encodeValue(cid)}&user_id=neq.${encodeValue(uid)}&select=user_id&limit=1", true).get().build()).use { r ->
+                val b = r.body?.string().orEmpty()
+                if (!r.isSuccessful || b == "[]" || b.isBlank()) "" else JSONArray(b).optJSONObject(0)?.optString("user_id").orEmpty()
+            }
+            val prof = other.takeIf { isValidUuid(it) }?.let { fetchProfileById(it) }
+            ChatConversation(
+                id = cid,
+                partnerUsername = prof?.username ?: other,
+                partnerId = other,
+                partnerName = prof?.fullName ?: other,
+                partnerAvatar = prof?.avatarUrl.orEmpty(),
+                isOnline = prof?.onlineNow ?: false,
+                lastMessage = sorted.lastOrNull()?.text.orEmpty(),
+                lastMessageTime = sorted.lastOrNull()?.timestamp ?: ("Recent"),
+                lastMessageRawTime = sorted.lastOrNull()?.rawTimestamp.orEmpty(),
+                unreadCount = sorted.count { !it.isFromMe && !it.isRead },
+                isVerified = prof?.verificationBadge != VerificationBadge.NONE,
+                verificationBadge = prof?.verificationBadge ?: VerificationBadge.NONE,
+                messages = sorted.toMutableList()
+            )
+        }
     }
     suspend fun sendMessage(receiverUsername: String, text: String): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
@@ -2945,7 +3066,7 @@ suspend fun uploadPostMedia(
     }
     suspend fun fetchActivities(): Result<List<ActivityItem>> = withContext(Dispatchers.IO) {
         try {
-            val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            val uid = getCurrentUserId() ?: return@withContext Result.success(emptyList())
             val request = newRequestBuilder(
                 "/rest/v1/activities?recipient_id=eq.${encodeValue(uid)}&order=created_at.desc&limit=100",
                 authenticated = true

@@ -129,7 +129,7 @@ fun ConnectSection(
                     Text("New students will appear here when they create profiles.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            else -> LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item { Text("People on Blink", fontSize = 17.sp, fontWeight = FontWeight.Bold) }
                 items(filtered, key = { it.id }) { profile ->
                     val isRequested = requested[profile.id] == true
@@ -170,6 +170,7 @@ fun ConnectSection(
     }
 }
 
+@Composable
 private fun TopTab(text: String, selected: Boolean, onClick: () -> Unit) {
     Surface(shape = RoundedCornerShape(100.dp), color = if (selected) BlinkPink else MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.clickable { onClick() }) {
         Text(text, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
