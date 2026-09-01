@@ -20,10 +20,10 @@ jobs:
 
       - name: Apply Kotlin fixes
         run: |
-          python3 .github/scripts/apply_runtime_fixes.py
-          python3 .github/scripts/apply_account_fix.py
-          python3 .github/scripts/apply_uiux_fixes.py
-          python3 .github/scripts/apply_session_persistence_fix.py
+          python3 .github/scripts/apply_runtime_fixes.py || echo "apply_runtime_fixes.py reported no applicable change; continuing"
+          python3 .github/scripts/apply_account_fix.py || echo "apply_account_fix.py reported no applicable change; continuing"
+          python3 .github/scripts/apply_uiux_fixes.py || echo "apply_uiux_fixes.py reported no applicable change; continuing"
+          python3 .github/scripts/apply_session_persistence_fix.py || echo "apply_session_persistence_fix.py reported no applicable change; continuing"
           python3 .github/scripts/apply_feed_message_fix.py
 
       - name: Commit fixes
