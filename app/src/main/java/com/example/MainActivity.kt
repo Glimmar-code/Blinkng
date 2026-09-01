@@ -171,7 +171,11 @@ fun MainAppContent(
                 uiState.isMenuOpen ||
                 uiState.activeConversationPartner != null ||
                 uiState.activePostOptionsPost != null ||
-                uiState.isActivityOpen
+                uiState.isActivityOpen ||
+                uiState.isGetVerifiedOpen ||
+                uiState.isCreatePostOpen ||
+                uiState.activeViewingStory != null ||
+                uiState.showSellerCongratulationsDialog
     ) {
         when {
             uiState.activePostOptionsPost != null -> viewModel.openPostOptions(null)
@@ -183,6 +187,10 @@ fun MainAppContent(
             uiState.activeConversationPartner != null -> viewModel.closeConversation()
             uiState.viewingProfile != null -> viewModel.closeProfile()
             uiState.viewingProduct != null -> viewModel.closeProductDetail()
+            uiState.isGetVerifiedOpen -> viewModel.openGetVerified(false)
+            uiState.isCreatePostOpen -> viewModel.openCreatePost(false)
+            uiState.activeViewingStory != null -> viewModel.closeStory()
+            uiState.showSellerCongratulationsDialog -> viewModel.dismissSellerCongratulations()
         }
     }
 
@@ -286,6 +294,13 @@ fun MainAppContent(
                 !uiState.isEditProfileOpen &&
                 !uiState.isConversationFullScreen &&
                 !uiState.isActivityOpen &&
+                !uiState.isGetVerifiedOpen &&
+                !uiState.isCreatePostOpen &&
+                uiState.activeViewingStory == null &&
+                !uiState.showSellerCongratulationsDialog &&
+                uiState.activePostOptionsPost == null &&
+                uiState.activeCommentsPostId == null &&
+                !uiState.isMenuOpen &&
                 isBottomBarVisibleByScroll
 
         androidx.compose.animation.AnimatedVisibility(
