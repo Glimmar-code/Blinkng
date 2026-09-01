@@ -15,6 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,7 +40,7 @@ import com.example.ui.theme.BlinkPink
 @Composable
 fun VideoReelsScreen(reels: List<FeedPost>, isDark: Boolean, onLike: (String) -> Unit, onComment: (String) -> Unit, onBookmark: (String) -> Unit, onShare: (String) -> Unit, onProfileClick: (String) -> Unit, onBackToPosts: () -> Unit, onHomeClick: () -> Unit = onBackToPosts, onConnectClick: () -> Unit = {}, onGameClick: () -> Unit = {}) {
     if (reels.isEmpty()) {
-        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("No reels yet", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Spacer(Modifier.height(10.dp)); Button(onClick = onBackToPosts) { Text("Back to feed") }
@@ -51,7 +54,7 @@ fun VideoReelsScreen(reels: List<FeedPost>, isDark: Boolean, onLike: (String) ->
             ReelPage(reels[index], index == pager.currentPage, onLike, onComment, onBookmark, onShare, onProfileClick)
         }
         ReelsTopNavigation(onPosts = onBackToPosts, onConnect = onConnectClick, onGame = onGameClick)
-        Text("Reels", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 19.sp, modifier = Modifier.align(Alignment.TopCenter).padding(top = 45.dp))
+        Text("Reels", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 19.sp, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 8.dp))
     }
 }
 
@@ -68,9 +71,11 @@ private fun ReelPage(reel: FeedPost, isActive: Boolean, onLike: (String) -> Unit
             Spacer(Modifier.height(10.dp)); ReelAction(Icons.Default.Bookmark, "Save", Color.White) { onBookmark(reel.id) }
             Spacer(Modifier.height(10.dp)); ReelAction(Icons.Default.Share, "Share", Color.White) { onShare(reel.id) }
         }
-        Column(Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 85.dp, bottom = 35.dp)) {
-            Text("@${reel.author}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            if (reel.text.isNotBlank()) { Spacer(Modifier.height(5.dp)); Text(reel.text, color = Color.White, fontSize = 13.sp, maxLines = 4) }
+        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(bottom = 28.dp)) {
+            Column(Modifier.padding(start = 16.dp, end = 85.dp)) {
+                Text("@${reel.author}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                if (reel.text.isNotBlank()) { Spacer(Modifier.height(5.dp)); Text(reel.text, color = Color.White, fontSize = 13.sp, maxLines = 4) }
+            }
         }
     }
 }
@@ -81,36 +86,21 @@ private fun ReelVideo(url: String, isActive: Boolean) {
     var playbackError by remember(url) { mutableStateOf<String?>(null) }
     var buffering by remember(url) { mutableStateOf(true) }
     val player = remember(url) {
-        val http = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(20_000)
-            .setReadTimeoutMs(30_000)
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(http))
-            .build().apply {
-                repeatMode = Player.REPEAT_MODE_ONE
-                volume = 1f
-                setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
-                addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(state: Int) { buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE }
-                    override fun onPlayerError(error: PlaybackException) { buffering = false; playbackError = error.errorCodeName }
-                })
-                setMediaItem(MediaItem.fromUri(url))
-                prepare()
-                playWhenReady = isActive
-            }
+        val http = DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(20_000).setReadTimeoutMs(30_000)
+        ExoPlayer.Builder(context).setMediaSourceFactory(DefaultMediaSourceFactory(http)).build().apply {
+            repeatMode = Player.REPEAT_MODE_ONE; volume = 1f
+            setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(), true)
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) { buffering = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE }
+                override fun onPlayerError(error: PlaybackException) { buffering = false; playbackError = error.errorCodeName }
+            })
+            setMediaItem(MediaItem.fromUri(url)); prepare(); playWhenReady = isActive
+        }
     }
-    LaunchedEffect(isActive, player) {
-        player.playWhenReady = isActive
-        if (isActive) player.play() else player.pause()
-    }
+    LaunchedEffect(isActive, player) { player.playWhenReady = isActive; if (isActive) player.play() else player.pause() }
     DisposableEffect(player) { onDispose { player.release() } }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        AndroidView(
-            factory = { ctx -> PlayerView(ctx).apply { useController = true; controllerAutoShow = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM; keepScreenOn = true; setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING); this.player = player } },
-            update = { it.player = player },
-            modifier = Modifier.fillMaxSize()
-        )
+        AndroidView(factory = { ctx -> PlayerView(ctx).apply { useController = true; controllerAutoShow = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM; keepScreenOn = true; setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING); this.player = player } }, update = { it.player = player }, modifier = Modifier.fillMaxSize())
         if (buffering && playbackError == null) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(40.dp))
         if (playbackError != null) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -125,7 +115,7 @@ private fun ReelVideo(url: String, isActive: Boolean) {
 
 @Composable
 private fun AsyncAvatar(url: String, onClick: () -> Unit) {
-    coil.compose.AsyncImage(model = url, contentDescription = "Creator", contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.size(50.dp).clip(CircleShape).clickable { onClick() })
+    coil.compose.AsyncImage(model = url, contentDescription = "Creator profile", contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.size(50.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onClick))
 }
 
 @Composable
@@ -138,20 +128,14 @@ private fun ReelAction(icon: androidx.compose.ui.graphics.vector.ImageVector, te
 
 @Composable
 private fun ReelsTopNavigation(onPosts: () -> Unit, onConnect: () -> Unit, onGame: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(top = 82.dp, start = 18.dp, end = 18.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        ReelNavButton("Post", false, onPosts)
-        Spacer(Modifier.width(6.dp))
-        ReelNavButton("Reel", true) {}
-        Spacer(Modifier.width(6.dp))
-        ReelNavButton("Connect", false, onConnect)
-        Spacer(Modifier.width(6.dp))
-        ReelNavButton("Game", false, onGame)
+    Row(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 42.dp, start = 12.dp, end = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+        ReelNavButton("Post", false, onPosts); ReelNavButton("Reel", true, {}); ReelNavButton("Connect", false, onConnect); ReelNavButton("Game", false, onGame)
     }
 }
 
 @Composable
 private fun ReelNavButton(label: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(Modifier.clickable { onClick() }, shape = CircleShape, color = if (selected) Color.White else Color.White.copy(alpha = 0.14f)) {
-        Text(label, color = if (selected) Color.Black else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp))
+    Surface(Modifier.semantics { this.selected = selected }.clickable(role = Role.Tab, onClick = onClick), shape = CircleShape, color = if (selected) Color.White else Color.White.copy(alpha = 0.14f)) {
+        Text(label, color = if (selected) Color.Black else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp))
     }
 }
