@@ -2,7 +2,6 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -47,6 +47,9 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,26 +76,25 @@ fun FeedScreen(
     onSearchClick: () -> Unit = {}, onLeaderboardClick: () -> Unit = {}, onMarketClick: () -> Unit = {},
     onMessageClick: () -> Unit = {}, onBottomBarVisibilityChange: (Boolean) -> Unit = {}
 ) {
-    // Parent navigation is the single source of truth. Local state only mirrors it for immediate UI updates.
-    var selectedTopTab by remember { mutableStateOf(currentSubTab) }
-    LaunchedEffect(currentSubTab) { if (selectedTopTab != currentSubTab) selectedTopTab = currentSubTab }
+    val selectedTopTab = currentSubTab
     val listState = rememberLazyListState()
+    val bottomBarVisibility by rememberUpdatedState(onBottomBarVisibilityChange)
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < -8f) onBottomBarVisibilityChange(false)
-                else if (available.y > 8f) onBottomBarVisibilityChange(true)
+                if (available.y < -8f) bottomBarVisibility(false)
+                else if (available.y > 8f) bottomBarVisibility(true)
                 return Offset.Zero
             }
         }
     }
     LaunchedEffect(listState) {
         snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-            .collect { (index, offset) -> if (index == 0 && offset < 50) onBottomBarVisibilityChange(true) }
+            .collect { (index, offset) -> if (index == 0 && offset < 50) bottomBarVisibility(true) }
     }
-    LaunchedEffect(selectedTopTab) { onBottomBarVisibilityChange(true) }
+    LaunchedEffect(selectedTopTab) { bottomBarVisibility(true) }
 
-    fun navigate(tab: Int) { selectedTopTab = tab; if (currentSubTab != tab) onSubTabChanged(tab) }
+    fun navigate(tab: Int) { if (currentSubTab != tab) onSubTabChanged(tab) }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         when (selectedTopTab) {
@@ -134,11 +136,11 @@ fun FeedScreen(
 private fun HomeHeader(userAvatar: String, onMenuClick: () -> Unit, onNotificationClick: () -> Unit, onProfileClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onMenuClick, modifier = Modifier.size(44.dp)) { Icon(Icons.Default.MoreHoriz, "Menu", modifier = Modifier.size(27.dp)) }
-        Spacer(Modifier.weight(1f)); Text("Home", fontSize = 20.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.weight(1f))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { Text("Home", fontSize = 20.sp, fontWeight = FontWeight.Bold) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onNotificationClick, modifier = Modifier.size(44.dp)) { Icon(Icons.Default.NotificationsNone, "Notifications", modifier = Modifier.size(25.dp)) }
-            Spacer(Modifier.width(2.dp)); Box(Modifier.size(36.dp).clip(androidx.compose.foundation.shape.CircleShape).clickable { onProfileClick() }) {
-                AsyncImage(model = userAvatar, contentDescription = "Profile", modifier = Modifier.fillMaxSize())
+            Spacer(Modifier.width(2.dp)); Box(Modifier.size(48.dp).clip(androidx.compose.foundation.shape.CircleShape).clickable(role = Role.Button, onClick = onProfileClick).semantics { }, contentAlignment = Alignment.Center) {
+                AsyncImage(model = userAvatar, contentDescription = "Profile", modifier = Modifier.size(36.dp).clip(androidx.compose.foundation.shape.CircleShape))
             }; Spacer(Modifier.width(4.dp))
         }
     }
@@ -146,16 +148,14 @@ private fun HomeHeader(userAvatar: String, onMenuClick: () -> Unit, onNotificati
 
 @Composable
 private fun TopNavigation(selected: Int, onHome: () -> Unit, onReel: () -> Unit, onConnect: () -> Unit, onGame: () -> Unit) {
-    Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 20.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        TopTab("Home", selected == 0, onHome); Spacer(Modifier.width(8.dp)); TopTab("Reel", selected == 1, onReel); Spacer(Modifier.width(8.dp));
-        TopTab("Connect", selected == 2, onConnect); Spacer(Modifier.width(8.dp)); TopTab("Game", selected == 3, onGame)
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+        TopTab("Home", selected == 0, onHome); TopTab("Reel", selected == 1, onReel); TopTab("Connect", selected == 2, onConnect); TopTab("Game", selected == 3, onGame)
     }
 }
 
 @Composable
 private fun TopTab(text: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(modifier = Modifier.clickable { onClick() }, shape = androidx.compose.foundation.shape.RoundedCornerShape(100.dp),
+    Surface(modifier = Modifier.semantics { this.selected = selected }.clickable(role = Role.Tab, onClick = onClick), shape = androidx.compose.foundation.shape.RoundedCornerShape(100.dp),
         color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent) {
         Text(text, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
@@ -170,7 +170,7 @@ private fun EmptyHomeFeed(onCreatePost: () -> Unit) {
         }
         Spacer(Modifier.height(15.dp)); Text("Oops, nothing here yet.", fontWeight = FontWeight.Bold, fontSize = 18.sp); Spacer(Modifier.height(5.dp))
         Text("Be the first person to share something.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(16.dp))
-        Surface(modifier = Modifier.clickable { onCreatePost() }, shape = androidx.compose.foundation.shape.RoundedCornerShape(100.dp), color = MaterialTheme.colorScheme.primary) {
+        Surface(modifier = Modifier.clickable(role = Role.Button, onClick = onCreatePost), shape = androidx.compose.foundation.shape.RoundedCornerShape(100.dp), color = MaterialTheme.colorScheme.primary) {
             Text("Create Post", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp))
         }
     }
