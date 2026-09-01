@@ -136,10 +136,9 @@ private fun ReelAction(icon: androidx.compose.ui.graphics.vector.ImageVector, te
     }
 }
 
-
 @Composable
 private fun ReelsTopNavigation(onPosts: () -> Unit, onConnect: () -> Unit, onGame: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(top = 82.dp, start = 18.dp, end = 18.dp).align(Alignment.TopCenter), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(top = 82.dp, start = 18.dp, end = 18.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         ReelNavButton("Post", false, onPosts)
         Spacer(Modifier.width(6.dp))
         ReelNavButton("Reel", true) {}
