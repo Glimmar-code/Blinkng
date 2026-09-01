@@ -247,49 +247,70 @@ private suspend fun restoreSupabaseSession() {
 
     fun fetchSupabaseData() {
         viewModelScope.launch {
-            try {
-                val fetched = supabaseService.fetchFeedPosts()
-                val normalPosts = fetched.filter { !it.isReel && it.videoUrl.isNullOrBlank() }.distinctBy { it.id }
-                val fetchedReels = fetched.filter { it.isReel || !it.videoUrl.isNullOrBlank() }.distinctBy { it.id }
-                val market = supabaseService.fetchMarketItems()
-                val conversations = MessageMediaService.hydrateVideos(supabaseService.fetchMessages())
-                val leaderboard = supabaseService.fetchLeaderboard()
-                val cloudStories = supabaseService.fetchStories()
-                val myProfile = _uiState.value.myProfile
-                val userStoryHeader = Story(id = "story_me", username = "Your Story", avatar = myProfile.avatarUrl, hasUnseen = false, isUser = true)
-                val mergedStories = if (cloudStories.isNotEmpty()) {
-                    val mine = cloudStories.filter { it.isUser || it.username.equals(myProfile.username, true) }
-                    val others = cloudStories.filter { !it.isUser && !it.username.equals(myProfile.username, true) }
-                    if (mine.isNotEmpty()) mine + others else listOf(userStoryHeader) + others
-                } else listOf(userStoryHeader)
-
-                _uiState.value = _uiState.value.copy(activitiesLoading = true, activitiesError = null)
-                val activitiesResult = supabaseService.fetchActivities()
-                var fetchedActivities = _uiState.value.activities
-                var activitiesErr: String? = null
-                activitiesResult.fold({ fetchedActivities = it }, { activitiesErr = it.message; Log.w(TAG, "Failed to fetch activities: ${it.message}") })
-
-                _uiState.value = _uiState.value.copy(
-                    posts = normalPosts,
-                    reels = fetchedReels,
-                    marketItems = market,
-                    conversations = conversations,
-                    leaderboardUsers = leaderboard,
-                    stories = mergedStories,
-                    activities = fetchedActivities,
-                    activitiesLoading = false,
-                    activitiesError = activitiesErr,
-                    isLiveSupabaseConnected = true
-                )
-                val curUser = supabaseService.getCurrentUsername() ?: myProfile.username
-                val curUid = supabaseService.getCurrentUserId() ?: ""
-                if (curUser.isNotBlank() || curUid.isNotBlank()) realtimeManager.connect(curUser, curUid)
-            } catch (e: Exception) {
-                Log.e(TAG, "fetchSupabaseData failed", e)
-                _uiState.value = _uiState.value.copy(isLiveSupabaseConnected = false)
+            // Do not let an unrelated surface (leaderboard/stories/messages) blank the feed.
+            val feedResult = runCatching { supabaseService.fetchFeedPosts() }
+            val fetched = feedResult.getOrElse {
+                Log.e(TAG, "Feed fetch failed", it)
+                emptyList()
             }
+            val normalPosts = fetched.filter { !it.isReel && it.videoUrl.isNullOrBlank() }.distinctBy { it.id }
+            val fetchedReels = fetched.filter { it.isReel || !it.videoUrl.isNullOrBlank() }.distinctBy { it.id }
+
+            // Publish feed state immediately. Previously this happened only after every
+            // secondary request succeeded, so one 401 could make Home appear empty.
+            _uiState.value = _uiState.value.copy(
+                posts = normalPosts,
+                reels = fetchedReels,
+                isLiveSupabaseConnected = feedResult.isSuccess
+            )
+
+            val market = runCatching { supabaseService.fetchMarketItems() }
+                .onFailure { Log.e(TAG, "Market fetch failed", it) }
+                .getOrDefault(_uiState.value.marketItems)
+            val conversations = runCatching { MessageMediaService.hydrateVideos(supabaseService.fetchMessages()) }
+                .onFailure { Log.e(TAG, "Message fetch failed", it) }
+                .getOrDefault(_uiState.value.conversations)
+            val leaderboard = runCatching { supabaseService.fetchLeaderboard() }
+                .onFailure { Log.e(TAG, "Leaderboard fetch failed", it) }
+                .getOrDefault(_uiState.value.leaderboardUsers)
+            val cloudStories = runCatching { supabaseService.fetchStories() }
+                .onFailure { Log.e(TAG, "Stories fetch failed", it) }
+                .getOrDefault(emptyList())
+
+            val myProfile = _uiState.value.myProfile
+            val userStoryHeader = Story(id = "story_me", username = "Your Story", avatar = myProfile.avatarUrl, hasUnseen = false, isUser = true)
+            val mergedStories = if (cloudStories.isNotEmpty()) {
+                val mine = cloudStories.filter { it.isUser || it.username.equals(myProfile.username, true) }
+                val others = cloudStories.filter { !it.isUser && !it.username.equals(myProfile.username, true) }
+                if (mine.isNotEmpty()) mine + others else listOf(userStoryHeader) + others
+            } else listOf(userStoryHeader)
+
+            _uiState.value = _uiState.value.copy(
+                posts = normalPosts,
+                reels = fetchedReels,
+                marketItems = market,
+                conversations = conversations,
+                leaderboardUsers = leaderboard,
+                stories = mergedStories,
+                activitiesLoading = true,
+                activitiesError = null
+            )
+
+            runCatching { supabaseService.fetchActivities() }
+                .onSuccess { result ->
+                    result.fold(
+                        { activities -> _uiState.value = _uiState.value.copy(activities = activities, activitiesLoading = false) },
+                        { error -> _uiState.value = _uiState.value.copy(activitiesLoading = false, activitiesError = error.message) }
+                    )
+                }
+                .onFailure { error -> _uiState.value = _uiState.value.copy(activitiesLoading = false, activitiesError = error.message) }
+
+            val curUser = supabaseService.getCurrentUsername() ?: myProfile.username
+            val curUid = supabaseService.getCurrentUserId() ?: ""
+            if (curUser.isNotBlank() || curUid.isNotBlank()) realtimeManager.connect(curUser, curUid)
         }
     }
+
 
     suspend fun refreshMyProfileFromSupabase(showErrorToast: Boolean = true) {
         try {
