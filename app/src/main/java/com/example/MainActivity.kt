@@ -199,6 +199,10 @@ fun MainAppContent(
             uiState.isCreatePostOpen -> viewModel.openCreatePost(false)
             uiState.activeViewingStory != null -> viewModel.closeStory()
             uiState.showSellerCongratulationsDialog -> viewModel.dismissSellerCongratulations()
+            uiState.isGetVerifiedOpen -> viewModel.openGetVerified(false)
+            uiState.isCreatePostOpen -> viewModel.openCreatePost(false)
+            uiState.activeViewingStory != null -> viewModel.closeStory()
+            uiState.showSellerCongratulationsDialog -> viewModel.dismissSellerCongratulations()
         }
     }
 
