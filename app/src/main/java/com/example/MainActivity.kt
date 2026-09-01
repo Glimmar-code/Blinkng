@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.*
+import com.example.auth.AccountSessionStore
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
 import com.example.viewmodel.AppDestination
@@ -35,6 +36,21 @@ class MainActivity : ComponentActivity() {
         setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
+
+            // Persist the account that has actually reached the authenticated main app.
+            // Keying by destination + user id prevents repeated writes during recomposition.
+            LaunchedEffect(uiState.destination, uiState.myProfile.id) {
+                if (uiState.destination == AppDestination.MAIN && uiState.myProfile.id.isNotBlank()) {
+                    AccountSessionStore.recordCurrentSession(
+                        context = this@MainActivity,
+                        userId = uiState.myProfile.id,
+                        username = uiState.myProfile.username,
+                        fullName = uiState.myProfile.fullName,
+                        email = uiState.myProfile.email.value,
+                        avatarUrl = uiState.myProfile.avatarUrl
+                    )
+                }
+            }
 
             // Listen for snackbar events
             LaunchedEffect(Unit) {
