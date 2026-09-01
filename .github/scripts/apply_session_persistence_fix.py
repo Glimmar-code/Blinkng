@@ -1,17 +1,17 @@
 from pathlib import Path
-import re
 
 ROOT = Path(__file__).resolve().parents[2]
 VM = ROOT / "app/src/main/java/com/example/viewmodel/BlinkViewModel.kt"
-
 text = VM.read_text(encoding="utf-8")
 
-if 'private const val AUTH_PREFS = "blink_auth_prefs"' not in text:
-    text = text.replace(
-        'private const val PREFS = "blink_user_session"\n',
-        'private const val PREFS = "blink_user_session"\n        private const val AUTH_PREFS = "blink_auth_prefs"\n',
-        1,
-    )
+if 'import com.example.auth.AccountSessionStore' not in text:
+    text = text.replace('import com.example.data.models.*\n', 'import com.example.auth.AccountSessionStore\nimport com.example.data.models.*\n', 1)
+
+text = text.replace(
+    'private const val PREFS = "blink_user_session"\n',
+    'private const val PREFS = "blink_user_session"\n        private const val AUTH_PREFS = "blink_auth_prefs"\n',
+    1,
+) if 'private const val AUTH_PREFS = "blink_auth_prefs"' not in text else text
 
 if 'private val authPrefs = application.getSharedPreferences(AUTH_PREFS, Context.MODE_PRIVATE)' not in text:
     text = text.replace(
@@ -20,7 +20,14 @@ if 'private val authPrefs = application.getSharedPreferences(AUTH_PREFS, Context
         1,
     )
 
-replacement = '''private suspend fun restoreSupabaseSession() {
+start_marker = '    private suspend fun restoreSupabaseSession() {'
+end_marker = '    private fun restoreLocalSession() {'
+start = text.find(start_marker)
+end = text.find(end_marker, start + len(start_marker))
+if start < 0 or end < 0:
+    raise SystemExit('Could not locate session restoration methods; refusing to modify the file')
+
+new_restore = '''    private suspend fun restoreSupabaseSession() {
         try {
             var restored = supabaseService.restoreSession()
 
@@ -81,25 +88,50 @@ replacement = '''private suspend fun restoreSupabaseSession() {
     private fun hasLocalAuthenticatedProfile(): Boolean =
         prefs.getBoolean(KEY_IS_LOGGED_IN, false) || authPrefs.getBoolean(KEY_IS_LOGGED_IN, false)
 
-    private fun restoreLocalSession() {
-        if (!hasLocalAuthenticatedProfile()) return
-        val savedEmail = prefs.getString(KEY_EMAIL, authPrefs.getString(KEY_EMAIL, "")).orEmpty()
-        val savedName = prefs.getString(KEY_FULL_NAME, authPrefs.getString(KEY_FULL_NAME, "Campus Student")).orEmpty()
-        val savedUsername = prefs.getString(KEY_USERNAME, authPrefs.getString(KEY_USERNAME, "student")).orEmpty()
-        val savedFaculty = prefs.getString(KEY_FACULTY, authPrefs.getString(KEY_FACULTY, "")).orEmpty()
-        val savedUniversity = prefs.getString(KEY_UNIVERSITY, authPrefs.getString(KEY_UNIVERSITY, "")).orEmpty()
-        val savedAvatar = prefs.getString(KEY_AVATAR, authPrefs.getString(KEY_AVATAR, "")).orEmpty()
-        val savedCover = prefs.getString(KEY_COVER, authPrefs.getString(KEY_COVER, "")).orEmpty()
 '''
+text = text[:start] + new_restore + text[end:]
 
-pattern = re.compile(
-r'    private suspend fun restoreSupabaseSession\(\) \{.*?    private fun restoreLocalSession\(\) \{.*?        val savedCover = prefs\.getString\(KEY_COVER, ""\)\.orEmpty\(\)\n',
-    re.S,
+# Make the local-profile fallback read both historical preference stores.
+text = text.replace(
+    '        if (!prefs.getBoolean(KEY_IS_LOGGED_IN, false)) return\n',
+    '        if (!hasLocalAuthenticatedProfile()) return\n',
+    1,
+)
+text = text.replace(
+    'prefs.getString(KEY_EMAIL, "")',
+    'prefs.getString(KEY_EMAIL, authPrefs.getString(KEY_EMAIL, ""))',
+    1,
+)
+text = text.replace(
+    'prefs.getString(KEY_FULL_NAME, "Campus Student")',
+    'prefs.getString(KEY_FULL_NAME, authPrefs.getString(KEY_FULL_NAME, "Campus Student"))',
+    1,
+)
+text = text.replace(
+    'prefs.getString(KEY_USERNAME, "student")',
+    'prefs.getString(KEY_USERNAME, authPrefs.getString(KEY_USERNAME, "student"))',
+    1,
+)
+text = text.replace(
+    'prefs.getString(KEY_FACULTY, "")',
+    'prefs.getString(KEY_FACULTY, authPrefs.getString(KEY_FACULTY, ""))',
+    1,
+)
+text = text.replace(
+    'prefs.getString(KEY_UNIVERSITY, "")',
+    'prefs.getString(KEY_UNIVERSITY, authPrefs.getString(KEY_UNIVERSITY, ""))',
+    1,
+)
+text = text.replace(
+    'prefs.getString(KEY_AVATAR, "")',
+    'prefs.getString(KEY_AVATAR, authPrefs.getString(KEY_AVATAR, ""))',
+    1,
+)
+text = text.replace(
+    'prefs.getString(KEY_COVER, "")',
+    'prefs.getString(KEY_COVER, authPrefs.getString(KEY_COVER, ""))',
+    1,
 )
 
-text, count = pattern.subn(replacement, text, count=1)
-if count != 1:
-    raise SystemExit("Could not locate the session restore block; refusing to modify the file")
-
 VM.write_text(text, encoding="utf-8")
-print("Applied session persistence/recovery fix")
+print("Applied robust session persistence/recovery fix")
