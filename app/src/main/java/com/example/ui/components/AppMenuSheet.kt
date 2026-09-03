@@ -54,45 +54,14 @@ fun AppMenuSheet(
     onDismiss: () -> Unit,
     onViewProfile: () -> Unit,
     onEditProfile: () -> Unit,
+    onOpenVerification: () -> Unit,
     onOpenMarket: () -> Unit,
     onOpenPostItem: () -> Unit,
     onOpenBecomeSeller: () -> Unit,
     onOpenLeaderboard: () -> Unit,
     onOpenActivity: () -> Unit,
     onToggleTheme: () -> Unit,
-    onLogout: () -> Unit,
-    onShowToast: (String) -> Unit,
-    onSimulateNotification: () -> Unit,
-    onOpenStudyGroups: () -> Unit = { onShowToast("Opening Study Groups…") },
-    onOpenCourseMaterials: () -> Unit = { onShowToast("Opening Course Materials…") },
-    onOpenTimetable: () -> Unit = { onShowToast("Syncing your timetable…") },
-    onOpenAssignments: () -> Unit = { onShowToast("Opening Assignment Reminders…") },
-    onOpenCampusEvents: () -> Unit = { onShowToast("Opening Campus Events…") },
-    onOpenWallet: () -> Unit = { onShowToast("Opening Blink Wallet…") },
-    onFundWallet: () -> Unit = { onShowToast("Opening top-up options…") },
-    onWithdrawFunds: () -> Unit = { onShowToast("Opening withdrawal…") },
-    onOpenTransactionHistory: () -> Unit = { onShowToast("Opening transaction history…") },
-    onOpenReferralEarnings: () -> Unit = { onShowToast("Opening referral earnings…") },
-    onOpenContentStudio: () -> Unit = { onShowToast("Opening Content Studio…") },
-    onOpenPostInsights: () -> Unit = { onShowToast("Opening Post Insights…") },
-    onOpenMonetization: () -> Unit = { onShowToast("Opening Monetization…") },
-    onOpenSavedCollections: () -> Unit = { onShowToast("Opening Saved Collections…") },
-    onOpenDrafts: () -> Unit = { onShowToast("Opening Drafts…") },
-    onOpenPrivacySettings: () -> Unit = { onShowToast("Opening Privacy Settings…") },
-    onOpenBlockedAccounts: () -> Unit = { onShowToast("Opening Blocked Accounts…") },
-    onOpenLoginSecurity: () -> Unit = { onShowToast("Opening Login & Security…") },
-    onOpenDataStorage: () -> Unit = { onShowToast("Opening Data & Storage…") },
-    onReportProblem: () -> Unit = { onShowToast("Opening problem report form…") },
-    onOpenHelpCenter: () -> Unit = { onShowToast("Opening Help Center…") },
-    onContactSupport: () -> Unit = { onShowToast("Opening Support chat…") },
-    onOpenCommunityGuidelines: () -> Unit = { onShowToast("Opening Community Guidelines…") },
-    onSendFeedback: () -> Unit = { onShowToast("Opening Feedback form…") },
-    onRateApp: () -> Unit = { onShowToast("Thanks! Opening app store…") },
-    onOpenTerms: () -> Unit = { onShowToast("Opening Terms of Service…") },
-    onOpenPrivacyPolicy: () -> Unit = { onShowToast("Opening Privacy Policy…") },
-    onOpenAbout: () -> Unit = { onShowToast("Opening About Blink…") },
-    onOpenLanguageSettings: () -> Unit = { onShowToast("Opening Language settings…") },
-    onDeleteAccount: () -> Unit = { onShowToast("Opening account deletion flow…") }
+    onLogout: () -> Unit
 ) {
     val context = LocalContext.current
     ModalBottomSheet(
@@ -105,7 +74,7 @@ fun AppMenuSheet(
         var contentVisible by remember { mutableStateOf(false) }
         LaunchedEffect(Unit) { delay(30); contentVisible = true }
         var expandedSections by rememberSaveable {
-            mutableStateOf(setOf("Profile & Campus Identity", "Aluta Campus Market", "Experience & Appearance", "Session"))
+            mutableStateOf(setOf("Profile & Campus Identity", "Aluta Campus Market", "Experience & Activity", "Session"))
         }
         fun toggleSection(title: String) { expandedSections = if (expandedSections.contains(title)) expandedSections - title else expandedSections + title }
 
@@ -115,73 +84,83 @@ fun AppMenuSheet(
             }
             Spacer(modifier = Modifier.height(4.dp))
             AccordionSection("Profile & Campus Identity", expandedSections.contains("Profile & Campus Identity"), { toggleSection("Profile & Campus Identity") }, 40) {
-                MenuItemRow(Icons.Outlined.Person, "View My Full Profile", "Badges, skills, endorsements & portfolio", onClick = { onDismiss(); onViewProfile() })
-                MenuItemRow(Icons.Outlined.Edit, "Edit Profile & Bio", "Update contact, academic level & socials", onClick = { onDismiss(); onEditProfile() })
-                MenuItemRow(Icons.Outlined.Verified, "Campus Verification", if (profile.verificationBadge != VerificationBadge.NONE) "Verified Campus Member" else "Get Verified Badge", if (profile.verificationBadge != VerificationBadge.NONE) "Active" else "Apply", onClick = { onShowToast("Student Verification status: ACTIVE ✦") })
+                MenuItemRow(
+                    Icons.Outlined.Person,
+                    "View My Full Profile",
+                    "Badges, skills, endorsements & portfolio",
+                    onClick = { onDismiss(); onViewProfile() }
+                )
+                MenuItemRow(
+                    Icons.Outlined.Edit,
+                    "Edit Profile & Bio",
+                    "Update contact, academic level & socials",
+                    onClick = { onDismiss(); onEditProfile() }
+                )
+                MenuItemRow(
+                    Icons.Outlined.Verified,
+                    "Campus Verification",
+                    if (profile.verificationBadge != VerificationBadge.NONE) "View verification status or upgrade" else "Apply for a verified badge",
+                    if (profile.verificationBadge != VerificationBadge.NONE) "Verified" else "Apply",
+                    onClick = { onDismiss(); onOpenVerification() }
+                )
             }
+
             AccordionSection("Aluta Campus Market", expandedSections.contains("Aluta Campus Market"), { toggleSection("Aluta Campus Market") }) {
-                MenuItemRow(Icons.Outlined.Storefront, "Browse Marketplace", "Books, electronics, hostel gear & fashion", onClick = { onDismiss(); onOpenMarket() })
-                MenuItemRow(Icons.Outlined.AddShoppingCart, "Post Item for Sale", "List your gear on campus with direct WhatsApp", onClick = { onDismiss(); onOpenPostItem() })
-                MenuItemRow(Icons.Outlined.AccountBalanceWallet, "Seller Hub & Paystack Escrow", if (profile.isSellerActive) "Store Active: ${profile.sellerStoreName}" else "Activate Merchant Account (₦2,500)", if (profile.isSellerActive) "Verified" else "Upgrade", onClick = { onDismiss(); onOpenBecomeSeller() })
+                MenuItemRow(
+                    Icons.Outlined.Storefront,
+                    "Browse Marketplace",
+                    "Books, electronics, hostel gear & fashion",
+                    onClick = { onDismiss(); onOpenMarket() }
+                )
+                MenuItemRow(
+                    Icons.Outlined.AddShoppingCart,
+                    "Post Item for Sale",
+                    "List your item and publish it to the live market",
+                    onClick = { onDismiss(); onOpenPostItem() }
+                )
+                MenuItemRow(
+                    Icons.Outlined.AccountBalanceWallet,
+                    "Seller Hub",
+                    if (profile.isSellerActive) "Store active: ${profile.sellerStoreName}" else "Activate your seller profile",
+                    if (profile.isSellerActive) "Active" else "Setup",
+                    onClick = { onDismiss(); onOpenBecomeSeller() }
+                )
             }
-            AccordionSection("Academics & Study Tools", expandedSections.contains("Academics & Study Tools"), { toggleSection("Academics & Study Tools") }) {
-                MenuItemRow(Icons.Outlined.Groups, "Study Groups", "Join or create course-based study groups", onClick = onOpenStudyGroups)
-                MenuItemRow(Icons.Outlined.MenuBook, "Course Materials", "Shared notes, past questions & slides", onClick = onOpenCourseMaterials)
-                MenuItemRow(Icons.Outlined.CalendarMonth, "Timetable Sync", "Sync your class schedule to your calendar", onClick = onOpenTimetable)
-                MenuItemRow(Icons.Outlined.Assignment, "Assignment Reminders", "Never miss a submission deadline", onClick = onOpenAssignments)
-                MenuItemRow(Icons.Outlined.Celebration, "Campus Events", "RSVP to workshops, socials & hackathons", onClick = onOpenCampusEvents)
-            }
-            AccordionSection("Blink Wallet & Finance", expandedSections.contains("Blink Wallet & Finance"), { toggleSection("Blink Wallet & Finance") }) {
-                MenuItemRow(Icons.Outlined.AccountBalance, "Blink Wallet", "View your balance and recent activity", onClick = onOpenWallet)
-                MenuItemRow(Icons.Outlined.AddCard, "Fund Wallet", "Top up via card, bank transfer or USSD", onClick = onFundWallet)
-                MenuItemRow(Icons.Outlined.Payments, "Withdraw Funds", "Cash out to your linked bank account", onClick = onWithdrawFunds)
-                MenuItemRow(Icons.Outlined.Receipt, "Transaction History", "Full record of purchases and payouts", onClick = onOpenTransactionHistory)
-                MenuItemRow(Icons.Outlined.CardGiftcard, "Referral Earnings", "Track bonus points earned from invites", onClick = onOpenReferralEarnings)
-            }
-            AccordionSection("Creator & Content Tools", expandedSections.contains("Creator & Content Tools"), { toggleSection("Creator & Content Tools") }) {
-                MenuItemRow(Icons.Outlined.Dashboard, "Content Studio", "Manage your posts, drafts and analytics", onClick = onOpenContentStudio)
-                MenuItemRow(Icons.Outlined.BarChart, "Post Insights", "See views, engagement and reach", onClick = onOpenPostInsights)
-                MenuItemRow(Icons.Outlined.MonetizationOn, "Monetization", "Apply for creator payouts", "New", onClick = onOpenMonetization)
-                MenuItemRow(Icons.Outlined.Bookmarks, "Saved Collections", "Organize saved posts into folders", onClick = onOpenSavedCollections)
-                MenuItemRow(Icons.Outlined.Drafts, "Drafts", "Resume posts you haven't published yet", onClick = onOpenDrafts)
-            }
-            AccordionSection("Experience & Appearance", expandedSections.contains("Experience & Appearance"), { toggleSection("Experience & Appearance") }) {
+
+            AccordionSection("Experience & Activity", expandedSections.contains("Experience & Activity"), { toggleSection("Experience & Activity") }) {
                 ThemeToggleRow(isDark = isDark, onToggleTheme = onToggleTheme)
-                MenuItemRow(Icons.Outlined.Notifications, "Campus Notifications", "Mentions, likes, orders & announcements", onClick = { onDismiss(); onOpenActivity() })
-                MenuItemRow(Icons.Outlined.Language, "Language", "Change your app display language", "English", onClick = onOpenLanguageSettings)
+                MenuItemRow(
+                    Icons.Outlined.Notifications,
+                    "Campus Notifications",
+                    "Likes, comments, replies and market activity",
+                    onClick = { onDismiss(); onOpenActivity() }
+                )
+                MenuItemRow(
+                    Icons.Outlined.EmojiEvents,
+                    "Leaderboard & Streaks",
+                    "Live campus rankings, points and streaks",
+                    onClick = { onDismiss(); onOpenLeaderboard() }
+                )
             }
-            AccordionSection("Community & Safety", expandedSections.contains("Community & Safety"), { toggleSection("Community & Safety") }) {
-                MenuItemRow(Icons.Outlined.EmojiEvents, "Leaderboard & Streaks", "Campus rankings and top contributor scores", onClick = { onDismiss(); onOpenLeaderboard() })
-                MenuItemRow(Icons.Outlined.Shield, "Aluta Safety & Protection", "Campus trust guidelines & verified meetups", onClick = { onShowToast("Aluta Safety: Always meet in well-lit public campus locations.") })
-                MenuItemRow(Icons.Outlined.Share, "Invite Classmates", "Earn 500 bonus rank points per student", onClick = { onShowToast("Invitation link copied to clipboard!") })
-            }
-            AccordionSection("Privacy & Security", expandedSections.contains("Privacy & Security"), { toggleSection("Privacy & Security") }) {
-                MenuItemRow(Icons.Outlined.Lock, "Privacy Settings", "Control who sees your profile & posts", onClick = onOpenPrivacySettings)
-                MenuItemRow(Icons.Outlined.Block, "Blocked Accounts", "Manage users you've blocked", onClick = onOpenBlockedAccounts)
-                MenuItemRow(Icons.Outlined.Security, "Login & Security", "Password, two-factor auth & sessions", onClick = onOpenLoginSecurity)
-                MenuItemRow(Icons.Outlined.Storage, "Data & Storage", "Manage cache, downloads and data usage", onClick = onOpenDataStorage)
-                MenuItemRow(Icons.Outlined.ReportProblem, "Report a Problem", "Flag bugs or abuse directly to the team", onClick = onReportProblem)
-            }
-            AccordionSection("Help & Support", expandedSections.contains("Help & Support"), { toggleSection("Help & Support") }) {
-                MenuItemRow(Icons.Outlined.HelpOutline, "Help Center", "FAQs and how-to guides", onClick = onOpenHelpCenter)
-                MenuItemRow(Icons.Outlined.Chat, "Contact Support", "Chat with the Aluta support team", onClick = onContactSupport)
-                MenuItemRow(Icons.Outlined.Gavel, "Community Guidelines", "Rules for a respectful campus", onClick = onOpenCommunityGuidelines)
-                MenuItemRow(Icons.Outlined.Feedback, "Send Feedback", "Suggest features or improvements", onClick = onSendFeedback)
-                MenuItemRow(Icons.Outlined.StarRate, "Rate Blink", "Leave a review on the app store", onClick = onRateApp)
-            }
-            AccordionSection("Legal & About", expandedSections.contains("Legal & About"), { toggleSection("Legal & About") }) {
-                MenuItemRow(Icons.Outlined.Description, "Terms of Service", "The rules for using Blink", onClick = onOpenTerms)
-                MenuItemRow(Icons.Outlined.PrivacyTip, "Privacy Policy", "How your data is collected and used", onClick = onOpenPrivacyPolicy)
-                MenuItemRow(Icons.Outlined.Info, "About Blink", "Version, credits and the team", onClick = onOpenAbout)
-                MenuItemRow(Icons.Outlined.DeleteForever, "Delete Account", "Permanently remove your account and data", iconColor = Color(0xFFEF4444), titleColor = Color(0xFFEF4444), onClick = onDeleteAccount)
-            }
+
             AccordionSection("Session", expandedSections.contains("Session"), { toggleSection("Session") }) {
-                MenuItemRow(Icons.Outlined.SwitchAccount, "Switch Account", "Recently logged in accounts", onClick = {
-                    onDismiss()
-                    context.startActivity(Intent(context, AccountSwitcherActivity::class.java))
-                })
-                MenuItemRow(Icons.Outlined.NotificationsActive, "Test Real-Life Notification", "Disabled — real persisted notifications are used", iconColor = BlinkPink, onClick = { onShowToast("The fake notification test has been disabled. Real notifications are active.") })
-                MenuItemRow(Icons.AutoMirrored.Filled.Logout, "Log Out", "End your active session securely", iconColor = Color(0xFFEF4444), titleColor = Color(0xFFEF4444), onClick = { onDismiss(); onLogout() })
+                MenuItemRow(
+                    Icons.Outlined.SwitchAccount,
+                    "Switch Account",
+                    "Recently logged in accounts",
+                    onClick = {
+                        onDismiss()
+                        context.startActivity(Intent(context, AccountSwitcherActivity::class.java))
+                    }
+                )
+                MenuItemRow(
+                    Icons.AutoMirrored.Filled.Logout,
+                    "Log Out",
+                    "End your active session securely",
+                    iconColor = Color(0xFFEF4444),
+                    titleColor = Color(0xFFEF4444),
+                    onClick = { onDismiss(); onLogout() }
+                )
             }
         }
     }
