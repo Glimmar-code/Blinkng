@@ -261,6 +261,9 @@ private suspend fun restoreSupabaseSession() {
         viewModelScope.launch {
             val before = _uiState.value
             val hadFeed = before.posts.isNotEmpty() || before.reels.isNotEmpty()
+            val mutedUsers = runCatching { supabaseService.fetchMutedUsernames() }
+                .onFailure { Log.e(TAG, "Muted users fetch failed", it) }
+                .getOrDefault(before.mutedUsers)
 
             _uiState.value = before.copy(
                 isFeedLoading = !hadFeed,
@@ -272,11 +275,17 @@ private suspend fun restoreSupabaseSession() {
 
             val fetched = feedResult.getOrNull()
             val normalPosts = fetched
-                ?.filter { !it.isReel && it.videoUrl.isNullOrBlank() }
+                ?.filter {
+                    !it.isReel && it.videoUrl.isNullOrBlank() &&
+                        it.author.lowercase() !in mutedUsers
+                }
                 ?.distinctBy { it.id }
                 ?: before.posts
             val fetchedReels = fetched
-                ?.filter { it.isReel || !it.videoUrl.isNullOrBlank() }
+                ?.filter {
+                    (it.isReel || !it.videoUrl.isNullOrBlank()) &&
+                        it.author.lowercase() !in mutedUsers
+                }
                 ?.distinctBy { it.id }
                 ?: before.reels
 
@@ -293,7 +302,7 @@ private suspend fun restoreSupabaseSession() {
             val liveProfiles = runCatching { supabaseService.fetchProfiles() }
                 .onFailure { Log.e(TAG, "Profiles fetch failed", it) }
                 .getOrDefault(before.profiles)
-                .filter { it.username.isNotBlank() }
+                .filter { it.username.isNotBlank() && !it.username.equals("null", true) }
                 .distinctBy { it.id.ifBlank { it.username.lowercase() } }
 
             val market = runCatching { supabaseService.fetchMarketItems() }
@@ -327,7 +336,9 @@ private suspend fun restoreSupabaseSession() {
                 it.isUser || it.username.equals(myProfile.username, true)
             }
             val others = cloudStories.filter {
-                !it.isUser && !it.username.equals(myProfile.username, true)
+                !it.isUser &&
+                    !it.username.equals(myProfile.username, true) &&
+                    it.username.lowercase() !in mutedUsers
             }
             val mergedStories = if (mine.isNotEmpty()) {
                 mine + others
@@ -343,6 +354,7 @@ private suspend fun restoreSupabaseSession() {
                 conversations = conversations,
                 leaderboardUsers = leaderboard,
                 stories = mergedStories,
+                mutedUsers = mutedUsers,
                 activitiesLoading = true,
                 activitiesError = null
             )
@@ -381,6 +393,13 @@ private suspend fun restoreSupabaseSession() {
             }
         }
     }
+
+    suspend fun searchProfilesRemote(query: String): List<UserProfile> =
+        withContext(Dispatchers.IO) {
+            if (query.trim().length < 2) emptyList()
+            else supabaseService.searchProfiles(query.trim())
+                .filter { it.username.isNotBlank() && !it.username.equals("null", true) }
+        }
 
     fun refreshLeaderboard() {
         viewModelScope.launch {
@@ -754,28 +773,98 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = _uiState.value.copy(posts = _uiState.value.posts.map { if (it.id == postId) { next = !it.isBookmarked; it.copy(isBookmarked = next) } else it }, reels = _uiState.value.reels.map { if (it.id == postId) { next = !it.isBookmarked; it.copy(isBookmarked = next) } else it })
         viewModelScope.launch { if (!runCatching { postRepository.togglePostBookmark(postId, next) }.getOrDefault(false)) { _uiState.value = _uiState.value.copy(posts = _uiState.value.posts.map { if (it.id == postId) it.copy(isBookmarked = !next) else it }, reels = _uiState.value.reels.map { if (it.id == postId) it.copy(isBookmarked = !next) else it }); showToast("Failed to update bookmark.") } }
     }
-    fun sharePost(postId: String) { _uiState.value = _uiState.value.copy(posts = _uiState.value.posts.map { if (it.id == postId) it.copy(sharesCount = it.sharesCount + 1) else it }, reels = _uiState.value.reels.map { if (it.id == postId) it.copy(sharesCount = it.sharesCount + 1) else it }); showToast("🔗 Post link ready to share.") }
+    fun sharePost(postId: String) {
+        viewModelScope.launch {
+            if (supabaseService.sharePost(postId, "share")) {
+                _uiState.value = _uiState.value.copy(
+                    posts = _uiState.value.posts.map {
+                        if (it.id == postId) it.copy(sharesCount = it.sharesCount + 1) else it
+                    },
+                    reels = _uiState.value.reels.map {
+                        if (it.id == postId) it.copy(sharesCount = it.sharesCount + 1) else it
+                    }
+                )
+                showToast("🔗 Post shared.")
+            } else {
+                showToast("Couldn't record the share. Please try again.")
+            }
+        }
+    }
     fun deletePost(postId: String) { val posts = _uiState.value.posts; val reels = _uiState.value.reels; _uiState.value = _uiState.value.copy(posts = posts.filterNot { it.id == postId }, reels = reels.filterNot { it.id == postId }, activePostOptionsPost = null); viewModelScope.launch { if (runCatching { supabaseService.deleteFeedPost(postId) }.getOrDefault(false)) showToast("Post removed from your feed.") else { _uiState.value = _uiState.value.copy(posts = posts, reels = reels); showToast("Failed to delete post.") } } }
-    fun reportPost(postId: String, reason: String) { _uiState.value = _uiState.value.copy(activePostOptionsPost = null); showToast("🚨 Report submitted.") }
-    fun muteUser(username: String) { val n = username.lowercase(); _uiState.value = _uiState.value.copy(mutedUsers = _uiState.value.mutedUsers + n, posts = _uiState.value.posts.filterNot { it.author.equals(username, true) }, reels = _uiState.value.reels.filterNot { it.author.equals(username, true) }, activePostOptionsPost = null); showToast("🔇 @$username muted.") }
+    fun reportPost(postId: String, reason: String) {
+        _uiState.value = _uiState.value.copy(activePostOptionsPost = null)
+        viewModelScope.launch {
+            if (supabaseService.reportPost(postId, reason)) {
+                showToast("🚨 Report submitted for moderation.")
+            } else {
+                showToast("Couldn't submit the report. Please try again.")
+            }
+        }
+    }
+    fun muteUser(username: String) {
+        val clean = username.trim().removePrefix("@")
+        if (clean.isBlank() || clean.equals("null", true)) return
+        _uiState.value = _uiState.value.copy(activePostOptionsPost = null)
+        viewModelScope.launch {
+            if (supabaseService.muteUser(clean)) {
+                val normalized = clean.lowercase()
+                _uiState.value = _uiState.value.copy(
+                    mutedUsers = _uiState.value.mutedUsers + normalized,
+                    posts = _uiState.value.posts.filterNot { it.author.equals(clean, true) },
+                    reels = _uiState.value.reels.filterNot { it.author.equals(clean, true) },
+                    stories = _uiState.value.stories.filterNot {
+                        !it.isUser && it.username.equals(clean, true)
+                    }
+                )
+                showToast("🔇 @$clean muted.")
+            } else {
+                showToast("Couldn't mute @$clean.")
+            }
+        }
+    }
 
     fun votePoll(postId: String, optionId: String) {
-        val updated = _uiState.value.posts.map { post ->
-            if (post.id != postId || post.poll == null) post else {
-                val poll = post.poll; val already = poll.options.find { it.isVotedByMe }
-                if (already?.id == optionId) post else {
-                    val options = poll.options.map { option -> when {
-                        option.id == optionId -> option.copy(votes = option.votes + 1, isVotedByMe = true)
-                        option.isVotedByMe -> option.copy(votes = (option.votes - 1).coerceAtLeast(0), isVotedByMe = false)
-                        else -> option
-                    } }
-                    post.copy(poll = poll.copy(options = options, totalVotes = if (already == null) poll.totalVotes + 1 else poll.totalVotes, hasVoted = true))
+        val post = _uiState.value.posts.find { it.id == postId } ?: return
+        val poll = post.poll ?: return
+        if (poll.hasVoted || poll.options.any { it.isVotedByMe }) {
+            showToast("You already voted in this poll.")
+            return
+        }
+
+        val before = _uiState.value.posts
+        val updated = before.map { item ->
+            if (item.id != postId || item.poll == null) item
+            else {
+                val options = item.poll.options.map { option ->
+                    if (option.id == optionId) {
+                        option.copy(votes = option.votes + 1, isVotedByMe = true)
+                    } else option
                 }
+                item.copy(
+                    poll = item.poll.copy(
+                        options = options,
+                        totalVotes = item.poll.totalVotes + 1,
+                        hasVoted = true
+                    )
+                )
             }
         }
         _uiState.value = _uiState.value.copy(posts = updated)
-        updated.find { it.id == postId }?.poll?.let { pollState -> viewModelScope.launch(Dispatchers.IO) { postRepository.votePoll(postId, optionId, pollState) } }
-        showToast("🗳️ Vote recorded.")
+
+        val pollState = updated.find { it.id == postId }?.poll ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = runCatching {
+                postRepository.votePoll(postId, optionId, pollState)
+            }.getOrDefault(false)
+            withContext(Dispatchers.Main) {
+                if (success) {
+                    showToast("🗳️ Vote recorded.")
+                } else {
+                    _uiState.value = _uiState.value.copy(posts = before)
+                    showToast("Vote wasn't saved. Please try again.")
+                }
+            }
+        }
     }
 
     fun addComment(postId: String, text: String, replyToUser: String? = null) {
@@ -802,10 +891,48 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun openChatWithUser(username: String, sellerName: String? = null, sellerAvatar: String? = null) {
-        val clean = username.trim(); val state = _uiState.value; val existing = state.conversations.find { it.partnerUsername.equals(clean, true) }
-        if (existing != null) { _uiState.value = state.copy(conversations = state.conversations.map { if (it.partnerUsername.equals(clean, true)) it.copy(unreadCount = 0) else it }, activeConversationPartner = clean, isConversationFullScreen = true); viewModelScope.launch { chatRepository.markConversationRead(clean) }; return }
-        val convo = ChatConversation("c_${System.currentTimeMillis()}", clean, partnerName = sellerName ?: clean.replace(".", " ").replace("_", " ").capitalizeWords(), partnerAvatar = sellerAvatar.orEmpty(), isOnline = true, lastMessageTime = "New", messages = mutableListOf())
-        _uiState.value = state.copy(conversations = listOf(convo) + state.conversations, activeConversationPartner = clean, isConversationFullScreen = true)
+        val clean = username.trim().removePrefix("@")
+        if (clean.isBlank() || clean.equals("null", true)) {
+            showToast("This profile can't receive messages.")
+            return
+        }
+        val state = _uiState.value
+        val existing = state.conversations.find { it.partnerUsername.equals(clean, true) }
+        if (existing != null) {
+            _uiState.value = state.copy(
+                conversations = state.conversations.map {
+                    if (it.partnerUsername.equals(clean, true)) it.copy(unreadCount = 0) else it
+                },
+                activeConversationPartner = clean,
+                isConversationFullScreen = true
+            )
+            viewModelScope.launch { chatRepository.markConversationRead(clean) }
+            return
+        }
+
+        viewModelScope.launch {
+            val profile = supabaseService.fetchProfileByUsername(clean)
+            if (profile == null) {
+                showToast("User @$clean wasn't found.")
+                return@launch
+            }
+            val latest = _uiState.value
+            val convo = ChatConversation(
+                id = "local_${UUID.randomUUID()}",
+                partnerUsername = profile.username,
+                partnerId = profile.id,
+                partnerName = sellerName ?: profile.fullName.ifBlank { profile.username },
+                partnerAvatar = sellerAvatar ?: profile.avatarUrl,
+                isOnline = profile.onlineNow,
+                lastMessageTime = "New",
+                messages = mutableListOf()
+            )
+            _uiState.value = latest.copy(
+                conversations = listOf(convo) + latest.conversations,
+                activeConversationPartner = profile.username,
+                isConversationFullScreen = true
+            )
+        }
     }
     fun closeConversation() { _uiState.value = _uiState.value.copy(activeConversationPartner = null, isConversationFullScreen = false) }
 
@@ -874,16 +1001,187 @@ private suspend fun restoreSupabaseSession() {
     private fun replaceMessageInState(partnerUsername: String, oldId: String, newMsg: ChatMessage) { val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }; if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(lastMessage = newMsg.text, lastMessageTime = newMsg.timestamp, lastMessageRawTime = newMsg.rawTimestamp, messages = old.messages.map { if (it.id == oldId) newMsg else it }.toMutableList()); _uiState.value = _uiState.value.copy(conversations = conversations) } }
     private fun updateMessageStatusInState(partnerUsername: String, messageId: String, status: MessageStatus) { val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }; if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(messages = old.messages.map { if (it.id == messageId) it.copy(status = status) else it }.toMutableList()); _uiState.value = _uiState.value.copy(conversations = conversations) } }
 
-    fun addMarketListing(item: MarketItem) { _uiState.value = _uiState.value.copy(marketItems = listOf(item) + _uiState.value.marketItems, isPostItemOpen = false); viewModelScope.launch { if (supabaseService.createMarketItem(item)) showToast("🛍️ Product synced to Aluta Market.") else showToast("Product was added locally but failed to sync.") } }
-    fun addMarketItem(title: String, price: Long, category: String, condition: String, description: String, imageUrl: String?) { val p = _uiState.value.myProfile; addMarketListing(MarketItem("m_${System.currentTimeMillis()}", title, price, if (imageUrl.isNullOrBlank()) emptyList() else listOf(imageUrl), p.username, p.avatarUrl, p.fullName, p.phone.value, p.whatsapp.value, p.verificationBadge != VerificationBadge.NONE, p.verificationBadge, university = p.university, location = p.currentCityState, category = category, condition = condition, description = description, postedTime = "Just now")) }
-    fun openProductDetail(item: MarketItem) { _uiState.value = _uiState.value.copy(viewingProduct = item) }
-    fun closeProductDetail() { _uiState.value = _uiState.value.copy(viewingProduct = null) }
-    fun activateSellerAccount(storeName: String, phone: String, whatsapp: String, state: String, city: String) { val p = _uiState.value.myProfile.copy(isSellerActive = true, sellerStoreName = storeName.trim().ifBlank { "Verified Campus Store" }, phone = ContactField(phone.trim(), true), whatsapp = ContactField(whatsapp.trim(), true), currentCityState = "$city, $state"); _uiState.value = _uiState.value.copy(myProfile = p, isBecomeSellerOpen = false, showSellerCongratulationsDialog = true); saveLocalProfile(p); viewModelScope.launch { profileRepository.updateProfile(p) }; showToast("🎉 Congratulations! You are now a verified seller.") }
-    fun dismissSellerCongratulations() { _uiState.value = _uiState.value.copy(showSellerCongratulationsDialog = false) }
+    fun addMarketListing(item: MarketItem) {
+        if (_uiState.value.isPostItemOpen.not()) return
+        viewModelScope.launch {
+            if (supabaseService.createMarketItem(item)) {
+                val live = runCatching { supabaseService.fetchMarketItems() }
+                    .getOrDefault(_uiState.value.marketItems)
+                _uiState.value = _uiState.value.copy(
+                    marketItems = live,
+                    isPostItemOpen = false
+                )
+                showToast("🛍️ Product published to Aluta Market.")
+            } else {
+                showToast("Product wasn't published. Check your details and try again.")
+            }
+        }
+    }
 
-    fun endorseSkill(skill: String) { val current = _uiState.value.myProfile; val updated = current.skillEndorsements.map { if (it.skill.equals(skill, true)) it.copy(endorsedByMe = !it.endorsedByMe, endorsements = (it.endorsements + if (!it.endorsedByMe) 1 else -1).coerceAtLeast(0)) else it }.toMutableList(); _uiState.value = _uiState.value.copy(myProfile = current.copy(skillEndorsements = updated)); viewModelScope.launch { supabaseService.recordSkillEndorsement(_uiState.value.viewingProfile?.username ?: current.username, skill, current.username) }; showToast("Endorsement updated for $skill.") }
-    fun applyVerification(tier: VerificationBadge, paymentReference: String = "pay_aluta_${System.currentTimeMillis()}", amount: Int = if (tier == VerificationBadge.GOLD) 2500 else 800) { val updated = _uiState.value.myProfile.copy(verificationBadge = tier, isSellerActive = true); _uiState.value = _uiState.value.copy(myProfile = updated, viewingProfile = if (_uiState.value.viewingProfile != null && isMe(_uiState.value.viewingProfile?.username)) updated else _uiState.value.viewingProfile, isGetVerifiedOpen = false); saveLocalProfile(updated); viewModelScope.launch { val success = supabaseService.submitVerificationRequest(if (tier == VerificationBadge.GOLD) "GOLD" else "BLUE", paymentReference, amount); if (success && profileRepository.updateProfile(updated)) showToast("🎉 Verified successfully via payment gateway & Supabase backend.") else showToast("Verification applied locally, sync pending network.") } }
-    fun updateGameStats(score: Int, coins: Int, streak: Int) { viewModelScope.launch { supabaseService.updateGameStats(score, coins, streak) } }
+    fun addMarketItem(
+        title: String,
+        price: Long,
+        category: String,
+        condition: String,
+        description: String,
+        imageUrl: String?
+    ) {
+        val p = _uiState.value.myProfile
+        addMarketListing(
+            MarketItem(
+                id = "",
+                title = title,
+                price = price,
+                images = if (imageUrl.isNullOrBlank()) emptyList() else listOf(imageUrl),
+                sellerUsername = p.username,
+                sellerAvatar = p.avatarUrl,
+                sellerName = p.fullName,
+                sellerPhone = p.phone.value,
+                sellerWhatsapp = p.whatsapp.value,
+                sellerIsVerified = p.verificationBadge != VerificationBadge.NONE,
+                verificationBadge = p.verificationBadge,
+                university = p.university,
+                location = p.currentCityState,
+                category = category,
+                condition = condition,
+                description = description,
+                postedTime = "Just now"
+            )
+        )
+    }
+
+    fun openProductDetail(item: MarketItem) {
+        _uiState.value = _uiState.value.copy(viewingProduct = item)
+    }
+
+    fun closeProductDetail() {
+        _uiState.value = _uiState.value.copy(viewingProduct = null)
+    }
+
+    fun activateSellerAccount(
+        storeName: String,
+        phone: String,
+        whatsapp: String,
+        state: String,
+        city: String
+    ) {
+        val current = _uiState.value.myProfile
+        val cleanStore = storeName.trim().ifBlank { current.fullName.ifBlank { "Campus Store" } }
+        val profileUpdate = current.copy(
+            sellerStoreName = cleanStore,
+            phone = ContactField(phone.trim(), true),
+            whatsapp = ContactField(whatsapp.trim(), true),
+            currentCityState = listOf(city.trim(), state.trim()).filter { it.isNotBlank() }.joinToString(", ")
+        )
+        viewModelScope.launch {
+            val profileSaved = profileRepository.updateProfile(profileUpdate)
+            val sellerActivated = supabaseService.activateMarketplaceProfile(cleanStore)
+            if (profileSaved && sellerActivated) {
+                val activated = profileUpdate.copy(isSellerActive = true)
+                _uiState.value = _uiState.value.copy(
+                    myProfile = activated,
+                    isBecomeSellerOpen = false,
+                    showSellerCongratulationsDialog = true
+                )
+                saveLocalProfile(activated)
+                showToast("🎉 Your seller profile is active.")
+            } else {
+                showToast("Seller activation failed. Please try again.")
+            }
+        }
+    }
+
+    fun dismissSellerCongratulations() {
+        _uiState.value = _uiState.value.copy(showSellerCongratulationsDialog = false)
+    }
+
+    fun endorseSkill(skill: String) {
+        val viewing = _uiState.value.viewingProfile
+        val target = viewing ?: _uiState.value.myProfile
+        val targetUsername = target.username
+        if (targetUsername.isBlank()) return
+
+        fun toggled(profile: UserProfile): UserProfile {
+            return profile.copy(
+                skillEndorsements = profile.skillEndorsements.map {
+                    if (it.skill.equals(skill, true)) {
+                        it.copy(
+                            endorsedByMe = !it.endorsedByMe,
+                            endorsements = (it.endorsements + if (!it.endorsedByMe) 1 else -1)
+                                .coerceAtLeast(0)
+                        )
+                    } else it
+                }.toMutableList()
+            )
+        }
+
+        val beforeViewing = _uiState.value.viewingProfile
+        val beforeMine = _uiState.value.myProfile
+        if (viewing != null) {
+            _uiState.value = _uiState.value.copy(viewingProfile = toggled(viewing))
+        } else {
+            _uiState.value = _uiState.value.copy(myProfile = toggled(beforeMine))
+        }
+
+        viewModelScope.launch {
+            val success = supabaseService.recordSkillEndorsement(
+                targetUsername,
+                skill,
+                _uiState.value.myProfile.username
+            )
+            if (success) {
+                showToast("Endorsement updated for $skill.")
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    viewingProfile = beforeViewing,
+                    myProfile = beforeMine
+                )
+                showToast("Couldn't update the endorsement.")
+            }
+        }
+    }
+
+    fun applyVerification(
+        tier: VerificationBadge,
+        paymentReference: String = "",
+        amount: Int = if (tier == VerificationBadge.GOLD) 2500 else 800
+    ) {
+        if (tier == VerificationBadge.NONE) return
+        viewModelScope.launch {
+            val reference = paymentReference.trim()
+            val success = supabaseService.submitVerificationRequest(
+                if (tier == VerificationBadge.GOLD) "GOLD" else "BLUE",
+                reference,
+                amount
+            )
+            if (success) {
+                _uiState.value = _uiState.value.copy(isGetVerifiedOpen = false)
+                showToast("Verification request submitted. Your badge will activate only after approval.")
+            } else {
+                showToast("Couldn't submit the verification request.")
+            }
+        }
+    }
+
+    suspend fun recordTriviaResult(questionId: String, correct: Boolean): GameActionResult? {
+        val result = supabaseService.recordTriviaResult(questionId, correct)
+        if (result != null) {
+            val live = runCatching { supabaseService.fetchLeaderboard() }
+                .getOrDefault(_uiState.value.leaderboardUsers)
+            _uiState.value = _uiState.value.copy(leaderboardUsers = live)
+        }
+        return result
+    }
+
+    suspend fun claimDailySpin(): GameSpinResult? {
+        val result = supabaseService.claimDailySpin()
+        if (result != null) {
+            val live = runCatching { supabaseService.fetchLeaderboard() }
+                .getOrDefault(_uiState.value.leaderboardUsers)
+            _uiState.value = _uiState.value.copy(leaderboardUsers = live)
+        }
+        return result
+    }
 
     fun recordPostView(postId: String) {
         viewModelScope.launch {
@@ -986,9 +1284,65 @@ private suspend fun restoreSupabaseSession() {
         }
     }
     fun markStoryViewed(storyId: String) { _uiState.value = _uiState.value.copy(stories = _uiState.value.stories.map { if (it.id == storyId) it.copy(hasUnseen = false) else it }); if (storyId != "story_me") viewModelScope.launch(Dispatchers.IO) { postRepository.markStoryViewed(storyId) } }
-    fun toggleStoryLike(storyId: String) { var next = false; var count = 0; val updated = _uiState.value.stories.map { if (it.id == storyId) { next = !it.isLiked; count = (it.likesCount + if (next) 1 else -1).coerceAtLeast(0); it.copy(isLiked = next, likesCount = count) } else it }; _uiState.value = _uiState.value.copy(stories = updated, activeViewingStory = updated.find { it.id == storyId } ?: _uiState.value.activeViewingStory); viewModelScope.launch(Dispatchers.IO) { postRepository.toggleStoryLike(storyId, next, count) }; showToast(if (next) "❤️ Story liked" else "Unliked story") }
-    fun reactToStory(storyId: String, emoji: String) { viewModelScope.launch(Dispatchers.IO) { postRepository.reactToStory(storyId, emoji) }; showToast("Reacted $emoji") }
-    fun replyToStory(storyUsername: String, replyText: String) { if (replyText.isBlank()) return; viewModelScope.launch(Dispatchers.IO) { postRepository.replyToStory(_uiState.value.stories.find { it.username.equals(storyUsername, true) }?.id ?: "story_${System.currentTimeMillis()}", storyUsername, replyText) }; showToast("💬 Reply sent to @$storyUsername") }
+    fun toggleStoryLike(storyId: String) {
+        var next = false
+        var count = 0
+        val before = _uiState.value.stories
+        val updated = before.map {
+            if (it.id == storyId) {
+                next = !it.isLiked
+                count = (it.likesCount + if (next) 1 else -1).coerceAtLeast(0)
+                it.copy(isLiked = next, likesCount = count)
+            } else it
+        }
+        _uiState.value = _uiState.value.copy(
+            stories = updated,
+            activeViewingStory = updated.find { it.id == storyId } ?: _uiState.value.activeViewingStory
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            val success = runCatching {
+                postRepository.toggleStoryLike(storyId, next, count)
+            }.getOrDefault(false)
+            if (!success) {
+                withContext(Dispatchers.Main) {
+                    _uiState.value = _uiState.value.copy(
+                        stories = before,
+                        activeViewingStory = before.find { it.id == storyId } ?: _uiState.value.activeViewingStory
+                    )
+                    showToast("Couldn't update the story like.")
+                }
+            }
+        }
+    }
+
+    fun reactToStory(storyId: String, emoji: String) {
+        viewModelScope.launch {
+            val success = runCatching { postRepository.reactToStory(storyId, emoji) }.getOrDefault(false)
+            if (success) showToast("Reacted $emoji")
+            else showToast("Reaction wasn't sent.")
+        }
+    }
+
+    fun replyToStory(storyUsername: String, replyText: String) {
+        val cleanText = replyText.trim()
+        val cleanUser = storyUsername.trim().removePrefix("@")
+        if (cleanText.isBlank() || cleanUser.isBlank() || cleanUser.equals("null", true)) return
+        viewModelScope.launch {
+            chatRepository.sendMessage(cleanUser, cleanText).fold(
+                onSuccess = {
+                    showToast("💬 Message sent to @$cleanUser")
+                    supabaseService.recordActivity(
+                        cleanUser,
+                        "replied to your story",
+                        NotificationFilter.ALL,
+                        targetUsername = _uiState.value.myProfile.username,
+                        targetType = "CHAT"
+                    )
+                },
+                onFailure = { showToast("Story reply wasn't sent.") }
+            )
+        }
+    }
 
     fun showToast(message: String) { _snackBarMessages.tryEmit(message) }
 }
