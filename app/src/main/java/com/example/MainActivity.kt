@@ -254,6 +254,9 @@ fun MainAppContent(
                         posts = uiState.posts,
                         reels = uiState.reels,
                         stories = uiState.stories,
+                        profiles = uiState.profiles,
+                        leaderboardUsers = uiState.leaderboardUsers,
+                        currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
                         currentSubTab = uiState.feedSubTab,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
@@ -299,7 +302,8 @@ fun MainAppContent(
                         users = uiState.leaderboardUsers,
                         userProfile = uiState.myProfile,
                         onProfileClick = { viewModel.openProfile(it) },
-                        isDark = uiState.isDarkMode
+                        isDark = uiState.isDarkMode,
+                        onRefresh = { viewModel.refreshLeaderboard() }
                     )
                 }
 
