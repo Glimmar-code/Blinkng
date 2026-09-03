@@ -62,6 +62,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
 import com.example.data.models.Story
 import com.example.data.models.UserProfile
@@ -85,6 +86,9 @@ fun FeedScreen(
     stories: List<Story>,
     profiles: List<UserProfile>,
     leaderboardUsers: List<LeaderboardUser>,
+    connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
+    connectHubActions: ConnectHubActions = ConnectHubActions(),
+    isConnectHubLoading: Boolean = false,
     currentUsername: String,
     userAvatar: String,
     currentSubTab: Int,
@@ -182,6 +186,9 @@ fun FeedScreen(
                 onOpenActivity = onOpenActivity,
                 onProfileClick = onProfileClick,
                 onDirectMessage = onDirectMessage,
+                connectHub = connectHub,
+                connectHubActions = connectHubActions,
+                isConnectHubLoading = isConnectHubLoading,
                 selectedTopTab = 2,
                 onHomeClick = { navigate(0) },
                 onReelClick = { navigate(1) },
