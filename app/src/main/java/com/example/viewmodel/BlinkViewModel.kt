@@ -66,6 +66,7 @@ data class BlinkUiState(
     val activitiesError: String? = null,
     val comments: List<Comment> = emptyList(),
     val mutedUsers: Set<String> = emptySet(),
+    val followingUserIds: Set<String> = emptySet(),
     val feedSubTab: Int = 0,
     val isLiveSupabaseConnected: Boolean = false,
     val isFeedLoading: Boolean = true,
@@ -88,6 +89,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_COVER = "cover_url"
         private const val KEY_VERIFICATION = "verification_badge"
         private const val KEY_SELLER_ACTIVE = "is_seller_active"
+        private const val KEY_DEPARTMENT = "department"
+        private const val KEY_ACADEMIC_LEVEL = "academic_level"
+        private const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
     }
 
     private val application = application
@@ -115,16 +119,19 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { realtimeManager.events.collect { handleRealtimeEvent(it) } }
     }
 
+    private fun destinationForProfile(profile: UserProfile): AppDestination =
+        if (profile.onboardingCompleted) AppDestination.MAIN else AppDestination.PROFILE_SETUP
+
     private fun observeAuthState() {
         viewModelScope.launch {
             authRepository.authState.collect { authState ->
                 when (authState) {
                     is AuthState.Authenticated -> {
                         val profile = authState.userProfile
-                        _uiState.value = _uiState.value.copy(myProfile = profile, destination = when (_uiState.value.destination) {
-                            AppDestination.SIGN_IN, AppDestination.SIGN_UP, AppDestination.ONBOARDING, AppDestination.SPLASH -> AppDestination.MAIN
-                            else -> _uiState.value.destination
-                        })
+                        _uiState.value = _uiState.value.copy(
+                            myProfile = profile,
+                            destination = destinationForProfile(profile)
+                        )
                         saveLocalProfile(profile)
                         refreshMyProfileFromSupabase(showErrorToast = false)
                         fetchSupabaseData()
@@ -143,8 +150,6 @@ private suspend fun restoreSupabaseSession() {
         try {
             var restored = supabaseService.restoreSession()
 
-            // Recover the encrypted refresh token saved by AccountSessionStore if the
-            // primary session preference was lost or was not written by an older build.
             if (!restored) {
                 val recentAccount = AccountSessionStore.list(appContext).firstOrNull()
                 if (recentAccount != null && recentAccount.refreshToken.isNotBlank()) {
@@ -158,39 +163,42 @@ private suspend fun restoreSupabaseSession() {
                 if (!uid.isNullOrBlank()) {
                     val profile = profileRepository.fetchById(uid)
                     if (profile != null) {
-                        _uiState.value = _uiState.value.copy(myProfile = profile, destination = AppDestination.MAIN)
+                        _uiState.value = _uiState.value.copy(
+                            myProfile = profile,
+                            destination = destinationForProfile(profile)
+                        )
                         saveLocalProfile(profile)
                         authRepository.markAuthenticated(profile)
-                        fetchSupabaseData()
+                        if (profile.onboardingCompleted) fetchSupabaseData()
                         return
                     }
                 }
 
-                // A temporary profile/API failure must not turn a valid login into a logout.
                 if (hasLocalAuthenticatedProfile()) {
                     restoreLocalSession()
                     authRepository.markAuthenticated(_uiState.value.myProfile)
-                    _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN)
-                    fetchSupabaseData()
+                    if (_uiState.value.myProfile.onboardingCompleted) fetchSupabaseData()
                     return
                 }
             }
 
-            if (hasLocalAuthenticatedProfile() &&
-                (SupabaseService.accessToken() != null || AccountSessionStore.list(appContext).isNotEmpty())) {
+            if (
+                hasLocalAuthenticatedProfile() &&
+                (SupabaseService.accessToken() != null || AccountSessionStore.list(appContext).isNotEmpty())
+            ) {
                 restoreLocalSession()
-                _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN)
-                fetchSupabaseData()
+                if (_uiState.value.myProfile.onboardingCompleted) fetchSupabaseData()
             } else {
                 _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
             }
         } catch (e: Exception) {
             Log.w(TAG, "restoreSupabaseSession notice: ${e.message}")
-            if (hasLocalAuthenticatedProfile() &&
-                (SupabaseService.accessToken() != null || AccountSessionStore.list(appContext).isNotEmpty())) {
+            if (
+                hasLocalAuthenticatedProfile() &&
+                (SupabaseService.accessToken() != null || AccountSessionStore.list(appContext).isNotEmpty())
+            ) {
                 restoreLocalSession()
-                _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN)
-                fetchSupabaseData()
+                if (_uiState.value.myProfile.onboardingCompleted) fetchSupabaseData()
             } else {
                 _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
             }
@@ -208,26 +216,33 @@ private suspend fun restoreSupabaseSession() {
         if (savedName.isBlank() || savedUsername.isBlank()) return
         val savedFaculty = prefs.getString(KEY_FACULTY, authPrefs.getString(KEY_FACULTY, "")).orEmpty()
         val savedUniversity = prefs.getString(KEY_UNIVERSITY, authPrefs.getString(KEY_UNIVERSITY, "")).orEmpty()
+        val savedDepartment = prefs.getString(KEY_DEPARTMENT, "").orEmpty()
+        val savedAcademicLevel = prefs.getString(KEY_ACADEMIC_LEVEL, "").orEmpty()
         val savedAvatar = prefs.getString(KEY_AVATAR, authPrefs.getString(KEY_AVATAR, "")).orEmpty()
         val savedCover = prefs.getString(KEY_COVER, authPrefs.getString(KEY_COVER, "")).orEmpty()
+        val onboardingCompleted = prefs.getBoolean(KEY_ONBOARDING_COMPLETED, false)
         val badge = when (prefs.getString(KEY_VERIFICATION, "")?.uppercase()) {
             "GOLD" -> VerificationBadge.GOLD
             "BLUE" -> VerificationBadge.BLUE
             else -> VerificationBadge.NONE
         }
+        val restoredProfile = UserProfile(
+            fullName = savedName,
+            username = savedUsername,
+            email = ContactField(savedEmail, true),
+            faculty = savedFaculty,
+            university = savedUniversity,
+            department = savedDepartment,
+            academicLevel = savedAcademicLevel,
+            avatarUrl = savedAvatar,
+            coverPhotoUrl = savedCover,
+            verificationBadge = badge,
+            onboardingCompleted = onboardingCompleted,
+            isSellerActive = prefs.getBoolean(KEY_SELLER_ACTIVE, false)
+        )
         _uiState.value = _uiState.value.copy(
-            myProfile = UserProfile(
-                fullName = savedName,
-                username = savedUsername,
-                email = ContactField(savedEmail, true),
-                faculty = savedFaculty,
-                university = savedUniversity,
-                avatarUrl = savedAvatar,
-                coverPhotoUrl = savedCover,
-                verificationBadge = badge,
-                isSellerActive = prefs.getBoolean(KEY_SELLER_ACTIVE, false)
-            ),
-            destination = AppDestination.MAIN
+            myProfile = restoredProfile,
+            destination = destinationForProfile(restoredProfile)
         )
     }
 
@@ -239,6 +254,9 @@ private suspend fun restoreSupabaseSession() {
             .putString(KEY_USERNAME, profile.username)
             .putString(KEY_FACULTY, profile.faculty)
             .putString(KEY_UNIVERSITY, profile.university)
+            .putString(KEY_DEPARTMENT, profile.department)
+            .putString(KEY_ACADEMIC_LEVEL, profile.academicLevel)
+            .putBoolean(KEY_ONBOARDING_COMPLETED, profile.onboardingCompleted)
             .putString(KEY_AVATAR, profile.avatarUrl)
             .putString(KEY_COVER, profile.coverPhotoUrl)
             .putString(KEY_VERIFICATION, profile.verificationBadge.name)
@@ -296,6 +314,10 @@ private suspend fun restoreSupabaseSession() {
                 .filter { it.username.isNotBlank() }
                 .distinctBy { it.id.ifBlank { it.username.lowercase() } }
 
+            val followingIds = runCatching { supabaseService.fetchFollowingIds() }
+                .onFailure { Log.e(TAG, "Following fetch failed", it) }
+                .getOrDefault(before.followingUserIds)
+
             val market = runCatching { supabaseService.fetchMarketItems() }
                 .onFailure { Log.e(TAG, "Market fetch failed", it) }
                 .getOrDefault(before.marketItems)
@@ -337,6 +359,7 @@ private suspend fun restoreSupabaseSession() {
 
             _uiState.value = _uiState.value.copy(
                 profiles = liveProfiles,
+                followingUserIds = followingIds,
                 posts = normalPosts,
                 reels = fetchedReels,
                 marketItems = market,
@@ -417,7 +440,7 @@ private suspend fun restoreSupabaseSession() {
             val result = authRepository.signInWithEmail(emailOrUsername, password)
             if (result.isSuccess && result.userProfile != null) {
                 val profile = result.userProfile
-                _uiState.value = _uiState.value.copy(myProfile = profile, destination = AppDestination.MAIN)
+                _uiState.value = _uiState.value.copy(myProfile = profile, destination = destinationForProfile(profile))
                 saveLocalProfile(profile); fetchSupabaseData(); showToast("✨ Signed in as @${profile.username}"); onResult(true, null)
             } else { val msg = result.errorMessage ?: "Unable to sign in."; showToast(msg); onResult(false, msg) }
         }
@@ -431,7 +454,7 @@ private suspend fun restoreSupabaseSession() {
                 if (result.errorMessage == "GOOGLE_OAUTH_STARTED") return@launch
                 if (result.isSuccess && result.userProfile != null) {
                     val profile = result.userProfile
-                    _uiState.value = _uiState.value.copy(myProfile = profile, destination = AppDestination.MAIN)
+                    _uiState.value = _uiState.value.copy(myProfile = profile, destination = destinationForProfile(profile))
                     saveLocalProfile(profile); refreshMyProfileFromSupabase(false); fetchSupabaseData()
                     showToast("✨ Welcome back, @${_uiState.value.myProfile.username}")
                 } else showToast(result.errorMessage ?: "Google authentication failed.")
@@ -473,21 +496,53 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun completeProfileOnboarding(university: String, academicLevel: String, bio: String, skills: List<String>, phone: String = "", whatsapp: String = "") {
+    fun completeProfileOnboarding(
+        university: String,
+        department: String,
+        academicLevel: String,
+        bio: String,
+        skills: List<String>,
+        phone: String = "",
+        whatsapp: String = ""
+    ) {
         val current = _uiState.value.myProfile
-        val updatedSkills = skills.filter { it.isNotBlank() }.map { SkillEndorsement(it, 1, true) }
+        val cleanSkills = skills.map { it.trim() }.filter { it.isNotBlank() }.distinct()
         val completed = current.copy(
-            university = university.trim(), academicLevel = academicLevel.trim(), bio = bio.trim(),
-            skillEndorsements = if (updatedSkills.isNotEmpty()) updatedSkills.toMutableList() else current.skillEndorsements,
+            university = university.trim(),
+            department = department.trim(),
+            academicLevel = academicLevel.trim(),
+            bio = bio.trim(),
+            coreSkills = cleanSkills.toMutableList(),
+            skillEndorsements = cleanSkills
+                .map { skill -> SkillEndorsement(skill, 1, true) }
+                .toMutableList(),
             phone = ContactField(if (phone.isNotBlank()) phone.trim() else current.phone.value, true),
-            whatsapp = ContactField(if (whatsapp.isNotBlank()) whatsapp.trim() else current.whatsapp.value, true)
+            whatsapp = ContactField(if (whatsapp.isNotBlank()) whatsapp.trim() else current.whatsapp.value, true),
+            onboardingCompleted = true
         )
-        _uiState.value = _uiState.value.copy(myProfile = completed); saveLocalProfile(completed)
+
+        _uiState.value = _uiState.value.copy(myProfile = completed, destination = AppDestination.PROFILE_SETUP)
+
         viewModelScope.launch {
             val userId = supabaseService.getCurrentUserId()
-            if (userId.isNullOrBlank()) { _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN); showToast("Profile saved locally. Sign in to sync it with Supabase."); return@launch }
-            if (supabaseService.updateProfile(completed)) { _uiState.value = _uiState.value.copy(myProfile = completed, destination = AppDestination.MAIN); showToast("🎉 Profile created and synced with Supabase.") }
-            else { _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN); showToast("Profile saved locally, but Supabase sync failed.") }
+            if (userId.isNullOrBlank()) {
+                showToast("Your session expired. Sign in again to finish onboarding.")
+                return@launch
+            }
+
+            if (!supabaseService.updateProfile(completed)) {
+                showToast("Couldn't finish onboarding yet. Please retry.")
+                return@launch
+            }
+
+            val authoritative = profileRepository.fetchById(userId) ?: completed
+            _uiState.value = _uiState.value.copy(
+                myProfile = authoritative,
+                destination = AppDestination.MAIN
+            )
+            saveLocalProfile(authoritative)
+            fetchSupabaseData()
+            showToast("🎉 Your Blink profile is ready.")
         }
     }
 
@@ -545,6 +600,45 @@ private suspend fun restoreSupabaseSession() {
         }
     }
     fun closeProfile() { _uiState.value = _uiState.value.copy(viewingProfile = null) }
+
+    fun setFollowing(profile: UserProfile, shouldFollow: Boolean) {
+        if (profile.id.isBlank() || isMe(profile.id) || isMe(profile.username)) return
+
+        viewModelScope.launch {
+            val previous = _uiState.value.followingUserIds
+            val optimistic = if (shouldFollow) previous + profile.id else previous - profile.id
+            _uiState.value = _uiState.value.copy(followingUserIds = optimistic)
+
+            val success = supabaseService.setFollowing(profile.id, shouldFollow)
+            if (!success) {
+                _uiState.value = _uiState.value.copy(followingUserIds = previous)
+                showToast(if (shouldFollow) "Couldn't follow @${profile.username}." else "Couldn't unfollow @${profile.username}.")
+                return@launch
+            }
+
+            val followingIds = supabaseService.fetchFollowingIds()
+            val refreshedTarget = profileRepository.fetchById(profile.id) ?: profile
+            val myId = supabaseService.getCurrentUserId().orEmpty()
+            val refreshedMe = myId.takeIf { it.isNotBlank() }?.let { profileRepository.fetchById(it) }
+
+            val currentState = _uiState.value
+            val refreshedProfiles = currentState.profiles.map { existing ->
+                when {
+                    existing.id == refreshedTarget.id -> refreshedTarget
+                    refreshedMe != null && existing.id == refreshedMe.id -> refreshedMe
+                    else -> existing
+                }
+            }
+
+            _uiState.value = currentState.copy(
+                followingUserIds = followingIds,
+                viewingProfile = if (currentState.viewingProfile?.id == refreshedTarget.id) refreshedTarget else currentState.viewingProfile,
+                myProfile = refreshedMe ?: currentState.myProfile,
+                profiles = refreshedProfiles
+            )
+            refreshedMe?.let { saveLocalProfile(it) }
+        }
+    }
 
     fun updateProfile(updated: UserProfile) {
         viewModelScope.launch {
