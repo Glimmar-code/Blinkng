@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.VerificationBadge
 import com.example.data.models.LeaderboardUser
 import com.example.ui.components.VerifiedMark
@@ -59,6 +60,8 @@ data class GameLeader(
 fun GameSection(
     userAvatar: String,
     leaderboardUsers: List<LeaderboardUser> = emptyList(),
+    connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
+    connectHubActions: ConnectHubActions = ConnectHubActions(),
     isDark: Boolean,
     onOpenMenu: () -> Unit,
     onOpenActivity: () -> Unit,
@@ -129,9 +132,9 @@ fun GameSection(
     var currentQuestionIndex by remember { mutableIntStateOf(0) }
     var selectedOptionIndex by remember { mutableStateOf<Int?>(null) }
     var isAnswerSubmitted by remember { mutableStateOf(false) }
-    var score by remember { mutableIntStateOf(350) }
-    var streak by remember { mutableIntStateOf(3) }
-    var coins by remember { mutableIntStateOf(120) }
+    var score by remember(connectHub.gameStats.score) { mutableIntStateOf(connectHub.gameStats.score) }
+    var streak by remember(connectHub.gameStats.streak) { mutableIntStateOf(connectHub.gameStats.streak) }
+    var coins by remember(connectHub.gameStats.coins) { mutableIntStateOf(connectHub.gameStats.coins) }
 
     // Spin Wheel State
     var isSpinning by remember { mutableStateOf(false) }
@@ -330,7 +333,7 @@ fun GameSection(
                                     if (index == currentQ.correctIndex) {
                                         score += 50
                                         streak += 1
-                                        coins += 15
+                                        connectHubActions.recordGameResult("trivia", 50)
                                     } else {
                                         streak = 0
                                     }
@@ -504,10 +507,8 @@ fun GameSection(
                                         targetValue = target,
                                         animationSpec = tween(durationMillis = 2000, easing = FastOutSlowInEasing)
                                     )
-                                    val rewards = listOf("+25 Campus Coins", "+50 Campus Coins", "+100 Points", "2x Streak Multiplier", "+10 Coins")
-                                    val won = rewards.random()
-                                    spinReward = won
-                                    coins += 35
+                                    spinReward = "Reward verified by Blink"
+                                    connectHubActions.claimDailySpin()
                                     isSpinning = false
                                 }
                             }
