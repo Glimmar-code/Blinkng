@@ -97,30 +97,8 @@ class ChatRepository(
         }
     }
 
-    private suspend fun refreshSession(): Boolean = withContext(Dispatchers.IO) {
-        val refreshToken = SupabaseService.refreshToken() ?: return@withContext false
-        try {
-            val body = "grant_type=refresh_token&refresh_token=${java.net.URLEncoder.encode(refreshToken, "UTF-8")}".toRequestBody("application/x-www-form-urlencoded".toMediaType())
-            client.newCall(
-                Request.Builder()
-                    .url("${SupabaseConfig.url.trimEnd('/')}/auth/v1/token?grant_type=refresh_token")
-                    .addHeader("apikey", SupabaseConfig.anonKey)
-                    .addHeader("Content-Type", "application/x-www-form-urlencoded")
-                    .post(body)
-                    .build()
-            ).execute().use { response ->
-                if (!response.isSuccessful) return@withContext false
-                val json = JSONObject(response.body?.string().orEmpty())
-                val access = json.optString("access_token")
-                val refresh = json.optString("refresh_token").ifBlank { refreshToken }
-                if (access.isBlank()) return@withContext false
-                SupabaseService.saveSession(access, refresh)
-                true
-            }
-        } catch (_: Exception) {
-            false
-        }
-    }
+    private suspend fun refreshSession(): Boolean =
+        supabaseService.refreshSession()
 
     suspend fun markConversationRead(partnerUsername: String): Boolean = withContext(Dispatchers.IO) {
         supabaseService.markMessagesRead(partnerUsername)
