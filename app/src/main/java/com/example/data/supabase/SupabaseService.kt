@@ -1379,6 +1379,7 @@ fun getCurrentUserId(): String? {
                 put("favorite_quote", profile.favoriteQuote)
                 put("availability", profile.availability.label)
                 put("core_skills", JSONArray(profile.coreSkills)); put("hobbies", JSONArray(profile.hobbies)); put("languages", JSONArray(profile.languages))
+                put("onboarding_completed", profile.onboardingCompleted)
                 put("updated_at", nowIso())
             }
             executeRequest(newRequestBuilder("/rest/v1/profiles?id=eq.${encodeValue(uid)}", true)
@@ -2583,60 +2584,186 @@ suspend fun uploadPostMedia(
         }
 
     // ============================================================
+    // FOLLOWING / FOLLOWERS
+    // ============================================================
+
+    suspend fun fetchFollowingIds(): Set<String> = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId() ?: return@withContext emptySet()
+        try {
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/follows?follower_id=eq.${encodeValue(uid)}&select=following_id",
+                    authenticated = true
+                ).get().build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "FOLLOWING_FETCH failed status=${response.code} body=$raw")
+                    return@withContext emptySet()
+                }
+                val array = JSONArray(if (raw.isBlank()) "[]" else raw)
+                buildSet {
+                    for (i in 0 until array.length()) {
+                        array.optJSONObject(i)
+                            ?.cleanString("following_id")
+                            ?.takeIf { isValidUuid(it) }
+                            ?.let { add(it) }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "FOLLOWING_FETCH exception", e)
+            emptySet()
+        }
+    }
+
+    suspend fun setFollowing(targetUserId: String, shouldFollow: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(targetUserId)) return@withContext false
+            val uid = getCurrentUserId() ?: return@withContext false
+            if (uid == targetUserId) return@withContext false
+            try {
+                val function = if (shouldFollow) "follow_user" else "unfollow_user"
+                val body = JSONObject().put("p_following_id", targetUserId)
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/$function", authenticated = true)
+                        .post(body.toString().toRequestBody(jsonMediaType))
+                        .build()
+                ).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        Log.e(TAG, "FOLLOW_SET failed function=$function status=${response.code} body=$raw")
+                        return@withContext false
+                    }
+                    true
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "FOLLOW_SET exception", e)
+                false
+            }
+        }
+
+    // ============================================================
     // MESSAGES
     // ============================================================
     suspend fun fetchMessages(): List<ChatConversation> = withContext(Dispatchers.IO) {
         val uid = getCurrentUserId() ?: return@withContext emptyList()
-        val raw = executeRequest(newRequestBuilder("/rest/v1/messages?select=*&order=created_at.asc&limit=300", true).get().build()).use { r ->
-            val b = r.body?.string().orEmpty()
-            if (!r.isSuccessful) return@withContext emptyList()
-            b
+
+        val raw = executeRequest(
+            newRequestBuilder("/rest/v1/messages?select=*&order=created_at.asc&limit=300", true)
+                .get()
+                .build()
+        ).use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                Log.e(TAG, "MESSAGE_FETCH failed status=${response.code} body=$body")
+                return@withContext emptyList()
+            }
+            body
         }
+
+        val partnerRows = executeRequest(
+            newRequestBuilder("/rest/v1/rpc/get_my_conversation_partners", true)
+                .post("{}".toRequestBody(jsonMediaType))
+                .build()
+        ).use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                Log.e(TAG, "MESSAGE_PARTNERS failed status=${response.code} body=$body")
+                JSONArray()
+            } else {
+                JSONArray(if (body.isBlank()) "[]" else body)
+            }
+        }
+
+        val partnerByConversation = mutableMapOf<String, String>()
+        for (i in 0 until partnerRows.length()) {
+            val row = partnerRows.optJSONObject(i) ?: continue
+            val conversationId = row.cleanString("conversation_id")
+            val partnerId = row.cleanString("partner_id")
+            if (isValidUuid(conversationId) && isValidUuid(partnerId)) {
+                partnerByConversation[conversationId] = partnerId
+            }
+        }
+
+        val partnerIds = partnerByConversation.values.toSet()
+        val profilesById = mutableMapOf<String, UserProfile>()
+        if (partnerIds.isNotEmpty()) {
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/profiles?id=in.(${partnerIds.joinToString(",")})&select=*",
+                    true
+                ).get().build()
+            ).use { response ->
+                val body = response.body?.string().orEmpty()
+                if (response.isSuccessful && body.isNotBlank() && body != "[]") {
+                    val array = JSONArray(body)
+                    for (i in 0 until array.length()) {
+                        val profile = parseUserProfile(array.getJSONObject(i))
+                        if (profile.id.isNotBlank()) profilesById[profile.id] = profile
+                    }
+                }
+            }
+        }
+
         val arr = JSONArray(if (raw.isBlank()) "[]" else raw)
         val groups = mutableMapOf<String, MutableList<ChatMessage>>()
         for (i in 0 until arr.length()) {
-            val o = arr.getJSONObject(i)
-            val cid = o.optString("conversation_id")
-            val sender = o.optString("sender_id")
-            if (cid.isBlank() || sender.isBlank()) continue
-            val isMine = sender == uid
-            val msg = ChatMessage(
-                id = o.optString("id"),
-                senderId = sender,
-                text = o.optString("content"),
-                timestamp = formatTimeAgo(o.optString("created_at")),
+            val row = arr.getJSONObject(i)
+            val conversationId = row.cleanString("conversation_id")
+            val senderId = row.cleanString("sender_id")
+            if (conversationId.isBlank() || senderId.isBlank()) continue
+
+            val isMine = senderId == uid
+            val partnerId = partnerByConversation[conversationId].orEmpty()
+            val partnerUsername = profilesById[partnerId]?.username.orEmpty()
+            val currentUsername = getCurrentUsername().orEmpty()
+
+            val message = ChatMessage(
+                id = row.cleanString("id"),
+                senderId = senderId,
+                senderUsername = if (isMine) currentUsername else partnerUsername,
+                receiverId = if (isMine) partnerId else uid,
+                receiverUsername = if (isMine) partnerUsername else currentUsername,
+                text = row.cleanString("content"),
+                timestamp = formatTimeAgo(row.cleanString("created_at")),
                 isFromMe = isMine,
-                conversationId = cid,
-                rawTimestamp = o.optString("created_at"),
-                isRead = o.optBoolean("is_read", false),
+                conversationId = conversationId,
+                rawTimestamp = row.cleanString("created_at"),
+                isRead = row.optBoolean("is_read", false),
                 status = MessageStatus.SENT
             )
-            groups.getOrPut(cid) { mutableListOf() }.add(msg)
+            groups.getOrPut(conversationId) { mutableListOf() }.add(message)
         }
-        groups.map { (cid, msgs) ->
-            val sorted = msgs.sortedBy { it.rawTimestamp }
-            val other = executeRequest(newRequestBuilder("/rest/v1/conversation_participants?conversation_id=eq.${encodeValue(cid)}&user_id=neq.${encodeValue(uid)}&select=user_id&limit=1", true).get().build()).use { r ->
-                val b = r.body?.string().orEmpty()
-                if (!r.isSuccessful || b == "[]" || b.isBlank()) "" else JSONArray(b).optJSONObject(0)?.optString("user_id").orEmpty()
+
+        groups.mapNotNull { (conversationId, messages) ->
+            val partnerId = partnerByConversation[conversationId].orEmpty()
+            val profile = profilesById[partnerId]
+            if (partnerId.isBlank() || profile == null || profile.username.isBlank()) {
+                Log.w(TAG, "Skipping conversation $conversationId because partner metadata is unavailable.")
+                return@mapNotNull null
             }
-            val prof = other.takeIf { isValidUuid(it) }?.let { fetchProfileById(it) }
+
+            val sorted = messages.sortedBy { it.rawTimestamp }
             ChatConversation(
-                id = cid,
-                partnerUsername = prof?.username ?: other,
-                partnerId = other,
-                partnerName = prof?.fullName ?: other,
-                partnerAvatar = prof?.avatarUrl.orEmpty(),
-                isOnline = prof?.onlineNow ?: false,
+                id = conversationId,
+                partnerUsername = profile.username,
+                partnerId = partnerId,
+                partnerName = profile.fullName.ifBlank { profile.username },
+                partnerAvatar = profile.avatarUrl,
+                isOnline = profile.onlineNow,
                 lastMessage = sorted.lastOrNull()?.text.orEmpty(),
-                lastMessageTime = sorted.lastOrNull()?.timestamp ?: ("Recent"),
+                lastMessageTime = sorted.lastOrNull()?.timestamp ?: "Recent",
                 lastMessageRawTime = sorted.lastOrNull()?.rawTimestamp.orEmpty(),
                 unreadCount = sorted.count { !it.isFromMe && !it.isRead },
-                isVerified = prof?.verificationBadge != VerificationBadge.NONE,
-                verificationBadge = prof?.verificationBadge ?: VerificationBadge.NONE,
+                isVerified = profile.verificationBadge != VerificationBadge.NONE,
+                verificationBadge = profile.verificationBadge,
+                faculty = profile.faculty,
                 messages = sorted.toMutableList()
             )
-        }
+        }.sortedByDescending { it.lastMessageRawTime }
     }
+
     suspend fun sendMessage(receiverUsername: String, text: String): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
             val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
@@ -2674,13 +2801,26 @@ suspend fun uploadPostMedia(
         }
     }
     suspend fun markMessagesRead(partnerUsername: String): Boolean = withContext(Dispatchers.IO) {
+        val partner = partnerUsername.trim().removePrefix("@")
+        if (partner.isBlank()) return@withContext false
         try {
-            val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
-            val partner=fetchProfileByUsername(partnerUsername) ?: return@withContext false
-            val cids=executeRequest(newRequestBuilder("/rest/v1/conversation_participants?user_id=eq.${encodeValue(uid)}&select=conversation_id",true).get().build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Conversation lookup failed."));JSONArray(if(b.isBlank())"[]" else b)}
-            for(i in 0 until cids.length()){ val cid=cids.getJSONObject(i).optString("conversation_id"); val partnerIn=executeRequest(newRequestBuilder("/rest/v1/conversation_participants?conversation_id=eq.${encodeValue(cid)}&user_id=eq.${encodeValue(partner.id)}&select=user_id&limit=1",true).get().build()).use{r->r.isSuccessful&&r.body?.string().orEmpty()!="[]"}; if(!partnerIn)continue; val body=JSONObject().put("is_read",true); executeRequest(newRequestBuilder("/rest/v1/messages?conversation_id=eq.${encodeValue(cid)}&sender_id=eq.${encodeValue(partner.id)}&is_read=eq.false",true).patch(body.toString().toRequestBody(jsonMediaType)).build()).use{r->if(!r.isSuccessful)return@withContext false} }
-            true
-        }catch(e:Exception){Log.e(TAG,"markMessagesRead failed",e);false}
+            val body = JSONObject().put("p_partner_username", partner)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/mark_conversation_read", true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "MESSAGE_MARK_READ failed status=${response.code} body=$raw")
+                    return@withContext false
+                }
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "MESSAGE_MARK_READ exception", e)
+            false
+        }
     }
 
     // ============================================================
@@ -2991,7 +3131,8 @@ suspend fun uploadPostMedia(
             dailyStreak = obj.optInt("daily_streak", 0),
             worldRank = obj.optInt("world_rank", 0),
             campusRank = obj.optInt("campus_rank", 0),
-            onlineNow = obj.optBoolean("online_now", false),
+            onlineNow = obj.optBoolean("online_now", obj.optBoolean("is_online", false)),
+            onboardingCompleted = obj.optBoolean("onboarding_completed", false),
             verifiedAtMillis = obj.optLong("verified_at_millis", 0L),
             joinedLabel = obj.cleanString("joined_label"),
             isSellerActive = obj.optBoolean("is_seller_active", false),
