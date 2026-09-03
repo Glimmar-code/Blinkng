@@ -94,84 +94,27 @@ object MessageMediaService {
                 return@withContext Result.failure(Exception("Recipient is required."))
             }
 
-            val target = client.newCall(
-                builder(
-                    "/rest/v1/profiles?username=eq.${
-                        URLEncoder.encode(receiver, StandardCharsets.UTF_8.name())
-                    }&select=id,username&limit=1"
-                ).get().build()
+            val conversationId = client.newCall(
+                builder("/rest/v1/rpc/get_or_create_direct_conversation")
+                    .post(
+                        JSONObject()
+                            .put("p_receiver_username", receiver)
+                            .toString()
+                            .toRequestBody(jsonType)
+                    )
+                    .build()
             ).execute().use { response ->
                 val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(raw, "Recipient lookup failed."))
-                JSONArray(raw.ifBlank { "[]" }).optJSONObject(0)
-            } ?: return@withContext Result.failure(Exception("Recipient not found."))
-
-            val targetId = target.optString("id")
-            if (targetId == senderId) return@withContext Result.failure(Exception("Cannot message yourself."))
-
-            val mine = client.newCall(
-                builder(
-                    "/rest/v1/conversation_participants?user_id=eq.${
-                        URLEncoder.encode(senderId, StandardCharsets.UTF_8.name())
-                    }&select=conversation_id"
-                ).get().build()
-            ).execute().use { response ->
-                val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(raw, "Conversation lookup failed."))
-                JSONArray(raw.ifBlank { "[]" })
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(
+                        error(raw, "Could not open this conversation.")
+                    )
+                }
+                raw.trim().removeSurrounding("\"")
             }
 
-            var conversationId = ""
-            for (i in 0 until mine.length()) {
-                val cid = mine.optJSONObject(i)?.optString("conversation_id").orEmpty()
-                if (cid.isBlank()) continue
-                val exists = client.newCall(
-                    builder(
-                        "/rest/v1/conversation_participants?conversation_id=eq.${
-                            URLEncoder.encode(cid, StandardCharsets.UTF_8.name())
-                        }&user_id=eq.${
-                            URLEncoder.encode(targetId, StandardCharsets.UTF_8.name())
-                        }&select=user_id&limit=1"
-                    ).get().build()
-                ).execute().use { response ->
-                    response.isSuccessful && response.body?.string().orEmpty() != "[]"
-                }
-                if (exists) {
-                    conversationId = cid
-                    break
-                }
-            }
-
-            if (conversationId.isBlank()) {
-                val conversationBody = JSONObject()
-                    .put("created_by", senderId)
-                    .put("is_group", false)
-                val created = client.newCall(
-                    builder("/rest/v1/conversations")
-                        .addHeader("Prefer", "return=representation")
-                        .post(conversationBody.toString().toRequestBody(jsonType))
-                        .build()
-                ).execute().use { response ->
-                    val raw = response.body?.string().orEmpty()
-                    if (!response.isSuccessful) throw IllegalStateException(error(raw, "Conversation creation failed."))
-                    raw
-                }
-                conversationId = JSONArray(created).getJSONObject(0).optString("id")
-                for (member in listOf(senderId, targetId)) {
-                    val memberBody = JSONObject()
-                        .put("conversation_id", conversationId)
-                        .put("user_id", member)
-                    client.newCall(
-                        builder("/rest/v1/conversation_participants")
-                            .post(memberBody.toString().toRequestBody(jsonType))
-                            .build()
-                    ).execute().use { response ->
-                        val raw = response.body?.string().orEmpty()
-                        if (!response.isSuccessful) {
-                            throw IllegalStateException(error(raw, "Conversation membership failed."))
-                        }
-                    }
-                }
+            if (conversationId.isBlank() || conversationId == "null") {
+                return@withContext Result.failure(Exception("Could not create conversation."))
             }
 
             val mime = context.contentResolver.getType(uri) ?: "video/mp4"
