@@ -253,86 +253,45 @@ private suspend fun restoreSupabaseSession() {
 
     fun fetchSupabaseData() {
         viewModelScope.launch {
-            val before = _uiState.value
-            val hadFeed = before.posts.isNotEmpty() || before.reels.isNotEmpty()
-
-            _uiState.value = before.copy(
-                isFeedLoading = !hadFeed,
-                feedErrorMessage = null
-            )
-
+            // Do not let an unrelated surface (leaderboard/stories/messages) blank the feed.
             val feedResult = runCatching { supabaseService.fetchFeedPosts() }
-                .onFailure { Log.e(TAG, "Feed fetch failed", it) }
+            val fetched = feedResult.getOrElse {
+                Log.e(TAG, "Feed fetch failed", it)
+                emptyList()
+            }
+            val normalPosts = fetched.filter { !it.isReel && it.videoUrl.isNullOrBlank() }.distinctBy { it.id }
+            val fetchedReels = fetched.filter { it.isReel || !it.videoUrl.isNullOrBlank() }.distinctBy { it.id }
 
-            val fetched = feedResult.getOrNull()
-            val normalPosts = fetched
-                ?.filter { !it.isReel && it.videoUrl.isNullOrBlank() }
-                ?.distinctBy { it.id }
-                ?: before.posts
-            val fetchedReels = fetched
-                ?.filter { it.isReel || !it.videoUrl.isNullOrBlank() }
-                ?.distinctBy { it.id }
-                ?: before.reels
-
+            // Publish feed state immediately. Previously this happened only after every
+            // secondary request succeeded, so one 401 could make Home appear empty.
             _uiState.value = _uiState.value.copy(
                 posts = normalPosts,
                 reels = fetchedReels,
-                isLiveSupabaseConnected = feedResult.isSuccess,
-                isFeedLoading = false,
-                feedErrorMessage = feedResult.exceptionOrNull()?.let {
-                    "Couldn't refresh live Supabase data. Check your connection and try again."
-                }
+                isLiveSupabaseConnected = feedResult.isSuccess
             )
-
-            val liveProfiles = runCatching { supabaseService.fetchProfiles() }
-                .onFailure { Log.e(TAG, "Profiles fetch failed", it) }
-                .getOrDefault(before.profiles)
-                .filter { it.username.isNotBlank() }
-                .distinctBy { it.id.ifBlank { it.username.lowercase() } }
 
             val market = runCatching { supabaseService.fetchMarketItems() }
                 .onFailure { Log.e(TAG, "Market fetch failed", it) }
-                .getOrDefault(before.marketItems)
-
-            val conversations = runCatching {
-                MessageMediaService.hydrateVideos(supabaseService.fetchMessages())
-            }
+                .getOrDefault(_uiState.value.marketItems)
+            val conversations = runCatching { MessageMediaService.hydrateVideos(supabaseService.fetchMessages()) }
                 .onFailure { Log.e(TAG, "Message fetch failed", it) }
-                .getOrDefault(before.conversations)
-
+                .getOrDefault(_uiState.value.conversations)
             val leaderboard = runCatching { supabaseService.fetchLeaderboard() }
                 .onFailure { Log.e(TAG, "Leaderboard fetch failed", it) }
-                .getOrDefault(before.leaderboardUsers)
-
+                .getOrDefault(_uiState.value.leaderboardUsers)
             val cloudStories = runCatching { supabaseService.fetchStories() }
                 .onFailure { Log.e(TAG, "Stories fetch failed", it) }
-                .getOrDefault(
-                    before.stories.filterNot { it.id == "story_me" }
-                )
+                .getOrDefault(emptyList())
 
             val myProfile = _uiState.value.myProfile
-            val userStoryHeader = Story(
-                id = "story_me",
-                username = "Your Story",
-                avatar = myProfile.avatarUrl,
-                hasUnseen = false,
-                isUser = true
-            )
-
-            val mine = cloudStories.filter {
-                it.isUser || it.username.equals(myProfile.username, true)
-            }
-            val others = cloudStories.filter {
-                !it.isUser && !it.username.equals(myProfile.username, true)
-            }
-            val mergedStories = if (mine.isNotEmpty()) {
-                mine + others
-            } else {
-                listOf(userStoryHeader) + others
-            }
+            val userStoryHeader = Story(id = "story_me", username = "Your Story", avatar = myProfile.avatarUrl, hasUnseen = false, isUser = true)
+            val mergedStories = if (cloudStories.isNotEmpty()) {
+                val mine = cloudStories.filter { it.isUser || it.username.equals(myProfile.username, true) }
+                val others = cloudStories.filter { !it.isUser && !it.username.equals(myProfile.username, true) }
+                if (mine.isNotEmpty()) mine + others else listOf(userStoryHeader) + others
+            } else listOf(userStoryHeader)
 
             _uiState.value = _uiState.value.copy(
-                profiles = liveProfiles,
                 posts = normalPosts,
                 reels = fetchedReels,
                 marketItems = market,
@@ -346,50 +305,18 @@ private suspend fun restoreSupabaseSession() {
             runCatching { supabaseService.fetchActivities() }
                 .onSuccess { result ->
                     result.fold(
-                        { activities ->
-                            _uiState.value = _uiState.value.copy(
-                                activities = activities,
-                                activitiesLoading = false
-                            )
-                        },
-                        { error ->
-                            _uiState.value = _uiState.value.copy(
-                                activitiesLoading = false,
-                                activitiesError = error.message
-                            )
-                        }
+                        { activities -> _uiState.value = _uiState.value.copy(activities = activities, activitiesLoading = false) },
+                        { error -> _uiState.value = _uiState.value.copy(activitiesLoading = false, activitiesError = error.message) }
                     )
                 }
-                .onFailure { error ->
-                    _uiState.value = _uiState.value.copy(
-                        activitiesLoading = false,
-                        activitiesError = error.message
-                    )
-                }
+                .onFailure { error -> _uiState.value = _uiState.value.copy(activitiesLoading = false, activitiesError = error.message) }
 
             val curUser = supabaseService.getCurrentUsername() ?: myProfile.username
             val curUid = supabaseService.getCurrentUserId() ?: ""
-            if (curUser.isNotBlank() || curUid.isNotBlank()) {
-                realtimeManager.connect(curUser, curUid)
-            }
+            if (curUser.isNotBlank() || curUid.isNotBlank()) realtimeManager.connect(curUser, curUid)
         }
     }
 
-    fun refreshLeaderboard() {
-        viewModelScope.launch {
-            runCatching { supabaseService.fetchLeaderboard() }
-                .onSuccess { live ->
-                    _uiState.value = _uiState.value.copy(
-                        leaderboardUsers = live
-                    )
-                    showToast("Leaderboard refreshed from Supabase.")
-                }
-                .onFailure {
-                    Log.e(TAG, "Leaderboard refresh failed", it)
-                    showToast("Couldn't refresh the leaderboard.")
-                }
-        }
-    }
 
     suspend fun refreshMyProfileFromSupabase(showErrorToast: Boolean = true) {
         try {
