@@ -2419,7 +2419,8 @@ private fun ChatSettingRow(
 private fun SectionAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
-    subtitle: String
+    subtitle: String,
+    onClick: () -> Unit = {}
 ) {
 
     Row(
@@ -3486,8 +3487,6 @@ private fun MessageRow(
                                 .onSurface
                 )
 
-                }
-
                 Spacer(
                     modifier =
                         Modifier.height(
@@ -4440,7 +4439,8 @@ private fun ChatMoreSheet(
 private fun ChatOption(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
-    subtitle: String
+    subtitle: String,
+    onClick: () -> Unit = {}
 ) {
 
     Row(

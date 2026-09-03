@@ -6,6 +6,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.auth.AccountSessionStore
 import com.example.data.models.*
 import com.example.data.repository.*
 import com.example.data.supabase.RealtimeEvent

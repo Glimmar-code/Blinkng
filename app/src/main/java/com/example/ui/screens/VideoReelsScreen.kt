@@ -12,7 +12,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.clip
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -38,7 +37,7 @@ import com.example.data.models.FeedPost
 import com.example.ui.components.formatNumber
 import com.example.ui.theme.BlinkPink
 
-@androidx.compose.foundation.ExperimentalFoundationApi
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun VideoReelsScreen(reels: List<FeedPost>, isDark: Boolean, onLike: (String) -> Unit, onComment: (String) -> Unit, onBookmark: (String) -> Unit, onShare: (String) -> Unit, onProfileClick: (String) -> Unit, onBackToPosts: () -> Unit, onHomeClick: () -> Unit = onBackToPosts, onConnectClick: () -> Unit = {}, onGameClick: () -> Unit = {}) {
     if (reels.isEmpty()) {

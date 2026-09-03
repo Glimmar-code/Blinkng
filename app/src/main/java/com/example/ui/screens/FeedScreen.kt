@@ -59,6 +59,7 @@ import com.example.ui.theme.BlinkBlack
 import com.example.ui.theme.BlinkCream
 import com.example.ui.theme.BlinkPink
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun FeedScreen(
     posts: List<FeedPost>, reels: List<FeedPost>, stories: List<Story>, userAvatar: String,
