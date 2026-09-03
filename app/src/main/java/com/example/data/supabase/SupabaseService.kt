@@ -2074,36 +2074,36 @@ suspend fun uploadPostMedia(
         }
     }
 
-    suspend fun createStory(story: Story): Boolean = withContext(Dispatchers.IO) {
+    suspend fun uploadStoryMedia(userId: String, bytes: ByteArray, mimeType: String, isVideo: Boolean): String? = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || bytes.isEmpty()) return@withContext null
         try {
-            val json = JSONObject().apply {
-                put("id", story.id)
-                put("username", story.username)
-                put("avatar", story.avatar)
-                put("story_image", story.storyImage)
-                put("caption", story.caption)
-                put("faculty", story.faculty)
-                put("university", story.university)
-                put("likes_count", story.likesCount)
-                put("created_at", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
-                }.format(Date()))
+            val ext = when { isVideo && mimeType.contains("webm", true) -> "webm"; isVideo -> "mp4"; mimeType.contains("png", true) -> "png"; mimeType.contains("webp", true) -> "webp"; else -> "jpg" }
+            val path = "$userId/${UUID.randomUUID()}.$ext"
+            executeRequest(newRequestBuilder("/storage/v1/object/story-media/$path", true).addHeader("Content-Type", mimeType).post(bytes.toRequestBody(mimeType.toMediaType())).build()).use { response ->
+                val raw=response.body?.string().orEmpty()
+                if(!response.isSuccessful) throw IllegalStateException(parseSupabaseError(raw,"Story upload failed."))
             }
-            val request = newRequestBuilder(
-                "/rest/v1/stories",
-                authenticated = true
-            )
-                .post(json.toString().toRequestBody(jsonMediaType))
-                .build()
-
-            executeRequest(request).use { response ->
-                response.isSuccessful
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "createStory exception", e)
-            false
-        }
+            "$baseUrl/storage/v1/object/public/story-media/$path"
+        } catch (e: Exception) { Log.e(TAG,"uploadStoryMedia failed",e); null }
     }
+
+    suspend fun createStory(story: Story, isVideo: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            val body=JSONObject().apply {
+                put("id",story.id); put("user_id",uid); put("active",true); put("media_url",story.storyImage)
+                put("media_type",if(isVideo)"video" else "image"); put("caption",story.caption)
+                if(isVideo) put("video_url",story.storyImage) else put("image_url",story.storyImage)
+                put("likes_count",0)
+            }
+            executeRequest(newRequestBuilder("/rest/v1/stories",true).addHeader("Prefer","return=minimal").post(body.toString().toRequestBody(jsonMediaType)).build()).use { response ->
+                val raw=response.body?.string().orEmpty()
+                if(!response.isSuccessful) throw IllegalStateException(parseSupabaseError(raw,"Story creation failed."))
+                true
+            }
+        } catch(e:Exception){Log.e(TAG,"createStory exception",e);false}
+    }
+
     suspend fun markStoryViewed(storyId: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
@@ -2217,7 +2217,7 @@ suspend fun uploadPostMedia(
 
     suspend fun fetchLeaderboard(): List<LeaderboardUser> = withContext(Dispatchers.IO) {
         try {
-            val raw = executeRequest(newRequestBuilder("/rest/v1/game_leaderboard?select=*&order=score.desc&limit=50", false).get().build()).use { resp ->
+            val raw = executeRequest(newRequestBuilder("/rest/v1/game_leaderboard?select=*&order=score.desc,world_rank.asc&limit=50", true).get().build()).use { resp ->
                 val body = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) return@withContext emptyList()
                 body
