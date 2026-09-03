@@ -261,9 +261,6 @@ private suspend fun restoreSupabaseSession() {
         viewModelScope.launch {
             val before = _uiState.value
             val hadFeed = before.posts.isNotEmpty() || before.reels.isNotEmpty()
-            val mutedUsers = runCatching { supabaseService.fetchMutedUsernames() }
-                .onFailure { Log.e(TAG, "Muted users fetch failed", it) }
-                .getOrDefault(before.mutedUsers)
 
             _uiState.value = before.copy(
                 isFeedLoading = !hadFeed,
@@ -275,17 +272,11 @@ private suspend fun restoreSupabaseSession() {
 
             val fetched = feedResult.getOrNull()
             val normalPosts = fetched
-                ?.filter {
-                    !it.isReel && it.videoUrl.isNullOrBlank() &&
-                        it.author.lowercase() !in mutedUsers
-                }
+                ?.filter { !it.isReel && it.videoUrl.isNullOrBlank() }
                 ?.distinctBy { it.id }
                 ?: before.posts
             val fetchedReels = fetched
-                ?.filter {
-                    (it.isReel || !it.videoUrl.isNullOrBlank()) &&
-                        it.author.lowercase() !in mutedUsers
-                }
+                ?.filter { it.isReel || !it.videoUrl.isNullOrBlank() }
                 ?.distinctBy { it.id }
                 ?: before.reels
 
@@ -302,7 +293,7 @@ private suspend fun restoreSupabaseSession() {
             val liveProfiles = runCatching { supabaseService.fetchProfiles() }
                 .onFailure { Log.e(TAG, "Profiles fetch failed", it) }
                 .getOrDefault(before.profiles)
-                .filter { it.username.isNotBlank() && !it.username.equals("null", true) }
+                .filter { it.username.isNotBlank() }
                 .distinctBy { it.id.ifBlank { it.username.lowercase() } }
 
             val market = runCatching { supabaseService.fetchMarketItems() }
@@ -336,9 +327,7 @@ private suspend fun restoreSupabaseSession() {
                 it.isUser || it.username.equals(myProfile.username, true)
             }
             val others = cloudStories.filter {
-                !it.isUser &&
-                    !it.username.equals(myProfile.username, true) &&
-                    it.username.lowercase() !in mutedUsers
+                !it.isUser && !it.username.equals(myProfile.username, true)
             }
             val mergedStories = if (mine.isNotEmpty()) {
                 mine + others
@@ -354,7 +343,6 @@ private suspend fun restoreSupabaseSession() {
                 conversations = conversations,
                 leaderboardUsers = leaderboard,
                 stories = mergedStories,
-                mutedUsers = mutedUsers,
                 activitiesLoading = true,
                 activitiesError = null
             )
@@ -393,13 +381,6 @@ private suspend fun restoreSupabaseSession() {
             }
         }
     }
-
-    suspend fun searchProfilesRemote(query: String): List<UserProfile> =
-        withContext(Dispatchers.IO) {
-            if (query.trim().length < 2) emptyList()
-            else supabaseService.searchProfiles(query.trim())
-                .filter { it.username.isNotBlank() && !it.username.equals("null", true) }
-        }
 
     fun refreshLeaderboard() {
         viewModelScope.launch {
