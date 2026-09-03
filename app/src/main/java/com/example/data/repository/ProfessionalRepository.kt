@@ -99,7 +99,7 @@ class ProfessionalRepository(
     suspend fun createMarketplaceOrder(itemId: String, quantity: Int = 1): Result<String> =
         runCatching {
             rpc("create_marketplace_order", JSONObject().put("p_item_id", itemId).put("p_quantity", quantity))
-                .trim().removeSurrounding(""")
+                .trim().removeSurrounding("\"")
         }.filterCatching { it.isNotBlank() }
 
     suspend fun fetchMarketplaceOrders(): List<MarketplaceOrder> = withContext(Dispatchers.IO) {
@@ -188,7 +188,7 @@ class ProfessionalRepository(
                 JSONObject()
                     .put("p_title", title.trim())
                     .put("p_member_ids", JSONArray(memberIds.filter { it.isNotBlank() }))
-            ).trim().removeSurrounding(""")
+            ).trim().removeSurrounding("\"")
         }.filterCatching { it.isNotBlank() }
 
     suspend fun sendGroupMessage(conversationId: String, content: String): Boolean =
