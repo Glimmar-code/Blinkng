@@ -845,13 +845,16 @@ fun getCurrentUserId(): String? {
 
     suspend fun checkServerStatus(): Boolean = withContext(Dispatchers.IO) {
         try {
+            val healthToken = accessToken()?.takeIf { it.isNotBlank() } ?: anonKey
             val request = Request.Builder()
                 .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/")
-                .addHeader("apikey", SupabaseConfig.anonKey)
+                .addHeader("apikey", anonKey)
+                .addHeader("Authorization", "Bearer $healthToken")
+                .addHeader("Accept", "application/json")
                 .get()
                 .build()
-            executeRequest(request).use { response ->
-                response.isSuccessful || response.code == 401 || response.code == 400 || response.code == 404
+            client.newCall(request).execute().use { response ->
+                response.isSuccessful
             }
         } catch (e: Exception) {
             Log.e(TAG, "checkServerStatus failed", e)
@@ -1545,8 +1548,23 @@ fun getCurrentUserId(): String? {
     // ============================================================
 
     suspend fun fetchFeedPosts(): List<FeedPost> = withContext(Dispatchers.IO) {
-        val uid = getCurrentUserId()
-        val postsRaw = executeRequest(newRequestBuilder("/rest/v1/feed_posts?select=*&order=created_at.desc&limit=100", authenticated = (uid != null)).get().build()).use { resp ->
+        var uid = getCurrentUserId()
+
+        // feed_posts is protected by RLS for authenticated users. If the access
+        // token was lost/expired but we still have a refresh token, recover the
+        // session before reading. Falling back to anon here returns HTTP 200
+        // with an empty array, which makes the Home feed look blank.
+        if (!isAuthenticated() && !refreshToken().isNullOrBlank()) {
+            if (refreshSession()) {
+                uid = getCurrentUserId()
+            }
+        }
+
+        if (uid.isNullOrBlank()) {
+            throw IllegalStateException("No authenticated Supabase session is available for the feed.")
+        }
+
+        val postsRaw = executeRequest(newRequestBuilder("/rest/v1/feed_posts?select=*&order=created_at.desc&limit=100", authenticated = true).get().build()).use { resp ->
             val raw = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Feed fetch failed."))
             JSONArray(if (raw.isBlank()) "[]" else raw)
@@ -1554,7 +1572,7 @@ fun getCurrentUserId(): String? {
         val userIds = buildSet { for (i in 0 until postsRaw.length()) postsRaw.getJSONObject(i).optString("user_id").takeIf { isValidUuid(it) }?.let { add(it) } }
         val profiles = mutableMapOf<String, JSONObject>()
         if (userIds.isNotEmpty()) {
-            executeRequest(newRequestBuilder("/rest/v1/profiles?id=in.(${userIds.joinToString(",")})&select=id,username,avatar_url,is_verified,verification_badge,full_name", authenticated = (uid != null)).get().build()).use { resp ->
+            executeRequest(newRequestBuilder("/rest/v1/profiles?id=in.(${userIds.joinToString(",")})&select=id,username,avatar_url,is_verified,verification_badge,full_name", authenticated = true).get().build()).use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 if (resp.isSuccessful && raw.isNotBlank() && raw != "[]") {
                     val a = JSONArray(raw)
@@ -1879,7 +1897,7 @@ suspend fun uploadPostMedia(
     private suspend fun fetchUserStoryViews(username: String): Set<String> = withContext(Dispatchers.IO) {
         try {
             val req = newRequestBuilder(
-                "/rest/v1/story_views?user_id=eq.${getCurrentUserId()}&eq.${URLEncoder.encode(username, "UTF-8")}&select=story_id",
+                "/rest/v1/story_views?user_id=eq.${encodeValue(getCurrentUserId().orEmpty())}&select=story_id",
                 authenticated = true
             ).get().build()
             executeRequest(req).use { resp ->
