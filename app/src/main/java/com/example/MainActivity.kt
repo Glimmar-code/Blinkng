@@ -272,6 +272,12 @@ fun MainAppContent(
                         leaderboardUsers = uiState.leaderboardUsers,
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
+                        onTriviaAnswer = { questionId, selectedIndex ->
+                            viewModel.recordTriviaResult(questionId, selectedIndex)
+                        },
+                        onDailySpin = {
+                            viewModel.claimDailySpin()
+                        },
                         currentSubTab = uiState.feedSubTab,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
                         isDark = uiState.isDarkMode,
