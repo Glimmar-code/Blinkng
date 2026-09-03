@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.*
 import com.example.auth.AccountSessionStore
+import com.example.notification.BlinkNotificationHelper
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
 import com.example.viewmodel.AppDestination
@@ -28,6 +29,46 @@ import kotlinx.coroutines.flow.collectLatest
 class MainActivity : ComponentActivity() {
 
     private val viewModel: BlinkViewModel by viewModels()
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNotificationIntent(intent)
+    }
+
+    private fun handleNotificationIntent(intent: Intent?) {
+        val action = intent?.getStringExtra(BlinkNotificationHelper.EXTRA_ACTION) ?: return
+
+        when (action) {
+            BlinkNotificationHelper.ACTION_OPEN_CHAT -> {
+                val username = intent.getStringExtra(BlinkNotificationHelper.EXTRA_PARTNER_USERNAME).orEmpty()
+                val name = intent.getStringExtra(BlinkNotificationHelper.EXTRA_PARTNER_NAME)
+                if (username.isNotBlank()) {
+                    viewModel.setTab(MainTab.MESSAGES)
+                    viewModel.openChatWithUser(username, name, null)
+                }
+            }
+
+            BlinkNotificationHelper.ACTION_OPEN_POST -> {
+                val postId = intent.getStringExtra(BlinkNotificationHelper.EXTRA_POST_ID)
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(0)
+                if (!postId.isNullOrBlank()) {
+                    viewModel.openCommentsForPost(postId)
+                }
+            }
+
+            BlinkNotificationHelper.ACTION_OPEN_MARKET -> {
+                viewModel.setTab(MainTab.MARKET)
+            }
+
+            BlinkNotificationHelper.ACTION_OPEN_SOCIAL -> {
+                viewModel.openActivity(true)
+            }
+        }
+
+        intent.removeExtra(BlinkNotificationHelper.EXTRA_ACTION)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -146,6 +187,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        handleNotificationIntent(intent)
     }
 }
 
