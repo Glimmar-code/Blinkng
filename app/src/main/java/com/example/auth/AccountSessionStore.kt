@@ -46,6 +46,8 @@ object AccountSessionStore {
 
     fun list(context: Context): List<Account> = load(context).sortedByDescending { it.lastUsedAt }
 
+    fun clear(context: Context) { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_ACCOUNTS).apply() }
+
     fun switchTo(context: Context, account: Account, accessToken: String, refreshToken: String) {
         SupabaseService.saveSession(accessToken, refreshToken)
         val reordered = load(context).filterNot { it.userId == account.userId }.toMutableList().apply {
