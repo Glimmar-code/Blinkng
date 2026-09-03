@@ -72,10 +72,33 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         val type = data["type"] ?: "social"
         val sender = data["sender_username"].orEmpty()
         val senderName = data["sender_name"] ?: sender.ifBlank { "Blink" }
-        if (type.equals("message", ignoreCase = true) && sender.isNotBlank()) {
-            BlinkNotificationHelper.showChatMessageNotification(this, sender, senderName, body)
-        } else {
-            BlinkNotificationHelper.showGenericNotification(this, BlinkNotificationHelper.CHANNEL_SOCIAL, title, body, (System.currentTimeMillis() % 2000000000L).toInt())
+        when {
+            type.equals("message", ignoreCase = true) && sender.isNotBlank() -> {
+                BlinkNotificationHelper.showChatMessageNotification(
+                    this,
+                    sender,
+                    senderName,
+                    body
+                )
+            }
+
+            type.equals("market", ignoreCase = true) -> {
+                BlinkNotificationHelper.showMarketNotification(
+                    context = this,
+                    title = title,
+                    body = body,
+                    targetMarketId = data["market_id"]
+                )
+            }
+
+            else -> {
+                BlinkNotificationHelper.showSocialNotification(
+                    context = this,
+                    title = title,
+                    body = body,
+                    targetPostId = data["post_id"]
+                )
+            }
         }
     }
 }
