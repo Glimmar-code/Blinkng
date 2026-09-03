@@ -59,10 +59,20 @@ class GoogleAuthCallbackActivity : Activity() {
             uri.getQueryParameter(key)?.let { values[key] = it }
         }
 
+        getSharedPreferences("blink_auth_prefs", MODE_PRIVATE)
+            .edit()
+            .putLong("google_oauth_started_at", 0L)
+            .apply()
+
         val error = values[ERROR]
         val errorDescription = values[ERROR_DESCRIPTION]
         if (!error.isNullOrBlank() || !errorDescription.isNullOrBlank()) {
-            Log.e(TAG, "Google OAuth failed: ${errorDescription ?: error}")
+            val message = errorDescription ?: error ?: "Google authentication failed."
+            Log.e(TAG, "Google OAuth failed: $message")
+            getSharedPreferences("blink_auth_prefs", MODE_PRIVATE)
+                .edit()
+                .putString("google_oauth_error", message)
+                .apply()
             returnToMain()
             return
         }
@@ -72,6 +82,10 @@ class GoogleAuthCallbackActivity : Activity() {
 
         if (accessToken.isBlank()) {
             Log.e(TAG, "Google OAuth callback contained no access token")
+            getSharedPreferences("blink_auth_prefs", MODE_PRIVATE)
+                .edit()
+                .putString("google_oauth_error", "Google sign-in did not return a session. Please try again.")
+                .apply()
             returnToMain()
             return
         }
@@ -82,6 +96,11 @@ class GoogleAuthCallbackActivity : Activity() {
             accessToken = accessToken,
             refreshToken = refreshToken.ifBlank { null }
         )
+
+        getSharedPreferences("blink_auth_prefs", MODE_PRIVATE)
+            .edit()
+            .remove("google_oauth_error")
+            .apply()
 
         Log.d(TAG, "Google OAuth session saved successfully")
 
