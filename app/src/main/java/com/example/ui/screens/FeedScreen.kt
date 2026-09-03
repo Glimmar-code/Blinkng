@@ -87,6 +87,7 @@ fun FeedScreen(
     onBookmarkPost: (String) -> Unit,
     onSharePost: (String) -> Unit,
     onOptionsClick: (FeedPost) -> Unit,
+    onDeletePost: (String) -> Unit = {},
     onProfileClick: (String) -> Unit,
     onAddStoryClick: () -> Unit,
     onStoryClick: (Story) -> Unit,
@@ -267,6 +268,8 @@ fun FeedScreen(
                                     onShare = { onSharePost(post.id) },
                                     onOptionsClick = { onOptionsClick(post) },
                                     onProfileClick = onProfileClick,
+                                    isAuthor = post.author.equals(currentUsername, true),
+                                    onDelete = { onDeletePost(post.id) },
                                     onViewed = { onViewedPost(post.id) },
                                     onVotePoll = onVotePoll
                                 )
