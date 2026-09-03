@@ -553,7 +553,7 @@ fun MainAppContent(
             val post = uiState.activePostOptionsPost!!
             PostOptionsMenuSheet(
                 post = post,
-                isAuthor = post.author == uiState.myProfile.username,
+                isAuthor = post.author.equals(uiState.myProfile.username, ignoreCase = true),
                 isDark = uiState.isDarkMode,
                 onDismiss = { viewModel.openPostOptions(null) },
                 onToggleSave = { viewModel.toggleBookmark(post.id) },

@@ -5,6 +5,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -20,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,19 +68,60 @@ fun PostCard(post: FeedPost, isDark: Boolean, onLike: () -> Unit, onComment: () 
                 Spacer(Modifier.height(10.dp)); Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp).clip(RoundedCornerShape(14.dp))) {
                     LazyRow(Modifier.fillMaxWidth()) { itemsIndexed(post.images) { index, image -> AsyncImage(model = image, contentDescription = "Post image ${index + 1}", contentScale = ContentScale.Crop, modifier = Modifier.fillParentMaxWidth().height(300.dp).clickable { imagePage = index; showImageFullscreen = true }) } }
                     if (post.images.size > 1) Surface(modifier = Modifier.align(Alignment.TopEnd).padding(10.dp), shape = CircleShape, color = Color.Black.copy(alpha = 0.55f)) { Text("${imagePage + 1}/${post.images.size}", color = Color.White, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) }
-                    IconButton(onClick = { showImageFullscreen = true }, Modifier.align(Alignment.BottomEnd).padding(6.dp)) { Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.55f)) { Icon(imageVector = Icons.Default.Fullscreen, contentDescription = "Open image fullscreen", tint = Color.White, modifier = Modifier.padding(8.dp)) } }
                 }
             }
             post.videoUrl?.takeIf { it.isNotBlank() && post.isReel }?.let { url ->
                 Spacer(Modifier.height(10.dp)); VideoPreview(url, Modifier.fillMaxWidth().padding(horizontal = 10.dp).height(330.dp).clip(RoundedCornerShape(14.dp))) { showVideoFullscreen = true }
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { likedPulse = true; onLike() }, modifier = Modifier.scale(likeScale)) { Icon(imageVector = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder, contentDescription = null, tint = if (post.isLiked) BlinkPink else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("${post.likes}", fontSize = 10.sp) }
-                TextButton(onClick = onComment) { Icon(imageVector = Icons.Default.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("${post.commentsCount}", fontSize = 10.sp) }
-                TextButton(onClick = onBookmark) { Icon(imageVector = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text(if (post.isBookmarked) "Saved" else "Save", fontSize = 10.sp) }
-                TextButton(onClick = onShare) { Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("${post.sharesCount}", fontSize = 10.sp) }
-                TextButton(onClick = {}, enabled = false) { Icon(Icons.Default.Visibility, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("${post.viewsCount}", fontSize = 10.sp) }
-                if (isAuthor) IconButton(onClick = onDelete) { Icon(Icons.Default.DeleteOutline, "Delete post", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(19.dp)) }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = {}, enabled = false) {
+                    Icon(Icons.Default.Visibility, contentDescription = "Views", modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text("${post.viewsCount}", fontSize = 10.sp)
+                }
+                TextButton(onClick = { likedPulse = true; onLike() }, modifier = Modifier.scale(likeScale)) {
+                    Icon(
+                        imageVector = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "Like",
+                        tint = if (post.isLiked) BlinkPink else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Text("${post.likes}", fontSize = 10.sp)
+                }
+                TextButton(onClick = onComment) {
+                    Icon(Icons.Default.ChatBubbleOutline, contentDescription = "Comments", modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text("${post.commentsCount}", fontSize = 10.sp)
+                }
+                TextButton(onClick = onBookmark) {
+                    Icon(
+                        imageVector = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        contentDescription = "Save",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Text(if (post.isBookmarked) "Saved" else "Save", fontSize = 10.sp)
+                }
+                TextButton(onClick = onShare) {
+                    Icon(Icons.Default.Share, contentDescription = "Share", modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text("${post.sharesCount}", fontSize = 10.sp)
+                }
+                if (isAuthor) {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.DeleteOutline,
+                            contentDescription = "Delete your post",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                }
             }
         }
     }
@@ -116,16 +159,55 @@ private fun VideoPreview(url: String, modifier: Modifier, onFullscreen: () -> Un
 
 @Composable
 private fun ImageFullscreenDialog(images: List<String>, initialPage: Int, onDismiss: () -> Unit) {
-    val state = rememberLazyListState(initialFirstVisibleItemIndex = initialPage.coerceIn(0, (images.size - 1).coerceAtLeast(0)))
+    val state = rememberLazyListState(
+        initialFirstVisibleItemIndex = initialPage.coerceIn(0, (images.size - 1).coerceAtLeast(0))
+    )
+    var downwardDrag by remember { mutableFloatStateOf(0f) }
+
     Dialog(onDismissRequest = onDismiss) {
-        Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onVerticalDrag = { _, dragAmount ->
+                            if (dragAmount > 0f) {
+                                downwardDrag += dragAmount
+                                if (downwardDrag > 140f) onDismiss()
+                            } else {
+                                downwardDrag = (downwardDrag + dragAmount).coerceAtLeast(0f)
+                            }
+                        },
+                        onDragEnd = { downwardDrag = 0f },
+                        onDragCancel = { downwardDrag = 0f }
+                    )
+                },
+            color = Color.Black
+        ) {
             Box(Modifier.fillMaxSize()) {
                 LazyRow(state = state, modifier = Modifier.fillMaxSize()) {
                     itemsIndexed(images) { _, image ->
-                        AsyncImage(model = image, contentDescription = "Fullscreen image", contentScale = ContentScale.Fit, modifier = Modifier.fillParentMaxWidth().fillMaxHeight())
+                        AsyncImage(
+                            model = image,
+                            contentDescription = "Fullscreen image",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillParentMaxWidth().fillMaxHeight()
+                        )
                     }
                 }
-                IconButton(onClick = onDismiss, Modifier.align(Alignment.TopEnd).padding(12.dp)) { Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.6f)) { Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.padding(9.dp)) } }
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)
+                ) {
+                    Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.6f)) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color.White,
+                            modifier = Modifier.padding(9.dp)
+                        )
+                    }
+                }
             }
         }
     }

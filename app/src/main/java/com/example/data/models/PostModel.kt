@@ -153,7 +153,22 @@ data class LeaderboardUser(
     val university: String,
     val level: String,
     val streakDays: Int = 0,
+    val coins: Int = 0,
+    val bestStreak: Int = 0,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE
+)
+
+data class GameActionResult(
+    val awardedScore: Int = 0,
+    val awardedCoins: Int = 0,
+    val streak: Int = 0,
+    val bestStreak: Int = 0
+)
+
+data class GameSpinResult(
+    val label: String = "",
+    val awardedScore: Int = 0,
+    val awardedCoins: Int = 0
 )
 
 data class CommentReply(
