@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.VerificationBadge
 import com.example.data.models.LeaderboardUser
+import com.example.data.models.GameActionResult
+import com.example.data.models.GameSpinResult
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.*
 import kotlinx.coroutines.delay
@@ -58,7 +60,10 @@ data class GameLeader(
 @Composable
 fun GameSection(
     userAvatar: String,
+    currentUsername: String,
     leaderboardUsers: List<LeaderboardUser> = emptyList(),
+    onTriviaAnswer: suspend (String, Int) -> GameActionResult? = { _, _ -> null },
+    onDailySpin: suspend () -> GameSpinResult? = { null },
     isDark: Boolean,
     onOpenMenu: () -> Unit,
     onOpenActivity: () -> Unit,
@@ -129,9 +134,23 @@ fun GameSection(
     var currentQuestionIndex by remember { mutableIntStateOf(0) }
     var selectedOptionIndex by remember { mutableStateOf<Int?>(null) }
     var isAnswerSubmitted by remember { mutableStateOf(false) }
-    var score by remember { mutableIntStateOf(350) }
-    var streak by remember { mutableIntStateOf(3) }
-    var coins by remember { mutableIntStateOf(120) }
+    var isSubmittingAnswer by remember { mutableStateOf(false) }
+    var answerStatus by remember { mutableStateOf<String?>(null) }
+
+    val liveMe = remember(leaderboardUsers, currentUsername) {
+        leaderboardUsers.firstOrNull {
+            it.username.equals(currentUsername.trim().removePrefix("@"), ignoreCase = true)
+        }
+    }
+    var score by remember { mutableIntStateOf(liveMe?.points ?: 0) }
+    var streak by remember { mutableIntStateOf(liveMe?.streakDays ?: 0) }
+    var coins by remember { mutableIntStateOf(liveMe?.coins ?: 0) }
+
+    LaunchedEffect(liveMe?.points, liveMe?.streakDays, liveMe?.coins) {
+        score = liveMe?.points ?: 0
+        streak = liveMe?.streakDays ?: 0
+        coins = liveMe?.coins ?: 0
+    }
 
     // Spin Wheel State
     var isSpinning by remember { mutableStateOf(false) }
@@ -324,15 +343,26 @@ fun GameSection(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 4.dp)
-                                .clickable(enabled = !isAnswerSubmitted) {
+                                .clickable(enabled = !isAnswerSubmitted && !isSubmittingAnswer) {
                                     selectedOptionIndex = index
                                     isAnswerSubmitted = true
-                                    if (index == currentQ.correctIndex) {
-                                        score += 50
-                                        streak += 1
-                                        coins += 15
-                                    } else {
-                                        streak = 0
+                                    isSubmittingAnswer = true
+                                    answerStatus = null
+                                    coroutineScope.launch {
+                                        val result = onTriviaAnswer(currentQ.id, index)
+                                        if (result != null) {
+                                            score += result.awardedScore
+                                            coins += result.awardedCoins
+                                            streak = result.streak
+                                            answerStatus = if (result.awardedScore > 0) {
+                                                "+${result.awardedScore} points • +${result.awardedCoins} coins"
+                                            } else {
+                                                "Answer recorded."
+                                            }
+                                        } else {
+                                            answerStatus = "This answer could not be recorded. It may already be completed today."
+                                        }
+                                        isSubmittingAnswer = false
                                     }
                                 }
                         ) {
@@ -394,6 +424,16 @@ fun GameSection(
                             lineHeight = 16.sp
                         )
 
+                        answerStatus?.let { status ->
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = status,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
                         Spacer(modifier = Modifier.height(14.dp))
 
                         Button(
@@ -401,7 +441,9 @@ fun GameSection(
                                 currentQuestionIndex++
                                 selectedOptionIndex = null
                                 isAnswerSubmitted = false
+                                answerStatus = null
                             },
+                            enabled = !isSubmittingAnswer,
                             shape = RoundedCornerShape(100.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = BlinkPink),
                             modifier = Modifier
@@ -485,7 +527,7 @@ fun GameSection(
 
                     if (spinReward != null) {
                         Text(
-                            text = "🎉 You won $spinReward!",
+                            text = spinReward.orEmpty(),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = BlinkOnlineGreen
@@ -499,15 +541,19 @@ fun GameSection(
                                 isSpinning = true
                                 spinReward = null
                                 coroutineScope.launch {
+                                    val serverResult = onDailySpin()
                                     val target = spinRotation.value + 1440f + (0..360).random()
                                     spinRotation.animateTo(
                                         targetValue = target,
                                         animationSpec = tween(durationMillis = 2000, easing = FastOutSlowInEasing)
                                     )
-                                    val rewards = listOf("+25 Campus Coins", "+50 Campus Coins", "+100 Points", "2x Streak Multiplier", "+10 Coins")
-                                    val won = rewards.random()
-                                    spinReward = won
-                                    coins += 35
+                                    if (serverResult != null) {
+                                        spinReward = "🎉 ${serverResult.label}"
+                                        score += serverResult.awardedScore
+                                        coins += serverResult.awardedCoins
+                                    } else {
+                                        spinReward = "Daily spin already claimed today or temporarily unavailable."
+                                    }
                                     isSpinning = false
                                 }
                             }
