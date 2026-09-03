@@ -198,8 +198,9 @@ private suspend fun restoreSupabaseSession() {
     private fun restoreLocalSession() {
         if (!hasLocalAuthenticatedProfile()) return
         val savedEmail = prefs.getString(KEY_EMAIL, authPrefs.getString(KEY_EMAIL, "")).orEmpty()
-        val savedName = prefs.getString(KEY_FULL_NAME, authPrefs.getString(KEY_FULL_NAME, "Campus Student")).orEmpty()
-        val savedUsername = prefs.getString(KEY_USERNAME, authPrefs.getString(KEY_USERNAME, "student")).orEmpty()
+        val savedName = prefs.getString(KEY_FULL_NAME, authPrefs.getString(KEY_FULL_NAME, "")).orEmpty()
+        val savedUsername = prefs.getString(KEY_USERNAME, authPrefs.getString(KEY_USERNAME, "")).orEmpty()
+        if (savedName.isBlank() || savedUsername.isBlank()) return
         val savedFaculty = prefs.getString(KEY_FACULTY, authPrefs.getString(KEY_FACULTY, "")).orEmpty()
         val savedUniversity = prefs.getString(KEY_UNIVERSITY, authPrefs.getString(KEY_UNIVERSITY, "")).orEmpty()
         val savedAvatar = prefs.getString(KEY_AVATAR, authPrefs.getString(KEY_AVATAR, "")).orEmpty()
