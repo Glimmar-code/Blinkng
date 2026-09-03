@@ -80,7 +80,8 @@ data class BlinkUiState(
     val isRefreshingContent: Boolean = false,
     val isSyncingContent: Boolean = false,
     val feedErrorMessage: String? = null,
-    val isCreatingPost: Boolean = false
+    val isCreatingPost: Boolean = false,
+    val pendingMessageCount: Int = 0
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
@@ -129,6 +130,10 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         observeAuthState()
         viewModelScope.launch { restoreSupabaseSession() }
         loadDraftsFromPrefs()
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { offlineContentStore.pruneOldCaches() }
+                .onFailure { Log.w(TAG, "Offline cache pruning failed", it) }
+        }
         viewModelScope.launch { realtimeManager.events.collect { handleRealtimeEvent(it) } }
     }
 
@@ -294,6 +299,18 @@ private suspend fun restoreSupabaseSession() {
                 }
             }
         }
+        viewModelScope.launch {
+            offlineContentStore.conversations.collectLatest { cachedConversations ->
+                if (cachedConversations.isNotEmpty() && _uiState.value.conversations.isEmpty()) {
+                    _uiState.value = _uiState.value.copy(conversations = cachedConversations)
+                }
+            }
+        }
+        viewModelScope.launch {
+            offlineContentStore.pendingOutboxCount.collectLatest { count ->
+                _uiState.value = _uiState.value.copy(pendingMessageCount = count)
+            }
+        }
     }
 
     private fun observeNetworkStatus() {
@@ -317,6 +334,7 @@ private suspend fun restoreSupabaseSession() {
                 )
 
                 if (connectionRestored && _uiState.value.destination == AppDestination.MAIN) {
+                    drainMessageOutbox()
                     fetchSupabaseData()
                 }
             }
@@ -339,6 +357,16 @@ private suspend fun restoreSupabaseSession() {
             cacheWriteMutex.withLock {
                 runCatching { offlineContentStore.upsertProfile(profile) }
                     .onFailure { Log.w(TAG, "Unable to persist profile ${profile.username}", it) }
+            }
+        }
+    }
+
+    private fun persistConversations() {
+        val snapshot = _uiState.value.conversations
+        viewModelScope.launch(Dispatchers.IO) {
+            cacheWriteMutex.withLock {
+                runCatching { offlineContentStore.replaceConversations(snapshot) }
+                    .onFailure { Log.w(TAG, "Unable to persist conversations", it) }
             }
         }
     }
@@ -419,11 +447,16 @@ private suspend fun restoreSupabaseSession() {
                         .onFailure { Log.e(TAG, "Market fetch failed", it) }
                         .getOrDefault(before.marketItems)
 
-                    val conversations = runCatching {
-                        MessageMediaService.hydrateVideos(supabaseService.fetchMessages())
+                    val conversationsResult = runCatching {
+                        MessageMediaService.hydrateVideos(chatRepository.fetchConversations())
+                    }.onFailure { Log.e(TAG, "Message fetch failed", it) }
+                    val conversations = conversationsResult.getOrDefault(before.conversations)
+                    if (conversationsResult.isSuccess) {
+                        cacheWriteMutex.withLock {
+                            runCatching { offlineContentStore.replaceConversations(conversations) }
+                                .onFailure { Log.w(TAG, "Conversation cache update failed", it) }
+                        }
                     }
-                        .onFailure { Log.e(TAG, "Message fetch failed", it) }
-                        .getOrDefault(before.conversations)
 
                     val leaderboard = runCatching { supabaseService.fetchLeaderboard() }
                         .onFailure { Log.e(TAG, "Leaderboard fetch failed", it) }
@@ -741,11 +774,11 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun completeProfileOnboarding(university: String, academicLevel: String, bio: String, skills: List<String>, phone: String = "", whatsapp: String = "") {
+    fun completeProfileOnboarding(university: String, department: String, academicLevel: String, bio: String, skills: List<String>, phone: String = "", whatsapp: String = "") {
         val current = _uiState.value.myProfile
         val updatedSkills = skills.filter { it.isNotBlank() }.map { SkillEndorsement(it, 1, true) }
         val completed = current.copy(
-            university = university.trim(), academicLevel = academicLevel.trim(), bio = bio.trim(),
+            university = university.trim(), department = department.trim(), academicLevel = academicLevel.trim(), bio = bio.trim(),
             skillEndorsements = if (updatedSkills.isNotEmpty()) updatedSkills.toMutableList() else current.skillEndorsements,
             phone = ContactField(if (phone.isNotBlank()) phone.trim() else current.phone.value, true),
             whatsapp = ContactField(if (whatsapp.isNotBlank()) whatsapp.trim() else current.whatsapp.value, true)
@@ -1271,11 +1304,37 @@ private suspend fun restoreSupabaseSession() {
     fun closeConversation() { _uiState.value = _uiState.value.copy(activeConversationPartner = null, isConversationFullScreen = false) }
 
     fun sendMessage(partnerUsername: String, text: String, isFromMe: Boolean = true) {
-        val cleanText = text.trim(); val cleanPartner = partnerUsername.trim(); if (cleanText.isBlank() || cleanPartner.isBlank()) return
-        val uid = supabaseService.getCurrentUserId() ?: "local_user"; val currentUsername = supabaseService.getCurrentUsername() ?: "you"; val tempId = "temp_${UUID.randomUUID()}"
-        appendMessageToState(cleanPartner, ChatMessage(id = tempId, senderId = uid, senderUsername = currentUsername, receiverUsername = cleanPartner, text = cleanText, timestamp = "Sending...", isFromMe = true, isRead = false, status = MessageStatus.SENDING))
-        viewModelScope.launch {
-            chatRepository.sendMessage(cleanPartner, cleanText).fold({ serverMsg -> replaceMessageInState(cleanPartner, tempId, serverMsg.copy(status = MessageStatus.SENT)); supabaseService.recordActivity(cleanPartner, "sent you a direct message", NotificationFilter.ALL, targetUsername = currentUsername, previewText = cleanText, targetType = "CHAT") }, { updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED); showToast("Failed to send message. Tap message to retry.") })
+        val cleanText = text.trim()
+        val cleanPartner = partnerUsername.trim().removePrefix("@")
+        if (cleanText.isBlank() || cleanPartner.isBlank()) return
+
+        val uid = supabaseService.getCurrentUserId() ?: "local_user"
+        val currentUsername = supabaseService.getCurrentUsername() ?: _uiState.value.myProfile.username.ifBlank { "you" }
+        val tempId = "temp_${UUID.randomUUID()}"
+        val optimistic = ChatMessage(
+            id = tempId,
+            senderId = uid,
+            senderUsername = currentUsername,
+            receiverUsername = cleanPartner,
+            text = cleanText,
+            timestamp = if (_uiState.value.isOnline) "Sending..." else "Queued",
+            rawTimestamp = java.time.Instant.now().toString(),
+            isFromMe = true,
+            isRead = false,
+            status = MessageStatus.SENDING
+        )
+        appendMessageToState(cleanPartner, optimistic)
+        persistConversations()
+
+        viewModelScope.launch(Dispatchers.IO) {
+            offlineContentStore.enqueueMessage(tempId, cleanPartner, cleanText)
+            if (_uiState.value.isOnline) {
+                drainMessageOutbox()
+            } else {
+                withContext(Dispatchers.Main) {
+                    showToast("Message queued. Blink will send it when you're back online.")
+                }
+            }
         }
     }
 
@@ -1297,10 +1356,59 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun retrySendMessage(partnerUsername: String, failedMessage: ChatMessage) {
-        if (failedMessage.status != MessageStatus.FAILED) return
+        if (failedMessage.text.isBlank()) return
         updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.SENDING)
-        viewModelScope.launch {
-            chatRepository.sendMessage(partnerUsername.trim(), failedMessage.text.trim()).fold({ serverMsg -> replaceMessageInState(partnerUsername, failedMessage.id, serverMsg.copy(status = MessageStatus.SENT)) }, { updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.FAILED); showToast("Retry failed. Check network connection.") })
+        persistConversations()
+        viewModelScope.launch(Dispatchers.IO) {
+            val pending = offlineContentStore.pendingOutbox(100).firstOrNull { it.localId == failedMessage.id }
+            if (pending == null) {
+                offlineContentStore.enqueueMessage(failedMessage.id, partnerUsername.trim(), failedMessage.text.trim())
+            } else {
+                offlineContentStore.resetOutbox(failedMessage.id)
+            }
+            if (_uiState.value.isOnline) drainMessageOutbox()
+        }
+    }
+
+    private suspend fun drainMessageOutbox() {
+        if (!_uiState.value.isOnline || supabaseService.getCurrentUserId().isNullOrBlank()) return
+        val pending = offlineContentStore.pendingOutbox(40)
+        if (pending.isEmpty()) return
+
+        for (item in pending) {
+            chatRepository.sendMessage(item.receiverUsername, item.content).fold(
+                onSuccess = { serverMsg ->
+                    offlineContentStore.deleteOutbox(item.localId)
+                    withContext(Dispatchers.Main) {
+                        replaceMessageInState(
+                            item.receiverUsername,
+                            item.localId,
+                            serverMsg.copy(
+                                receiverUsername = item.receiverUsername,
+                                status = MessageStatus.SENT
+                            )
+                        )
+                        persistConversations()
+                    }
+                    runCatching {
+                        supabaseService.recordActivity(
+                            item.receiverUsername,
+                            "sent you a direct message",
+                            NotificationFilter.ALL,
+                            targetUsername = supabaseService.getCurrentUsername().orEmpty(),
+                            previewText = item.content,
+                            targetType = "CHAT"
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    offlineContentStore.markOutboxFailure(item, error.message ?: "Message send failed")
+                    withContext(Dispatchers.Main) {
+                        updateMessageStatusInState(item.receiverUsername, item.localId, MessageStatus.FAILED)
+                        persistConversations()
+                    }
+                }
+            )
         }
     }
 
@@ -1340,6 +1448,7 @@ private suspend fun restoreSupabaseSession() {
             conversations[index] = old.copy(lastMessage = msg.text, lastMessageTime = msg.timestamp, lastMessageRawTime = msg.rawTimestamp, unreadCount = if (active) 0 else old.unreadCount + if (!msg.isFromMe) 1 else 0, messages = msgs.sortedBy { it.rawTimestamp.ifBlank { it.timestamp } }.toMutableList())
         } else conversations.add(0, ChatConversation("conv_$partner", partner, partnerName = partner.replace(".", " ").replace("_", " ").capitalizeWords(), partnerAvatar = "", lastMessage = msg.text, lastMessageTime = msg.timestamp, lastMessageRawTime = msg.rawTimestamp, unreadCount = if (!msg.isFromMe && !active) 1 else 0, messages = mutableListOf(msg)))
         _uiState.value = _uiState.value.copy(conversations = conversations)
+        persistConversations()
         if (!msg.isFromMe && active) viewModelScope.launch { chatRepository.markConversationRead(partner) }
     }
 
@@ -1348,9 +1457,10 @@ private suspend fun restoreSupabaseSession() {
         if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(lastMessage = message.text, lastMessageTime = message.timestamp, lastMessageRawTime = message.rawTimestamp, messages = (old.messages + message).toMutableList()) }
         else conversations.add(0, ChatConversation("conv_$partnerUsername", partnerUsername, partnerName = partnerUsername.replace(".", " ").replace("_", " ").capitalizeWords(), partnerAvatar = "", lastMessage = message.text, lastMessageTime = message.timestamp, messages = mutableListOf(message)))
         _uiState.value = _uiState.value.copy(conversations = conversations)
+        persistConversations()
     }
-    private fun replaceMessageInState(partnerUsername: String, oldId: String, newMsg: ChatMessage) { val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }; if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(lastMessage = newMsg.text, lastMessageTime = newMsg.timestamp, lastMessageRawTime = newMsg.rawTimestamp, messages = old.messages.map { if (it.id == oldId) newMsg else it }.toMutableList()); _uiState.value = _uiState.value.copy(conversations = conversations) } }
-    private fun updateMessageStatusInState(partnerUsername: String, messageId: String, status: MessageStatus) { val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }; if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(messages = old.messages.map { if (it.id == messageId) it.copy(status = status) else it }.toMutableList()); _uiState.value = _uiState.value.copy(conversations = conversations) } }
+    private fun replaceMessageInState(partnerUsername: String, oldId: String, newMsg: ChatMessage) { val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }; if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(lastMessage = newMsg.text, lastMessageTime = newMsg.timestamp, lastMessageRawTime = newMsg.rawTimestamp, messages = old.messages.map { if (it.id == oldId) newMsg else it }.toMutableList()); _uiState.value = _uiState.value.copy(conversations = conversations); persistConversations() } }
+    private fun updateMessageStatusInState(partnerUsername: String, messageId: String, status: MessageStatus) { val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }; if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(messages = old.messages.map { if (it.id == messageId) it.copy(status = status, timestamp = if (status == MessageStatus.SENDING) "Sending..." else it.timestamp) else it }.toMutableList()); _uiState.value = _uiState.value.copy(conversations = conversations); persistConversations() } }
 
     fun addMarketListing(item: MarketItem) {
         if (_uiState.value.isPostItemOpen.not()) return
