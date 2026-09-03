@@ -1,12 +1,14 @@
-name: Android build check
+name: Android verification
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,4 +17,9 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - run: gradle :app:assembleDebug --stacktrace --no-daemon
+      - name: Unit tests
+        run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
+      - name: Android lint
+        run: gradle :app:lintDebug --stacktrace --no-daemon
+      - name: Assemble debug APK
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
