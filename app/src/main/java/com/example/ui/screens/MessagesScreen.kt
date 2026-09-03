@@ -144,6 +144,75 @@ import com.example.ui.theme.BlinkPurple
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+@Composable
+private fun MessagesConnectionNotice() {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .62f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Icon(
+                    Icons.Default.WifiOff,
+                    contentDescription = null,
+                    modifier = Modifier.padding(7.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    "Messages are offline",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+                Text(
+                    "Your recent conversations stay visible. Reconnect to send or receive new messages.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatConnectionNotice() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = .55f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.WifiOff,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onErrorContainer
+            )
+            Spacer(Modifier.width(7.dp))
+            Text(
+                "Offline — reconnect to send messages.",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onErrorContainer
+            )
+        }
+    }
+}
+
 // ============================================================================
 // MESSAGES HOME
 // ============================================================================
@@ -157,7 +226,8 @@ fun MessagesScreen(
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String) -> Unit,
     onProfileClick: (String) -> Unit,
-    isDark: Boolean
+    isDark: Boolean,
+    isConnected: Boolean = true
 ) {
 
     var searchQuery by rememberSaveable {
@@ -291,6 +361,12 @@ fun MessagesScreen(
                         showSettings = true
                     }
                 )
+            }
+
+            if (!isConnected) {
+                item(key = "messages_connection_notice") {
+                    MessagesConnectionNotice()
+                }
             }
 
             if (showSearch) {
@@ -2499,6 +2575,7 @@ fun ChatConversationView(
     onSendVideo: (Uri) -> Unit = {},
     onProfileClick: (String) -> Unit,
     isDark: Boolean,
+    isConnected: Boolean = true,
     onRetryMessage: ((ChatMessage) -> Unit)? = null
 ) {
 
@@ -2593,6 +2670,7 @@ fun ChatConversationView(
 
             ChatTopBar(
                 convo = convo,
+                isConnected = isConnected,
                 searchActive =
                     showChatSearch,
                 onBack = onBack,
@@ -2648,6 +2726,10 @@ fun ChatConversationView(
                     )
                 }
 
+                if (!isConnected) {
+                    ChatConnectionNotice()
+                }
+
                 AnimatedVisibility(
                     visible =
                         showQuickReplies &&
@@ -2667,6 +2749,7 @@ fun ChatConversationView(
 
                 ChatComposer(
                     value = messageText,
+                    isConnected = isConnected,
                     onValueChange = {
                         messageText = it
                     },
@@ -2979,6 +3062,7 @@ fun ChatConversationView(
 @Composable
 private fun ChatTopBar(
     convo: ChatConversation,
+    isConnected: Boolean,
     searchActive: Boolean,
     onBack: () -> Unit,
     onProfileClick: () -> Unit,
@@ -3105,18 +3189,19 @@ private fun ChatTopBar(
                     }
 
                     Text(
-                        if (convo.isOnline)
-                            "Active now"
-                        else
-                            "Last seen ${convo.lastSeen}",
-                        fontSize = 9.sp,
+                        when {
+                            !isConnected -> "Offline"
+                            convo.isOnline -> "Active now"
+                            else -> "Last seen ${convo.lastSeen}"
+                        },
+                        fontSize = 10.sp,
+                        fontWeight = if (!isConnected) FontWeight.SemiBold else FontWeight.Normal,
                         color =
-                            if (convo.isOnline)
-                                BlinkOnlineGreen
-                            else
-                                MaterialTheme
-                                    .colorScheme
-                                    .onSurfaceVariant
+                            when {
+                                !isConnected -> MaterialTheme.colorScheme.error
+                                convo.isOnline -> BlinkOnlineGreen
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            }
                     )
                 }
             }
@@ -3797,6 +3882,7 @@ private fun ReplyEditBanner(
 @Composable
 private fun ChatComposer(
     value: String,
+    isConnected: Boolean,
     onValueChange: (String) -> Unit,
     enabled: Boolean,
     isVoiceRecording: Boolean,
@@ -3873,12 +3959,11 @@ private fun ChatComposer(
                         placeholder = {
 
                             Text(
-                                if (
-                                    isVoiceRecording
-                                )
-                                    "Recording voice note..."
-                                else
-                                    "Type a message..."
+                                when {
+                                    isVoiceRecording -> "Recording voice note..."
+                                    !isConnected -> "You can type while offline"
+                                    else -> "Type a message..."
+                                }
                             )
                         },
                         keyboardOptions =
@@ -3949,7 +4034,7 @@ private fun ChatComposer(
 
             AnimatedContent(
                 targetState =
-                    sendEnabled ||
+                    (sendEnabled && isConnected) ||
                             isVoiceRecording,
                 label = "composer_action"
             ) { active ->
@@ -3984,7 +4069,7 @@ private fun ChatComposer(
 
                     Surface(
                         shape = CircleShape,
-                        color = BlinkPink,
+                        color = MaterialTheme.colorScheme.primary,
                         modifier =
                             Modifier
                                 .size(42.dp)
@@ -4000,7 +4085,7 @@ private fun ChatComposer(
                             Icons.Default.Send,
                             contentDescription =
                                 "Send message",
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.onPrimary,
                             modifier =
                                 Modifier.padding(
                                     11.dp
