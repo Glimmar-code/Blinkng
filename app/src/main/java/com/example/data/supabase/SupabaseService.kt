@@ -1642,7 +1642,7 @@ fun getCurrentUserId(): String? {
                                 array.optString(index)
                                     .trim()
                                     .takeIf { it.isNotBlank() }
-                                    ?.let(::add)
+                                    ?.let { add(it) }
                             }
                         }.onFailure {
                             add(raw)
