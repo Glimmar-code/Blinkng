@@ -63,6 +63,8 @@ import com.example.data.models.FeedPost
 import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.models.LeaderboardUser
+import com.example.data.models.GameActionResult
+import com.example.data.models.GameSpinResult
 import com.example.ui.components.PostCard
 import com.example.ui.components.StoryBar
 import com.example.ui.theme.BlinkBlack
@@ -79,6 +81,8 @@ fun FeedScreen(
     leaderboardUsers: List<LeaderboardUser>,
     currentUsername: String,
     userAvatar: String,
+    onTriviaAnswer: suspend (String, Int) -> GameActionResult? = { _, _ -> null },
+    onDailySpin: suspend () -> GameSpinResult? = { null },
     currentSubTab: Int,
     onSubTabChanged: (Int) -> Unit,
     isDark: Boolean,
@@ -177,7 +181,10 @@ fun FeedScreen(
 
             3 -> GameSection(
                 userAvatar = userAvatar,
+                currentUsername = currentUsername,
                 leaderboardUsers = leaderboardUsers,
+                onTriviaAnswer = onTriviaAnswer,
+                onDailySpin = onDailySpin,
                 isDark = isDark,
                 onOpenMenu = onOpenMenu,
                 onOpenActivity = onOpenActivity,
