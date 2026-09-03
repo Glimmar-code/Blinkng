@@ -89,7 +89,9 @@ data class BlinkUiState(
     val hasMorePosts: Boolean = true,
     val hasMoreReels: Boolean = true,
     val isLoadingMorePosts: Boolean = false,
-    val isLoadingMoreReels: Boolean = false
+    val isLoadingMoreReels: Boolean = false,
+    val messageHistoryHasMore: Map<String, Boolean> = emptyMap(),
+    val loadingOlderConversationId: String? = null
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
@@ -457,7 +459,13 @@ private suspend fun restoreSupabaseSession() {
                     val conversationsResult = runCatching {
                         MessageMediaService.hydrateVideos(chatRepository.fetchConversations())
                     }.onFailure { Log.e(TAG, "Message fetch failed", it) }
-                    val conversations = conversationsResult.getOrDefault(before.conversations)
+                    val conversationSummaries = conversationsResult.getOrDefault(before.conversations)
+                    val conversations = conversationSummaries.map { summary ->
+                        val cached = before.conversations.firstOrNull {
+                            it.id == summary.id || it.partnerUsername.equals(summary.partnerUsername, true)
+                        }
+                        summary.copy(messages = cached?.messages ?: mutableListOf())
+                    }
                     if (conversationsResult.isSuccess) {
                         cacheWriteMutex.withLock {
                             runCatching { offlineContentStore.replaceConversations(conversations) }
@@ -1373,7 +1381,12 @@ private suspend fun restoreSupabaseSession() {
                 activeConversationPartner = clean,
                 isConversationFullScreen = true
             )
-            viewModelScope.launch { chatRepository.markConversationRead(clean) }
+            viewModelScope.launch {
+                chatRepository.markConversationRead(clean)
+                if (_uiState.value.isOnline && existing.id.isNotBlank() && !existing.id.startsWith("local_")) {
+                    loadConversationHistory(existing.id, clean, older = false)
+                }
+            }
             return
         }
 
@@ -1401,6 +1414,51 @@ private suspend fun restoreSupabaseSession() {
             )
         }
     }
+    fun loadOlderMessages(partnerUsername: String) {
+        val conversation = _uiState.value.conversations.firstOrNull {
+            it.partnerUsername.equals(partnerUsername, true)
+        } ?: return
+        viewModelScope.launch {
+            loadConversationHistory(conversation.id, conversation.partnerUsername, older = true)
+        }
+    }
+
+    private suspend fun loadConversationHistory(conversationId: String, partnerUsername: String, older: Boolean) {
+        if (conversationId.isBlank() || conversationId.startsWith("local_")) return
+        val state = _uiState.value
+        if (state.loadingOlderConversationId == conversationId) return
+        val current = state.conversations.firstOrNull { it.id == conversationId } ?: return
+        val oldest = current.messages.minByOrNull { it.rawTimestamp.ifBlank { "9999" } }
+        _uiState.value = state.copy(loadingOlderConversationId = conversationId)
+        try {
+            val page = chatRepository.fetchMessagePage(
+                conversationId = conversationId,
+                beforeCreatedAt = if (older) oldest?.rawTimestamp?.takeIf { it.isNotBlank() } else null,
+                beforeId = if (older) oldest?.id?.takeIf { it.isNotBlank() } else null,
+                limit = 40
+            )
+            val latest = _uiState.value
+            val updated = latest.conversations.map { conversation ->
+                if (conversation.id != conversationId) conversation
+                else {
+                    val merged = if (older) page + conversation.messages else page + conversation.messages.filter {
+                        it.status != MessageStatus.SENT || it.id.startsWith("temp_")
+                    }
+                    conversation.copy(messages = merged.distinctBy { it.id }.sortedBy { it.rawTimestamp }.toMutableList())
+                }
+            }
+            _uiState.value = latest.copy(
+                conversations = updated,
+                messageHistoryHasMore = latest.messageHistoryHasMore + (conversationId to (page.size >= 40)),
+                loadingOlderConversationId = null
+            )
+            persistConversations()
+        } catch (e: Exception) {
+            Log.w(TAG, "Message history page failed", e)
+            _uiState.value = _uiState.value.copy(loadingOlderConversationId = null)
+        }
+    }
+
     fun closeConversation() { _uiState.value = _uiState.value.copy(activeConversationPartner = null, isConversationFullScreen = false) }
 
     fun sendMessage(partnerUsername: String, text: String, isFromMe: Boolean = true) {

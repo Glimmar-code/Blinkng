@@ -643,7 +643,10 @@ fun MainAppContent(
                     isConnected = uiState.isLiveSupabaseConnected,
                     onRetryMessage = { msg ->
                         viewModel.retrySendMessage(convo.partnerUsername, msg)
-                    }
+                    },
+                    hasMoreMessages = uiState.messageHistoryHasMore[convo.id] ?: true,
+                    isLoadingOlder = uiState.loadingOlderConversationId == convo.id,
+                    onLoadOlder = { viewModel.loadOlderMessages(convo.partnerUsername) }
                 )
             }
         }
