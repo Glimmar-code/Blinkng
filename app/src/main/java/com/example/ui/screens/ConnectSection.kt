@@ -190,7 +190,7 @@ fun ConnectSection(
             }
 
             item {
-                PremiumConnectHubPanel(
+                ConnectHubPremiumPanel(
                     current = current,
                     profiles = liveProfiles,
                     hub = connectHub,
