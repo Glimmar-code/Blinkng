@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 
 enum class AppDestination { SPLASH, ONBOARDING, SIGN_IN, SIGN_UP, PROFILE_SETUP, MAIN }
 
@@ -63,7 +64,10 @@ data class BlinkUiState(
     val comments: List<Comment> = emptyList(),
     val mutedUsers: Set<String> = emptySet(),
     val feedSubTab: Int = 0,
-    val isLiveSupabaseConnected: Boolean = false
+    val isLiveSupabaseConnected: Boolean = false,
+    val isFeedLoading: Boolean = true,
+    val feedErrorMessage: String? = null,
+    val isCreatingPost: Boolean = false
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
@@ -248,21 +252,35 @@ private suspend fun restoreSupabaseSession() {
 
     fun fetchSupabaseData() {
         viewModelScope.launch {
-            // Do not let an unrelated surface (leaderboard/stories/messages) blank the feed.
-            val feedResult = runCatching { supabaseService.fetchFeedPosts() }
-            val fetched = feedResult.getOrElse {
-                Log.e(TAG, "Feed fetch failed", it)
-                emptyList()
-            }
-            val normalPosts = fetched.filter { !it.isReel && it.videoUrl.isNullOrBlank() }.distinctBy { it.id }
-            val fetchedReels = fetched.filter { it.isReel || !it.videoUrl.isNullOrBlank() }.distinctBy { it.id }
+            val beforeRefresh = _uiState.value
+            val hasVisibleFeed = beforeRefresh.posts.isNotEmpty() || beforeRefresh.reels.isNotEmpty()
+            _uiState.value = beforeRefresh.copy(
+                isFeedLoading = !hasVisibleFeed,
+                feedErrorMessage = null
+            )
 
-            // Publish feed state immediately. Previously this happened only after every
-            // secondary request succeeded, so one 401 could make Home appear empty.
+            // Keep the last good feed visible when the network/session is temporarily unavailable.
+            val feedResult = runCatching { supabaseService.fetchFeedPosts() }
+                .onFailure { Log.e(TAG, "Feed fetch failed", it) }
+
+            val fetched = feedResult.getOrNull()
+            val normalPosts = fetched
+                ?.filter { !it.isReel && it.videoUrl.isNullOrBlank() }
+                ?.distinctBy { it.id }
+                ?: beforeRefresh.posts
+            val fetchedReels = fetched
+                ?.filter { it.isReel || !it.videoUrl.isNullOrBlank() }
+                ?.distinctBy { it.id }
+                ?: beforeRefresh.reels
+
             _uiState.value = _uiState.value.copy(
                 posts = normalPosts,
                 reels = fetchedReels,
-                isLiveSupabaseConnected = feedResult.isSuccess
+                isLiveSupabaseConnected = feedResult.isSuccess,
+                isFeedLoading = false,
+                feedErrorMessage = feedResult.exceptionOrNull()?.let {
+                    "Couldn't refresh the feed. Check your connection and try again."
+                }
             )
 
             val market = runCatching { supabaseService.fetchMarketItems() }
@@ -495,31 +513,126 @@ private suspend fun restoreSupabaseSession() {
         showToast("✨ Post published")
     }
 
-    fun addPost(text: String, faculty: String, imageUri: String?, videoUri: String? = null, tags: List<String> = emptyList(), mentions: List<String> = emptyList(), poll: PostPoll? = null, isReel: Boolean = false, audience: String = "Everyone", category: String = "Campus Life", location: String? = null, linkUrl: String? = null, allowComments: Boolean = true, hideLikes: Boolean = false, isPinned: Boolean = false, isDisappearing: Boolean = false, audioTitle: String? = null, altText: String? = null) {
+    fun addPost(
+        text: String,
+        faculty: String,
+        imageUri: String?,
+        videoUri: String? = null,
+        tags: List<String> = emptyList(),
+        mentions: List<String> = emptyList(),
+        poll: PostPoll? = null,
+        isReel: Boolean = false,
+        audience: String = "Everyone",
+        category: String = "Campus Life",
+        location: String? = null,
+        linkUrl: String? = null,
+        allowComments: Boolean = true,
+        hideLikes: Boolean = false,
+        isPinned: Boolean = false,
+        isDisappearing: Boolean = false,
+        audioTitle: String? = null,
+        altText: String? = null
+    ) {
+        if (_uiState.value.isCreatingPost) return
+
         val profile = _uiState.value.myProfile
-        val userId = supabaseService.getCurrentUserId() ?: profile.id.takeIf { it.isNotBlank() } ?: "user_${profile.username}"
+        val userId = supabaseService.getCurrentUserId()
+            ?: profile.id.takeIf { it.isNotBlank() }
+            ?: "user_${profile.username}"
+
+        _uiState.value = _uiState.value.copy(isCreatingPost = true)
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                var uploadedImageUrl: String? = null
-                var uploadedVideoUrl: String? = null
-                if (!imageUri.isNullOrBlank()) uploadedImageUrl = if (imageUri.startsWith("content://")) uploadPostUri(userId, imageUri, false) else imageUri
-                if (!videoUri.isNullOrBlank()) uploadedVideoUrl = if (videoUri.startsWith("content://")) uploadPostUri(userId, videoUri, true) else videoUri
-                if (!imageUri.isNullOrBlank() && uploadedImageUrl.isNullOrBlank()) { showToast("Failed to upload image. Post not saved."); return@launch }
-                if (!videoUri.isNullOrBlank() && uploadedVideoUrl.isNullOrBlank()) { showToast("Failed to upload video. Post not saved."); return@launch }
-                val finalIsReel = isReel || !uploadedVideoUrl.isNullOrBlank()
-                val resultPost = supabaseService.createFeedPost(profile.username, profile.avatarUrl, faculty, text, uploadedImageUrl, uploadedVideoUrl, tags, mentions, poll, finalIsReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText) ?: run { showToast("Failed to create post on server."); return@launch }
-                val originalPosts = _uiState.value.posts
-                val originalReels = _uiState.value.reels
-                withContext(Dispatchers.Main) {
-                    _uiState.value = _uiState.value.copy(
-                        posts = if (resultPost.isReel || !resultPost.videoUrl.isNullOrBlank()) originalPosts else listOf(resultPost) + originalPosts,
-                        reels = if (resultPost.isReel || !resultPost.videoUrl.isNullOrBlank()) listOf(resultPost) + originalReels else originalReels,
-                        isCreatePostOpen = false
-                    )
-                    showToast(if (finalIsReel) "✨ Reel published to Campus!" else "✨ Post published to Feed & Profile!")
+                val imageInputs = parseImagePayload(imageUri)
+                val uploadedImageUrls = mutableListOf<String>()
+
+                for (input in imageInputs) {
+                    val uploaded = if (input.startsWith("content://")) {
+                        uploadPostUri(userId, input, false)
+                    } else {
+                        input
+                    }
+
+                    if (uploaded.isNullOrBlank()) {
+                        throw IllegalStateException("One of the selected images could not be uploaded.")
+                    }
+                    uploadedImageUrls += uploaded
                 }
-            } catch (e: Exception) { Log.e(TAG, "Background sync for post creation failed", e); showToast("Failed to create post: ${e.message}") }
+
+                val uploadedVideoUrl = if (!videoUri.isNullOrBlank()) {
+                    if (videoUri.startsWith("content://")) uploadPostUri(userId, videoUri, true) else videoUri
+                } else null
+
+                if (!videoUri.isNullOrBlank() && uploadedVideoUrl.isNullOrBlank()) {
+                    throw IllegalStateException("The selected video could not be uploaded.")
+                }
+
+                val imagePayload = when (uploadedImageUrls.size) {
+                    0 -> null
+                    1 -> uploadedImageUrls.first()
+                    else -> JSONArray(uploadedImageUrls).toString()
+                }
+
+                val finalIsReel = isReel || !uploadedVideoUrl.isNullOrBlank()
+                val resultPost = supabaseService.createFeedPost(
+                    profile.username,
+                    profile.avatarUrl,
+                    faculty,
+                    text,
+                    imagePayload,
+                    uploadedVideoUrl,
+                    tags,
+                    mentions,
+                    poll,
+                    finalIsReel,
+                    audience,
+                    category,
+                    location,
+                    linkUrl,
+                    allowComments,
+                    hideLikes,
+                    isPinned,
+                    isDisappearing,
+                    audioTitle,
+                    altText
+                ) ?: throw IllegalStateException("The server did not save the post.")
+
+                withContext(Dispatchers.Main) {
+                    val current = _uiState.value
+                    _uiState.value = current.copy(
+                        posts = if (resultPost.isReel || !resultPost.videoUrl.isNullOrBlank()) current.posts else listOf(resultPost) + current.posts,
+                        reels = if (resultPost.isReel || !resultPost.videoUrl.isNullOrBlank()) listOf(resultPost) + current.reels else current.reels,
+                        isCreatePostOpen = false,
+                        isCreatingPost = false
+                    )
+                    showToast(if (finalIsReel) "Reel published." else "Post published.")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Background sync for post creation failed", e)
+                showToast(e.message ?: "Couldn't publish the post. Please try again.")
+            } finally {
+                _uiState.value = _uiState.value.copy(isCreatingPost = false)
+            }
         }
+    }
+
+    private fun parseImagePayload(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        val value = raw.trim()
+        if (!value.startsWith("[")) return listOf(value)
+
+        return runCatching {
+            val array = JSONArray(value)
+            buildList {
+                for (index in 0 until array.length()) {
+                    array.optString(index)
+                        .trim()
+                        .takeIf { it.isNotBlank() }
+                        ?.let(::add)
+                }
+            }
+        }.getOrElse { listOf(value) }
     }
 
     private suspend fun uploadPostUri(userId: String, uriString: String, isVideo: Boolean): String? = withContext(Dispatchers.IO) {
