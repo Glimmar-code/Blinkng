@@ -1632,16 +1632,57 @@ fun getCurrentUserId(): String? {
                 val mid = if (isValidUuid(mention)) mention else fetchProfileByUsername(mention.removePrefix("@"))?.id
                 if (!mid.isNullOrBlank() && isValidUuid(mid)) mentionIds.put(mid)
             }
+            val imageUrls = buildList {
+                val raw = imageUrl?.trim().orEmpty()
+                if (raw.isNotBlank()) {
+                    if (raw.startsWith("[")) {
+                        runCatching {
+                            val array = JSONArray(raw)
+                            for (index in 0 until array.length()) {
+                                array.optString(index)
+                                    .trim()
+                                    .takeIf { it.isNotBlank() }
+                                    ?.let(::add)
+                            }
+                        }.onFailure {
+                            add(raw)
+                        }
+                    } else {
+                        add(raw)
+                    }
+                }
+            }
+
             val body = JSONObject().apply {
-                put("user_id", uid); put("type", when { isReel || !videoUrl.isNullOrBlank() -> "reel"; !imageUrl.isNullOrBlank() -> "photo"; else -> "text" })
-                put("faculty", facultyTag.trim()); put("text", text.trim())
-                imageUrl?.takeIf { it.isNotBlank() }?.let { put("image_url", it); put("images", JSONArray().put(it)) }
+                put("user_id", uid)
+                put(
+                    "type",
+                    when {
+                        isReel || !videoUrl.isNullOrBlank() -> "reel"
+                        imageUrls.isNotEmpty() -> "photo"
+                        else -> "text"
+                    }
+                )
+                put("faculty", facultyTag.trim())
+                put("text", text.trim())
+                if (imageUrls.isNotEmpty()) {
+                    put("image_url", imageUrls.first())
+                    put("images", JSONArray(imageUrls))
+                }
                 videoUrl?.takeIf { it.isNotBlank() }?.let { put("video_url", it) }
-                put("tags", JSONArray(tags.filter { it.isNotBlank() })); put("mentions", mentionIds); put("is_reel", isReel)
-                put("audience", audience); put("category", category)
-                location?.takeIf { it.isNotBlank() }?.let { put("location", it) }; linkUrl?.takeIf { it.isNotBlank() }?.let { put("link_url", it) }
-                put("allow_comments", allowComments); put("hide_likes", hideLikes); put("is_pinned", isPinned); put("is_disappearing", isDisappearing)
-                audioTitle?.takeIf { it.isNotBlank() }?.let { put("audio_title", it) }; altText?.takeIf { it.isNotBlank() }?.let { put("alt_text", it) }
+                put("tags", JSONArray(tags.filter { it.isNotBlank() }))
+                put("mentions", mentionIds)
+                put("is_reel", isReel)
+                put("audience", audience)
+                put("category", category)
+                location?.takeIf { it.isNotBlank() }?.let { put("location", it) }
+                linkUrl?.takeIf { it.isNotBlank() }?.let { put("link_url", it) }
+                put("allow_comments", allowComments)
+                put("hide_likes", hideLikes)
+                put("is_pinned", isPinned)
+                put("is_disappearing", isDisappearing)
+                audioTitle?.takeIf { it.isNotBlank() }?.let { put("audio_title", it) }
+                altText?.takeIf { it.isNotBlank() }?.let { put("alt_text", it) }
             }
             val created = executeRequest(newRequestBuilder("/rest/v1/feed_posts", true).addHeader("Prefer", "return=representation")
                 .post(body.toString().toRequestBody(jsonMediaType)).build()).use { resp ->
