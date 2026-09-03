@@ -163,8 +163,7 @@ class ConnectHubRepository(
                 .put("business_name", businessName.trim())
                 .put("service_areas", JSONArray(serviceAreas.filter { it.isNotBlank() }))
                 .put("bio", bio.trim())
-                .put("is_active", true)
-                .put("is_verified", false),
+                .put("is_active", true),
             "POST",
             "resolution=merge-duplicates,return=minimal"
         )
@@ -197,13 +196,22 @@ class ConnectHubRepository(
 
     suspend fun respondToChallenge(challengeId: String, accept: Boolean): Boolean =
         withContext(Dispatchers.IO) {
-            write(
-                "/rest/v1/game_challenges?id=eq.${encode(challengeId)}",
+            rpc(
+                "respond_game_challenge",
                 JSONObject()
-                    .put("status", if (accept) "accepted" else "declined")
-                    .apply { if (accept) put("accepted_at", nowIso()) },
-                "PATCH"
-            )
+                    .put("p_challenge_id", challengeId)
+                    .put("p_accept", accept)
+            ).isNotBlank()
+        }
+
+    suspend fun submitChallengeScore(challengeId: String, score: Int): Boolean =
+        withContext(Dispatchers.IO) {
+            rpc(
+                "submit_game_challenge_score",
+                JSONObject()
+                    .put("p_challenge_id", challengeId)
+                    .put("p_score", score.coerceIn(0, 500))
+            ).isNotBlank()
         }
 
     suspend fun recordGameSession(gameType: String, score: Int): Boolean =
