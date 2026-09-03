@@ -183,7 +183,7 @@ class MainActivity : ComponentActivity() {
                                         studentName = uiState.myProfile.fullName,
                                         studentUsername = uiState.myProfile.username,
                                         onComplete = { uni, dept, level, bio, skills ->
-                                            viewModel.completeProfileOnboarding(uni, level, bio, skills)
+                                            viewModel.completeProfileOnboarding(uni, dept, level, bio, skills)
                                         }
                                     )
                                 }
@@ -347,6 +347,8 @@ fun MainAppContent(
                 MainTab.MESSAGES -> {
                     MessagesScreen(
                         conversations = uiState.conversations,
+                        profiles = uiState.profiles,
+                        currentUsername = uiState.myProfile.username,
                         activePartner = uiState.activeConversationPartner,
                         onOpenConversation = { partner ->
                             viewModel.openChatWithUser(partner)
@@ -476,7 +478,12 @@ fun MainAppContent(
                     onProfileClick = { viewModel.openProfile(it) },
                     onMarketItemClick = { viewModel.openProductDetail(it) },
                     onOpenGetVerified = { viewModel.openGetVerified(true) },
-                    isDark = uiState.isDarkMode
+                    isDark = uiState.isDarkMode,
+                    isFollowing = currentProfileToDisplay.id.isNotBlank() &&
+                        uiState.followingUserIds.contains(currentProfileToDisplay.id),
+                    onFollowChanged = { shouldFollow ->
+                        viewModel.setFollowing(currentProfileToDisplay, shouldFollow)
+                    }
                 )
             }
         }
