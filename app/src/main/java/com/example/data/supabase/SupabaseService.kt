@@ -2583,6 +2583,37 @@ suspend fun uploadPostMedia(
             }
         }
 
+    suspend fun completeProfileOnboarding(profile: UserProfile): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val body = JSONObject().apply {
+                    put("p_university", profile.university.trim())
+                    put("p_department", profile.department.trim())
+                    put("p_academic_level", profile.academicLevel.trim())
+                    put("p_bio", profile.bio.trim())
+                    put("p_core_skills", JSONArray(profile.coreSkills))
+                    put("p_phone", profile.phone.value.trim().takeIf { it.isNotBlank() } ?: JSONObject.NULL)
+                    put("p_whatsapp", profile.whatsapp.value.trim().takeIf { it.isNotBlank() } ?: JSONObject.NULL)
+                }
+
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/complete_profile_onboarding", true)
+                        .post(body.toString().toRequestBody(jsonMediaType))
+                        .build()
+                ).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        Log.e(TAG, "ONBOARDING_COMPLETE failed status=${response.code} body=$raw")
+                        return@withContext false
+                    }
+                    raw.trim().equals("true", ignoreCase = true) || raw.isBlank()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "ONBOARDING_COMPLETE exception", e)
+                false
+            }
+        }
+
     // ============================================================
     // FOLLOWING / FOLLOWERS
     // ============================================================
