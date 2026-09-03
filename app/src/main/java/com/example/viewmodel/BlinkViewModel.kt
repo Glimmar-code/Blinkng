@@ -793,14 +793,49 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun handleNotificationClick(activity: ActivityItem) {
-        _uiState.value = _uiState.value.copy(isActivityOpen = false)
+        _uiState.value = _uiState.value.copy(
+            isActivityOpen = false,
+            activities = _uiState.value.activities.map {
+                if (it.id == activity.id) it.copy(isUnread = false) else it
+            }
+        )
+        viewModelScope.launch {
+            runCatching { supabaseService.markActivityRead(activity.id) }
+        }
+
         activity.targetPostId?.let { postId ->
             val target = (_uiState.value.posts + _uiState.value.reels).find { it.id == postId }
-            if (target != null) { _uiState.value = _uiState.value.copy(selectedTab = MainTab.HOME, feedSubTab = if (target.isReel) 1 else 0); if (activity.category == NotificationFilter.COMMENTS) openCommentsForPost(target.id) else showToast("Viewing @${target.author}'s post.") }
+            if (target != null) {
+                _uiState.value = _uiState.value.copy(
+                    selectedTab = MainTab.HOME,
+                    feedSubTab = if (target.isReel) 1 else 0
+                )
+                if (activity.category == NotificationFilter.COMMENTS) {
+                    openCommentsForPost(target.id)
+                }
+            }
             return
         }
-        activity.targetMarketId?.let { marketId -> _uiState.value.marketItems.find { it.id == marketId }?.let { openProductDetail(it) }; return }
+
+        activity.targetMarketId?.let { marketId ->
+            _uiState.value.marketItems.find { it.id == marketId }?.let { openProductDetail(it) }
+            return
+        }
+
         openProfile(activity.user)
+    }
+
+    fun markAllActivitiesRead() {
+        if (_uiState.value.activities.none { it.isUnread }) return
+        _uiState.value = _uiState.value.copy(
+            activities = _uiState.value.activities.map { it.copy(isUnread = false) }
+        )
+        viewModelScope.launch {
+            val success = runCatching { supabaseService.markAllActivitiesRead() }.getOrDefault(false)
+            if (!success) {
+                showToast("Couldn't sync notification read status.")
+            }
+        }
     }
 
     fun logout() {
