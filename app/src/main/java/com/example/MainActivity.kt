@@ -693,22 +693,20 @@ fun MainAppContent(
 
         // Modals: 3-Dot App Menu Sheet
         if (uiState.isMenuOpen) {
-            val context = androidx.compose.ui.platform.LocalContext.current
             AppMenuSheet(
                 profile = uiState.myProfile,
                 isDark = uiState.isDarkMode,
                 onDismiss = { viewModel.openMenu(false) },
                 onViewProfile = { viewModel.openProfile("you") },
                 onEditProfile = { viewModel.openEditProfile(true) },
+                onOpenVerification = { viewModel.openGetVerified(true) },
                 onOpenMarket = { viewModel.setTab(MainTab.MARKET) },
                 onOpenPostItem = { viewModel.openPostItem(true) },
                 onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
                 onOpenLeaderboard = { viewModel.setTab(MainTab.LEADERBOARD) },
                 onOpenActivity = { viewModel.openActivity(true) },
                 onToggleTheme = { viewModel.toggleDarkMode() },
-                onLogout = { viewModel.logout() },
-                onShowToast = { viewModel.showToast(it) },
-                onSimulateNotification = { viewModel.simulateBackgroundNotification(context) }
+                onLogout = { viewModel.logout() }
             )
         }
 
