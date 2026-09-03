@@ -760,6 +760,11 @@ private suspend fun restoreSupabaseSession() {
         connectHubRepository.createHousingRequest(title, location, budgetMin, budgetMax, description)
     }
 
+    fun applyToHousingRequest(requestId: String, message: String) =
+        runConnectAction("Housing application sent.") {
+            connectHubRepository.applyToHousingRequest(requestId, message)
+        }
+
     fun challengeUser(userId: String, gameType: String = "trivia") =
         runConnectAction("Game challenge sent.") {
             connectHubRepository.challengeUser(userId, gameType)

@@ -293,6 +293,9 @@ fun MainAppContent(
                             publishHousingRequest = { title, location, minBudget, maxBudget, description ->
                                 viewModel.publishHousingRequest(title, location, minBudget, maxBudget, description)
                             },
+                            applyToHousingRequest = { requestId, message ->
+                                viewModel.applyToHousingRequest(requestId, message)
+                            },
                             challengeUser = { userId, gameType ->
                                 viewModel.challengeUser(userId, gameType)
                             },

@@ -92,7 +92,7 @@ class SupabaseRealtimeManager private constructor() {
     }
     private fun sendAccessToken() { val token = SupabaseService.accessToken() ?: return; webSocket?.send(JSONObject().apply { put("topic", "realtime"); put("event", "access_token"); put("payload", JSONObject().put("access_token", token)); put("ref", refCounter.getAndIncrement().toString()) }.toString()) }
     private fun subscribeToTables() {
-        val tables = listOf("messages","conversations","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","roommate_profiles","roommate_applications","mentor_profiles","mentor_requests","reading_mate_profiles","reading_mate_requests","housing_agent_profiles","housing_requests","game_challenges","skill_endorsements","poll_votes")
+        val tables = listOf("messages","conversations","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","roommate_profiles","roommate_applications","mentor_profiles","mentor_requests","reading_mate_profiles","reading_mate_requests","housing_agent_profiles","housing_requests","housing_request_applications","game_challenges","skill_endorsements","poll_votes")
         tables.forEach { table -> val join = JSONObject().apply { put("topic", "realtime:public:$table"); put("event", "phx_join"); put("payload", JSONObject().apply { put("config", JSONObject().apply { put("postgres_changes", org.json.JSONArray().apply { put(JSONObject().apply { put("event", "*"); put("schema", "public"); put("table", table) }) }) }) }); put("ref", refCounter.getAndIncrement().toString()) }; webSocket?.send(join.toString()) }
     }
     private fun handleIncomingMessage(text: String) {
@@ -106,7 +106,7 @@ class SupabaseRealtimeManager private constructor() {
                 "feed_posts" -> _events.tryEmit(RealtimeEvent.FeedPostEvent(type, record.optString("id")))
                 "roommate_profiles", "roommate_applications", "mentor_profiles", "mentor_requests",
                 "reading_mate_profiles", "reading_mate_requests", "housing_agent_profiles",
-                "housing_requests", "game_challenges", "study_circles", "study_circle_members" ->
+                "housing_requests", "housing_request_applications", "game_challenges", "study_circles", "study_circle_members" ->
                     _events.tryEmit(RealtimeEvent.ConnectHubEvent(type, table))
             }
         } catch (e: Exception) { Log.e(TAG, "Error parsing realtime message", e) }

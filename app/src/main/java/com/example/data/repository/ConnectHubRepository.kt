@@ -6,6 +6,7 @@ import com.example.data.models.DailySpinReward
 import com.example.data.models.GameChallenge
 import com.example.data.models.GameProfileStats
 import com.example.data.models.HousingAgentListing
+import com.example.data.models.HousingRequestListing
 import com.example.data.models.MentorListing
 import com.example.data.models.ReadingMateListing
 import com.example.data.models.RoommateListing
@@ -43,6 +44,8 @@ class ConnectHubRepository(
             .mapObjects(::parseReadingMate)
         val agents = getArray("/rest/v1/housing_agent_profiles?select=*&is_active=eq.true&is_verified=eq.true&order=created_at.desc&limit=30")
             .mapObjects(::parseHousingAgent)
+        val housingRequests = getArray("/rest/v1/housing_requests?select=*&status=eq.open&order=created_at.desc&limit=40")
+            .mapObjects(::parseHousingRequest)
         val challenges = getArray("/rest/v1/game_challenges?select=*&order=created_at.desc&limit=30")
             .mapObjects(::parseChallenge)
         val smartMatches = runCatching {
@@ -65,6 +68,7 @@ class ConnectHubRepository(
             mentors = mentors,
             readingMates = reading,
             housingAgents = agents,
+            housingRequests = housingRequests,
             gameChallenges = challenges,
             smartMatches = smartMatches,
             requests = requests,
@@ -196,6 +200,16 @@ class ConnectHubRepository(
         if (budgetMax != null) body.put("budget_max", budgetMax)
         write("/rest/v1/housing_requests", body, "POST")
     }
+
+    suspend fun applyToHousingRequest(requestId: String, message: String = ""): Boolean =
+        withContext(Dispatchers.IO) {
+            rpc(
+                "apply_to_housing_request",
+                JSONObject()
+                    .put("p_housing_request_id", requestId)
+                    .put("p_message", message.trim())
+            ).isNotBlank()
+        }
 
     suspend fun challengeUser(userId: String, gameType: String = "trivia"): Boolean =
         withContext(Dispatchers.IO) {
@@ -356,6 +370,18 @@ class ConnectHubRepository(
         serviceAreas = o.optStringList("service_areas"),
         bio = o.optString("bio"),
         verified = o.optBoolean("is_verified", false)
+    )
+
+    private fun parseHousingRequest(o: JSONObject) = HousingRequestListing(
+        id = o.optString("id"),
+        studentId = o.optString("student_id"),
+        title = o.optString("title"),
+        preferredLocation = o.optString("preferred_location"),
+        budgetMin = o.optNullableDouble("budget_min"),
+        budgetMax = o.optNullableDouble("budget_max"),
+        description = o.optString("description"),
+        status = o.optString("status", "open"),
+        createdAt = o.optString("created_at")
     )
 
     private fun parseChallenge(o: JSONObject) = GameChallenge(

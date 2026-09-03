@@ -76,6 +76,7 @@ data class ConnectHubActions(
     val requestReadingMate: (String) -> Unit = {},
     val applyHousingAgent: (String, List<String>, String) -> Unit = { _, _, _ -> },
     val publishHousingRequest: (String, String, Double?, Double?, String) -> Unit = { _, _, _, _, _ -> },
+    val applyToHousingRequest: (String, String) -> Unit = { _, _ -> },
     val challengeUser: (String, String) -> Unit = { _, _ -> },
     val respondChallenge: (String, Boolean) -> Unit = { _, _ -> },
     val respondRequest: (String, String, Boolean) -> Unit = { _, _, _ -> },
@@ -281,6 +282,34 @@ fun ConnectHubPremiumPanel(
                     primaryLabel = "Study together",
                     onPrimary = { actions.requestReadingMate(listing.id) },
                     onOpen = owner?.let { { onProfileClick(it.username) } }
+                )
+            }
+        }
+
+        val currentIsVerifiedAgent = remember(hub.housingAgents, current?.id) {
+            hub.housingAgents.any { it.userId == current?.id && it.verified }
+        }
+        if (currentIsVerifiedAgent && hub.housingRequests.isNotEmpty()) {
+            HubSectionTitle("Students needing housing", "Verified agents can apply to help")
+            hub.housingRequests.take(6).forEach { request ->
+                val student = profiles.firstOrNull { it.id == request.studentId }
+                val budget = listOfNotNull(
+                    request.budgetMin?.let { "₦${it.toInt()}" },
+                    request.budgetMax?.let { "₦${it.toInt()}" }
+                ).joinToString(" – ")
+                HubListingCard(
+                    title = request.title,
+                    subtitle = listOf(request.preferredLocation, budget).filter { it.isNotBlank() }.joinToString(" • "),
+                    body = request.description,
+                    avatarUrl = student?.avatarUrl.orEmpty(),
+                    primaryLabel = "Apply to help",
+                    onPrimary = {
+                        actions.applyToHousingRequest(
+                            request.id,
+                            "Hi, I'm a verified Blink housing agent and I can help with this request."
+                        )
+                    },
+                    onOpen = student?.let { { onProfileClick(it.username) } }
                 )
             }
         }

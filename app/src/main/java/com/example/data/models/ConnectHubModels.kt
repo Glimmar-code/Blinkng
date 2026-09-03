@@ -42,6 +42,18 @@ data class HousingAgentListing(
     val verified: Boolean = false
 )
 
+data class HousingRequestListing(
+    val id: String,
+    val studentId: String,
+    val title: String,
+    val preferredLocation: String = "",
+    val budgetMin: Double? = null,
+    val budgetMax: Double? = null,
+    val description: String = "",
+    val status: String = "open",
+    val createdAt: String = ""
+)
+
 data class GameChallenge(
     val id: String,
     val challengerId: String,
@@ -94,6 +106,7 @@ data class ConnectHubSnapshot(
     val mentors: List<MentorListing> = emptyList(),
     val readingMates: List<ReadingMateListing> = emptyList(),
     val housingAgents: List<HousingAgentListing> = emptyList(),
+    val housingRequests: List<HousingRequestListing> = emptyList(),
     val gameChallenges: List<GameChallenge> = emptyList(),
     val smartMatches: List<SmartMatchCandidate> = emptyList(),
     val requests: List<ConnectRequestItem> = emptyList(),
