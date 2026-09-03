@@ -39,9 +39,11 @@ fun ActivityScreen(
     onProfileClick: (String) -> Unit,
     onNotificationClick: (ActivityItem) -> Unit,
     isDark: Boolean,
+    isConnected: Boolean = true,
     isLoading: Boolean = false,
     errorMessage: String? = null,
-    onRefresh: () -> Unit = {}
+    onRefresh: () -> Unit = {},
+    onMarkAllRead: () -> Unit = {}
 ) {
     var filter by remember { mutableStateOf(NotificationFilter.ALL) }
     val visible = remember(activities, filter) { if (filter == NotificationFilter.ALL) activities else activities.filter { it.category == filter } }
@@ -57,7 +59,16 @@ fun ActivityScreen(
                         Text(if (unread == 0) "You're all caught up" else "$unread unread", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
-                actions = { IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, "Refresh") } },
+                actions = {
+                    if (unread > 0) {
+                        IconButton(onClick = onMarkAllRead) {
+                            Icon(Icons.Default.Check, "Mark all as read")
+                        }
+                    }
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Default.Refresh, "Refresh")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         },
@@ -72,9 +83,15 @@ fun ActivityScreen(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
+            if (!isConnected) {
+                NotificationConnectionNotice()
+            } else if (!errorMessage.isNullOrBlank() && activities.isNotEmpty()) {
+                NotificationRefreshNotice(onRefresh)
+            }
+
             when {
-                isLoading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator(color = BlinkPink) }
-                !errorMessage.isNullOrBlank() -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
+                isLoading && activities.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
+                !errorMessage.isNullOrBlank() && activities.isEmpty() -> Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(44.dp))
                         Spacer(Modifier.height(10.dp)); Text("Notifications couldn't load", fontWeight = FontWeight.Bold)
@@ -95,6 +112,63 @@ fun ActivityScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NotificationConnectionNotice() {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .65f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Refresh,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(9.dp))
+            Column {
+                Text(
+                    "Notifications are offline",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
+                Text(
+                    "Showing your last available activity.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationRefreshNotice(onRefresh: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            "Couldn't refresh. Showing recent activity.",
+            modifier = Modifier.weight(1f),
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        TextButton(onClick = onRefresh) {
+            Text("Retry")
         }
     }
 }
