@@ -46,6 +46,8 @@ data class BlinkUiState(
     val isMenuOpen: Boolean = false,
     val isGetVerifiedOpen: Boolean = false,
     val isCreatePostOpen: Boolean = false,
+    val isCreateStoryOpen: Boolean = false,
+    val isCreatingStory: Boolean = false,
     val activeCommentsPostId: String? = null,
     val activePostOptionsPost: FeedPost? = null,
     val activeConversationPartner: String? = null,
@@ -127,7 +129,10 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                         refreshMyProfileFromSupabase(showErrorToast = false)
                         fetchSupabaseData()
                     }
-                    is AuthState.Unauthenticated -> if (_uiState.value.destination == AppDestination.MAIN) _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                    is AuthState.Unauthenticated -> {
+                        val recoverable = !SupabaseService.refreshToken().isNullOrBlank() || AccountSessionStore.list(appContext).isNotEmpty()
+                        if (_uiState.value.destination == AppDestination.MAIN && !recoverable) _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                    }
                     else -> Unit
                 }
             }
@@ -368,6 +373,9 @@ private suspend fun restoreSupabaseSession() {
 
             val curUser = supabaseService.getCurrentUsername() ?: myProfile.username
             val curUid = supabaseService.getCurrentUserId() ?: ""
+            if (curUid.isNotBlank() && myProfile.username.isNotBlank()) {
+                AccountSessionStore.recordCurrentSession(appContext, curUid, myProfile.username, myProfile.fullName, myProfile.email.value, myProfile.avatarUrl)
+            }
             if (curUser.isNotBlank() || curUid.isNotBlank()) {
                 realtimeManager.connect(curUser, curUid)
             }
@@ -498,6 +506,7 @@ private suspend fun restoreSupabaseSession() {
     }
     fun openPostOptions(post: FeedPost?) { _uiState.value = _uiState.value.copy(activePostOptionsPost = post) }
     fun openCreatePost(open: Boolean) { _uiState.value = _uiState.value.copy(isCreatePostOpen = open) }
+    fun openCreateStory(open: Boolean) { _uiState.value = _uiState.value.copy(isCreateStoryOpen = open) }
     fun openPostItem(open: Boolean) { _uiState.value = _uiState.value.copy(isPostItemOpen = open) }
     fun openBecomeSeller(open: Boolean) { _uiState.value = _uiState.value.copy(isBecomeSellerOpen = open) }
     fun openEditProfile(open: Boolean) { _uiState.value = _uiState.value.copy(isEditProfileOpen = open) }
@@ -518,6 +527,21 @@ private suspend fun restoreSupabaseSession() {
             val remoteProfile = profileRepository.fetchByUsername(username)
             if (remoteProfile != null) { _uiState.value = _uiState.value.copy(viewingProfile = remoteProfile); return@launch }
             showToast("User @${username.removePrefix("@")} was not found.")
+        }
+    }
+
+    fun openProfileFromChat(username: String) {
+        if (isMe(username)) {
+            _uiState.value = _uiState.value.copy(viewingProfile = _uiState.value.myProfile, isConversationFullScreen = false, activeConversationPartner = null)
+            return
+        }
+        viewModelScope.launch {
+            val remote = profileRepository.fetchByUsername(username)
+            if (remote != null) {
+                _uiState.value = _uiState.value.copy(viewingProfile = remote, isConversationFullScreen = false, activeConversationPartner = null)
+            } else {
+                showToast("User @${username.removePrefix("@")} was not found.")
+            }
         }
     }
     fun closeProfile() { _uiState.value = _uiState.value.copy(viewingProfile = null) }
@@ -927,7 +951,40 @@ private suspend fun restoreSupabaseSession() {
 
     fun openStory(story: Story) { val updated = _uiState.value.stories.map { if (it.id == story.id) it.copy(hasUnseen = false) else it }; _uiState.value = _uiState.value.copy(stories = updated, activeViewingStory = updated.find { it.id == story.id } ?: story.copy(hasUnseen = false)); markStoryViewed(story.id) }
     fun closeStory() { _uiState.value = _uiState.value.copy(activeViewingStory = null) }
-    fun createStory(storyImage: String, caption: String, faculty: String = "") { val p = _uiState.value.myProfile; val s = Story("story_${UUID.randomUUID()}", p.username, p.avatarUrl, false, true, storyImage, caption, "Just now", faculty.ifBlank { p.faculty }, p.university, 0, false, p.verificationBadge); _uiState.value = _uiState.value.copy(stories = listOf(s) + _uiState.value.stories.filter { !it.isUser && it.id != "story_me" }); viewModelScope.launch(Dispatchers.IO) { if (postRepository.createStory(s)) showToast("✨ Story published!") else showToast("Failed to persist story to Supabase.") } }
+    fun createStory(storyImage: String, caption: String, faculty: String = "") {
+        val p=_uiState.value.myProfile
+        val s=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,storyImage,caption,"Just now",faculty.ifBlank{p.faculty},p.university,0,false,p.verificationBadge)
+        viewModelScope.launch(Dispatchers.IO){
+            if(postRepository.createStory(s,false)){
+                _uiState.value=_uiState.value.copy(stories=listOf(s)+_uiState.value.stories.filter{!it.isUser&&it.id!="story_me"})
+                showToast("✨ Story published!")
+            }else showToast("Failed to persist story to Supabase.")
+        }
+    }
+
+    fun publishStory(uriString:String,caption:String,isVideo:Boolean){
+        if(_uiState.value.isCreatingStory)return
+        _uiState.value=_uiState.value.copy(isCreatingStory=true)
+        viewModelScope.launch{
+            try{
+                val uid=supabaseService.getCurrentUserId()?:throw IllegalStateException("Please sign in again.")
+                val uri=Uri.parse(uriString)
+                val mime=appContext.contentResolver.getType(uri)?:if(isVideo)"video/mp4" else "image/jpeg"
+                val bytes=withContext(Dispatchers.IO){appContext.contentResolver.openInputStream(uri)?.use{it.readBytes()}}?:throw IllegalStateException("Unable to read selected media.")
+                val url=postRepository.uploadStoryMedia(uid,bytes,mime,isVideo)?:throw IllegalStateException("Story upload failed.")
+                val p=_uiState.value.myProfile
+                val story=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,url,caption.trim(),"Just now",p.faculty,p.university,0,false,p.verificationBadge)
+                if(!postRepository.createStory(story,isVideo))throw IllegalStateException("Story save failed.")
+                _uiState.value=_uiState.value.copy(stories=listOf(story)+_uiState.value.stories.filter{!it.isUser&&it.id!="story_me"},isCreateStoryOpen=false)
+                showToast("Story shared.")
+            }catch(e:Exception){
+                Log.e(TAG,"publishStory failed",e)
+                showToast(e.message?:"Unable to share story.")
+            }finally{
+                _uiState.value=_uiState.value.copy(isCreatingStory=false)
+            }
+        }
+    }
     fun markStoryViewed(storyId: String) { _uiState.value = _uiState.value.copy(stories = _uiState.value.stories.map { if (it.id == storyId) it.copy(hasUnseen = false) else it }); if (storyId != "story_me") viewModelScope.launch(Dispatchers.IO) { postRepository.markStoryViewed(storyId) } }
     fun toggleStoryLike(storyId: String) { var next = false; var count = 0; val updated = _uiState.value.stories.map { if (it.id == storyId) { next = !it.isLiked; count = (it.likesCount + if (next) 1 else -1).coerceAtLeast(0); it.copy(isLiked = next, likesCount = count) } else it }; _uiState.value = _uiState.value.copy(stories = updated, activeViewingStory = updated.find { it.id == storyId } ?: _uiState.value.activeViewingStory); viewModelScope.launch(Dispatchers.IO) { postRepository.toggleStoryLike(storyId, next, count) }; showToast(if (next) "❤️ Story liked" else "Unliked story") }
     fun reactToStory(storyId: String, emoji: String) { viewModelScope.launch(Dispatchers.IO) { postRepository.reactToStory(storyId, emoji) }; showToast("Reacted $emoji") }
