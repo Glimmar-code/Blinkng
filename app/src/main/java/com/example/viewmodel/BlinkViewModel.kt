@@ -615,7 +615,7 @@ private suspend fun restoreSupabaseSession() {
                     array.optString(index)
                         .trim()
                         .takeIf { it.isNotBlank() }
-                        ?.let(::add)
+                        ?.let { add(it) }
                 }
             }
         }.getOrElse { listOf(value) }
