@@ -227,6 +227,9 @@ fun MainAppContent(
                         onOpenMenu = { viewModel.openMenu(true) },
                         onToggleTheme = { viewModel.toggleDarkMode() },
                         isServerConnected = uiState.isLiveSupabaseConnected,
+                        isLoading = uiState.isFeedLoading,
+                        errorMessage = uiState.feedErrorMessage,
+                        onRetry = { viewModel.fetchSupabaseData() },
                         onViewedPost = { viewModel.recordPostView(it) },
                         onVotePoll = { postId, optId -> viewModel.votePoll(postId, optId) },
                         onDirectMessage = { partner, partnerName, partnerAvatar ->
@@ -252,7 +255,8 @@ fun MainAppContent(
                         users = uiState.leaderboardUsers,
                         userProfile = uiState.myProfile,
                         onProfileClick = { viewModel.openProfile(it) },
-                        isDark = uiState.isDarkMode
+                        isDark = uiState.isDarkMode,
+                        isConnected = uiState.isLiveSupabaseConnected
                     )
                 }
 
@@ -505,6 +509,7 @@ fun MainAppContent(
                         viewModel.openProfile(it) 
                     },
                     isDark = uiState.isDarkMode,
+                    isConnected = uiState.isLiveSupabaseConnected,
                     onRetryMessage = { msg ->
                         viewModel.retrySendMessage(convo.partnerUsername, msg)
                     }
@@ -529,6 +534,7 @@ fun MainAppContent(
                     viewModel.handleNotificationClick(activity)
                 },
                 isDark = uiState.isDarkMode,
+                isConnected = uiState.isLiveSupabaseConnected,
                 isLoading = uiState.activitiesLoading,
                 errorMessage = uiState.activitiesError,
                 onRefresh = { viewModel.fetchSupabaseData() }
@@ -585,7 +591,8 @@ fun MainAppContent(
                 onSchedulePost = { post, timeMillis, timeFormatted ->
                     viewModel.schedulePost(post, timeMillis, timeFormatted)
                 },
-                isDark = uiState.isDarkMode
+                isDark = uiState.isDarkMode,
+                isSubmitting = uiState.isCreatingPost
             )
         }
 
