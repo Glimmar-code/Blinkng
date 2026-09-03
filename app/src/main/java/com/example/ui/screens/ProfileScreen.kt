@@ -100,11 +100,11 @@ fun ProfileScreen(
     onMarketItemClick: (MarketItem) -> Unit,
     onOpenGetVerified: () -> Unit = {},
     isDark: Boolean,
+    isFollowing: Boolean = false,
     onFollowChanged: (Boolean) -> Unit = {},
     onRefreshProfile: () -> Unit = {}
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-    var isFollowing by rememberSaveable { mutableStateOf(false) }
     var showShareSheet by rememberSaveable { mutableStateOf(false) }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
@@ -598,7 +598,7 @@ fun ProfileScreen(
                                 ProfileMetric(value = userPosts.size, label = "Posts", animateCount = true)
                                 DividerMetric()
                                 ProfileMetric(
-                                    value = profile.followerCount + if (isFollowing) 1 else 0,
+                                    value = profile.followerCount,
                                     label = "Followers",
                                     animateCount = true
                                 )
