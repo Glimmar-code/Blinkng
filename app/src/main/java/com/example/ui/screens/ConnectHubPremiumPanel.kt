@@ -1,5 +1,12 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -52,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.ConnectHubSnapshot
+import com.example.data.models.ConnectRequestItem
 import com.example.data.models.GameChallenge
 import com.example.data.models.UserProfile
 import com.example.ui.theme.BlinkOnlineGreen
@@ -70,6 +78,8 @@ data class ConnectHubActions(
     val publishHousingRequest: (String, String, Double?, Double?, String) -> Unit = { _, _, _, _, _ -> },
     val challengeUser: (String, String) -> Unit = { _, _ -> },
     val respondChallenge: (String, Boolean) -> Unit = { _, _ -> },
+    val respondRequest: (String, String, Boolean) -> Unit = { _, _, _ -> },
+    val submitChallengeScore: (String, Int) -> Unit = { _, _ -> },
     val recordGameResult: (String, Int) -> Unit = { _, _ -> },
     val claimDailySpin: () -> Unit = {}
 )
@@ -88,14 +98,35 @@ fun ConnectHubPremiumPanel(
     onProfileClick: (String) -> Unit,
     onMessageUser: (String, String?, String?) -> Unit
 ) {
-    var match by remember { mutableStateOf<UserProfile?>(null) }
+    var match by remember { mutableStateOf<Pair<UserProfile, Int>?>(null) }
     var form by rememberSaveable { mutableStateOf(HubForm.NONE) }
 
-    val candidates = remember(profiles, current) {
-        val me = current
-        if (me == null) emptyList() else profiles
-            .filter { it.id.isNotBlank() && it.id != me.id && it.username.isNotBlank() }
-            .sortedByDescending { compatibilityScore(me, it) }
+    val candidates = remember(hub.smartMatches, profiles, current) {
+        if (hub.smartMatches.isNotEmpty()) {
+            hub.smartMatches.mapNotNull { candidate ->
+                if (candidate.username.isBlank()) null else {
+                    UserProfile(
+                        id = candidate.userId,
+                        fullName = candidate.fullName,
+                        username = candidate.username,
+                        avatarUrl = candidate.avatarUrl,
+                        university = candidate.university,
+                        faculty = candidate.faculty,
+                        department = candidate.department,
+                        academicLevel = candidate.academicLevel,
+                        relationshipStatus = candidate.relationshipStatus,
+                        onlineNow = candidate.onlineNow,
+                        lastSeenAt = candidate.lastSeenAt
+                    ) to candidate.compatibilityScore
+                }
+            }
+        } else {
+            val me = current
+            if (me == null) emptyList() else profiles
+                .filter { it.id.isNotBlank() && it.id != me.id && it.username.isNotBlank() }
+                .sortedByDescending { compatibilityScore(me, it) }
+                .map { it to compatibilityScore(me, it) }
+        }
     }
 
     Column(
@@ -132,8 +163,13 @@ fun ConnectHubPremiumPanel(
                     }
                     Button(
                         onClick = {
-                            val pool = candidates.take(5)
-                            if (pool.isNotEmpty()) match = pool.random()
+                            val pool = candidates.take(8)
+                            if (pool.isNotEmpty()) {
+                                val weighted = pool.flatMap { candidate ->
+                                    List((candidate.second / 10).coerceAtLeast(1)) { candidate }
+                                }
+                                match = weighted.random()
+                            }
                         },
                         enabled = candidates.isNotEmpty(),
                         shape = RoundedCornerShape(100.dp)
@@ -142,17 +178,26 @@ fun ConnectHubPremiumPanel(
                     }
                 }
 
-                match?.let { person ->
-                    Spacer(Modifier.height(14.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(Modifier.height(12.dp))
-                    MatchResultCard(
-                        current = current,
-                        person = person,
-                        onProfileClick = { onProfileClick(person.username) },
-                        onMessage = { onMessageUser(person.username, person.fullName, person.avatarUrl) },
-                        onChallenge = { actions.challengeUser(person.id, "trivia") }
-                    )
+                AnimatedContent(
+                    targetState = match,
+                    transitionSpec = { (fadeIn() + scaleIn(initialScale = .94f)) togetherWith (fadeOut() + scaleOut(targetScale = .96f)) },
+                    label = "smartMatchResult"
+                ) { result ->
+                    result?.let { (person, serverScore) ->
+                        Column {
+                            Spacer(Modifier.height(14.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Spacer(Modifier.height(12.dp))
+                            MatchResultCard(
+                                current = current,
+                                person = person,
+                                compatibilityOverride = serverScore,
+                                onProfileClick = { onProfileClick(person.username) },
+                                onMessage = { onMessageUser(person.username, person.fullName, person.avatarUrl) },
+                                onChallenge = { actions.challengeUser(person.id, "trivia") }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -258,6 +303,18 @@ fun ConnectHubPremiumPanel(
             }
         }
 
+        if (hub.requests.isNotEmpty()) {
+            HubSectionTitle("Request inbox", "Incoming and outgoing Connect requests")
+            hub.requests.take(8).forEach { request ->
+                ConnectRequestCard(
+                    request = request,
+                    other = profiles.firstOrNull { it.id == request.otherUserId },
+                    onAccept = { actions.respondRequest(request.kind, request.requestId, true) },
+                    onDecline = { actions.respondRequest(request.kind, request.requestId, false) }
+                )
+            }
+        }
+
         val incoming = remember(hub.gameChallenges, current?.id) {
             hub.gameChallenges.filter {
                 it.challengedId == current?.id && it.status == "pending"
@@ -357,6 +414,7 @@ private fun HubSectionTitle(title: String, subtitle: String) {
 private fun MatchResultCard(
     current: UserProfile?,
     person: UserProfile,
+    compatibilityOverride: Int? = null,
     onProfileClick: () -> Unit,
     onMessage: () -> Unit,
     onChallenge: () -> Unit
@@ -380,7 +438,7 @@ private fun MatchResultCard(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                "@${person.username} • ${compatibilityScore(current, person)}% match",
+                "@${person.username} • ${compatibilityOverride ?: compatibilityScore(current, person)}% match",
                 fontSize = 11.sp,
                 color = BlinkPink,
                 fontWeight = FontWeight.Bold
@@ -484,6 +542,65 @@ private fun HubListingCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectRequestCard(
+    request: ConnectRequestItem,
+    other: UserProfile?,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit
+) {
+    val incoming = request.direction.equals("incoming", true)
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AsyncImage(
+                    model = other?.avatarUrl,
+                    contentDescription = other?.fullName ?: "Student",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(38.dp).clip(CircleShape)
+                )
+                Spacer(Modifier.width(9.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        request.title.ifBlank { request.kind.replaceFirstChar { it.uppercase() } },
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "${if (incoming) "From" else "To"} @${other?.username ?: "student"} • ${request.status}",
+                        fontSize = 10.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(100.dp),
+                    color = if (incoming) BlinkPink.copy(alpha = .12f) else MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        if (incoming) "Incoming" else "Sent",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            AnimatedVisibility(visible = incoming && request.status == "pending") {
+                Row(
+                    Modifier.padding(top = 9.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(onClick = onDecline, modifier = Modifier.weight(1f)) { Text("Decline") }
+                    Button(onClick = onAccept, modifier = Modifier.weight(1f)) { Text("Accept") }
+                }
             }
         }
     }

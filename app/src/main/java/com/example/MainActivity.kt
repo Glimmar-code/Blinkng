@@ -299,6 +299,12 @@ fun MainAppContent(
                             respondChallenge = { challengeId, accept ->
                                 viewModel.respondToGameChallenge(challengeId, accept)
                             },
+                            respondRequest = { kind, requestId, accept ->
+                                viewModel.respondToConnectRequest(kind, requestId, accept)
+                            },
+                            submitChallengeScore = { challengeId, score ->
+                                viewModel.submitChallengeScore(challengeId, score)
+                            },
                             recordGameResult = { gameType, score ->
                                 viewModel.recordGameResult(gameType, score)
                             },

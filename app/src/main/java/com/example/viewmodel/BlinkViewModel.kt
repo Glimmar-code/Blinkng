@@ -762,6 +762,16 @@ private suspend fun restoreSupabaseSession() {
             connectHubRepository.respondToChallenge(challengeId, accept)
         }
 
+    fun respondToConnectRequest(kind: String, requestId: String, accept: Boolean) =
+        runConnectAction(if (accept) "Request accepted." else "Request declined.") {
+            connectHubRepository.respondToConnectRequest(kind, requestId, accept)
+        }
+
+    fun submitChallengeScore(challengeId: String, score: Int) =
+        runConnectAction("Challenge score submitted.") {
+            connectHubRepository.submitChallengeScore(challengeId, score)
+        }
+
     fun recordGameResult(gameType: String, score: Int) {
         runConnectAction("Game result synced.") {
             connectHubRepository.recordGameSession(gameType, score)
@@ -1507,6 +1517,7 @@ private suspend fun restoreSupabaseSession() {
             is RealtimeEvent.MessageEvent -> handleIncomingRealtimeMessage(event.message)
             is RealtimeEvent.ConversationEvent -> viewModelScope.launch { _uiState.value = _uiState.value.copy(conversations = chatRepository.fetchConversations()) }
             is RealtimeEvent.NotificationEvent -> fetchSupabaseData()
+            is RealtimeEvent.ConnectHubEvent -> refreshConnectHub()
             is RealtimeEvent.FeedPostEvent -> viewModelScope.launch {
                 val fresh = postRepository.fetchFeed()
                 if (fresh.isNotEmpty()) {
