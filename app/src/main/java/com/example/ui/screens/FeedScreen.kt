@@ -199,6 +199,8 @@ fun FeedScreen(
             3 -> GameSection(
                 userAvatar = userAvatar,
                 leaderboardUsers = leaderboardUsers,
+                connectHub = connectHub,
+                connectHubActions = connectHubActions,
                 isDark = isDark,
                 onOpenMenu = onOpenMenu,
                 onOpenActivity = onOpenActivity,
