@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -38,7 +39,8 @@ fun LeaderboardScreen(
     users: List<LeaderboardUser>,
     userProfile: UserProfile = UserProfile(),
     onProfileClick: (String) -> Unit,
-    isDark: Boolean
+    isDark: Boolean,
+    onRefresh: () -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
     val scope = rememberCoroutineScope()
@@ -50,12 +52,43 @@ fun LeaderboardScreen(
     val world = ranked
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.EmojiEvents, contentDescription = "Leaderboard", tint = BlinkGold, modifier = Modifier.size(28.dp))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.EmojiEvents,
+                contentDescription = "Leaderboard",
+                tint = BlinkGold,
+                modifier = Modifier.size(28.dp)
+            )
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text("Leaderboard", fontSize = 22.sp, fontWeight = FontWeight.Black)
-                Text("Real points earned from interacting on Blink", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(100.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .55f)
+                    ) {
+                        Text(
+                            "Live Supabase",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        "Snapshots refresh hourly",
+                        fontSize = 10.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            IconButton(onClick = onRefresh) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh live leaderboard")
             }
         }
 
