@@ -93,7 +93,10 @@ import com.example.data.models.UserProfile
 import org.json.JSONArray
 import java.util.UUID
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@OptIn(
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+    androidx.media3.common.util.UnstableApi::class
+)
 @Composable
 fun CreatePostSheet(
     profile: UserProfile,
