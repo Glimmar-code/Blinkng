@@ -322,6 +322,7 @@ fun MainAppContent(
                         onSharePost = { viewModel.sharePost(it) },
                         onOptionsClick = { viewModel.openPostOptions(it) },
                         onDeletePost = { viewModel.deletePost(it) },
+                        onRemoteSearch = { query -> viewModel.searchBlink(query) },
                         isDark = uiState.isDarkMode
                     )
                 }
