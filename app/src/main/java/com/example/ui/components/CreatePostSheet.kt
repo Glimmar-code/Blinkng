@@ -191,7 +191,7 @@ fun CreatePostSheet(
                 for (index in 0 until array.length()) {
                     array.optString(index)
                         .takeIf { it.isNotBlank() }
-                        ?.let(::add)
+                        ?.let { add(it) }
                 }
             }
         }.getOrDefault(emptyList())
