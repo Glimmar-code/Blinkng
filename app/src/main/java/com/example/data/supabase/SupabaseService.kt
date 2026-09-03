@@ -3438,12 +3438,12 @@ suspend fun uploadPostMedia(
         }
     }
 
-    suspend fun recordTriviaResult(questionId: String, correct: Boolean): GameActionResult? =
+    suspend fun recordTriviaResult(questionId: String, selectedIndex: Int): GameActionResult? =
         withContext(Dispatchers.IO) {
             try {
                 val body = JSONObject().apply {
                     put("p_question_id", questionId.trim())
-                    put("p_correct", correct)
+                    put("p_selected_index", selectedIndex)
                 }
                 executeRequest(
                     newRequestBuilder("/rest/v1/rpc/record_trivia_result", true)
