@@ -272,6 +272,12 @@ fun MainAppContent(
                         leaderboardUsers = uiState.leaderboardUsers,
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
+                        onTriviaAnswer = { questionId, selectedIndex ->
+                            viewModel.recordTriviaResult(questionId, selectedIndex)
+                        },
+                        onDailySpin = {
+                            viewModel.claimDailySpin()
+                        },
                         currentSubTab = uiState.feedSubTab,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
                         isDark = uiState.isDarkMode,
@@ -316,6 +322,7 @@ fun MainAppContent(
                         onSharePost = { viewModel.sharePost(it) },
                         onOptionsClick = { viewModel.openPostOptions(it) },
                         onDeletePost = { viewModel.deletePost(it) },
+                        onRemoteSearch = { query -> viewModel.searchBlink(query) },
                         isDark = uiState.isDarkMode
                     )
                 }
@@ -686,22 +693,20 @@ fun MainAppContent(
 
         // Modals: 3-Dot App Menu Sheet
         if (uiState.isMenuOpen) {
-            val context = androidx.compose.ui.platform.LocalContext.current
             AppMenuSheet(
                 profile = uiState.myProfile,
                 isDark = uiState.isDarkMode,
                 onDismiss = { viewModel.openMenu(false) },
                 onViewProfile = { viewModel.openProfile("you") },
                 onEditProfile = { viewModel.openEditProfile(true) },
+                onOpenVerification = { viewModel.openGetVerified(true) },
                 onOpenMarket = { viewModel.setTab(MainTab.MARKET) },
                 onOpenPostItem = { viewModel.openPostItem(true) },
                 onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
                 onOpenLeaderboard = { viewModel.setTab(MainTab.LEADERBOARD) },
                 onOpenActivity = { viewModel.openActivity(true) },
                 onToggleTheme = { viewModel.toggleDarkMode() },
-                onLogout = { viewModel.logout() },
-                onShowToast = { viewModel.showToast(it) },
-                onSimulateNotification = { viewModel.simulateBackgroundNotification(context) }
+                onLogout = { viewModel.logout() }
             )
         }
 

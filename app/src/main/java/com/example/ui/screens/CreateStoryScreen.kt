@@ -23,7 +23,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.example.data.models.UserProfile
 import com.example.ui.theme.BlinkPink
@@ -62,15 +69,10 @@ fun CreateStoryScreen(profile:UserProfile,isUploading:Boolean,onBack:()->Unit,on
                                         modifier = Modifier.fillMaxSize()
                                     )
                                 } else {
-                                    Column(
-                                        modifier = Modifier.align(Alignment.Center),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ){
-                                        Icon(Icons.Default.VideoLibrary,null,tint=BlinkPink,modifier=Modifier.size(64.dp))
-                                        Spacer(Modifier.height(10.dp))
-                                        Text("Video selected",fontWeight=androidx.compose.ui.text.font.FontWeight.Bold)
-                                        Text("It will upload securely to Supabase",color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+                                    StoryVideoPreview(
+                                        uri = uri,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
                                 }
                             }
                             TextButton(
@@ -87,3 +89,34 @@ fun CreateStoryScreen(profile:UserProfile,isUploading:Boolean,onBack:()->Unit,on
     }
 }
 @Composable private fun StoryMediaChoice(icon:androidx.compose.ui.graphics.vector.ImageVector,label:String,onClick:()->Unit){Surface(Modifier.width(120.dp).clickable(onClick=onClick),shape=RoundedCornerShape(20.dp),color=BlinkPink.copy(alpha=.10f)){Column(Modifier.padding(18.dp),horizontalAlignment=Alignment.CenterHorizontally){Icon(icon,null,tint=BlinkPink);Spacer(Modifier.height(6.dp));Text(label,fontWeight=androidx.compose.ui.text.font.FontWeight.Bold)}}}
+
+
+@Composable
+private fun StoryVideoPreview(uri: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val player = remember(uri) {
+        ExoPlayer.Builder(context).build().apply {
+            repeatMode = Player.REPEAT_MODE_ONE
+            volume = 0f
+            setMediaItem(MediaItem.fromUri(uri))
+            prepare()
+            playWhenReady = true
+        }
+    }
+
+    DisposableEffect(player) {
+        onDispose { player.release() }
+    }
+
+    AndroidView(
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                useController = true
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                this.player = player
+            }
+        },
+        update = { it.player = player },
+        modifier = modifier
+    )
+}

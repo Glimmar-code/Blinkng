@@ -2364,6 +2364,132 @@ suspend fun uploadPostMedia(
             }
         }
 
+    suspend fun searchProfiles(query: String, limit: Int = 40): List<UserProfile> =
+        withContext(Dispatchers.IO) {
+            val clean = query.trim()
+                .removePrefix("@")
+                .replace(Regex("[*%,()]"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+                .take(80)
+            if (clean.length < 2) return@withContext emptyList()
+
+            try {
+                val term = encodeValue("*$clean*")
+                val filters = listOf(
+                    "username.ilike.$term",
+                    "full_name.ilike.$term",
+                    "university.ilike.$term",
+                    "faculty.ilike.$term",
+                    "department.ilike.$term",
+                    "course_of_study.ilike.$term"
+                ).joinToString(",")
+
+                executeRequest(
+                    newRequestBuilder(
+                        "/rest/v1/profiles?select=*&or=($filters)&order=points.desc.nullslast,created_at.desc&limit=${limit.coerceIn(1, 60)}",
+                        authenticated = true
+                    ).get().build()
+                ).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        throw IllegalStateException(parseSupabaseError(raw, "Profile search failed."))
+                    }
+                    val array = JSONArray(if (raw.isBlank()) "[]" else raw)
+                    buildList {
+                        for (index in 0 until array.length()) {
+                            val profile = parseUserProfile(array.getJSONObject(index))
+                            if (profile.username.isNotBlank() && !profile.username.equals("null", true)) {
+                                add(profile)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "PROFILE_SEARCH exception", e)
+                emptyList()
+            }
+        }
+
+    suspend fun searchFeedPosts(query: String, limit: Int = 40): List<FeedPost> =
+        withContext(Dispatchers.IO) {
+            val clean = query.trim()
+                .removePrefix("#")
+                .replace(Regex("[*%,()]"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+                .take(100)
+            if (clean.length < 2) return@withContext emptyList()
+
+            try {
+                val term = encodeValue("*$clean*")
+                val filters = listOf(
+                    "text.ilike.$term",
+                    "caption.ilike.$term",
+                    "faculty.ilike.$term",
+                    "category.ilike.$term"
+                ).joinToString(",")
+
+                val rows = executeRequest(
+                    newRequestBuilder(
+                        "/rest/v1/feed_posts?select=*&is_active=eq.true&or=($filters)&order=created_at.desc&limit=${limit.coerceIn(1, 60)}",
+                        authenticated = true
+                    ).get().build()
+                ).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        throw IllegalStateException(parseSupabaseError(raw, "Post search failed."))
+                    }
+                    JSONArray(if (raw.isBlank()) "[]" else raw)
+                }
+
+                val userIds = buildSet {
+                    for (index in 0 until rows.length()) {
+                        rows.getJSONObject(index).cleanString("user_id")
+                            .takeIf { isValidUuid(it) }
+                            ?.let { add(it) }
+                    }
+                }
+
+                val profileById = mutableMapOf<String, JSONObject>()
+                if (userIds.isNotEmpty()) {
+                    executeRequest(
+                        newRequestBuilder(
+                            "/rest/v1/profiles?id=in.(${userIds.joinToString(",")})&select=id,username,avatar_url,is_verified,verification_badge,full_name",
+                            authenticated = true
+                        ).get().build()
+                    ).use { response ->
+                        val raw = response.body?.string().orEmpty()
+                        if (response.isSuccessful) {
+                            val array = JSONArray(if (raw.isBlank()) "[]" else raw)
+                            for (index in 0 until array.length()) {
+                                val profile = array.getJSONObject(index)
+                                profileById[profile.cleanString("id")] = profile
+                            }
+                        }
+                    }
+                }
+
+                buildList {
+                    for (index in 0 until rows.length()) {
+                        val row = rows.getJSONObject(index)
+                        profileById[row.cleanString("user_id")]?.let { profile ->
+                            row.put("author", profile.cleanString("username"))
+                            row.put("author_avatar", profile.cleanString("avatar_url"))
+                            row.put("is_verified", profile.optBoolean("is_verified", false))
+                            row.put("verification_badge", profile.cleanString("verification_badge"))
+                        }
+                        parseFeedPost(row).takeIf {
+                            it.id.isNotBlank() && it.author.isNotBlank()
+                        }?.let { add(it) }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "POST_SEARCH exception", e)
+                emptyList()
+            }
+        }
+
     // ============================================================
     // LEADERBOARD
     // ============================================================
@@ -3438,12 +3564,12 @@ suspend fun uploadPostMedia(
         }
     }
 
-    suspend fun recordTriviaResult(questionId: String, correct: Boolean): GameActionResult? =
+    suspend fun recordTriviaResult(questionId: String, selectedIndex: Int): GameActionResult? =
         withContext(Dispatchers.IO) {
             try {
                 val body = JSONObject().apply {
                     put("p_question_id", questionId.trim())
-                    put("p_correct", correct)
+                    put("p_selected_index", selectedIndex)
                 }
                 executeRequest(
                     newRequestBuilder("/rest/v1/rpc/record_trivia_result", true)
