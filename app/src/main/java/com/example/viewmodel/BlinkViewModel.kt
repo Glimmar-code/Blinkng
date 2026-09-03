@@ -252,35 +252,21 @@ private suspend fun restoreSupabaseSession() {
 
     fun fetchSupabaseData() {
         viewModelScope.launch {
-            val beforeRefresh = _uiState.value
-            val hasVisibleFeed = beforeRefresh.posts.isNotEmpty() || beforeRefresh.reels.isNotEmpty()
-            _uiState.value = beforeRefresh.copy(
-                isFeedLoading = !hasVisibleFeed,
-                feedErrorMessage = null
-            )
-
-            // Keep the last good feed visible when the network/session is temporarily unavailable.
+            // Do not let an unrelated surface (leaderboard/stories/messages) blank the feed.
             val feedResult = runCatching { supabaseService.fetchFeedPosts() }
-                .onFailure { Log.e(TAG, "Feed fetch failed", it) }
+            val fetched = feedResult.getOrElse {
+                Log.e(TAG, "Feed fetch failed", it)
+                emptyList()
+            }
+            val normalPosts = fetched.filter { !it.isReel && it.videoUrl.isNullOrBlank() }.distinctBy { it.id }
+            val fetchedReels = fetched.filter { it.isReel || !it.videoUrl.isNullOrBlank() }.distinctBy { it.id }
 
-            val fetched = feedResult.getOrNull()
-            val normalPosts = fetched
-                ?.filter { !it.isReel && it.videoUrl.isNullOrBlank() }
-                ?.distinctBy { it.id }
-                ?: beforeRefresh.posts
-            val fetchedReels = fetched
-                ?.filter { it.isReel || !it.videoUrl.isNullOrBlank() }
-                ?.distinctBy { it.id }
-                ?: beforeRefresh.reels
-
+            // Publish feed state immediately. Previously this happened only after every
+            // secondary request succeeded, so one 401 could make Home appear empty.
             _uiState.value = _uiState.value.copy(
                 posts = normalPosts,
                 reels = fetchedReels,
-                isLiveSupabaseConnected = feedResult.isSuccess,
-                isFeedLoading = false,
-                feedErrorMessage = feedResult.exceptionOrNull()?.let {
-                    "Couldn't refresh the feed. Check your connection and try again."
-                }
+                isLiveSupabaseConnected = feedResult.isSuccess
             )
 
             val market = runCatching { supabaseService.fetchMarketItems() }
