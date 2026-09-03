@@ -145,11 +145,13 @@ fun FeedScreen(
         when (selectedTopTab) {
             1 -> VideoReelsScreen(
                 reels = reels,
+                currentUsername = currentUsername,
                 isDark = isDark,
                 onLike = onLikePost,
                 onComment = onCommentPost,
                 onBookmark = onBookmarkPost,
                 onShare = onSharePost,
+                onDelete = onDeletePost,
                 onProfileClick = onProfileClick,
                 onBackToPosts = { navigate(0) },
                 onHomeClick = { navigate(0) },
