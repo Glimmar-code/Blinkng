@@ -74,6 +74,8 @@ data class UserProfile(
     var worldRank: Int = 0,
     var campusRank: Int = 0,
     var onlineNow: Boolean = false,
+    var relationshipStatus: String = "Single",
+    var lastSeenAt: String = "",
     var verifiedAtMillis: Long = 0L,
     var joinedLabel: String = "",
     var isSellerActive: Boolean = false,
