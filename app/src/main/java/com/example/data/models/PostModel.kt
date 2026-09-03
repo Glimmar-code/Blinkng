@@ -29,7 +29,6 @@ data class FeedPost(
     val isVerified: Boolean = false,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE,
     val timeAgo: String,
-    val createdAt: String = "",
     val text: String,
     val images: List<String> = emptyList(),
     var likes: Int,
@@ -56,7 +55,8 @@ data class FeedPost(
     val altText: String? = null,
     val isSponsored: Boolean = false,
     val adLabel: String? = null,
-    val adCta: String? = null
+    val adCta: String? = null,
+    val createdAt: String = ""
 )
 
 data class PostDraft(

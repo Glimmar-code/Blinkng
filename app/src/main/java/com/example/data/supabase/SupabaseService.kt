@@ -2781,6 +2781,7 @@ suspend fun uploadPostMedia(
             verificationBadge = badge,
             timeAgo = obj.cleanString("time_ago", "Recently"),
             text = obj.cleanString("text").ifBlank { obj.cleanString("caption") },
+            createdAt = obj.cleanString("created_at"),
             images = imagesList,
             tags = tagsList,
             mentions = mentionsList,
