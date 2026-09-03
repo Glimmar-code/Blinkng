@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.VerifiedMark
@@ -76,6 +77,9 @@ fun ConnectSection(
     onOpenActivity: () -> Unit,
     onProfileClick: (String) -> Unit,
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit,
+    connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
+    connectHubActions: ConnectHubActions = ConnectHubActions(),
+    isConnectHubLoading: Boolean = false,
     selectedTopTab: Int,
     onHomeClick: () -> Unit,
     onReelClick: () -> Unit,
@@ -183,6 +187,19 @@ fun ConnectSection(
                         )
                     }
                 }
+            }
+
+            item {
+                PremiumConnectHubPanel(
+                    current = current,
+                    profiles = liveProfiles,
+                    hub = connectHub,
+                    actions = connectHubActions,
+                    isLoading = isConnectHubLoading,
+                    onProfileClick = onProfileClick,
+                    onMessageUser = onDirectMessage
+                )
+                Spacer(Modifier.height(8.dp))
             }
 
             item {
@@ -441,9 +458,10 @@ private fun LiveProfileCard(
                     )
 
                     val detail = listOf(
+                        profile.academicLevel.takeUnless { it.equals("null", true) }.orEmpty(),
+                        profile.department.takeUnless { it.equals("null", true) }.orEmpty(),
                         profile.university.takeUnless { it.equals("null", true) }.orEmpty(),
-                        profile.faculty.takeUnless { it.equals("null", true) }.orEmpty(),
-                        profile.department.takeUnless { it.equals("null", true) }.orEmpty()
+                        profile.relationshipStatus.takeUnless { it.equals("null", true) }.orEmpty()
                     ).filter { it.isNotBlank() }.joinToString(" • ")
 
                     if (detail.isNotBlank()) {
@@ -455,6 +473,19 @@ private fun LiveProfileCard(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+
+                    Text(
+                        text = if (profile.onlineNow) {
+                            "Active now"
+                        } else {
+                            profile.lastSeenAt.takeIf { it.isNotBlank() }
+                                ?.let { "Last seen ${it.replace("T", " ").take(16)}" }
+                                ?: "Offline"
+                        },
+                        fontSize = 10.sp,
+                        color = if (profile.onlineNow) BlinkOnlineGreen
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
