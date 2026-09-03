@@ -255,8 +255,7 @@ fun MainAppContent(
                         users = uiState.leaderboardUsers,
                         userProfile = uiState.myProfile,
                         onProfileClick = { viewModel.openProfile(it) },
-                        isDark = uiState.isDarkMode,
-                        isConnected = uiState.isLiveSupabaseConnected
+                        isDark = uiState.isDarkMode
                     )
                 }
 
@@ -284,7 +283,8 @@ fun MainAppContent(
                         onCloseConversation = { viewModel.closeConversation() },
                         onSendMessage = { partner, text -> viewModel.sendMessage(partner, text) },
                         onProfileClick = { viewModel.openProfile(it) },
-                        isDark = uiState.isDarkMode
+                        isDark = uiState.isDarkMode,
+                        isConnected = uiState.isLiveSupabaseConnected
                     )
                 }
             }
