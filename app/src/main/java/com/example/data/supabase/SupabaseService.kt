@@ -1549,73 +1549,205 @@ fun getCurrentUserId(): String? {
     suspend fun fetchFeedPosts(): List<FeedPost> = withContext(Dispatchers.IO) {
         var uid = getCurrentUserId()
 
-        // feed_posts is protected by RLS for authenticated users. If the access
-        // token was lost/expired but we still have a refresh token, recover the
-        // session before reading. Falling back to anon here returns HTTP 200
-        // with an empty array, which makes the Home feed look blank.
+        // Feed rows are authenticated/RLS-protected. Recover an expired access
+        // token from the persisted refresh token before requesting the feed.
         if (!isAuthenticated() && !refreshToken().isNullOrBlank()) {
-            if (refreshSession()) {
-                uid = getCurrentUserId()
-            }
+            if (refreshSession()) uid = getCurrentUserId()
         }
-
         if (uid.isNullOrBlank()) {
             throw IllegalStateException("No authenticated Supabase session is available for the feed.")
         }
 
-        val postsRaw = executeRequest(newRequestBuilder("/rest/v1/feed_posts?select=*&order=created_at.desc&limit=100", authenticated = true).get().build()).use { resp ->
-            val raw = resp.body?.string().orEmpty()
-            if (!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Feed fetch failed."))
+        val postsRaw = executeRequest(
+            newRequestBuilder(
+                "/rest/v1/feed_posts?select=*&is_active=eq.true&order=created_at.desc&limit=100",
+                authenticated = true
+            ).get().build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException(parseSupabaseError(raw, "Feed fetch failed."))
+            }
             JSONArray(if (raw.isBlank()) "[]" else raw)
         }
-        val userIds = buildSet { for (i in 0 until postsRaw.length()) postsRaw.getJSONObject(i).optString("user_id").takeIf { isValidUuid(it) }?.let { add(it) } }
+
+        val userIds = buildSet {
+            for (i in 0 until postsRaw.length()) {
+                postsRaw.getJSONObject(i).optString("user_id")
+                    .takeIf { isValidUuid(it) }
+                    ?.let { add(it) }
+            }
+        }
+
         val profiles = mutableMapOf<String, JSONObject>()
         if (userIds.isNotEmpty()) {
-            executeRequest(newRequestBuilder("/rest/v1/profiles?id=in.(${userIds.joinToString(",")})&select=id,username,avatar_url,is_verified,verification_badge,full_name", authenticated = true).get().build()).use { resp ->
-                val raw = resp.body?.string().orEmpty()
-                if (resp.isSuccessful && raw.isNotBlank() && raw != "[]") {
-                    val a = JSONArray(raw)
-                    for (i in 0 until a.length()) { val p = a.getJSONObject(i); profiles[p.optString("id")] = p }
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/profiles?id=in.(${userIds.joinToString(",")})&select=id,username,avatar_url,is_verified,verification_badge,full_name",
+                    authenticated = true
+                ).get().build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (response.isSuccessful && raw.isNotBlank() && raw != "[]") {
+                    val array = JSONArray(raw)
+                    for (i in 0 until array.length()) {
+                        val profile = array.getJSONObject(i)
+                        profiles[profile.optString("id")] = profile
+                    }
                 }
             }
         }
-        val liked = if (uid != null) {
-            executeRequest(newRequestBuilder("/rest/v1/post_likes?select=post_id&user_id=eq.${encodeValue(uid)}", true).get().build()).use { resp ->
-                val raw = resp.body?.string().orEmpty()
-                if (resp.isSuccessful && raw.isNotBlank() && raw != "[]") {
-                    val a = JSONArray(raw)
-                    buildSet { for (i in 0 until a.length()) add(a.getJSONObject(i).optString("post_id")) }
-                } else emptySet()
+
+        val liked = executeRequest(
+            newRequestBuilder(
+                "/rest/v1/post_likes?select=post_id&user_id=eq.${encodeValue(uid)}",
+                true
+            ).get().build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (response.isSuccessful && raw.isNotBlank() && raw != "[]") {
+                val array = JSONArray(raw)
+                buildSet {
+                    for (i in 0 until array.length()) {
+                        array.getJSONObject(i).optString("post_id")
+                            .takeIf { it.isNotBlank() }
+                            ?.let { add(it) }
+                    }
+                }
+            } else emptySet()
+        }
+
+        val bookmarked = executeRequest(
+            newRequestBuilder(
+                "/rest/v1/post_bookmarks?select=post_id&user_id=eq.${encodeValue(uid)}",
+                true
+            ).get().build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (response.isSuccessful && raw.isNotBlank() && raw != "[]") {
+                val array = JSONArray(raw)
+                buildSet {
+                    for (i in 0 until array.length()) {
+                        array.getJSONObject(i).optString("post_id")
+                            .takeIf { it.isNotBlank() }
+                            ?.let { add(it) }
+                    }
+                }
+            } else emptySet()
+        }
+
+        // Hydrate poll metadata so poll posts render as real polls in Home.
+        val pollIds = buildSet {
+            for (i in 0 until postsRaw.length()) {
+                postsRaw.getJSONObject(i).cleanString("poll_id")
+                    .takeIf { isValidUuid(it) }
+                    ?.let { add(it) }
             }
-        } else emptySet()
-        val bookmarked = if (uid != null) {
-            executeRequest(newRequestBuilder("/rest/v1/post_bookmarks?select=post_id&user_id=eq.${encodeValue(uid)}", true).get().build()).use { resp ->
-                val raw = resp.body?.string().orEmpty()
-                if (resp.isSuccessful && raw.isNotBlank() && raw != "[]") {
-                    val a = JSONArray(raw)
-                    buildSet { for (i in 0 until a.length()) add(a.getJSONObject(i).optString("post_id")) }
-                } else emptySet()
+        }
+        val pollDataById = mutableMapOf<String, JSONObject>()
+        if (pollIds.isNotEmpty()) {
+            val pollRows = executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/polls?id=in.(${pollIds.joinToString(",")})&select=id,question",
+                    true
+                ).get().build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (response.isSuccessful) JSONArray(if (raw.isBlank()) "[]" else raw) else JSONArray()
             }
-        } else emptySet()
+
+            val optionRows = executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/poll_options?poll_id=in.(${pollIds.joinToString(",")})&select=id,poll_id,option_text,position,vote_count&order=position.asc",
+                    true
+                ).get().build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (response.isSuccessful) JSONArray(if (raw.isBlank()) "[]" else raw) else JSONArray()
+            }
+
+            val myVotes = executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/poll_votes?poll_id=in.(${pollIds.joinToString(",")})&user_id=eq.${encodeValue(uid)}&select=poll_id,option_id",
+                    true
+                ).get().build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (response.isSuccessful) JSONArray(if (raw.isBlank()) "[]" else raw) else JSONArray()
+            }
+
+            val votedOptionByPoll = mutableMapOf<String, String>()
+            for (i in 0 until myVotes.length()) {
+                val vote = myVotes.optJSONObject(i) ?: continue
+                val pollId = vote.cleanString("poll_id")
+                val optionId = vote.cleanString("option_id")
+                if (pollId.isNotBlank() && optionId.isNotBlank()) {
+                    votedOptionByPoll[pollId] = optionId
+                }
+            }
+
+            val optionsByPoll = mutableMapOf<String, MutableList<JSONObject>>()
+            for (i in 0 until optionRows.length()) {
+                val option = optionRows.optJSONObject(i) ?: continue
+                val pollId = option.cleanString("poll_id")
+                if (pollId.isBlank()) continue
+                optionsByPoll.getOrPut(pollId) { mutableListOf() }.add(option)
+            }
+
+            for (i in 0 until pollRows.length()) {
+                val pollRow = pollRows.optJSONObject(i) ?: continue
+                val pollId = pollRow.cleanString("id")
+                if (pollId.isBlank()) continue
+                val options = JSONArray()
+                var totalVotes = 0
+                optionsByPoll[pollId].orEmpty().forEach { option ->
+                    val votes = option.optInt("vote_count", 0)
+                    totalVotes += votes
+                    options.put(
+                        JSONObject().apply {
+                            put("id", option.cleanString("id"))
+                            put("text", option.cleanString("option_text"))
+                            put("votes", votes)
+                            put(
+                                "is_voted_by_me",
+                                votedOptionByPoll[pollId] == option.cleanString("id")
+                            )
+                        }
+                    )
+                }
+                pollDataById[pollId] = JSONObject().apply {
+                    put("question", pollRow.cleanString("question"))
+                    put("options", options)
+                    put("total_votes", totalVotes)
+                    put("has_voted", votedOptionByPoll.containsKey(pollId))
+                }
+            }
+        }
+
         buildList {
             for (i in 0 until postsRaw.length()) {
                 val source = postsRaw.getJSONObject(i)
-                val profile = profiles[source.optString("user_id")] ?: continue
-                val username = profile.optString("username").trim()
-                if (username.isBlank()) continue
+                val profile = profiles[source.cleanString("user_id")] ?: continue
+                val username = profile.cleanString("username")
+                if (username.isBlank() || username.equals("null", true)) continue
 
                 val mapped = JSONObject(source.toString()).apply {
                     put("author", username)
-                    put("author_avatar", profile.optString("avatar_url"))
+                    put("author_avatar", profile.cleanString("avatar_url"))
                     put("username", username)
                     put("is_verified", profile.optBoolean("is_verified"))
-                    put("verification_badge", profile.optString("verification_badge"))
+                    put("verification_badge", profile.cleanString("verification_badge"))
+                    source.cleanString("poll_id")
+                        .takeIf { it.isNotBlank() }
+                        ?.let { pollId ->
+                            pollDataById[pollId]?.let { put("poll_data", it) }
+                        }
                 }
 
                 add(
                     parseFeedPost(mapped).copy(
-                        isLiked = liked.contains(source.optString("id")),
-                        isBookmarked = bookmarked.contains(source.optString("id"))
+                        isLiked = liked.contains(source.cleanString("id")),
+                        isBookmarked = bookmarked.contains(source.cleanString("id"))
                     )
                 )
             }
@@ -1660,13 +1792,18 @@ fun getCurrentUserId(): String? {
                 }
             }
 
+            val cleanVideoUrl = videoUrl?.trim()
+                ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+            val effectiveIsReel = !cleanVideoUrl.isNullOrBlank()
+
             val body = JSONObject().apply {
                 put("user_id", uid)
                 put(
                     "type",
                     when {
-                        isReel || !videoUrl.isNullOrBlank() -> "reel"
+                        effectiveIsReel -> "reel"
                         imageUrls.isNotEmpty() -> "photo"
+                        poll != null -> "poll"
                         else -> "text"
                     }
                 )
@@ -1676,10 +1813,10 @@ fun getCurrentUserId(): String? {
                     put("image_url", imageUrls.first())
                     put("images", JSONArray(imageUrls))
                 }
-                videoUrl?.takeIf { it.isNotBlank() }?.let { put("video_url", it) }
+                cleanVideoUrl?.let { put("video_url", it) }
                 put("tags", JSONArray(tags.filter { it.isNotBlank() }))
                 put("mentions", mentionIds)
-                put("is_reel", isReel)
+                put("is_reel", effectiveIsReel)
                 put("audience", audience)
                 put("category", category)
                 location?.takeIf { it.isNotBlank() }?.let { put("location", it) }
@@ -1932,9 +2069,26 @@ suspend fun uploadPostMedia(
     }
 
     suspend fun deleteFeedPost(postId: String): Boolean = withContext(Dispatchers.IO) {
-        val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
-        executeRequest(newRequestBuilder("/rest/v1/feed_posts?id=eq.${encodeValue(postId)}&user_id=eq.${encodeValue(uid)}",true).delete().build()).use{resp->val raw=resp.body?.string().orEmpty();if(!resp.isSuccessful)throw IllegalStateException(parseSupabaseError(raw,"Post deletion failed."));true}
+        val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+        executeRequest(
+            newRequestBuilder(
+                "/rest/v1/feed_posts?id=eq.${encodeValue(postId)}&user_id=eq.${encodeValue(uid)}&select=id",
+                true
+            )
+                .addHeader("Prefer", "return=representation")
+                .delete()
+                .build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException(parseSupabaseError(raw, "Post deletion failed."))
+            }
+            val deleted = runCatching { JSONArray(if (raw.isBlank()) "[]" else raw) }
+                .getOrElse { JSONArray() }
+            deleted.length() > 0
+        }
     }
+
 
     // ============================================================
 
@@ -2541,71 +2695,79 @@ suspend fun uploadPostMedia(
     }
 
     private fun parseFeedPost(obj: JSONObject): FeedPost {
-        val author = obj.optString("author", obj.optString("username", ""))
-        val imagesArray = obj.optJSONArray("images")
+        val author = obj.cleanString("author").ifBlank { obj.cleanString("username") }
+
         val imagesList = mutableListOf<String>()
-        if (imagesArray != null) {
-            for (i in 0 until imagesArray.length()) {
-                val url = imagesArray.optString(i, "")
-                if (url.isNotBlank()) imagesList.add(url)
+        obj.optJSONArray("images")?.let { array ->
+            for (i in 0 until array.length()) {
+                val url = array.optString(i, "").trim()
+                if (url.isNotBlank() &&
+                    !url.equals("null", ignoreCase = true) &&
+                    !imagesList.contains(url)
+                ) {
+                    imagesList.add(url)
+                }
             }
         }
-        val imageUrl = obj.optString("image_url", obj.optString("media_url", ""))
-        if (imageUrl.isNotBlank() && !imagesList.contains(imageUrl)) {
-            imagesList.add(imageUrl)
-        }
+        obj.cleanString("image_url")
+            .ifBlank { obj.cleanString("media_url") }
+            .takeIf { it.isNotBlank() }
+            ?.let { if (!imagesList.contains(it)) imagesList.add(it) }
 
-        val tagsArray = obj.optJSONArray("tags")
         val tagsList = mutableListOf<String>()
-        if (tagsArray != null) {
-            for (i in 0 until tagsArray.length()) {
-                val t = tagsArray.optString(i, "")
-                if (t.isNotBlank()) tagsList.add(t)
+        obj.optJSONArray("tags")?.let { array ->
+            for (i in 0 until array.length()) {
+                val value = array.optString(i, "").trim()
+                if (value.isNotBlank() && !value.equals("null", true)) tagsList.add(value)
             }
         }
 
-        val mentionsArray = obj.optJSONArray("mentions")
         val mentionsList = mutableListOf<String>()
-        if (mentionsArray != null) {
-            for (i in 0 until mentionsArray.length()) {
-                val m = mentionsArray.optString(i, "")
-                if (m.isNotBlank()) mentionsList.add(m)
+        obj.optJSONArray("mentions")?.let { array ->
+            for (i in 0 until array.length()) {
+                val value = array.optString(i, "").trim()
+                if (value.isNotBlank() && !value.equals("null", true)) mentionsList.add(value)
             }
         }
 
         var poll: PostPoll? = null
-        val pollObj = obj.optJSONObject("poll_data")
-        if (pollObj != null) {
-            val q = pollObj.optString("question", "")
-            val optsArr = pollObj.optJSONArray("options")
-            val opts = mutableListOf<PollOption>()
-            if (optsArr != null) {
-                for (i in 0 until optsArr.length()) {
-                    val opt = optsArr.optJSONObject(i)
-                    if (opt != null) {
-                        opts.add(PollOption(
-                            id = opt.optString("id", ""),
-                            text = opt.optString("text", ""),
-                            votes = opt.optInt("votes", 0),
-                            isVotedByMe = opt.optBoolean("is_voted_by_me", false)
-                        ))
+        obj.optJSONObject("poll_data")?.let { pollObj ->
+            val options = mutableListOf<PollOption>()
+            pollObj.optJSONArray("options")?.let { optionsArray ->
+                for (i in 0 until optionsArray.length()) {
+                    val option = optionsArray.optJSONObject(i) ?: continue
+                    val optionId = option.cleanString("id")
+                    val optionText = option.cleanString("text")
+                    if (optionId.isNotBlank() && optionText.isNotBlank()) {
+                        options.add(
+                            PollOption(
+                                id = optionId,
+                                text = optionText,
+                                votes = option.optInt("votes", 0),
+                                isVotedByMe = option.optBoolean("is_voted_by_me", false)
+                            )
+                        )
                     }
                 }
             }
-            poll = PostPoll(
-                question = q,
-                options = opts,
-                totalVotes = pollObj.optInt("total_votes", 0),
-                hasVoted = pollObj.optBoolean("has_voted", false)
-            )
+            val question = pollObj.cleanString("question")
+            if (question.isNotBlank() && options.isNotEmpty()) {
+                poll = PostPoll(
+                    question = question,
+                    options = options,
+                    totalVotes = pollObj.optInt("total_votes", options.sumOf { it.votes }),
+                    hasVoted = pollObj.optBoolean("has_voted", options.any { it.isVotedByMe })
+                )
+            }
         }
 
-        val parsedVideoUrl = obj.optString("video_url", "").takeIf { it.isNotBlank() }
-        val parsedType = obj.optString("type", "").lowercase(Locale.US)
-        val parsedIsReel = parsedType == "reel" && !parsedVideoUrl.isNullOrBlank() && obj.optBoolean("is_reel", true)
+        val parsedVideoUrl = obj.cleanString("video_url").takeIf { it.isNotBlank() }
+        // Product rule: ANY video content belongs to Reels. Feed is text/photo/poll only.
+        val parsedIsReel = !parsedVideoUrl.isNullOrBlank()
 
-        val isVerified = obj.optBoolean("is_verified", false) || obj.optString("verification_badge", "").equals("BLUE", ignoreCase = true) || obj.optString("verification_badge", "").equals("GOLD", ignoreCase = true)
-        val badgeStr = obj.optString("verification_badge", "").uppercase(Locale.US)
+        val badgeStr = obj.cleanString("verification_badge").uppercase(Locale.US)
+        val isVerified = obj.optBoolean("is_verified", false) ||
+            badgeStr == "BLUE" || badgeStr == "GOLD"
         val badge = when (badgeStr) {
             "GOLD" -> VerificationBadge.GOLD
             "BLUE" -> VerificationBadge.BLUE
@@ -2613,14 +2775,14 @@ suspend fun uploadPostMedia(
         }
 
         return FeedPost(
-            id = obj.optString("id", ""),
+            id = obj.cleanString("id"),
             author = author,
-            authorAvatar = obj.optString("author_avatar", obj.optString("avatar_url", "")),
-            facultyTag = obj.optString("faculty_tag", obj.optString("faculty", "")),
+            authorAvatar = obj.cleanString("author_avatar").ifBlank { obj.cleanString("avatar_url") },
+            facultyTag = obj.cleanString("faculty_tag").ifBlank { obj.cleanString("faculty") },
             isVerified = isVerified,
             verificationBadge = badge,
-            timeAgo = obj.optString("time_ago", "Recently"),
-            text = obj.optString("text", obj.optString("content", "")),
+            timeAgo = obj.cleanString("time_ago", "Recently"),
+            text = obj.cleanString("text").ifBlank { obj.cleanString("caption") },
             images = imagesList,
             tags = tagsList,
             mentions = mentionsList,
@@ -2632,20 +2794,21 @@ suspend fun uploadPostMedia(
             viewsCount = obj.optInt("views_count", obj.optInt("view_count", 0)),
             isBookmarked = obj.optBoolean("is_bookmarked", false),
             isReel = parsedIsReel,
-            videoDuration = obj.optString("video_duration", "0:00"),
+            videoDuration = obj.cleanString("video_duration", "0:00"),
             videoUrl = parsedVideoUrl,
-            audience = obj.optString("audience", "Everyone"),
-            category = obj.optString("category", "Campus Life"),
-            location = obj.optString("location", null).takeIf { it?.isNotBlank() == true },
-            linkUrl = obj.optString("link_url", null).takeIf { it?.isNotBlank() == true },
+            audience = obj.cleanString("audience", "Everyone"),
+            category = obj.cleanString("category", "Campus Life"),
+            location = obj.cleanString("location").takeIf { it.isNotBlank() },
+            linkUrl = obj.cleanString("link_url").takeIf { it.isNotBlank() },
             allowComments = obj.optBoolean("allow_comments", true),
             hideLikes = obj.optBoolean("hide_likes", false),
             isPinned = obj.optBoolean("is_pinned", false),
             isDisappearing = obj.optBoolean("is_disappearing", false),
-            audioTitle = obj.optString("audio_title", null).takeIf { it?.isNotBlank() == true },
-            altText = obj.optString("alt_text", null).takeIf { it?.isNotBlank() == true }
+            audioTitle = obj.cleanString("audio_title").takeIf { it.isNotBlank() },
+            altText = obj.cleanString("alt_text").takeIf { it.isNotBlank() }
         )
     }
+
     private fun parseLeaderboardUser(obj: JSONObject, rank: Int = obj.optInt("rank", 0)): LeaderboardUser {
         val badgeStr = obj.cleanString("verification_badge").uppercase(Locale.US)
         val badge = when (badgeStr) {
