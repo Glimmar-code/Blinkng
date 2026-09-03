@@ -537,7 +537,8 @@ fun MainAppContent(
                 isConnected = uiState.isLiveSupabaseConnected,
                 isLoading = uiState.activitiesLoading,
                 errorMessage = uiState.activitiesError,
-                onRefresh = { viewModel.fetchSupabaseData() }
+                onRefresh = { viewModel.fetchSupabaseData() },
+                onMarkAllRead = { viewModel.markAllActivitiesRead() }
             )
         }
 
