@@ -23,17 +23,14 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Prepare Gradle wrapper
-        run: chmod +x gradlew
-
       - name: Unit tests
-        run: ./gradlew :app:testDebugUnitTest --stacktrace --no-daemon
+        run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
       - name: Android lint
-        run: ./gradlew :app:lintDebug --stacktrace --no-daemon
+        run: gradle :app:lintDebug --stacktrace --no-daemon
 
       - name: Compile instrumentation tests
-        run: ./gradlew :app:assembleDebugAndroidTest --stacktrace --no-daemon
+        run: gradle :app:assembleDebugAndroidTest --stacktrace --no-daemon
 
       - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
