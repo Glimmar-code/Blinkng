@@ -387,6 +387,7 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+
     suspend fun refreshMyProfileFromSupabase(showErrorToast: Boolean = true) {
         try {
             val userId = supabaseService.getCurrentUserId()
