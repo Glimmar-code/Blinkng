@@ -16,6 +16,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.*
 import com.example.auth.AccountSessionStore
@@ -290,8 +291,10 @@ fun MainAppContent(
                         onToggleTheme = { viewModel.toggleDarkMode() },
                         isServerConnected = uiState.isLiveSupabaseConnected,
                         isLoading = uiState.isFeedLoading,
+                        isRefreshing = uiState.isRefreshingContent,
                         errorMessage = uiState.feedErrorMessage,
-                        onRetry = { viewModel.fetchSupabaseData() },
+                        onRefresh = { viewModel.refreshContent() },
+                        onRetry = { viewModel.refreshContent() },
                         onViewedPost = { viewModel.recordPostView(it) },
                         onVotePoll = { postId, optId -> viewModel.votePoll(postId, optId) },
                         onDirectMessage = { partner, partnerName, partnerAvatar ->
@@ -355,11 +358,18 @@ fun MainAppContent(
                         onSendMessage = { partner, text -> viewModel.sendMessage(partner, text) },
                         onProfileClick = { viewModel.openProfile(it) },
                         isDark = uiState.isDarkMode,
-                        isConnected = uiState.isLiveSupabaseConnected
+                        isConnected = uiState.isOnline
                     )
                 }
             }
         }
+
+        OfflineConnectionBanner(
+            visible = !uiState.isOnline,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .zIndex(30f)
+        )
 
         // Floating Bottom Nav (Visible on all main tabs, auto-hides on feed scroll down, re-appears on scroll up)
         val shouldShowBottomBar = uiState.viewingProduct == null &&

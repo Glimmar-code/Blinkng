@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,6 +39,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -64,12 +67,17 @@ import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.models.LeaderboardUser
 import com.example.ui.components.PostCard
+import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.components.StoryBar
+import com.example.ui.components.shimmerBackground
 import com.example.ui.theme.BlinkBlack
 import com.example.ui.theme.BlinkCream
 import com.example.ui.theme.BlinkPink
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    ExperimentalMaterial3Api::class
+)
 @Composable
 fun FeedScreen(
     posts: List<FeedPost>,
@@ -97,7 +105,9 @@ fun FeedScreen(
     onToggleTheme: () -> Unit,
     isServerConnected: Boolean = true,
     isLoading: Boolean = false,
+    isRefreshing: Boolean = false,
     errorMessage: String? = null,
+    onRefresh: () -> Unit = {},
     onRetry: () -> Unit = {},
     onViewedPost: (String) -> Unit = {},
     onVotePoll: (postId: String, optionId: String) -> Unit = { _, _ -> },
@@ -110,6 +120,7 @@ fun FeedScreen(
 ) {
     val selectedTopTab = currentSubTab
     val listState = rememberLazyListState()
+    val pullToRefreshState = rememberPullToRefreshState()
     val bottomBarVisibility by rememberUpdatedState(onBottomBarVisibilityChange)
 
     val nestedScrollConnection = remember {
@@ -154,6 +165,9 @@ fun FeedScreen(
                 onDelete = onDeletePost,
                 onProfileClick = onProfileClick,
                 onBackToPosts = { navigate(0) },
+                isLoading = isLoading,
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
                 onHomeClick = { navigate(0) },
                 onConnectClick = { navigate(2) },
                 onGameClick = { navigate(3) }
@@ -190,21 +204,34 @@ fun FeedScreen(
             )
 
             else -> {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .nestedScroll(nestedScrollConnection),
-                    contentPadding = PaddingValues(bottom = 92.dp)
-                ) {
-                    item {
-                        HomeHeader(
-                            userAvatar = userAvatar,
-                            onMenuClick = onOpenMenu,
-                            onNotificationClick = onOpenActivity,
-                            onProfileClick = { onProfileClick("you") }
+                PullToRefreshBox(
+                    isRefreshing = isRefreshing,
+                    onRefresh = onRefresh,
+                    state = pullToRefreshState,
+                    modifier = Modifier.fillMaxSize(),
+                    indicator = {
+                        PremiumPullRefreshIndicator(
+                            state = pullToRefreshState,
+                            isRefreshing = isRefreshing,
+                            modifier = Modifier.align(Alignment.TopCenter)
                         )
                     }
+                ) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .nestedScroll(nestedScrollConnection),
+                        contentPadding = PaddingValues(bottom = 92.dp)
+                    ) {
+                        item {
+                            HomeHeader(
+                                userAvatar = userAvatar,
+                                onMenuClick = onOpenMenu,
+                                onNotificationClick = onOpenActivity,
+                                onProfileClick = { onProfileClick("you") }
+                            )
+                        }
 
                     item {
                         TopNavigation(
@@ -216,15 +243,11 @@ fun FeedScreen(
                         )
                     }
 
-                    if (!isServerConnected) {
-                        item(key = "offline_banner") {
-                            FeedConnectionNotice(onRetry = onRetry)
+                        if (!errorMessage.isNullOrBlank() && posts.isNotEmpty()) {
+                            item(key = "stale_feed_banner") {
+                                FeedRefreshNotice(onRetry = onRetry)
+                            }
                         }
-                    } else if (!errorMessage.isNullOrBlank() && posts.isNotEmpty()) {
-                        item(key = "stale_feed_banner") {
-                            FeedRefreshNotice(onRetry = onRetry)
-                        }
-                    }
 
                     item {
                         Spacer(Modifier.height(6.dp))
@@ -261,24 +284,29 @@ fun FeedScreen(
 
                         else -> {
                             items(items = posts, key = { it.id }) { post ->
-                                PostCard(
-                                    post = post,
-                                    isDark = isDark,
-                                    onLike = { onLikePost(post.id) },
-                                    onComment = { onCommentPost(post.id) },
-                                    onBookmark = { onBookmarkPost(post.id) },
-                                    onShare = { onSharePost(post.id) },
-                                    onOptionsClick = { onOptionsClick(post) },
-                                    onProfileClick = onProfileClick,
-                                    isAuthor = post.author.equals(currentUsername, true),
-                                    onDelete = { onDeletePost(post.id) },
-                                    onViewed = { onViewedPost(post.id) },
-                                    onVotePoll = onVotePoll
-                                )
-                                Spacer(Modifier.height(8.dp))
+                                Box(Modifier.animateItem()) {
+                                    Column {
+                                        PostCard(
+                                            post = post,
+                                            isDark = isDark,
+                                            onLike = { onLikePost(post.id) },
+                                            onComment = { onCommentPost(post.id) },
+                                            onBookmark = { onBookmarkPost(post.id) },
+                                            onShare = { onSharePost(post.id) },
+                                            onOptionsClick = { onOptionsClick(post) },
+                                            onProfileClick = onProfileClick,
+                                            isAuthor = post.author.equals(currentUsername, true),
+                                            onDelete = { onDeletePost(post.id) },
+                                            onViewed = { onViewedPost(post.id) },
+                                            onVotePoll = onVotePoll
+                                        )
+                                        Spacer(Modifier.height(8.dp))
+                                    }
+                                }
                             }
                         }
                     }
+                }
                 }
 
                 FloatingActionButton(
@@ -503,6 +531,8 @@ private fun FeedRefreshNotice(onRetry: () -> Unit) {
 
 @Composable
 private fun FeedLoadingCard() {
+    val shimmerBase = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f)
+    val shimmerHighlight = MaterialTheme.colorScheme.onSurface.copy(alpha = .12f)
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -519,8 +549,7 @@ private fun FeedLoadingCard() {
                 Box(
                     Modifier
                         .size(42.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .shimmerBackground(CircleShape, shimmerBase, shimmerHighlight)
                 )
                 Spacer(Modifier.width(10.dp))
                 Column {
@@ -528,16 +557,14 @@ private fun FeedLoadingCard() {
                         Modifier
                             .width(120.dp)
                             .height(12.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .shimmerBackground(RoundedCornerShape(8.dp), shimmerBase, shimmerHighlight)
                     )
                     Spacer(Modifier.height(7.dp))
                     Box(
                         Modifier
                             .width(78.dp)
                             .height(9.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .shimmerBackground(RoundedCornerShape(8.dp), shimmerBase, shimmerHighlight)
                     )
                 }
             }
@@ -548,24 +575,21 @@ private fun FeedLoadingCard() {
                 Modifier
                     .fillMaxWidth(.9f)
                     .height(12.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .shimmerBackground(RoundedCornerShape(8.dp), shimmerBase, shimmerHighlight)
             )
             Spacer(Modifier.height(8.dp))
             Box(
                 Modifier
                     .fillMaxWidth(.68f)
                     .height(12.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .shimmerBackground(RoundedCornerShape(8.dp), shimmerBase, shimmerHighlight)
             )
             Spacer(Modifier.height(16.dp))
             Box(
                 Modifier
                     .fillMaxWidth()
                     .height(170.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f))
+                    .shimmerBackground(RoundedCornerShape(14.dp), shimmerBase, shimmerHighlight)
             )
         }
     }

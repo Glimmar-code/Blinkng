@@ -7,10 +7,15 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,10 +39,15 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.example.data.models.FeedPost
+import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.components.formatNumber
+import com.example.ui.components.shimmerBackground
 import com.example.ui.theme.BlinkPink
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    ExperimentalMaterial3Api::class
+)
 @Composable
 fun VideoReelsScreen(
     reels: List<FeedPost>,
@@ -50,33 +60,139 @@ fun VideoReelsScreen(
     onDelete: (String) -> Unit,
     onProfileClick: (String) -> Unit,
     onBackToPosts: () -> Unit,
+    isLoading: Boolean = false,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     onHomeClick: () -> Unit = onBackToPosts,
     onConnectClick: () -> Unit = {},
     onGameClick: () -> Unit = {}
 ) {
-    if(reels.isEmpty()){
-        Box(Modifier.fillMaxSize().background(Color.Black),contentAlignment=Alignment.Center){
-            Column(horizontalAlignment=Alignment.CenterHorizontally){Icon(Icons.Default.VideoLibrary,null,tint=Color.White.copy(alpha=.65f),modifier=Modifier.size(54.dp));Spacer(Modifier.height(12.dp));Text("No live reels yet",color=Color.White,fontWeight=FontWeight.Bold);Text("Reels uploaded to Supabase will appear here.",color=Color.White.copy(alpha=.65f),fontSize=11.sp);TextButton(onClick=onBackToPosts){Text("Back to Home")}}
-        };return
-    }
-    val pager=rememberPagerState(pageCount={reels.size})
-    Box(Modifier.fillMaxSize().background(Color.Black)){
-        VerticalPager(state = pager, modifier = Modifier.fillMaxSize()) { index ->
-            val reel = reels[index]
-            ReelPage(
-                reel = reel,
-                isActive = index == pager.currentPage,
-                isAuthor = reel.author.equals(currentUsername, ignoreCase = true),
-                onLike = onLike,
-                onComment = onComment,
-                onBookmark = onBookmark,
-                onShare = onShare,
-                onDelete = onDelete,
-                onProfileClick = onProfileClick
+    val pullToRefreshState = rememberPullToRefreshState()
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        state = pullToRefreshState,
+        modifier = Modifier.fillMaxSize().background(Color.Black),
+        indicator = {
+            PremiumPullRefreshIndicator(
+                state = pullToRefreshState,
+                isRefreshing = isRefreshing,
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
+                darkSurface = true
             )
         }
-        Row(Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top=10.dp),verticalAlignment=Alignment.CenterVertically){Text("Following",color=Color.White.copy(alpha=.62f),fontWeight=FontWeight.SemiBold,fontSize=14.sp);Spacer(Modifier.width(20.dp));Column(horizontalAlignment=Alignment.CenterHorizontally){Text("For You",color=Color.White,fontWeight=FontWeight.Black,fontSize=15.sp);Spacer(Modifier.height(4.dp));Box(Modifier.width(24.dp).height(2.dp).background(Color.White,CircleShape))}}
-        IconButton(onClick=onBackToPosts,modifier=Modifier.align(Alignment.TopStart).statusBarsPadding().padding(4.dp)){Icon(Icons.Default.ArrowBack,"Back",tint=Color.White)}
+    ) {
+        when {
+            reels.isEmpty() && isLoading -> ReelsLoadingSkeleton()
+            reels.isEmpty() -> {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black)
+                        .verticalScroll(rememberScrollState()),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.VideoLibrary,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = .65f),
+                            modifier = Modifier.size(54.dp)
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text("No live reels yet", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(
+                            "Drag down to check for new reels.",
+                            color = Color.White.copy(alpha = .65f),
+                            fontSize = 11.sp
+                        )
+                        TextButton(onClick = onBackToPosts) { Text("Back to Home") }
+                    }
+                }
+            }
+            else -> {
+                val pager = rememberPagerState(pageCount = { reels.size })
+                Box(Modifier.fillMaxSize().background(Color.Black)) {
+                    VerticalPager(
+                        state = pager,
+                        key = { index -> reels[index].id },
+                        beyondViewportPageCount = 1,
+                        modifier = Modifier.fillMaxSize()
+                    ) { index ->
+                        val reel = reels[index]
+                        ReelPage(
+                            reel = reel,
+                            isActive = index == pager.currentPage,
+                            isAuthor = reel.author.equals(currentUsername, ignoreCase = true),
+                            onLike = onLike,
+                            onComment = onComment,
+                            onBookmark = onBookmark,
+                            onShare = onShare,
+                            onDelete = onDelete,
+                            onProfileClick = onProfileClick
+                        )
+                    }
+                    Row(
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .statusBarsPadding()
+                            .padding(top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Following", color = Color.White.copy(alpha = .62f), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Spacer(Modifier.width(20.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("For You", color = Color.White, fontWeight = FontWeight.Black, fontSize = 15.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Box(Modifier.width(24.dp).height(2.dp).background(Color.White, CircleShape))
+                        }
+                    }
+                    IconButton(
+                        onClick = onBackToPosts,
+                        modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(4.dp)
+                    ) {
+                        Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReelsLoadingSkeleton() {
+    val base = Color(0xFF171717)
+    val highlight = Color(0xFF343434)
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(bottom = 130.dp)
+                .shimmerBackground(RoundedCornerShape(0.dp), base, highlight)
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .navigationBarsPadding()
+                .padding(start = 16.dp, end = 100.dp, bottom = 26.dp)
+        ) {
+            Box(Modifier.width(112.dp).height(14.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
+            Spacer(Modifier.height(10.dp))
+            Box(Modifier.fillMaxWidth(.82f).height(11.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
+            Spacer(Modifier.height(7.dp))
+            Box(Modifier.fillMaxWidth(.58f).height(11.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
+        }
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 14.dp, bottom = 40.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            repeat(5) {
+                Box(Modifier.size(42.dp).shimmerBackground(CircleShape, base, highlight))
+                Spacer(Modifier.height(18.dp))
+            }
+        }
     }
 }
 @Composable

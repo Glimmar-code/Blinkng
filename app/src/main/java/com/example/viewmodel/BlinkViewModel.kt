@@ -7,7 +7,9 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.auth.AccountSessionStore
+import com.example.data.local.OfflineContentStore
 import com.example.data.models.*
+import com.example.data.network.NetworkMonitor
 import com.example.data.repository.*
 import com.example.data.supabase.RealtimeEvent
 import com.example.data.supabase.SupabaseRealtimeManager
@@ -22,7 +24,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
@@ -67,8 +72,11 @@ data class BlinkUiState(
     val comments: List<Comment> = emptyList(),
     val mutedUsers: Set<String> = emptySet(),
     val feedSubTab: Int = 0,
+    val isOnline: Boolean = true,
     val isLiveSupabaseConnected: Boolean = false,
     val isFeedLoading: Boolean = true,
+    val isRefreshingContent: Boolean = false,
+    val isSyncingContent: Boolean = false,
     val feedErrorMessage: String? = null,
     val isCreatingPost: Boolean = false
 )
@@ -101,6 +109,10 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     val marketRepository = MarketRepository(supabaseService)
     val chatRepository = ChatRepository(supabaseService)
     val realtimeManager = SupabaseRealtimeManager.getInstance()
+    private val offlineContentStore = OfflineContentStore(appContext)
+    private val networkMonitor = NetworkMonitor(appContext)
+    private val syncMutex = Mutex()
+    private val cacheWriteMutex = Mutex()
     private val _uiState = MutableStateFlow(BlinkUiState())
     val uiState: StateFlow<BlinkUiState> = _uiState.asStateFlow()
     private val _snackBarMessages = MutableSharedFlow<String>(extraBufferCapacity = 10)
@@ -108,9 +120,11 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         SupabaseService.initialize(appContext)
+        _uiState.value = _uiState.value.copy(isOnline = networkMonitor.isCurrentlyOnline())
+        observeCachedContent()
+        observeNetworkStatus()
         observeAuthState()
         viewModelScope.launch { restoreSupabaseSession() }
-        startServerStatusMonitoring()
         loadDraftsFromPrefs()
         viewModelScope.launch { realtimeManager.events.collect { handleRealtimeEvent(it) } }
     }
@@ -160,6 +174,7 @@ private suspend fun restoreSupabaseSession() {
                     if (profile != null) {
                         _uiState.value = _uiState.value.copy(myProfile = profile, destination = AppDestination.MAIN)
                         saveLocalProfile(profile)
+                        persistProfile(profile)
                         authRepository.markAuthenticated(profile)
                         fetchSupabaseData()
                         return
@@ -248,139 +263,250 @@ private suspend fun restoreSupabaseSession() {
 
     private fun saveSession(profile: UserProfile) = saveLocalProfile(profile)
 
-    private fun startServerStatusMonitoring() {
+    private fun observeCachedContent() {
         viewModelScope.launch {
-            while (true) {
-                _uiState.value = _uiState.value.copy(isLiveSupabaseConnected = runCatching { supabaseService.checkServerStatus() }.getOrDefault(false))
-                delay(15_000L)
+            offlineContentStore.posts.collectLatest { cachedPosts ->
+                if (cachedPosts.isNotEmpty()) {
+                    _uiState.value = _uiState.value.copy(
+                        posts = cachedPosts,
+                        isFeedLoading = false
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            offlineContentStore.reels.collectLatest { cachedReels ->
+                if (cachedReels.isNotEmpty()) {
+                    _uiState.value = _uiState.value.copy(
+                        reels = cachedReels,
+                        isFeedLoading = false
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            offlineContentStore.profiles.collectLatest { cachedProfiles ->
+                if (cachedProfiles.isNotEmpty()) {
+                    _uiState.value = _uiState.value.copy(profiles = cachedProfiles)
+                }
             }
         }
     }
 
-    fun fetchSupabaseData() {
+    private fun observeNetworkStatus() {
         viewModelScope.launch {
-            val before = _uiState.value
-            val hadFeed = before.posts.isNotEmpty() || before.reels.isNotEmpty()
+            var previousStatus: Boolean? = null
+            networkMonitor.isOnline.collectLatest { online ->
+                val connectionRestored = previousStatus == false && online
+                previousStatus = online
+                _uiState.value = _uiState.value.copy(
+                    isOnline = online,
+                    isLiveSupabaseConnected = if (online) {
+                        _uiState.value.isLiveSupabaseConnected
+                    } else {
+                        false
+                    },
+                    isFeedLoading = if (online) {
+                        _uiState.value.isFeedLoading
+                    } else {
+                        false
+                    }
+                )
 
-            _uiState.value = before.copy(
-                isFeedLoading = !hadFeed,
-                feedErrorMessage = null
-            )
-
-            val feedResult = runCatching { supabaseService.fetchFeedPosts() }
-                .onFailure { Log.e(TAG, "Feed fetch failed", it) }
-
-            val fetched = feedResult.getOrNull()
-            val normalPosts = fetched
-                ?.filter { !it.isReel && it.videoUrl.isNullOrBlank() }
-                ?.distinctBy { it.id }
-                ?: before.posts
-            val fetchedReels = fetched
-                ?.filter { it.isReel || !it.videoUrl.isNullOrBlank() }
-                ?.distinctBy { it.id }
-                ?: before.reels
-
-            _uiState.value = _uiState.value.copy(
-                posts = normalPosts,
-                reels = fetchedReels,
-                isLiveSupabaseConnected = feedResult.isSuccess,
-                isFeedLoading = false,
-                feedErrorMessage = feedResult.exceptionOrNull()?.let {
-                    "Couldn't refresh live Supabase data. Check your connection and try again."
+                if (connectionRestored && _uiState.value.destination == AppDestination.MAIN) {
+                    fetchSupabaseData()
                 }
-            )
-
-            val liveProfiles = runCatching { supabaseService.fetchProfiles() }
-                .onFailure { Log.e(TAG, "Profiles fetch failed", it) }
-                .getOrDefault(before.profiles)
-                .filter { it.username.isNotBlank() }
-                .distinctBy { it.id.ifBlank { it.username.lowercase() } }
-
-            val market = runCatching { supabaseService.fetchMarketItems() }
-                .onFailure { Log.e(TAG, "Market fetch failed", it) }
-                .getOrDefault(before.marketItems)
-
-            val conversations = runCatching {
-                MessageMediaService.hydrateVideos(supabaseService.fetchMessages())
             }
-                .onFailure { Log.e(TAG, "Message fetch failed", it) }
-                .getOrDefault(before.conversations)
+        }
+    }
 
-            val leaderboard = runCatching { supabaseService.fetchLeaderboard() }
-                .onFailure { Log.e(TAG, "Leaderboard fetch failed", it) }
-                .getOrDefault(before.leaderboardUsers)
-
-            val cloudStories = runCatching { supabaseService.fetchStories() }
-                .onFailure { Log.e(TAG, "Stories fetch failed", it) }
-                .getOrDefault(before.stories.filterNot { it.id == "story_me" })
-
-            val myProfile = _uiState.value.myProfile
-            val userStoryHeader = Story(
-                id = "story_me",
-                username = "Your Story",
-                avatar = myProfile.avatarUrl,
-                hasUnseen = false,
-                isUser = true
-            )
-
-            val mine = cloudStories.filter {
-                it.isUser || it.username.equals(myProfile.username, true)
+    private fun persistCurrentFeed() {
+        val snapshot = _uiState.value
+        viewModelScope.launch(Dispatchers.IO) {
+            cacheWriteMutex.withLock {
+                runCatching {
+                    offlineContentStore.replaceFeed(snapshot.posts, snapshot.reels)
+                }.onFailure { Log.w(TAG, "Unable to persist the current feed snapshot", it) }
             }
-            val others = cloudStories.filter {
-                !it.isUser && !it.username.equals(myProfile.username, true)
+        }
+    }
+
+    private fun persistProfile(profile: UserProfile) {
+        viewModelScope.launch(Dispatchers.IO) {
+            cacheWriteMutex.withLock {
+                runCatching { offlineContentStore.upsertProfile(profile) }
+                    .onFailure { Log.w(TAG, "Unable to persist profile ${profile.username}", it) }
             }
-            val mergedStories = if (mine.isNotEmpty()) {
-                mine + others
-            } else {
-                listOf(userStoryHeader) + others
+        }
+    }
+
+    fun fetchSupabaseData(showRefreshIndicator: Boolean = false) {
+        viewModelScope.launch {
+            if (!_uiState.value.isOnline) {
+                _uiState.value = _uiState.value.copy(
+                    isFeedLoading = false,
+                    isRefreshingContent = false,
+                    isSyncingContent = false,
+                    isLiveSupabaseConnected = false
+                )
+                if (showRefreshIndicator) {
+                    showToast("You're offline. Showing saved content.")
+                }
+                return@launch
             }
 
-            _uiState.value = _uiState.value.copy(
-                profiles = liveProfiles,
-                posts = normalPosts,
-                reels = fetchedReels,
-                marketItems = market,
-                conversations = conversations,
-                leaderboardUsers = leaderboard,
-                stories = mergedStories,
-                activitiesLoading = true,
-                activitiesError = null
-            )
+            syncMutex.withLock {
+                val before = _uiState.value
+                val hadFeed = before.posts.isNotEmpty() || before.reels.isNotEmpty()
 
-            runCatching { supabaseService.fetchActivities() }
-                .onSuccess { result ->
-                    result.fold(
-                        { activities ->
-                            _uiState.value = _uiState.value.copy(
-                                activities = activities,
-                                activitiesLoading = false
+                _uiState.value = before.copy(
+                    isFeedLoading = !hadFeed && !showRefreshIndicator,
+                    isRefreshingContent = showRefreshIndicator,
+                    isSyncingContent = true,
+                    feedErrorMessage = null
+                )
+
+                try {
+                    val feedResult = runCatching { supabaseService.fetchFeedPosts() }
+                        .onFailure { Log.e(TAG, "Feed fetch failed", it) }
+
+                    val fetched = feedResult.getOrNull()
+                    val normalPosts = fetched
+                        ?.filter { !it.isReel && it.videoUrl.isNullOrBlank() }
+                        ?.distinctBy { it.id }
+                        ?: before.posts
+                    val fetchedReels = fetched
+                        ?.filter { it.isReel || !it.videoUrl.isNullOrBlank() }
+                        ?.distinctBy { it.id }
+                        ?: before.reels
+
+                    _uiState.value = _uiState.value.copy(
+                        posts = normalPosts,
+                        reels = fetchedReels,
+                        isLiveSupabaseConnected = feedResult.isSuccess,
+                        isFeedLoading = false,
+                        feedErrorMessage = feedResult.exceptionOrNull()?.let {
+                            "Couldn't refresh live Supabase data. Check your connection and try again."
+                        }
+                    )
+
+                    if (feedResult.isSuccess) {
+                        cacheWriteMutex.withLock {
+                            runCatching {
+                                offlineContentStore.replaceFeed(normalPosts, fetchedReels)
+                            }.onFailure { Log.w(TAG, "Feed cache update failed", it) }
+                        }
+                    }
+
+                    val profilesResult = runCatching { supabaseService.fetchProfiles() }
+                        .onFailure { Log.e(TAG, "Profiles fetch failed", it) }
+                    val liveProfiles = profilesResult
+                        .getOrDefault(before.profiles)
+                        .filter { it.username.isNotBlank() }
+                        .distinctBy { it.id.ifBlank { it.username.lowercase() } }
+
+                    if (profilesResult.isSuccess) {
+                        cacheWriteMutex.withLock {
+                            runCatching { offlineContentStore.replaceProfiles(liveProfiles) }
+                                .onFailure { Log.w(TAG, "Profile cache update failed", it) }
+                        }
+                    }
+
+                    val market = runCatching { supabaseService.fetchMarketItems() }
+                        .onFailure { Log.e(TAG, "Market fetch failed", it) }
+                        .getOrDefault(before.marketItems)
+
+                    val conversations = runCatching {
+                        MessageMediaService.hydrateVideos(supabaseService.fetchMessages())
+                    }
+                        .onFailure { Log.e(TAG, "Message fetch failed", it) }
+                        .getOrDefault(before.conversations)
+
+                    val leaderboard = runCatching { supabaseService.fetchLeaderboard() }
+                        .onFailure { Log.e(TAG, "Leaderboard fetch failed", it) }
+                        .getOrDefault(before.leaderboardUsers)
+
+                    val cloudStories = runCatching { supabaseService.fetchStories() }
+                        .onFailure { Log.e(TAG, "Stories fetch failed", it) }
+                        .getOrDefault(before.stories.filterNot { it.id == "story_me" })
+
+                    val myProfile = _uiState.value.myProfile
+                    val userStoryHeader = Story(
+                        id = "story_me",
+                        username = "Your Story",
+                        avatar = myProfile.avatarUrl,
+                        hasUnseen = false,
+                        isUser = true
+                    )
+
+                    val mine = cloudStories.filter {
+                        it.isUser || it.username.equals(myProfile.username, true)
+                    }
+                    val others = cloudStories.filter {
+                        !it.isUser && !it.username.equals(myProfile.username, true)
+                    }
+                    val mergedStories = if (mine.isNotEmpty()) {
+                        mine + others
+                    } else {
+                        listOf(userStoryHeader) + others
+                    }
+
+                    _uiState.value = _uiState.value.copy(
+                        profiles = liveProfiles,
+                        posts = normalPosts,
+                        reels = fetchedReels,
+                        marketItems = market,
+                        conversations = conversations,
+                        leaderboardUsers = leaderboard,
+                        stories = mergedStories,
+                        activitiesLoading = true,
+                        activitiesError = null
+                    )
+
+                    runCatching { supabaseService.fetchActivities() }
+                        .onSuccess { result ->
+                            result.fold(
+                                { activities ->
+                                    _uiState.value = _uiState.value.copy(
+                                        activities = activities,
+                                        activitiesLoading = false
+                                    )
+                                },
+                                { error ->
+                                    _uiState.value = _uiState.value.copy(
+                                        activitiesLoading = false,
+                                        activitiesError = error.message
+                                    )
+                                }
                             )
-                        },
-                        { error ->
+                        }
+                        .onFailure { error ->
                             _uiState.value = _uiState.value.copy(
                                 activitiesLoading = false,
                                 activitiesError = error.message
                             )
                         }
-                    )
-                }
-                .onFailure { error ->
-                    _uiState.value = _uiState.value.copy(
-                        activitiesLoading = false,
-                        activitiesError = error.message
-                    )
-                }
 
-            val curUser = supabaseService.getCurrentUsername() ?: myProfile.username
-            val curUid = supabaseService.getCurrentUserId() ?: ""
-            if (curUid.isNotBlank() && myProfile.username.isNotBlank()) {
-                AccountSessionStore.recordCurrentSession(appContext, curUid, myProfile.username, myProfile.fullName, myProfile.email.value, myProfile.avatarUrl)
-            }
-            if (curUser.isNotBlank() || curUid.isNotBlank()) {
-                realtimeManager.connect(curUser, curUid)
+                    val curUser = supabaseService.getCurrentUsername() ?: myProfile.username
+                    val curUid = supabaseService.getCurrentUserId() ?: ""
+                    if (curUid.isNotBlank() && myProfile.username.isNotBlank()) {
+                        AccountSessionStore.recordCurrentSession(appContext, curUid, myProfile.username, myProfile.fullName, myProfile.email.value, myProfile.avatarUrl)
+                    }
+                    if (curUser.isNotBlank() || curUid.isNotBlank()) {
+                        realtimeManager.connect(curUser, curUid)
+                    }
+                } finally {
+                    _uiState.value = _uiState.value.copy(
+                        isFeedLoading = false,
+                        isRefreshingContent = false,
+                        isSyncingContent = false
+                    )
+                }
             }
         }
     }
+
+    fun refreshContent() = fetchSupabaseData(showRefreshIndicator = true)
 
     fun refreshLeaderboard() {
         viewModelScope.launch {
@@ -404,6 +530,7 @@ private suspend fun restoreSupabaseSession() {
             profileRepository.fetchById(userId)?.let { profile ->
                 _uiState.value = _uiState.value.copy(myProfile = profile)
                 saveLocalProfile(profile)
+                persistProfile(profile)
             }
         } catch (e: Exception) {
             Log.e(TAG, "refreshMyProfileFromSupabase failed", e)
@@ -521,12 +648,38 @@ private suspend fun restoreSupabaseSession() {
         return clean.equals("you", true) || clean.equals("me", true) || clean.equals(myUser, true) || clean.equals(myName, true) || clean.equals(myId, true) || clean.replace(" ", ".").equals(myUser, true) || myUser.replace(".", " ").equals(clean, true)
     }
 
+    private fun cachedProfile(identifier: String): UserProfile? {
+        val clean = identifier.trim().removePrefix("@")
+        return _uiState.value.profiles.firstOrNull {
+            it.username.equals(clean, true) ||
+                it.id.equals(clean, true) ||
+                it.fullName.equals(clean, true)
+        }
+    }
+
     fun openProfile(username: String) {
         if (isMe(username)) { _uiState.value = _uiState.value.copy(viewingProfile = _uiState.value.myProfile); return }
+        val cached = cachedProfile(username)
+        if (cached != null) {
+            _uiState.value = _uiState.value.copy(viewingProfile = cached)
+        }
+        if (!_uiState.value.isOnline) {
+            if (cached == null) showToast("That profile is not saved on this device yet.")
+            return
+        }
         viewModelScope.launch {
             val remoteProfile = profileRepository.fetchByUsername(username)
-            if (remoteProfile != null) { _uiState.value = _uiState.value.copy(viewingProfile = remoteProfile); return@launch }
-            showToast("User @${username.removePrefix("@")} was not found.")
+            if (remoteProfile != null) {
+                _uiState.value = _uiState.value.copy(
+                    viewingProfile = remoteProfile,
+                    profiles = listOf(remoteProfile) + _uiState.value.profiles.filterNot {
+                        it.id == remoteProfile.id || it.username.equals(remoteProfile.username, true)
+                    }
+                )
+                persistProfile(remoteProfile)
+                return@launch
+            }
+            if (cached == null) showToast("User @${username.removePrefix("@")} was not found.")
         }
     }
 
@@ -535,11 +688,31 @@ private suspend fun restoreSupabaseSession() {
             _uiState.value = _uiState.value.copy(viewingProfile = _uiState.value.myProfile, isConversationFullScreen = false, activeConversationPartner = null)
             return
         }
+        val cached = cachedProfile(username)
+        if (cached != null) {
+            _uiState.value = _uiState.value.copy(
+                viewingProfile = cached,
+                isConversationFullScreen = false,
+                activeConversationPartner = null
+            )
+        }
+        if (!_uiState.value.isOnline) {
+            if (cached == null) showToast("That profile is not saved on this device yet.")
+            return
+        }
         viewModelScope.launch {
             val remote = profileRepository.fetchByUsername(username)
             if (remote != null) {
-                _uiState.value = _uiState.value.copy(viewingProfile = remote, isConversationFullScreen = false, activeConversationPartner = null)
-            } else {
+                _uiState.value = _uiState.value.copy(
+                    viewingProfile = remote,
+                    isConversationFullScreen = false,
+                    activeConversationPartner = null,
+                    profiles = listOf(remote) + _uiState.value.profiles.filterNot {
+                        it.id == remote.id || it.username.equals(remote.username, true)
+                    }
+                )
+                persistProfile(remote)
+            } else if (cached == null) {
                 showToast("User @${username.removePrefix("@")} was not found.")
             }
         }
@@ -552,7 +725,7 @@ private suspend fun restoreSupabaseSession() {
                 if (profileRepository.updateProfile(updated)) {
                     val authoritative = profileRepository.fetchCurrent(updated.username) ?: updated
                     _uiState.value = _uiState.value.copy(myProfile = authoritative, isEditProfileOpen = false, viewingProfile = if (_uiState.value.viewingProfile?.username?.equals(authoritative.username, true) == true) authoritative else _uiState.value.viewingProfile)
-                    saveLocalProfile(authoritative); updateLocalAuthorData(authoritative); showToast("✅ Profile saved successfully.")
+                    saveLocalProfile(authoritative); persistProfile(authoritative); updateLocalAuthorData(authoritative); showToast("✅ Profile saved successfully.")
                 } else showToast("❌ Failed to update profile.")
             } catch (e: Exception) { Log.e(TAG, "updateProfile error", e); showToast("❌ Failed to update profile: ${e.message}") }
         }
@@ -567,6 +740,7 @@ private suspend fun restoreSupabaseSession() {
             reels = _uiState.value.reels.map { if (it.author.lowercase() in names) it.copy(author = profile.username, authorAvatar = profile.avatarUrl) else it },
             marketItems = _uiState.value.marketItems.map { if (it.sellerUsername.lowercase() in names) it.copy(sellerUsername = profile.username, sellerAvatar = profile.avatarUrl, sellerName = profile.fullName, sellerPhone = profile.phone.value, sellerWhatsapp = profile.whatsapp.value) else it }
         )
+        persistCurrentFeed()
     }
 
     private fun loadDraftsFromPrefs() {
@@ -597,6 +771,7 @@ private suspend fun restoreSupabaseSession() {
             posts = if (post.isReel || !post.videoUrl.isNullOrBlank()) _uiState.value.posts else listOf(post) + _uiState.value.posts,
             reels = if (post.isReel || !post.videoUrl.isNullOrBlank()) listOf(post) + _uiState.value.reels else _uiState.value.reels
         )
+        persistCurrentFeed()
         showToast("✨ Post published")
     }
 
@@ -693,6 +868,7 @@ private suspend fun restoreSupabaseSession() {
                         isCreatePostOpen = false,
                         isCreatingPost = false
                     )
+                    persistCurrentFeed()
                     showToast(if (finalIsReel) "Reel published." else "Post published.")
                 }
             } catch (e: Exception) {
@@ -737,6 +913,7 @@ private suspend fun restoreSupabaseSession() {
         val updatedPosts = _uiState.value.posts.map { if (it.id == postId) { nextLiked = !it.isLiked; nextCount = (it.likes + if (nextLiked) 1 else -1).coerceAtLeast(0); it.copy(isLiked = nextLiked, likes = nextCount) } else it }
         val updatedReels = _uiState.value.reels.map { if (it.id == postId) { nextLiked = !it.isLiked; nextCount = (it.likes + if (nextLiked) 1 else -1).coerceAtLeast(0); it.copy(isLiked = nextLiked, likes = nextCount) } else it }
         _uiState.value = _uiState.value.copy(posts = updatedPosts, reels = updatedReels)
+        persistCurrentFeed()
         viewModelScope.launch {
             val success = runCatching { postRepository.togglePostLike(postId, nextLiked, nextCount) }.getOrDefault(false)
             if (success && nextLiked) {
@@ -744,6 +921,7 @@ private suspend fun restoreSupabaseSession() {
                 if (target != null && target.author.isNotBlank()) supabaseService.recordActivity(target.author, "liked your post", NotificationFilter.LIKES, postId, targetType = "POST")
             } else if (!success) {
                 _uiState.value = _uiState.value.copy(posts = _uiState.value.posts.map { if (it.id == postId) it.copy(isLiked = !nextLiked, likes = (it.likes + if (!nextLiked) 1 else -1).coerceAtLeast(0)) else it }, reels = _uiState.value.reels.map { if (it.id == postId) it.copy(isLiked = !nextLiked, likes = (it.likes + if (!nextLiked) 1 else -1).coerceAtLeast(0)) else it })
+                persistCurrentFeed()
                 showToast("Failed to update like.")
             }
         }
@@ -752,7 +930,8 @@ private suspend fun restoreSupabaseSession() {
     fun toggleBookmark(postId: String) {
         var next = false
         _uiState.value = _uiState.value.copy(posts = _uiState.value.posts.map { if (it.id == postId) { next = !it.isBookmarked; it.copy(isBookmarked = next) } else it }, reels = _uiState.value.reels.map { if (it.id == postId) { next = !it.isBookmarked; it.copy(isBookmarked = next) } else it })
-        viewModelScope.launch { if (!runCatching { postRepository.togglePostBookmark(postId, next) }.getOrDefault(false)) { _uiState.value = _uiState.value.copy(posts = _uiState.value.posts.map { if (it.id == postId) it.copy(isBookmarked = !next) else it }, reels = _uiState.value.reels.map { if (it.id == postId) it.copy(isBookmarked = !next) else it }); showToast("Failed to update bookmark.") } }
+        persistCurrentFeed()
+        viewModelScope.launch { if (!runCatching { postRepository.togglePostBookmark(postId, next) }.getOrDefault(false)) { _uiState.value = _uiState.value.copy(posts = _uiState.value.posts.map { if (it.id == postId) it.copy(isBookmarked = !next) else it }, reels = _uiState.value.reels.map { if (it.id == postId) it.copy(isBookmarked = !next) else it }); persistCurrentFeed(); showToast("Failed to update bookmark.") } }
     }
     fun sharePost(postId: String) {
         viewModelScope.launch {
@@ -765,6 +944,7 @@ private suspend fun restoreSupabaseSession() {
                         if (it.id == postId) it.copy(sharesCount = it.sharesCount + 1) else it
                     }
                 )
+                persistCurrentFeed()
                 showToast("🔗 Post shared.")
             } else {
                 showToast("Couldn't record the share. Please try again.")
@@ -788,6 +968,7 @@ private suspend fun restoreSupabaseSession() {
             reels = reelsBefore.filterNot { it.id == postId },
             activePostOptionsPost = null
         )
+        persistCurrentFeed()
 
         viewModelScope.launch {
             val deleted = runCatching { supabaseService.deleteFeedPost(postId) }.getOrDefault(false)
@@ -795,6 +976,7 @@ private suspend fun restoreSupabaseSession() {
                 showToast(if (target.videoUrl.isNullOrBlank()) "Post deleted." else "Reel deleted.")
             } else {
                 _uiState.value = _uiState.value.copy(posts = postsBefore, reels = reelsBefore)
+                persistCurrentFeed()
                 showToast("Delete failed. Only the owner can delete this content.")
             }
         }
@@ -824,6 +1006,7 @@ private suspend fun restoreSupabaseSession() {
                         !it.isUser && it.username.equals(clean, true)
                     }
                 )
+                persistCurrentFeed()
                 showToast("🔇 @$clean muted.")
             } else {
                 showToast("Couldn't mute @$clean.")
@@ -858,6 +1041,7 @@ private suspend fun restoreSupabaseSession() {
             }
         }
         _uiState.value = _uiState.value.copy(posts = updated)
+        persistCurrentFeed()
 
         val pollState = updated.find { it.id == postId }?.poll ?: return
         viewModelScope.launch(Dispatchers.IO) {
@@ -869,6 +1053,7 @@ private suspend fun restoreSupabaseSession() {
                     showToast("🗳️ Vote recorded.")
                 } else {
                     _uiState.value = _uiState.value.copy(posts = before)
+                    persistCurrentFeed()
                     showToast("Vote wasn't saved. Please try again.")
                 }
             }
@@ -998,6 +1183,7 @@ private suspend fun restoreSupabaseSession() {
                                 it.author.lowercase() !in muted
                         }
                     )
+                    persistCurrentFeed()
                 }
             }
         }
@@ -1212,6 +1398,7 @@ private suspend fun restoreSupabaseSession() {
             val views = supabaseService.recordPostView(postId, _uiState.value.myProfile.username)
             if (views <= 0) return@launch
             _uiState.value = _uiState.value.copy(posts = _uiState.value.posts.map { if (it.id == postId) it.copy(viewsCount = maxOf(it.viewsCount, views)) else it }, reels = _uiState.value.reels.map { if (it.id == postId) it.copy(viewsCount = maxOf(it.viewsCount, views)) else it })
+            persistCurrentFeed()
         }
     }
 
