@@ -373,6 +373,7 @@ fun OnboardingScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SignInScreen(
+    initialIdentifier: String = "",
     onBack: () -> Unit,
     onSignInWithCredentials: (
         emailOrUsername: String,
@@ -387,8 +388,8 @@ fun SignInScreen(
     onSwitchToSignUp: () -> Unit
 ) {
 
-    var emailOrUsername by remember {
-        mutableStateOf("")
+    var emailOrUsername by rememberSaveable(initialIdentifier) {
+        mutableStateOf(initialIdentifier)
     }
 
     var password by remember {
@@ -572,7 +573,7 @@ fun SignInScreen(
                         )
 
                         Text(
-                            "Remember me",
+                            "Keep me signed in",
                             color = DarkTextSecondary,
                             fontSize = 11.5.sp
                         )
