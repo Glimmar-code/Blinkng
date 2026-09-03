@@ -422,7 +422,7 @@ fun StoryBar(
                     )
 
                     Text(
-                        text = "24h",
+                        text = "Live",
                         fontSize = 8.5.sp,
                         color = MaterialTheme
                             .colorScheme
@@ -912,10 +912,7 @@ private fun PremiumStoryItem(
             // ========================================================
 
             androidx.compose.animation.AnimatedVisibility(
-                visible =
-                    story.hasUnseen &&
-                            story.username
-                                .length % 3 == 0,
+                visible = false,
                 enter =
                     fadeIn() +
                             scaleIn(),
