@@ -14,16 +14,38 @@ class PostRepository(
 ) {
     suspend fun fetchFeed(isReel: Boolean? = null): List<FeedPost> = withContext(Dispatchers.IO) {
         try {
-            val allPosts = supabaseService.fetchFeedPosts()
-            if (isReel != null) {
-                allPosts.filter { it.isReel == isReel }
-            } else {
-                allPosts
+            when (isReel) {
+                true -> supabaseService.fetchFeedPage(limit = 30, feedType = "reels")
+                false -> supabaseService.fetchFeedPage(limit = 30, feedType = "posts")
+                null -> supabaseService.fetchFeedPosts()
             }
         } catch (e: Exception) {
             Log.e("PostRepository", "fetchFeed error: ${e.message}")
             emptyList()
         }
+    }
+
+    suspend fun fetchFeedPage(
+        isReel: Boolean,
+        beforeCreatedAt: String? = null,
+        beforeId: String? = null,
+        limit: Int = 30
+    ): List<FeedPost> = withContext(Dispatchers.IO) {
+        supabaseService.fetchFeedPage(
+            limit = limit,
+            beforeCreatedAt = beforeCreatedAt,
+            beforeId = beforeId,
+            feedType = if (isReel) "reels" else "posts"
+        )
+    }
+
+    suspend fun searchPosts(
+        query: String,
+        beforeCreatedAt: String? = null,
+        beforeId: String? = null,
+        limit: Int = 30
+    ): List<FeedPost> = withContext(Dispatchers.IO) {
+        supabaseService.searchFeedPage(query, limit, beforeCreatedAt, beforeId)
     }
 
     suspend fun fetchPostsByUser(username: String, isReel: Boolean? = null): List<FeedPost> = withContext(Dispatchers.IO) {

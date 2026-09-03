@@ -17,6 +17,7 @@ import com.example.data.supabase.SupabaseService
 import com.example.data.supabase.MessageMediaService
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -81,7 +82,14 @@ data class BlinkUiState(
     val isSyncingContent: Boolean = false,
     val feedErrorMessage: String? = null,
     val isCreatingPost: Boolean = false,
-    val pendingMessageCount: Int = 0
+    val pendingMessageCount: Int = 0,
+    val discoverProfiles: List<UserProfile> = emptyList(),
+    val discoverPosts: List<FeedPost> = emptyList(),
+    val isDiscoverSearching: Boolean = false,
+    val hasMorePosts: Boolean = true,
+    val hasMoreReels: Boolean = true,
+    val isLoadingMorePosts: Boolean = false,
+    val isLoadingMoreReels: Boolean = false
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
@@ -117,6 +125,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val networkMonitor = NetworkMonitor(appContext)
     private val syncMutex = Mutex()
     private val cacheWriteMutex = Mutex()
+    private var discoverSearchJob: Job? = null
     private val _uiState = MutableStateFlow(BlinkUiState())
     val uiState: StateFlow<BlinkUiState> = _uiState.asStateFlow()
     private val _snackBarMessages = MutableSharedFlow<String>(extraBufferCapacity = 10)
@@ -398,30 +407,28 @@ private suspend fun restoreSupabaseSession() {
                 )
 
                 try {
-                    val feedResult = runCatching { supabaseService.fetchFeedPosts() }
-                        .onFailure { Log.e(TAG, "Feed fetch failed", it) }
+                    val postsResult = runCatching { postRepository.fetchFeed(isReel = false) }
+                        .onFailure { Log.e(TAG, "Post page fetch failed", it) }
+                    val reelsResult = runCatching { postRepository.fetchFeed(isReel = true) }
+                        .onFailure { Log.e(TAG, "Reel page fetch failed", it) }
 
-                    val fetched = feedResult.getOrNull()
-                    val normalPosts = fetched
-                        ?.filter { !it.isReel && it.videoUrl.isNullOrBlank() }
-                        ?.distinctBy { it.id }
-                        ?: before.posts
-                    val fetchedReels = fetched
-                        ?.filter { it.isReel || !it.videoUrl.isNullOrBlank() }
-                        ?.distinctBy { it.id }
-                        ?: before.reels
+                    val normalPosts = postsResult.getOrDefault(before.posts).distinctBy { it.id }
+                    val fetchedReels = reelsResult.getOrDefault(before.reels).distinctBy { it.id }
+                    val feedSucceeded = postsResult.isSuccess || reelsResult.isSuccess
 
                     _uiState.value = _uiState.value.copy(
                         posts = normalPosts,
                         reels = fetchedReels,
-                        isLiveSupabaseConnected = feedResult.isSuccess,
+                        hasMorePosts = postsResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMorePosts,
+                        hasMoreReels = reelsResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMoreReels,
+                        isLiveSupabaseConnected = feedSucceeded,
                         isFeedLoading = false,
-                        feedErrorMessage = feedResult.exceptionOrNull()?.let {
+                        feedErrorMessage = if (!feedSucceeded) {
                             "Couldn't refresh live Supabase data. Check your connection and try again."
-                        }
+                        } else null
                     )
 
-                    if (feedResult.isSuccess) {
+                    if (feedSucceeded) {
                         cacheWriteMutex.withLock {
                             runCatching {
                                 offlineContentStore.replaceFeed(normalPosts, fetchedReels)
@@ -565,6 +572,89 @@ private suspend fun restoreSupabaseSession() {
     }
 
 
+
+    fun searchDiscover(query: String) {
+        discoverSearchJob?.cancel()
+        val clean = query.trim().removePrefix("#")
+        if (clean.isBlank()) {
+            _uiState.value = _uiState.value.copy(
+                discoverProfiles = emptyList(),
+                discoverPosts = emptyList(),
+                isDiscoverSearching = false
+            )
+            return
+        }
+
+        discoverSearchJob = viewModelScope.launch {
+            delay(280)
+            _uiState.value = _uiState.value.copy(isDiscoverSearching = true)
+            try {
+                val people = profileRepository.searchProfiles(clean)
+                val posts = postRepository.searchPosts(clean, limit = 30)
+                _uiState.value = _uiState.value.copy(
+                    discoverProfiles = people.distinctBy { it.id.ifBlank { it.username.lowercase() } },
+                    discoverPosts = posts.distinctBy { it.id },
+                    isDiscoverSearching = false
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Discover search failed", e)
+                _uiState.value = _uiState.value.copy(isDiscoverSearching = false)
+            }
+        }
+    }
+
+    fun loadMoreFeed(isReel: Boolean) {
+        val state = _uiState.value
+        if (!state.isOnline) return
+        if (isReel && (state.isLoadingMoreReels || !state.hasMoreReels)) return
+        if (!isReel && (state.isLoadingMorePosts || !state.hasMorePosts)) return
+
+        val current = if (isReel) state.reels else state.posts
+        val last = current.lastOrNull() ?: return
+        if (last.createdAt.isBlank()) return
+
+        _uiState.value = if (isReel) {
+            state.copy(isLoadingMoreReels = true)
+        } else {
+            state.copy(isLoadingMorePosts = true)
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                postRepository.fetchFeedPage(
+                    isReel = isReel,
+                    beforeCreatedAt = last.createdAt,
+                    beforeId = last.id,
+                    limit = 30
+                )
+            }.onSuccess { page ->
+                val latest = _uiState.value
+                if (isReel) {
+                    val merged = (latest.reels + page).distinctBy { it.id }
+                    _uiState.value = latest.copy(
+                        reels = merged,
+                        isLoadingMoreReels = false,
+                        hasMoreReels = page.size >= 30
+                    )
+                } else {
+                    val merged = (latest.posts + page).distinctBy { it.id }
+                    _uiState.value = latest.copy(
+                        posts = merged,
+                        isLoadingMorePosts = false,
+                        hasMorePosts = page.size >= 30
+                    )
+                }
+                persistCurrentFeed()
+            }.onFailure {
+                Log.w(TAG, "Load more feed failed", it)
+                _uiState.value = if (isReel) {
+                    _uiState.value.copy(isLoadingMoreReels = false)
+                } else {
+                    _uiState.value.copy(isLoadingMorePosts = false)
+                }
+            }
+        }
+    }
 
     fun refreshConnectHub() {
         viewModelScope.launch {

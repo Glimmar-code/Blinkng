@@ -333,6 +333,12 @@ fun MainAppContent(
                         onDirectMessage = { partner, partnerName, partnerAvatar ->
                             viewModel.openChatWithUser(partner, partnerName, partnerAvatar)
                         },
+                        hasMorePosts = uiState.hasMorePosts,
+                        hasMoreReels = uiState.hasMoreReels,
+                        isLoadingMorePosts = uiState.isLoadingMorePosts,
+                        isLoadingMoreReels = uiState.isLoadingMoreReels,
+                        onLoadMorePosts = { viewModel.loadMoreFeed(false) },
+                        onLoadMoreReels = { viewModel.loadMoreFeed(true) },
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
                         }
@@ -344,6 +350,10 @@ fun MainAppContent(
                         profiles = uiState.profiles,
                         posts = (uiState.posts + uiState.reels).distinctBy { it.id },
                         currentUsername = uiState.myProfile.username,
+                        serverProfiles = uiState.discoverProfiles,
+                        serverPosts = uiState.discoverPosts,
+                        isSearching = uiState.isDiscoverSearching,
+                        onSearchQueryChange = { viewModel.searchDiscover(it) },
                         onProfileClick = { viewModel.openProfile(it) },
                         onPostClick = { viewModel.openCommentsForPost(it.id) },
                         onLikePost = { viewModel.togglePostLike(it) },
