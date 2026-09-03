@@ -94,6 +94,13 @@ class AccountSwitcherActivity : ComponentActivity() {
                             }
                         }
                     }
+                    OutlinedButton(
+                        onClick = {
+                            AccountSessionStore.clear(this@AccountSwitcherActivity)
+                            error = "Saved accounts cleared."
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Forget saved accounts") }
                     Button(onClick = { setResult(Activity.RESULT_CANCELED); finish() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
                 }
             }
