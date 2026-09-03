@@ -61,6 +61,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.data.models.FeedPost
 import com.example.data.models.Story
+import com.example.data.models.UserProfile
+import com.example.data.models.LeaderboardUser
 import com.example.ui.components.PostCard
 import com.example.ui.components.StoryBar
 import com.example.ui.theme.BlinkBlack
@@ -73,6 +75,9 @@ fun FeedScreen(
     posts: List<FeedPost>,
     reels: List<FeedPost>,
     stories: List<Story>,
+    profiles: List<UserProfile>,
+    leaderboardUsers: List<LeaderboardUser>,
+    currentUsername: String,
     userAvatar: String,
     currentSubTab: Int,
     onSubTabChanged: (Int) -> Unit,
@@ -152,6 +157,8 @@ fun FeedScreen(
             )
 
             2 -> ConnectSection(
+                profiles = profiles,
+                currentUsername = currentUsername,
                 userAvatar = userAvatar,
                 isDark = isDark,
                 onOpenMenu = onOpenMenu,
@@ -167,6 +174,7 @@ fun FeedScreen(
 
             3 -> GameSection(
                 userAvatar = userAvatar,
+                leaderboardUsers = leaderboardUsers,
                 isDark = isDark,
                 onOpenMenu = onOpenMenu,
                 onOpenActivity = onOpenActivity,
