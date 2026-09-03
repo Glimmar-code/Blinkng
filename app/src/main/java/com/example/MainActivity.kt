@@ -271,6 +271,39 @@ fun MainAppContent(
                         stories = uiState.stories,
                         profiles = uiState.profiles,
                         leaderboardUsers = uiState.leaderboardUsers,
+                        connectHub = uiState.connectHub,
+                        isConnectHubLoading = uiState.isConnectHubLoading,
+                        connectHubActions = ConnectHubActions(
+                            refresh = { viewModel.refreshConnectHub() },
+                            publishRoommate = { title, description, location, minBudget, maxBudget ->
+                                viewModel.publishRoommateProfile(title, description, location, minBudget, maxBudget)
+                            },
+                            applyRoommate = { viewModel.applyForRoommate(it) },
+                            publishMentor = { subjects, headline, description, mode ->
+                                viewModel.publishMentorProfile(subjects, headline, description, mode)
+                            },
+                            requestMentor = { viewModel.requestMentor(it) },
+                            publishReadingMate = { courses, style, times, location, description ->
+                                viewModel.publishReadingMateProfile(courses, style, times, location, description)
+                            },
+                            requestReadingMate = { viewModel.requestReadingMate(it) },
+                            applyHousingAgent = { businessName, serviceAreas, bio ->
+                                viewModel.applyAsHousingAgent(businessName, serviceAreas, bio)
+                            },
+                            publishHousingRequest = { title, location, minBudget, maxBudget, description ->
+                                viewModel.publishHousingRequest(title, location, minBudget, maxBudget, description)
+                            },
+                            challengeUser = { userId, gameType ->
+                                viewModel.challengeUser(userId, gameType)
+                            },
+                            respondChallenge = { challengeId, accept ->
+                                viewModel.respondToGameChallenge(challengeId, accept)
+                            },
+                            recordGameResult = { gameType, score ->
+                                viewModel.recordGameResult(gameType, score)
+                            },
+                            claimDailySpin = { viewModel.claimDailyGameSpin() }
+                        ),
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
                         currentSubTab = uiState.feedSubTab,
