@@ -1601,16 +1601,24 @@ fun getCurrentUserId(): String? {
         buildList {
             for (i in 0 until postsRaw.length()) {
                 val source = postsRaw.getJSONObject(i)
-                val profile = profiles[source.optString("user_id")]
-                val mapped = JSONObject(source.toString())
-                profile?.let {
-                    mapped.put("author", it.optString("username"))
-                    mapped.put("author_avatar", it.optString("avatar_url"))
-                    mapped.put("username", it.optString("username"))
-                    mapped.put("is_verified", it.optBoolean("is_verified"))
-                    mapped.put("verification_badge", it.optString("verification_badge"))
+                val profile = profiles[source.optString("user_id")] ?: continue
+                val username = profile.optString("username").trim()
+                if (username.isBlank()) continue
+
+                val mapped = JSONObject(source.toString()).apply {
+                    put("author", username)
+                    put("author_avatar", profile.optString("avatar_url"))
+                    put("username", username)
+                    put("is_verified", profile.optBoolean("is_verified"))
+                    put("verification_badge", profile.optString("verification_badge"))
                 }
-                add(parseFeedPost(mapped).copy(isLiked = liked.contains(source.optString("id")), isBookmarked = bookmarked.contains(source.optString("id"))))
+
+                add(
+                    parseFeedPost(mapped).copy(
+                        isLiked = liked.contains(source.optString("id")),
+                        isBookmarked = bookmarked.contains(source.optString("id"))
+                    )
+                )
             }
         }
     }
