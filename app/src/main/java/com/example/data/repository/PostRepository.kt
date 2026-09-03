@@ -143,8 +143,12 @@ suspend fun togglePostLike(
         supabaseService.fetchStories()
     }
 
-    suspend fun createStory(story: Story): Boolean = withContext(Dispatchers.IO) {
-        supabaseService.createStory(story)
+    suspend fun uploadStoryMedia(userId: String, bytes: ByteArray, mimeType: String, isVideo: Boolean): String? = withContext(Dispatchers.IO) {
+        supabaseService.uploadStoryMedia(userId, bytes, mimeType, isVideo)
+    }
+
+    suspend fun createStory(story: Story, isVideo: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+        supabaseService.createStory(story, isVideo)
     }
 
     suspend fun markStoryViewed(storyId: String): Boolean = withContext(Dispatchers.IO) {
