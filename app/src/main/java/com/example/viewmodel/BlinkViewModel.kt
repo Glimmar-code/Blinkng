@@ -69,6 +69,8 @@ data class BlinkUiState(
     val activities: List<ActivityItem> = emptyList(),
     val activitiesLoading: Boolean = false,
     val activitiesError: String? = null,
+    val connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
+    val isConnectHubLoading: Boolean = false,
     val comments: List<Comment> = emptyList(),
     val mutedUsers: Set<String> = emptySet(),
     val feedSubTab: Int = 0,
@@ -108,6 +110,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     val postRepository = PostRepository(supabaseService)
     val marketRepository = MarketRepository(supabaseService)
     val chatRepository = ChatRepository(supabaseService)
+    private val connectHubRepository = ConnectHubRepository(supabaseService)
     val realtimeManager = SupabaseRealtimeManager.getInstance()
     private val offlineContentStore = OfflineContentStore(appContext)
     private val networkMonitor = NetworkMonitor(appContext)
@@ -426,6 +429,10 @@ private suspend fun restoreSupabaseSession() {
                         .onFailure { Log.e(TAG, "Leaderboard fetch failed", it) }
                         .getOrDefault(before.leaderboardUsers)
 
+                    val connectHub = runCatching { connectHubRepository.fetchSnapshot() }
+                        .onFailure { Log.e(TAG, "Connect Hub fetch failed", it) }
+                        .getOrDefault(before.connectHub)
+
                     val cloudStories = runCatching { supabaseService.fetchStories() }
                         .onFailure { Log.e(TAG, "Stories fetch failed", it) }
                         .getOrDefault(before.stories.filterNot { it.id == "story_me" })
@@ -458,6 +465,8 @@ private suspend fun restoreSupabaseSession() {
                         marketItems = market,
                         conversations = conversations,
                         leaderboardUsers = leaderboard,
+                        connectHub = connectHub,
+                        isConnectHubLoading = false,
                         stories = mergedStories,
                         activitiesLoading = true,
                         activitiesError = null
@@ -522,6 +531,138 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+
+
+    fun refreshConnectHub() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isConnectHubLoading = true)
+            runCatching { connectHubRepository.fetchSnapshot() }
+                .onSuccess { snapshot ->
+                    _uiState.value = _uiState.value.copy(
+                        connectHub = snapshot,
+                        isConnectHubLoading = false
+                    )
+                }
+                .onFailure {
+                    Log.e(TAG, "Connect Hub refresh failed", it)
+                    _uiState.value = _uiState.value.copy(isConnectHubLoading = false)
+                    showToast(it.message ?: "Couldn't refresh Connect Hub.")
+                }
+        }
+    }
+
+    private fun runConnectAction(successMessage: String, action: suspend () -> Boolean) {
+        viewModelScope.launch {
+            runCatching { action() }
+                .onSuccess { ok ->
+                    if (ok) {
+                        showToast(successMessage)
+                        refreshConnectHub()
+                    }
+                }
+                .onFailure {
+                    Log.e(TAG, "Connect Hub action failed", it)
+                    showToast(it.message ?: "Connect Hub action failed.")
+                }
+        }
+    }
+
+    fun publishRoommateProfile(
+        title: String,
+        description: String,
+        location: String,
+        budgetMin: Double?,
+        budgetMax: Double?
+    ) = runConnectAction("Roommate profile published.") {
+        connectHubRepository.upsertRoommate(title, description, location, budgetMin, budgetMax)
+    }
+
+    fun applyForRoommate(profileId: String) =
+        runConnectAction("Roommate request sent.") {
+            connectHubRepository.applyRoommate(profileId)
+        }
+
+    fun publishMentorProfile(
+        subjects: List<String>,
+        headline: String,
+        description: String,
+        mode: String = "mentor"
+    ) = runConnectAction("Mentor profile saved.") {
+        connectHubRepository.upsertMentor(mode, subjects, headline, description)
+    }
+
+    fun requestMentor(profileId: String) =
+        runConnectAction("Mentor request sent.") {
+            connectHubRepository.requestMentor(profileId)
+        }
+
+    fun publishReadingMateProfile(
+        courses: List<String>,
+        studyStyle: String,
+        preferredTimes: List<String>,
+        location: String,
+        description: String
+    ) = runConnectAction("Reading-mate profile published.") {
+        connectHubRepository.upsertReadingMate(courses, studyStyle, preferredTimes, location, description)
+    }
+
+    fun requestReadingMate(profileId: String) =
+        runConnectAction("Reading-mate request sent.") {
+            connectHubRepository.requestReadingMate(profileId)
+        }
+
+    fun applyAsHousingAgent(
+        businessName: String,
+        serviceAreas: List<String>,
+        bio: String
+    ) = runConnectAction("Housing-agent application submitted for verification.") {
+        connectHubRepository.applyAsHousingAgent(businessName, serviceAreas, bio)
+    }
+
+    fun publishHousingRequest(
+        title: String,
+        location: String,
+        budgetMin: Double?,
+        budgetMax: Double?,
+        description: String
+    ) = runConnectAction("Housing request published.") {
+        connectHubRepository.createHousingRequest(title, location, budgetMin, budgetMax, description)
+    }
+
+    fun challengeUser(userId: String, gameType: String = "trivia") =
+        runConnectAction("Game challenge sent.") {
+            connectHubRepository.challengeUser(userId, gameType)
+        }
+
+    fun respondToGameChallenge(challengeId: String, accept: Boolean) =
+        runConnectAction(if (accept) "Challenge accepted." else "Challenge declined.") {
+            connectHubRepository.respondToChallenge(challengeId, accept)
+        }
+
+    fun recordGameResult(gameType: String, score: Int) {
+        runConnectAction("Game result synced.") {
+            connectHubRepository.recordGameSession(gameType, score)
+        }
+    }
+
+    fun claimDailyGameSpin() {
+        viewModelScope.launch {
+            connectHubRepository.claimDailySpin().fold(
+                onSuccess = { reward ->
+                    showToast("🎉 ${reward.label}")
+                    refreshConnectHub()
+                },
+                onFailure = { error ->
+                    val message = when {
+                        error.message?.contains("DAILY_SPIN_ALREADY_CLAIMED", true) == true ->
+                            "You've already claimed today's spin."
+                        else -> error.message ?: "Couldn't claim today's spin."
+                    }
+                    showToast(message)
+                }
+            )
+        }
+    }
 
     suspend fun refreshMyProfileFromSupabase(showErrorToast: Boolean = true) {
         try {
