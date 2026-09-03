@@ -95,6 +95,7 @@ fun ProfileScreen(
     onBookmarkPost: (String) -> Unit,
     onSharePost: (String) -> Unit,
     onOptionsClick: (FeedPost) -> Unit,
+    onDeletePost: (String) -> Unit = {},
     onProfileClick: (String) -> Unit,
     onMarketItemClick: (MarketItem) -> Unit,
     onOpenGetVerified: () -> Unit = {},
@@ -713,6 +714,8 @@ fun ProfileScreen(
                                 0 -> ProfilePostsSection(
                                     posts = userPosts,
                                     profile = profile,
+                                    canDelete = isMe,
+                                    onDelete = onDeletePost,
                                     isDark = isDark,
                                     textPrimary = textPrimary,
                                     textSecondary = textSecondary,
@@ -726,6 +729,8 @@ fun ProfileScreen(
 
                                 1 -> FollowerGrowthChart(
                                     profile = profile,
+                                    canDelete = isMe,
+                                    onDelete = onDeletePost,
                                     isDark = isDark,
                                     onOpenGetVerified = onOpenGetVerified,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
@@ -734,6 +739,8 @@ fun ProfileScreen(
                                 2 -> ProfilePostsSection(
                                     posts = likedPosts,
                                     profile = profile,
+                                    canDelete = isMe,
+                                    onDelete = onDeletePost,
                                     isDark = isDark,
                                     textPrimary = textPrimary,
                                     textSecondary = textSecondary,
@@ -751,6 +758,8 @@ fun ProfileScreen(
                                     ProfilePostsSection(
                                         posts = savedPosts,
                                         profile = profile,
+                                        canDelete = isMe,
+                                        onDelete = onDeletePost,
                                         isDark = isDark,
                                         textPrimary = textPrimary,
                                         textSecondary = textSecondary,
@@ -1034,6 +1043,8 @@ private fun AnimatedTabRow(
 private fun ProfilePostsSection(
     posts: List<FeedPost>,
     profile: UserProfile,
+    canDelete: Boolean,
+    onDelete: (String) -> Unit,
     isDark: Boolean,
     textPrimary: Color,
     textSecondary: Color,
@@ -1079,7 +1090,9 @@ private fun ProfilePostsSection(
                     onBookmark = { onBookmark(post.id) },
                     onShare = { onShare(post.id) },
                     onOptionsClick = { onOptions(post) },
-                    onProfileClick = onProfileClick
+                    onProfileClick = onProfileClick,
+                    isAuthor = canDelete && post.author.equals(profile.username, true),
+                    onDelete = { onDelete(post.id) }
                 )
             }
         }
