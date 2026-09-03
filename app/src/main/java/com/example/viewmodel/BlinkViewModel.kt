@@ -1187,8 +1187,8 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    suspend fun recordTriviaResult(questionId: String, correct: Boolean): GameActionResult? {
-        val result = supabaseService.recordTriviaResult(questionId, correct)
+    suspend fun recordTriviaResult(questionId: String, selectedIndex: Int): GameActionResult? {
+        val result = supabaseService.recordTriviaResult(questionId, selectedIndex)
         if (result != null) {
             val live = runCatching { supabaseService.fetchLeaderboard() }
                 .getOrDefault(_uiState.value.leaderboardUsers)
