@@ -184,7 +184,7 @@ class MainActivity : ComponentActivity() {
                                         studentName = uiState.myProfile.fullName,
                                         studentUsername = uiState.myProfile.username,
                                         onComplete = { uni, dept, level, bio, skills ->
-                                            viewModel.completeProfileOnboarding(uni, level, bio, skills)
+                                            viewModel.completeProfileOnboarding(uni, dept, level, bio, skills)
                                         }
                                     )
                                 }
@@ -293,11 +293,20 @@ fun MainAppContent(
                             publishHousingRequest = { title, location, minBudget, maxBudget, description ->
                                 viewModel.publishHousingRequest(title, location, minBudget, maxBudget, description)
                             },
+                            applyToHousingRequest = { requestId, message ->
+                                viewModel.applyToHousingRequest(requestId, message)
+                            },
                             challengeUser = { userId, gameType ->
                                 viewModel.challengeUser(userId, gameType)
                             },
                             respondChallenge = { challengeId, accept ->
                                 viewModel.respondToGameChallenge(challengeId, accept)
+                            },
+                            respondRequest = { kind, requestId, accept ->
+                                viewModel.respondToConnectRequest(kind, requestId, accept)
+                            },
+                            submitChallengeScore = { challengeId, score ->
+                                viewModel.submitChallengeScore(challengeId, score)
                             },
                             recordGameResult = { gameType, score ->
                                 viewModel.recordGameResult(gameType, score)
@@ -333,6 +342,12 @@ fun MainAppContent(
                         onDirectMessage = { partner, partnerName, partnerAvatar ->
                             viewModel.openChatWithUser(partner, partnerName, partnerAvatar)
                         },
+                        hasMorePosts = uiState.hasMorePosts,
+                        hasMoreReels = uiState.hasMoreReels,
+                        isLoadingMorePosts = uiState.isLoadingMorePosts,
+                        isLoadingMoreReels = uiState.isLoadingMoreReels,
+                        onLoadMorePosts = { viewModel.loadMoreFeed(false) },
+                        onLoadMoreReels = { viewModel.loadMoreFeed(true) },
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
                         }
@@ -344,6 +359,10 @@ fun MainAppContent(
                         profiles = uiState.profiles,
                         posts = (uiState.posts + uiState.reels).distinctBy { it.id },
                         currentUsername = uiState.myProfile.username,
+                        serverProfiles = uiState.discoverProfiles,
+                        serverPosts = uiState.discoverPosts,
+                        isSearching = uiState.isDiscoverSearching,
+                        onSearchQueryChange = { viewModel.searchDiscover(it) },
                         onProfileClick = { viewModel.openProfile(it) },
                         onPostClick = { viewModel.openCommentsForPost(it.id) },
                         onLikePost = { viewModel.togglePostLike(it) },
@@ -627,7 +646,10 @@ fun MainAppContent(
                     isConnected = uiState.isLiveSupabaseConnected,
                     onRetryMessage = { msg ->
                         viewModel.retrySendMessage(convo.partnerUsername, msg)
-                    }
+                    },
+                    hasMoreMessages = uiState.messageHistoryHasMore[convo.id] ?: true,
+                    isLoadingOlder = uiState.loadingOlderConversationId == convo.id,
+                    onLoadOlder = { viewModel.loadOlderMessages(convo.partnerUsername) }
                 )
             }
         }

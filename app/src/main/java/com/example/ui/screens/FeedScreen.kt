@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -120,6 +121,12 @@ fun FeedScreen(
     onLeaderboardClick: () -> Unit = {},
     onMarketClick: () -> Unit = {},
     onMessageClick: () -> Unit = {},
+    hasMorePosts: Boolean = false,
+    hasMoreReels: Boolean = false,
+    isLoadingMorePosts: Boolean = false,
+    isLoadingMoreReels: Boolean = false,
+    onLoadMorePosts: () -> Unit = {},
+    onLoadMoreReels: () -> Unit = {},
     onBottomBarVisibilityChange: (Boolean) -> Unit = {}
 ) {
     val selectedTopTab = currentSubTab
@@ -172,6 +179,9 @@ fun FeedScreen(
                 isLoading = isLoading,
                 isRefreshing = isRefreshing,
                 onRefresh = onRefresh,
+                hasMore = hasMoreReels,
+                isLoadingMore = isLoadingMoreReels,
+                onLoadMore = onLoadMoreReels,
                 onHomeClick = { navigate(0) },
                 onConnectClick = { navigate(2) },
                 onGameClick = { navigate(3) }
@@ -310,6 +320,23 @@ fun FeedScreen(
                                             onVotePoll = onVotePoll
                                         )
                                         Spacer(Modifier.height(8.dp))
+                                    }
+                                }
+                            }
+                            if (hasMorePosts) {
+                                item(key = "feed_load_more") {
+                                    LaunchedEffect(posts.lastOrNull()?.id) {
+                                        if (!isLoadingMorePosts) onLoadMorePosts()
+                                    }
+                                    Box(
+                                        Modifier.fillMaxWidth().padding(20.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isLoadingMorePosts) {
+                                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                        } else {
+                                            Text("Loading more…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
                                     }
                                 }
                             }

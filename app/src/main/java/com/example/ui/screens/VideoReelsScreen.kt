@@ -63,6 +63,9 @@ fun VideoReelsScreen(
     isLoading: Boolean = false,
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = {},
+    hasMore: Boolean = false,
+    isLoadingMore: Boolean = false,
+    onLoadMore: () -> Unit = {},
     onHomeClick: () -> Unit = onBackToPosts,
     onConnectClick: () -> Unit = {},
     onGameClick: () -> Unit = {}
@@ -112,6 +115,11 @@ fun VideoReelsScreen(
             }
             else -> {
                 val pager = rememberPagerState(pageCount = { reels.size })
+                LaunchedEffect(pager.currentPage, reels.size, hasMore, isLoadingMore) {
+                    if (hasMore && !isLoadingMore && pager.currentPage >= (reels.size - 3).coerceAtLeast(0)) {
+                        onLoadMore()
+                    }
+                }
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
                     VerticalPager(
                         state = pager,

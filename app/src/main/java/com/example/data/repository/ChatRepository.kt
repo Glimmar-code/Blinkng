@@ -27,7 +27,103 @@ class ChatRepository(
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     suspend fun fetchConversations(): List<ChatConversation> = withContext(Dispatchers.IO) {
-        supabaseService.fetchMessages()
+        val token = SupabaseService.accessToken() ?: return@withContext emptyList()
+        val body = JSONObject().put("p_limit", 80)
+        client.newCall(
+            Request.Builder()
+                .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/get_conversation_summaries")
+                .addHeader("apikey", SupabaseConfig.anonKey)
+                .addHeader("Authorization", "Bearer $token")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+        ).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) return@withContext emptyList()
+            val array = org.json.JSONArray(if (raw.isBlank()) "[]" else raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val o = array.getJSONObject(i)
+                    add(
+                        ChatConversation(
+                            id = o.optString("conversation_id"),
+                            partnerUsername = o.optString("partner_username"),
+                            partnerId = o.optString("partner_id"),
+                            partnerName = o.optString("partner_name").ifBlank { o.optString("partner_username") },
+                            partnerAvatar = o.optString("partner_avatar"),
+                            isOnline = o.optBoolean("partner_online", false),
+                            lastSeen = o.optString("partner_last_seen").ifBlank { "Last seen recently" },
+                            lastMessage = o.optString("last_message"),
+                            lastMessageTime = o.optString("last_message_at").takeIf { it.isNotBlank() }?.let { formatMessageTime(it) }.orEmpty(),
+                            lastMessageRawTime = o.optString("last_message_at"),
+                            unreadCount = o.optInt("unread_count", 0),
+                            messages = mutableListOf()
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    suspend fun fetchMessagePage(
+        conversationId: String,
+        beforeCreatedAt: String? = null,
+        beforeId: String? = null,
+        limit: Int = 40
+    ): List<ChatMessage> = withContext(Dispatchers.IO) {
+        if (conversationId.isBlank() || conversationId.startsWith("local_")) return@withContext emptyList()
+        val token = SupabaseService.accessToken() ?: return@withContext emptyList()
+        val uid = supabaseService.getCurrentUserId().orEmpty()
+        val body = JSONObject().apply {
+            put("p_conversation_id", conversationId)
+            put("p_limit", limit.coerceIn(1, 100))
+            put("p_before", beforeCreatedAt ?: JSONObject.NULL)
+            put("p_before_id", beforeId ?: JSONObject.NULL)
+        }
+        client.newCall(
+            Request.Builder()
+                .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/get_conversation_messages_page")
+                .addHeader("apikey", SupabaseConfig.anonKey)
+                .addHeader("Authorization", "Bearer $token")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+        ).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) return@withContext emptyList()
+            val array = org.json.JSONArray(if (raw.isBlank()) "[]" else raw)
+            buildList {
+                for (i in array.length() - 1 downTo 0) {
+                    val o = array.getJSONObject(i)
+                    val mediaType = o.optString("message_type")
+                    val mediaUrl = o.optString("media_url").takeIf { it.isNotBlank() && it != "null" }
+                    add(
+                        ChatMessage(
+                            id = o.optString("id"),
+                            conversationId = o.optString("conversation_id"),
+                            senderId = o.optString("sender_id"),
+                            text = o.optString("content"),
+                            rawTimestamp = o.optString("created_at"),
+                            timestamp = formatMessageTime(o.optString("created_at")),
+                            isFromMe = o.optString("sender_id") == uid,
+                            isRead = o.optBoolean("is_read", false),
+                            status = MessageStatus.SENT,
+                            isVoiceNote = mediaType.equals("voice", true) || mediaType.equals("audio", true),
+                            attachedImageUrl = mediaUrl.takeIf { mediaType.equals("image", true) },
+                            attachedVideoUrl = mediaUrl.takeIf { mediaType.equals("video", true) }
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    private fun formatMessageTime(value: String): String {
+        if (value.isBlank()) return "Just now"
+        return runCatching {
+            java.time.OffsetDateTime.parse(value)
+                .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"))
+        }.getOrDefault("Recently")
     }
 
     /** Sends through auth.uid() on the server; retries once after refreshing an expired JWT. */

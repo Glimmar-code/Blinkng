@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +46,14 @@ data class TriviaQuestion(
     val explanation: String,
     val category: String
 )
+
+private enum class GameMode(val apiName: String, val label: String, val emoji: String) {
+    TRIVIA("trivia", "Trivia", "🎓"),
+    MATH("math", "Math", "➗"),
+    LOGIC("logic", "Logic", "🧩"),
+    MEMORY("memory", "Memory", "🧠"),
+    SPEED("speed", "Speed", "⚡")
+}
 
 data class GameLeader(
     val rank: Int,
@@ -78,60 +87,15 @@ fun GameSection(
     val cardBg = if (isDark) DarkSurface else LightSurface
     val cardBorder = if (isDark) DarkBorder else LightBorder
 
-    // Trivia State
-    val questions = remember {
-        listOf(
-            TriviaQuestion(
-                id = "q1",
-                question = "Which is the oldest university in Nigeria, founded in 1948?",
-                options = listOf("University of Lagos", "University of Ibadan", "Ahmadu Bello University", "University of Nigeria, Nsukka"),
-                correctIndex = 1,
-                explanation = "University of Ibadan (UI) was established in 1948 as University College Ibadan.",
-                category = "Campus History"
-            ),
-            TriviaQuestion(
-                id = "q2",
-                question = "What does the abbreviation 'JAMB' stand for in Nigerian higher education?",
-                options = listOf(
-                    "Joint Admissions and Matriculation Board",
-                    "Junior Academic Management Board",
-                    "Joint Association of Matriculated Brethren",
-                    "Judicial Academic Monitoring Bureau"
-                ),
-                correctIndex = 0,
-                explanation = "JAMB is the official entrance examination board for tertiary-level institutions in Nigeria.",
-                category = "Academics"
-            ),
-            TriviaQuestion(
-                id = "q3",
-                question = "Which Nigerian University is situated along the Lagos Lagoon?",
-                options = listOf("Covenant University", "LASU", "University of Lagos (UNILAG)", "Babcock University"),
-                correctIndex = 2,
-                explanation = "UNILAG main campus in Akoka is famously bounded by the serene Lagos Lagoon.",
-                category = "Campus Life"
-            ),
-            TriviaQuestion(
-                id = "q4",
-                question = "What is the motto of Obafemi Awolowo University (OAU), Ile-Ife?",
-                options = listOf("In Deed and In Truth", "For Learning and Culture", "Character and Sound Knowledge", "Excellence in Action"),
-                correctIndex = 1,
-                explanation = "OAU's Latin motto is 'Doctrina Sana Ac Virtus', translated to 'For Learning and Culture'.",
-                category = "Tradition"
-            ),
-            TriviaQuestion(
-                id = "q5",
-                question = "Which degree classification requires a CGPA of 4.50 and above (on a 5.0 scale)?",
-                options = listOf("Second Class Upper (2:1)", "First Class Honours", "Distinction Cum Laude", "Summa Merit"),
-                correctIndex = 1,
-                explanation = "A CGPA of 4.50 – 5.00 earns First Class Honours in Nigerian universities.",
-                category = "Academics"
-            )
-        )
-    }
+    var selectedModeName by rememberSaveable { mutableStateOf(GameMode.TRIVIA.name) }
+    val selectedMode = remember(selectedModeName) { GameMode.valueOf(selectedModeName) }
+    val questions = remember(selectedMode) { questionsForMode(selectedMode) }
 
     var currentQuestionIndex by remember { mutableIntStateOf(0) }
     var selectedOptionIndex by remember { mutableStateOf<Int?>(null) }
     var isAnswerSubmitted by remember { mutableStateOf(false) }
+    var roundScore by remember(selectedMode) { mutableIntStateOf(0) }
+    var remainingSeconds by remember(selectedMode, currentQuestionIndex) { mutableIntStateOf(if (selectedMode == GameMode.SPEED) 8 else 0) }
     var score by remember(connectHub.gameStats.score) { mutableIntStateOf(connectHub.gameStats.score) }
     var streak by remember(connectHub.gameStats.streak) { mutableIntStateOf(connectHub.gameStats.streak) }
     var coins by remember(connectHub.gameStats.coins) { mutableIntStateOf(connectHub.gameStats.coins) }
@@ -142,6 +106,32 @@ fun GameSection(
     val spinRotation = remember { Animatable(0f) }
 
     val currentQ = questions[currentQuestionIndex % questions.size]
+    val activeChallenge = remember(connectHub.gameChallenges, selectedMode) {
+        connectHub.gameChallenges.firstOrNull {
+            it.status == "accepted" && it.gameType.equals(selectedMode.apiName, true)
+        }
+    }
+
+    LaunchedEffect(selectedMode, currentQuestionIndex, isAnswerSubmitted) {
+        if (selectedMode == GameMode.SPEED && !isAnswerSubmitted) {
+            remainingSeconds = 8
+            while (remainingSeconds > 0 && !isAnswerSubmitted) {
+                delay(1_000)
+                remainingSeconds--
+            }
+            if (remainingSeconds <= 0 && !isAnswerSubmitted) {
+                isAnswerSubmitted = true
+                streak = 0
+            }
+        }
+    }
+
+    LaunchedEffect(selectedMode) {
+        currentQuestionIndex = 0
+        selectedOptionIndex = null
+        isAnswerSubmitted = false
+        roundScore = 0
+    }
 
     val leaders = remember(leaderboardUsers) {
         leaderboardUsers
@@ -249,7 +239,61 @@ fun GameSection(
 
         item { Spacer(modifier = Modifier.height(16.dp)) }
 
-        // Campus Trivia Challenge Card
+        item {
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                Text("Choose game mode", fontWeight = FontWeight.Black, fontSize = 16.sp)
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    GameMode.entries.forEach { mode ->
+                        val selected = mode == selectedMode
+                        Surface(
+                            modifier = Modifier.clickable { selectedModeName = mode.name },
+                            shape = RoundedCornerShape(18.dp),
+                            color = if (selected) BlinkPink else cardBg,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (selected) BlinkPink else cardBorder
+                            )
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(mode.emoji, fontSize = 17.sp)
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    mode.label,
+                                    fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+                                    color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+                activeChallenge?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = BlinkGold.copy(alpha = .12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BlinkGold.copy(alpha = .45f))
+                    ) {
+                        Text(
+                            "⚔️ Active ${selectedMode.label} challenge • finish this 5-question round to submit your score",
+                            modifier = Modifier.padding(10.dp),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
+
+        item { Spacer(modifier = Modifier.height(14.dp)) }
+
+        // Premium multi-mode challenge card
         item {
             Surface(
                 shape = RoundedCornerShape(22.dp),
@@ -281,7 +325,11 @@ fun GameSection(
                         }
 
                         Text(
-                            text = "Q ${((currentQuestionIndex) % questions.size) + 1} / ${questions.size}",
+                            text = if (selectedMode == GameMode.SPEED && !isAnswerSubmitted) {
+                                "⏱ ${remainingSeconds}s"
+                            } else {
+                                "Q ${((currentQuestionIndex) % questions.size) + 1} / ${questions.size}"
+                            },
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -331,9 +379,10 @@ fun GameSection(
                                     selectedOptionIndex = index
                                     isAnswerSubmitted = true
                                     if (index == currentQ.correctIndex) {
-                                        score += 50
+                                        val earned = if (selectedMode == GameMode.SPEED) 70 else 50
+                                        score += earned
+                                        roundScore += earned
                                         streak += 1
-                                        connectHubActions.recordGameResult("trivia", 50)
                                     } else {
                                         streak = 0
                                     }
@@ -401,6 +450,16 @@ fun GameSection(
 
                         Button(
                             onClick = {
+                                val finishingRound = (currentQuestionIndex % questions.size) == questions.lastIndex
+                                if (finishingRound) {
+                                    if (roundScore > 0) {
+                                        connectHubActions.recordGameResult(selectedMode.apiName, roundScore)
+                                    }
+                                    activeChallenge?.let { challenge ->
+                                        connectHubActions.submitChallengeScore(challenge.id, roundScore)
+                                    }
+                                    roundScore = 0
+                                }
                                 currentQuestionIndex++
                                 selectedOptionIndex = null
                                 isAnswerSubmitted = false
@@ -412,7 +471,7 @@ fun GameSection(
                                 .height(44.dp)
                                 .testTag("next_trivia_question")
                         ) {
-                            Text("Next Question →", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(if ((currentQuestionIndex % questions.size) == questions.lastIndex) "Finish Round ✦" else "Next Question →", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
                 }
@@ -538,13 +597,13 @@ fun GameSection(
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Text(
-                    text = "Campus Trivia Champions",
+                    text = "Campus Game Champions",
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = "Top scorers across all faculties this week",
+                    text = "Top scorers across all Blink game modes",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -651,6 +710,44 @@ fun GameSection(
             }
         }
     }
+}
+
+private fun questionsForMode(mode: GameMode): List<TriviaQuestion> = when (mode) {
+    GameMode.TRIVIA -> listOf(
+        TriviaQuestion("t1", "Which is the oldest university in Nigeria, founded in 1948?", listOf("University of Lagos", "University of Ibadan", "Ahmadu Bello University", "University of Nigeria, Nsukka"), 1, "University of Ibadan was established in 1948.", "Campus History"),
+        TriviaQuestion("t2", "What does JAMB stand for?", listOf("Joint Admissions and Matriculation Board", "Junior Academic Management Board", "Joint Association of Matriculated Brethren", "Judicial Academic Monitoring Bureau"), 0, "JAMB is the Joint Admissions and Matriculation Board.", "Academics"),
+        TriviaQuestion("t3", "Which Nigerian university is situated along the Lagos Lagoon?", listOf("Covenant University", "LASU", "University of Lagos", "Babcock University"), 2, "UNILAG's Akoka campus borders the Lagos Lagoon.", "Campus Life"),
+        TriviaQuestion("t4", "What is the motto of Obafemi Awolowo University?", listOf("In Deed and In Truth", "For Learning and Culture", "Character and Sound Knowledge", "Excellence in Action"), 1, "OAU's motto is commonly translated as For Learning and Culture.", "Tradition"),
+        TriviaQuestion("t5", "On a 5.0 scale, which classification commonly starts at 4.50?", listOf("Second Class Upper", "First Class Honours", "Distinction Pass", "Merit"), 1, "4.50–5.00 is commonly First Class on a 5-point scale.", "Academics")
+    )
+    GameMode.MATH -> listOf(
+        TriviaQuestion("m1", "18 × 7 = ?", listOf("116", "126", "136", "146"), 1, "18 × 7 = 126.", "Math Sprint"),
+        TriviaQuestion("m2", "144 ÷ 12 = ?", listOf("10", "11", "12", "14"), 2, "144 ÷ 12 = 12.", "Math Sprint"),
+        TriviaQuestion("m3", "15% of 200 = ?", listOf("20", "25", "30", "35"), 2, "0.15 × 200 = 30.", "Percentages"),
+        TriviaQuestion("m4", "If x + 9 = 23, x = ?", listOf("12", "13", "14", "15"), 2, "23 − 9 = 14.", "Algebra"),
+        TriviaQuestion("m5", "√225 = ?", listOf("12", "13", "14", "15"), 3, "15 × 15 = 225.", "Numbers")
+    )
+    GameMode.LOGIC -> listOf(
+        TriviaQuestion("l1", "What comes next: 2, 6, 12, 20, 30, ?", listOf("36", "40", "42", "44"), 2, "Differences are +4,+6,+8,+10,+12.", "Sequence"),
+        TriviaQuestion("l2", "All Zips are Nors. Some Nors are Veks. Which is guaranteed?", listOf("Some Zips are Veks", "All Nors are Zips", "All Zips are Nors", "No Veks are Zips"), 2, "Only the original statement that all Zips are Nors is guaranteed.", "Deduction"),
+        TriviaQuestion("l3", "Odd one out: 16, 25, 36, 45, 49", listOf("16", "25", "45", "49"), 2, "45 is not a perfect square.", "Pattern"),
+        TriviaQuestion("l4", "A clock shows 3:00. What is the angle between the hands?", listOf("30°", "60°", "90°", "120°"), 2, "At 3:00 the hands are 90° apart.", "Spatial"),
+        TriviaQuestion("l5", "If CAT → DBU by shifting each letter +1, DOG → ?", listOf("EPH", "EOG", "FPH", "DPI"), 0, "D→E, O→P, G→H.", "Code")
+    )
+    GameMode.MEMORY -> listOf(
+        TriviaQuestion("mry1", "Remember: PURPLE • 7 • STAR. Which number appeared?", listOf("5", "6", "7", "8"), 2, "The sequence contained 7.", "Memory"),
+        TriviaQuestion("mry2", "Remember: BOOK • LAMP • TREE. Which item was second?", listOf("Book", "Lamp", "Tree", "Pen"), 1, "Lamp was second.", "Memory"),
+        TriviaQuestion("mry3", "Remember: 4 • 9 • 2 • 6. Which came after 9?", listOf("4", "2", "6", "9"), 1, "2 followed 9.", "Memory"),
+        TriviaQuestion("mry4", "Remember: RED • BLUE • GOLD. Which color was last?", listOf("Red", "Blue", "Gold", "Green"), 2, "Gold was last.", "Memory"),
+        TriviaQuestion("mry5", "Remember: A3 • B8 • C1. What was paired with B?", listOf("1", "3", "8", "9"), 2, "B was paired with 8.", "Memory")
+    )
+    GameMode.SPEED -> listOf(
+        TriviaQuestion("s1", "9 + 8 = ?", listOf("15", "16", "17", "18"), 2, "9 + 8 = 17.", "8-second Speed"),
+        TriviaQuestion("s2", "6 × 6 = ?", listOf("30", "32", "36", "42"), 2, "6 × 6 = 36.", "8-second Speed"),
+        TriviaQuestion("s3", "100 − 37 = ?", listOf("53", "63", "67", "73"), 1, "100 − 37 = 63.", "8-second Speed"),
+        TriviaQuestion("s4", "Half of 86 = ?", listOf("41", "42", "43", "44"), 2, "86 ÷ 2 = 43.", "8-second Speed"),
+        TriviaQuestion("s5", "11 × 5 = ?", listOf("50", "55", "60", "65"), 1, "11 × 5 = 55.", "8-second Speed")
+    )
 }
 
 @Composable

@@ -1,13 +1,16 @@
 package com.example.data.repository
 
 import com.example.data.models.ConnectHubSnapshot
+import com.example.data.models.ConnectRequestItem
 import com.example.data.models.DailySpinReward
 import com.example.data.models.GameChallenge
 import com.example.data.models.GameProfileStats
 import com.example.data.models.HousingAgentListing
+import com.example.data.models.HousingRequestListing
 import com.example.data.models.MentorListing
 import com.example.data.models.ReadingMateListing
 import com.example.data.models.RoommateListing
+import com.example.data.models.SmartMatchCandidate
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.Dispatchers
@@ -41,8 +44,18 @@ class ConnectHubRepository(
             .mapObjects(::parseReadingMate)
         val agents = getArray("/rest/v1/housing_agent_profiles?select=*&is_active=eq.true&is_verified=eq.true&order=created_at.desc&limit=30")
             .mapObjects(::parseHousingAgent)
+        val housingRequests = getArray("/rest/v1/housing_requests?select=*&status=eq.open&order=created_at.desc&limit=40")
+            .mapObjects(::parseHousingRequest)
         val challenges = getArray("/rest/v1/game_challenges?select=*&order=created_at.desc&limit=30")
             .mapObjects(::parseChallenge)
+        val smartMatches = runCatching {
+            JSONArray(rpc("get_connect_matches", JSONObject().put("p_limit", 30)))
+                .mapObjects(::parseSmartMatch)
+        }.getOrDefault(emptyList())
+        val requests = runCatching {
+            JSONArray(rpc("get_connect_request_inbox", JSONObject().put("p_limit", 120)))
+                .mapObjects(::parseConnectRequest)
+        }.getOrDefault(emptyList())
 
         val uid = supabaseService.getCurrentUserId().orEmpty()
         val gameStats = if (uid.isBlank()) GameProfileStats() else {
@@ -55,7 +68,10 @@ class ConnectHubRepository(
             mentors = mentors,
             readingMates = reading,
             housingAgents = agents,
+            housingRequests = housingRequests,
             gameChallenges = challenges,
+            smartMatches = smartMatches,
+            requests = requests,
             gameStats = gameStats
         )
     }
@@ -185,6 +201,16 @@ class ConnectHubRepository(
         write("/rest/v1/housing_requests", body, "POST")
     }
 
+    suspend fun applyToHousingRequest(requestId: String, message: String = ""): Boolean =
+        withContext(Dispatchers.IO) {
+            rpc(
+                "apply_to_housing_request",
+                JSONObject()
+                    .put("p_housing_request_id", requestId)
+                    .put("p_message", message.trim())
+            ).isNotBlank()
+        }
+
     suspend fun challengeUser(userId: String, gameType: String = "trivia"): Boolean =
         withContext(Dispatchers.IO) {
             write(
@@ -192,6 +218,17 @@ class ConnectHubRepository(
                 JSONObject().put("challenged_id", userId).put("game_type", gameType),
                 "POST"
             )
+        }
+
+    suspend fun respondToConnectRequest(kind: String, requestId: String, accept: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            rpc(
+                "respond_connect_request",
+                JSONObject()
+                    .put("p_kind", kind)
+                    .put("p_request_id", requestId)
+                    .put("p_accept", accept)
+            ).isNotBlank()
         }
 
     suspend fun respondToChallenge(challengeId: String, accept: Boolean): Boolean =
@@ -335,6 +372,18 @@ class ConnectHubRepository(
         verified = o.optBoolean("is_verified", false)
     )
 
+    private fun parseHousingRequest(o: JSONObject) = HousingRequestListing(
+        id = o.optString("id"),
+        studentId = o.optString("student_id"),
+        title = o.optString("title"),
+        preferredLocation = o.optString("preferred_location"),
+        budgetMin = o.optNullableDouble("budget_min"),
+        budgetMax = o.optNullableDouble("budget_max"),
+        description = o.optString("description"),
+        status = o.optString("status", "open"),
+        createdAt = o.optString("created_at")
+    )
+
     private fun parseChallenge(o: JSONObject) = GameChallenge(
         id = o.optString("id"),
         challengerId = o.optString("challenger_id"),
@@ -345,6 +394,34 @@ class ConnectHubRepository(
         challengedScore = o.optNullableInt("challenged_score"),
         winnerId = o.optString("winner_id").takeIf { it.isNotBlank() && it != "null" },
         createdAt = o.optString("created_at")
+    )
+
+    private fun parseSmartMatch(o: JSONObject) = SmartMatchCandidate(
+        userId = o.optString("id"),
+        username = o.optString("username"),
+        fullName = o.optString("full_name"),
+        avatarUrl = o.optString("avatar_url"),
+        university = o.optString("university"),
+        faculty = o.optString("faculty"),
+        department = o.optString("department"),
+        academicLevel = o.optString("academic_level"),
+        relationshipStatus = o.optString("relationship_status"),
+        onlineNow = o.optBoolean("online_now", false),
+        lastSeenAt = o.optString("last_seen_at"),
+        compatibilityScore = o.optInt("compatibility_score", 0),
+        commonSkills = o.optStringList("common_skills"),
+        commonHobbies = o.optStringList("common_hobbies")
+    )
+
+    private fun parseConnectRequest(o: JSONObject) = ConnectRequestItem(
+        kind = o.optString("kind"),
+        requestId = o.optString("request_id"),
+        direction = o.optString("direction"),
+        status = o.optString("status"),
+        listingId = o.optString("listing_id").takeIf { it.isNotBlank() && it != "null" },
+        otherUserId = o.optString("other_user_id"),
+        createdAt = o.optString("created_at"),
+        title = o.optString("title")
     )
 
     private fun parseGameStats(o: JSONObject) = GameProfileStats(

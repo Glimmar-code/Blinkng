@@ -1253,95 +1253,69 @@ fun getCurrentUserId(): String? {
             }
         }
 
-    suspend fun searchProfiles(
-        query: String
-    ): List<UserProfile> =
-        withContext(Dispatchers.IO) {
+    suspend fun searchProfiles(query: String): List<UserProfile> =
+        searchProfilesPage(query = query, limit = 30)
 
-            try {
+    suspend fun searchProfilesPage(
+        query: String,
+        limit: Int = 30,
+        afterUsername: String? = null,
+        afterId: String? = null
+    ): List<UserProfile> = withContext(Dispatchers.IO) {
+        try {
+            val cleanQuery = query.trim()
+            if (cleanQuery.isBlank()) return@withContext emptyList()
 
-                val cleanQuery =
-                    query.trim()
+            val body = JSONObject().apply {
+                put("p_query", cleanQuery)
+                put("p_limit", limit.coerceIn(1, 60))
+                put("p_after_username", afterUsername ?: JSONObject.NULL)
+                put("p_after_id", afterId ?: JSONObject.NULL)
+            }
+            val request = newRequestBuilder(
+                "/rest/v1/rpc/search_profiles_page",
+                authenticated = true
+            )
+                .addHeader("Content-Type", "application/json")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
 
-                if (
-                    cleanQuery.isBlank()
-                ) {
+            executeRequest(request).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "PROFILE_SEARCH_PAGE failed status=${response.code} body=$raw")
                     return@withContext emptyList()
                 }
-
-                val encoded =
-                    encodeValue(
-                        cleanQuery
-                    )
-
-                val request =
-                    newRequestBuilder(
-                        "/rest/v1/profiles" +
-                                "?or=(" +
-                                "username.ilike.*$encoded*," +
-                                "full_name.ilike.*$encoded*" +
-                                ")" +
-                                "&select=*" +
-                                "&limit=30"
-                    )
-                        .get()
-                        .build()
-
-                executeRequest(request).use { response ->
-
-                    val body =
-                        response.body
-                            ?.string()
-                            .orEmpty()
-
-                    if (!response.isSuccessful) {
-
-                        Log.e(
-                            TAG,
-                            "PROFILE_SEARCH failed " +
-                                    "status=${response.code} " +
-                                    "body=$body"
-                        )
-
-                        return@withContext emptyList()
-                    }
-
-                    if (
-                        body.isBlank() ||
-                        body == "[]"
-                    ) {
-                        return@withContext emptyList()
-                    }
-
-                    val array =
-                        JSONArray(body)
-
-                    buildList {
-
-                        for (
-                            i in 0 until array.length()
-                        ) {
-
-                            parseUserProfile(array.getJSONObject(i)).let { profile ->
-                                if (profile.username.isNotBlank() &&
-                                    !profile.username.equals("null", ignoreCase = true)
-                                ) add(profile)
-                            }
+                val array = JSONArray(if (raw.isBlank()) "[]" else raw)
+                buildList {
+                    for (i in 0 until array.length()) {
+                        parseUserProfile(array.getJSONObject(i)).let { profile ->
+                            if (profile.username.isNotBlank() &&
+                                !profile.username.equals("null", ignoreCase = true)
+                            ) add(profile)
                         }
                     }
                 }
-
-            } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "PROFILE_SEARCH exception",
-                    e
-                )
-
-                emptyList()
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "PROFILE_SEARCH_PAGE exception", e)
+            emptyList()
         }
+    }
+
+    suspend fun searchFeedPage(
+        query: String,
+        limit: Int = 30,
+        beforeCreatedAt: String? = null,
+        beforeId: String? = null
+    ): List<FeedPost> =
+        fetchFeedPage(
+            limit = limit,
+            beforeCreatedAt = beforeCreatedAt,
+            beforeId = beforeId,
+            feedType = "all",
+            searchQuery = query
+        )
 
     /**
      * Updates the existing profile by auth user ID.
@@ -1546,7 +1520,16 @@ fun getCurrentUserId(): String? {
     // FEED
     // ============================================================
 
-    suspend fun fetchFeedPosts(): List<FeedPost> = withContext(Dispatchers.IO) {
+    suspend fun fetchFeedPosts(): List<FeedPost> =
+        fetchFeedPage(limit = 40, feedType = "all")
+
+    suspend fun fetchFeedPage(
+        limit: Int = 30,
+        beforeCreatedAt: String? = null,
+        beforeId: String? = null,
+        feedType: String = "posts",
+        searchQuery: String? = null
+    ): List<FeedPost> = withContext(Dispatchers.IO) {
         var uid = getCurrentUserId()
 
         // Feed rows are authenticated/RLS-protected. Recover an expired access
@@ -1558,15 +1541,30 @@ fun getCurrentUserId(): String? {
             throw IllegalStateException("No authenticated Supabase session is available for the feed.")
         }
 
+        val rpcName = if (searchQuery.isNullOrBlank()) "get_feed_page" else "search_feed_page"
+        val rpcBody = JSONObject().apply {
+            put("p_limit", limit.coerceIn(1, 60))
+            put("p_before", beforeCreatedAt ?: JSONObject.NULL)
+            put("p_before_id", beforeId ?: JSONObject.NULL)
+            if (searchQuery.isNullOrBlank()) {
+                put("p_feed_type", feedType)
+            } else {
+                put("p_query", searchQuery.trim())
+            }
+        }
+
         val postsRaw = executeRequest(
             newRequestBuilder(
-                "/rest/v1/feed_posts?select=*&is_active=eq.true&order=created_at.desc&limit=100",
+                "/rest/v1/rpc/$rpcName",
                 authenticated = true
-            ).get().build()
+            )
+                .addHeader("Content-Type", "application/json")
+                .post(rpcBody.toString().toRequestBody(jsonMediaType))
+                .build()
         ).use { response ->
             val raw = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw IllegalStateException(parseSupabaseError(raw, "Feed fetch failed."))
+                throw IllegalStateException(parseSupabaseError(raw, "Feed page fetch failed."))
             }
             JSONArray(if (raw.isBlank()) "[]" else raw)
         }
@@ -2783,6 +2781,7 @@ suspend fun uploadPostMedia(
             verificationBadge = badge,
             timeAgo = obj.cleanString("time_ago", "Recently"),
             text = obj.cleanString("text").ifBlank { obj.cleanString("caption") },
+            createdAt = obj.cleanString("created_at"),
             images = imagesList,
             tags = tagsList,
             mentions = mentionsList,

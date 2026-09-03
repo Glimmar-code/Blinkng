@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.heightIn
 import com.example.ui.theme.BlinkGold
@@ -2576,7 +2577,10 @@ fun ChatConversationView(
     onProfileClick: (String) -> Unit,
     isDark: Boolean,
     isConnected: Boolean = true,
-    onRetryMessage: ((ChatMessage) -> Unit)? = null
+    onRetryMessage: ((ChatMessage) -> Unit)? = null,
+    hasMoreMessages: Boolean = false,
+    isLoadingOlder: Boolean = false,
+    onLoadOlder: () -> Unit = {}
 ) {
 
     var messageText by rememberSaveable {
@@ -2889,6 +2893,29 @@ fun ChatConversationView(
                                 5.dp
                             )
                     ) {
+                        if (hasMoreMessages && chatSearchQuery.isBlank()) {
+                            item(key = "load_older_messages") {
+                                Box(
+                                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    OutlinedButton(
+                                        onClick = onLoadOlder,
+                                        enabled = !isLoadingOlder,
+                                        shape = RoundedCornerShape(100.dp)
+                                    ) {
+                                        if (isLoadingOlder) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                            Spacer(Modifier.width(7.dp))
+                                        }
+                                        Text(if (isLoadingOlder) "Loading history…" else "Load older messages")
+                                    }
+                                }
+                            }
+                        }
 
                         itemsIndexed(
                             filteredMessages,
