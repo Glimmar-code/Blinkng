@@ -83,3 +83,24 @@ fun VideoReelsScreen(reels: List<FeedPost>, isDark: Boolean, onLike: (String)->U
     LaunchedEffect(isActive,player){player.playWhenReady=isActive;if(isActive)player.play()else player.pause()};DisposableEffect(player){onDispose{player.release()}}
     Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){AndroidView(factory={ctx->PlayerView(ctx).apply{useController=false;resizeMode=AspectRatioFrameLayout.RESIZE_MODE_ZOOM;keepScreenOn=true;this.player=player}},update={it.player=player},modifier=Modifier.fillMaxSize());if(error!=null){Column(horizontalAlignment=Alignment.CenterHorizontally){Text("Unable to play this reel",color=Color.White,fontWeight=FontWeight.Bold);TextButton(onClick={error=null;player.prepare();if(isActive)player.play()}){Text("Retry")}}}}
 }
+
+
+@Composable
+private fun ReelsTopNavigation(onPosts: () -> Unit, onConnect: () -> Unit, onGame: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 82.dp, start = 18.dp, end = 18.dp).align(Alignment.TopCenter), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+        ReelNavButton("Post", false, onPosts)
+        Spacer(Modifier.width(6.dp))
+        ReelNavButton("Reel", true) {}
+        Spacer(Modifier.width(6.dp))
+        ReelNavButton("Connect", false, onConnect)
+        Spacer(Modifier.width(6.dp))
+        ReelNavButton("Game", false, onGame)
+    }
+}
+
+@Composable
+private fun ReelNavButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(Modifier.clickable { onClick() }, shape = CircleShape, color = if (selected) Color.White else Color.White.copy(alpha = 0.14f)) {
+        Text(label, color = if (selected) Color.Black else Color.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp))
+    }
+}
