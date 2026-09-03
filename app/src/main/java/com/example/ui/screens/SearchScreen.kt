@@ -1,12 +1,20 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -15,161 +23,122 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.FeedPost
-import com.example.data.supabase.SupabaseConfig
-import com.example.data.supabase.SupabaseService
-import kotlinx.coroutines.Dispatchers
+import com.example.data.models.UserProfile
+import com.example.data.models.VerificationBadge
+import com.example.ui.components.PostCard
+import com.example.ui.theme.BlinkPink
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONArray
-import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
-
-private data class SearchPerson(val username: String, val name: String, val avatar: String, val faculty: String)
 
 @Composable
-fun SearchScreen(posts: List<FeedPost>, onProfileClick: (String) -> Unit, onPostClick: (FeedPost) -> Unit, isDark: Boolean) {
+fun SearchScreen(
+    profiles: List<UserProfile>,
+    posts: List<FeedPost>,
+    currentUsername: String,
+    onProfileClick: (String) -> Unit,
+    onPostClick: (FeedPost) -> Unit,
+    onLikePost: (String) -> Unit = {},
+    onCommentPost: (String) -> Unit = {},
+    onBookmarkPost: (String) -> Unit = {},
+    onSharePost: (String) -> Unit = {},
+    onOptionsClick: (FeedPost) -> Unit = {},
+    onDeletePost: (String) -> Unit = {},
+    isDark: Boolean
+) {
     var query by rememberSaveable { mutableStateOf("") }
-    var people by remember { mutableStateOf<List<SearchPerson>>(emptyList()) }
-    var remotePosts by remember { mutableStateOf<List<FeedPost>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
-
-    LaunchedEffect(query) {
-        val q = query.trim()
-        if (q.length < 2) {
-            people = emptyList(); remotePosts = emptyList(); loading = false; return@LaunchedEffect
-        }
-        delay(250)
-        loading = true
-        val result = withContext(Dispatchers.IO) { searchEverywhere(q) }
-        people = result.first
-        remotePosts = result.second
-        loading = false
+    val clean = query.trim().removePrefix("#")
+    val realProfiles = remember(profiles) {
+        profiles.filter { it.username.isNotBlank() }
+            .distinctBy { it.id.ifBlank { it.username.lowercase() } }
+    }
+    val people = remember(realProfiles, clean) {
+        if (clean.isBlank()) realProfiles.sortedWith(compareByDescending<UserProfile> { it.onlineNow }.thenByDescending { it.points }).take(20)
+        else realProfiles.filter {
+            it.username.contains(clean, true) || it.fullName.contains(clean, true) ||
+            it.university.contains(clean, true) || it.faculty.contains(clean, true) || it.department.contains(clean, true)
+        }.take(30)
+    }
+    val hashtags = remember(posts, clean) {
+        posts.flatMap { it.tags }.map { it.trim().removePrefix("#").lowercase() }
+            .filter { it.isNotBlank() }.groupingBy { it }.eachCount().entries
+            .sortedByDescending { it.value }.filter { clean.isBlank() || it.key.contains(clean, true) }.take(15)
+    }
+    val matchingPosts = remember(posts, clean) {
+        val newest = posts.distinctBy { it.id }
+        if (clean.isBlank()) newest.take(30) else newest.filter { post ->
+            post.author.contains(clean, true) || post.text.contains(clean, true) ||
+            post.tags.any { it.removePrefix("#").contains(clean, true) }
+        }.take(50)
     }
 
-    val allPosts = remember(query, posts, remotePosts) {
-        val local = if (query.isBlank()) emptyList() else posts.filter {
-            it.text.contains(query, true) || it.author.contains(query, true) || it.tags.any { tag -> tag.contains(query, true) }
-        }
-        (remotePosts + local).distinctBy { it.id }
-    }
-
-    Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp)) {
-        Text("Search", fontWeight = FontWeight.Bold, fontSize = 25.sp)
-        Spacer(Modifier.height(10.dp))
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            leadingIcon = { Icon(Icons.Default.Search, null) },
-            placeholder = { Text("Search everyone, posts, usernames…") }
-        )
-        if (query.isBlank()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Search for anyone or any post in Blink.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        } else if (loading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        } else LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (people.isNotEmpty()) {
-                item { Text("People", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(vertical = 6.dp)) }
-                items(people) { person ->
-                    ListItem(
-                        headlineContent = { Text(person.name.ifBlank { person.username }, fontWeight = FontWeight.SemiBold) },
-                        supportingContent = { Text("@${person.username}${person.faculty.takeIf { it.isNotBlank() }?.let { " • $it" } ?: ""}") },
-                        leadingContent = { AsyncImage(model = person.avatar, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(46.dp).clip(CircleShape)) },
-                        modifier = Modifier.fillMaxWidth().clickable { onProfileClick(person.username) }
-                    )
-                }
-            }
-            if (allPosts.isNotEmpty()) {
-                item { Text("Posts", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp)) }
-                items(allPosts) { post ->
-                    ListItem(
-                        headlineContent = { Text(post.author, fontWeight = FontWeight.SemiBold) },
-                        supportingContent = { Text(post.text.ifBlank { if (post.videoUrl != null) "Reel" else "Post" }, maxLines = 3) },
-                        trailingContent = {
-                            if (post.videoUrl != null) Text("Reel", fontSize = 10.sp)
-                            else if (post.images.isNotEmpty()) Text("${post.images.size} image${if (post.images.size == 1) "" else "s"}", fontSize = 10.sp)
-                        },
-                        modifier = Modifier.fillMaxWidth().clickable { onPostClick(post) }
-                    )
-                }
-            }
-            if (people.isEmpty() && allPosts.isEmpty()) item {
-                Text("No results for \"$query\".", modifier = Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
-private suspend fun searchEverywhere(query: String): Pair<List<SearchPerson>, List<FeedPost>> {
-    // Treat wildcard characters as literals so user input cannot alter the PostgREST ilike pattern.
-    val safeQuery = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    val pattern = "%$safeQuery%"
-    val encoded = URLEncoder.encode(pattern, "UTF-8")
-    val client = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
-
-    fun get(path: String): JSONArray {
-        val token = SupabaseService.accessToken() ?: SupabaseConfig.anonKey
-        val request = Request.Builder()
-            .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/$path")
-            .addHeader("apikey", SupabaseConfig.anonKey)
-            .addHeader("Authorization", "Bearer $token")
-            .build()
-        return client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) JSONArray() else JSONArray(response.body?.string().orEmpty())
-        }
-    }
-
-    return try {
-        val profileRows = get("profiles?or=(username.ilike.$encoded,full_name.ilike.$encoded)&select=username,full_name,avatar_url,faculty&limit=100")
-        val people = buildList {
-            for (i in 0 until profileRows.length()) {
-                val row = profileRows.optJSONObject(i) ?: continue
-                add(SearchPerson(row.optString("username"), row.optString("full_name"), row.optString("avatar_url"), row.optString("faculty")))
-            }
-        }.filter { it.username.isNotBlank() }
-
-        val postRows = get("feed_posts?or=(text.ilike.$encoded,caption.ilike.$encoded)&select=*&order=created_at.desc&limit=100")
-        val posts = mutableListOf<FeedPost>()
-        for (i in 0 until postRows.length()) {
-            val row = postRows.optJSONObject(i) ?: continue
-            val images = mutableListOf<String>()
-            val imageValue = row.optString("image_url")
-            if (imageValue.startsWith("[")) runCatching {
-                val a = JSONArray(imageValue); for (j in 0 until a.length()) images.add(a.optString(j))
-            } else if (imageValue.isNotBlank() && imageValue != "null") images.add(imageValue)
-            row.optJSONArray("images")?.let { a -> images.clear(); for (j in 0 until a.length()) images.add(a.optString(j)) }
-            posts.add(
-                FeedPost(
-                    id = row.optString("id"),
-                    author = row.optString("author_username", row.optString("username")),
-                    authorAvatar = row.optString("author_avatar", row.optString("avatar_url")),
-                    timeAgo = "Recently",
-                    text = row.optString("text", row.optString("caption")),
-                    images = images,
-                    likes = row.optInt("likes_count", 0),
-                    commentsCount = row.optInt("comments_count", 0),
-                    sharesCount = row.optInt("shares_count", 0),
-                    viewsCount = row.optInt("views_count", 0),
-                    isReel = row.optBoolean("is_reel", false) || !row.optString("video_url").isNullOrBlank(),
-                    videoUrl = row.optString("video_url").takeIf { it.isNotBlank() && it != "null" }
+    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 110.dp)) {
+        item {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text("Discover", fontSize = 27.sp, fontWeight = FontWeight.Black)
+                Text("Real students, posts and hashtags from Blink", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
+                    singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) },
+                    placeholder = { Text("Search people, posts or #hashtags") }, shape = RoundedCornerShape(22.dp)
                 )
-            )
+            }
         }
-        people to posts
-    } catch (_: Exception) {
-        emptyList<SearchPerson>() to emptyList()
+        if (people.isNotEmpty()) {
+            item { Text(if (clean.isBlank()) "People to discover" else "People", Modifier.padding(horizontal=16.dp,vertical=8.dp), fontWeight=FontWeight.Bold,fontSize=16.sp) }
+            item {
+                LazyRow(contentPadding=PaddingValues(horizontal=16.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                    items(people,key={it.id.ifBlank{it.username}}) { person ->
+                        Surface(
+                            modifier=Modifier.width(150.dp).clickable{onProfileClick(person.username)},
+                            shape=RoundedCornerShape(20.dp), border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),
+                            color=MaterialTheme.colorScheme.surface
+                        ) {
+                            Column(Modifier.padding(13.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+                                AsyncImage(model=person.avatarUrl,contentDescription=person.fullName,contentScale=ContentScale.Crop,modifier=Modifier.size(58.dp).clip(CircleShape))
+                                Spacer(Modifier.height(8.dp))
+                                Row(verticalAlignment=Alignment.CenterVertically) {
+                                    Text(person.fullName.ifBlank{person.username},fontWeight=FontWeight.Bold,fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
+                                    if(person.verificationBadge!=VerificationBadge.NONE){Spacer(Modifier.width(3.dp));Icon(Icons.Default.Verified,null,tint=BlinkPink,modifier=Modifier.size(13.dp))}
+                                }
+                                Text("@${person.username}",fontSize=10.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                person.university.takeUnless{it.isBlank()||it.equals("null",true)}?.let{Text(it,fontSize=9.sp,maxLines=1,overflow=TextOverflow.Ellipsis)}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (hashtags.isNotEmpty()) {
+            item { Text("Trending hashtags",Modifier.padding(horizontal=16.dp,vertical=12.dp),fontWeight=FontWeight.Bold,fontSize=16.sp) }
+            item {
+                LazyRow(contentPadding=PaddingValues(horizontal=16.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    items(hashtags,key={it.key}) { tag ->
+                        AssistChip(onClick={query="#${tag.key}"},leadingIcon={Icon(Icons.Default.Tag,null,modifier=Modifier.size(15.dp))},label={Text("#${tag.key} • ${tag.value}")})
+                    }
+                }
+            }
+        }
+        item { Text(if(clean.isBlank())"Latest posts" else "Posts",Modifier.padding(horizontal=16.dp,vertical=14.dp),fontWeight=FontWeight.Bold,fontSize=16.sp) }
+        if(matchingPosts.isEmpty()){
+            item { Box(Modifier.fillMaxWidth().padding(44.dp),contentAlignment=Alignment.Center){Text(if(clean.isBlank())"No live posts yet." else "No results for “$query”.",color=MaterialTheme.colorScheme.onSurfaceVariant)} }
+        }else{
+            items(matchingPosts,key={it.id}) { post ->
+                var visible by remember(post.id){mutableStateOf(false)}
+                LaunchedEffect(post.id){delay(25);visible=true}
+                AnimatedVisibility(visible=visible,enter=fadeIn()+slideInVertically(initialOffsetY={it/12})) {
+                    PostCard(
+                        post=post,isDark=isDark,onLike={onLikePost(post.id)},onComment={onCommentPost(post.id)},
+                        onBookmark={onBookmarkPost(post.id)},onShare={onSharePost(post.id)},onOptionsClick={onOptionsClick(post)},
+                        onProfileClick=onProfileClick,isAuthor=post.author.equals(currentUsername,true),
+                        onDelete={onDeletePost(post.id)},modifier=Modifier.clickable{onPostClick(post)}
+                    )
+                }
+            }
+        }
     }
 }
