@@ -729,8 +729,6 @@ fun ProfileScreen(
 
                                 1 -> FollowerGrowthChart(
                                     profile = profile,
-                                    canDelete = isMe,
-                                    onDelete = onDeletePost,
                                     isDark = isDark,
                                     onOpenGetVerified = onOpenGetVerified,
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
