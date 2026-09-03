@@ -3333,6 +3333,26 @@ suspend fun uploadPostMedia(
         }
     }
 
+    suspend fun activateMarketplaceProfile(storeName: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject().put("p_store_name", storeName.trim())
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/activate_marketplace_profile", true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Seller activation failed."))
+                }
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "activateMarketplaceProfile failed", e)
+            false
+        }
+    }
+
     suspend fun reportPost(postId: String, reason: String): Boolean = withContext(Dispatchers.IO) {
         try {
             if (!isValidUuid(postId)) return@withContext false
