@@ -47,12 +47,33 @@ fun SearchScreen(
     onSharePost: (String) -> Unit = {},
     onOptionsClick: (FeedPost) -> Unit = {},
     onDeletePost: (String) -> Unit = {},
+    onRemoteSearch: suspend (String) -> Pair<List<UserProfile>, List<FeedPost>> = { emptyList<UserProfile>() to emptyList() },
     isDark: Boolean
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     val clean = query.trim().removePrefix("#")
-    val realProfiles = remember(profiles) {
-        profiles.filter { it.username.isNotBlank() }
+    var remoteProfiles by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
+    var remotePosts by remember { mutableStateOf<List<FeedPost>>(emptyList()) }
+    var remoteLoading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(clean) {
+        if (clean.length < 2) {
+            remoteProfiles = emptyList()
+            remotePosts = emptyList()
+            remoteLoading = false
+        } else {
+            delay(300)
+            remoteLoading = true
+            val result = onRemoteSearch(clean)
+            remoteProfiles = result.first
+            remotePosts = result.second
+            remoteLoading = false
+        }
+    }
+
+    val realProfiles = remember(profiles, remoteProfiles, clean) {
+        val source = if (clean.isBlank()) profiles else remoteProfiles + profiles
+        source.filter { it.username.isNotBlank() && !it.username.equals("null", true) }
             .distinctBy { it.id.ifBlank { it.username.lowercase() } }
     }
     val people = remember(realProfiles, clean) {
@@ -60,19 +81,21 @@ fun SearchScreen(
         else realProfiles.filter {
             it.username.contains(clean, true) || it.fullName.contains(clean, true) ||
             it.university.contains(clean, true) || it.faculty.contains(clean, true) || it.department.contains(clean, true)
-        }.take(30)
+        }.take(40)
     }
-    val hashtags = remember(posts, clean) {
-        posts.flatMap { it.tags }.map { it.trim().removePrefix("#").lowercase() }
+    val allSearchPosts = remember(posts, remotePosts, clean) {
+        (if (clean.isBlank()) posts else remotePosts + posts).distinctBy { it.id }
+    }
+    val hashtags = remember(allSearchPosts, clean) {
+        allSearchPosts.flatMap { it.tags }.map { it.trim().removePrefix("#").lowercase() }
             .filter { it.isNotBlank() }.groupingBy { it }.eachCount().entries
             .sortedByDescending { it.value }.filter { clean.isBlank() || it.key.contains(clean, true) }.take(15)
     }
-    val matchingPosts = remember(posts, clean) {
-        val newest = posts.distinctBy { it.id }
-        if (clean.isBlank()) newest.take(30) else newest.filter { post ->
+    val matchingPosts = remember(allSearchPosts, clean) {
+        if (clean.isBlank()) allSearchPosts.take(30) else allSearchPosts.filter { post ->
             post.author.contains(clean, true) || post.text.contains(clean, true) ||
             post.tags.any { it.removePrefix("#").contains(clean, true) }
-        }.take(50)
+        }.take(60)
     }
 
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 110.dp)) {
@@ -84,7 +107,12 @@ fun SearchScreen(
                 OutlinedTextField(
                     value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
                     singleLine = true, leadingIcon = { Icon(Icons.Default.Search, null) },
-                    placeholder = { Text("Search people, posts or #hashtags") }, shape = RoundedCornerShape(22.dp)
+                    trailingIcon = {
+                        if (remoteLoading) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        }
+                    },
+                    placeholder = { Text("Search all people, posts or #hashtags") }, shape = RoundedCornerShape(22.dp)
                 )
             }
         }
