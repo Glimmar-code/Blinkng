@@ -135,6 +135,7 @@ import androidx.compose.material.icons.filled.Schedule
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
+import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.FacultyBadge
 import com.example.ui.components.VerifiedMark
@@ -221,6 +222,8 @@ private fun ChatConnectionNotice() {
 @Composable
 fun MessagesScreen(
     conversations: List<ChatConversation>,
+    profiles: List<UserProfile>,
+    currentUsername: String,
     activePartner: String?,
     onOpenConversation: (String) -> Unit,
     onCloseConversation: () -> Unit,
@@ -569,7 +572,8 @@ fun MessagesScreen(
     if (showNewChat) {
 
         NewChatSheet(
-            conversations = conversations,
+            profiles = profiles,
+            currentUsername = currentUsername,
             onDismiss = {
                 showNewChat = false
             },
@@ -1966,229 +1970,182 @@ private fun scopeAnimateToUnread(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NewChatSheet(
-    conversations: List<ChatConversation>,
+    profiles: List<UserProfile>,
+    currentUsername: String,
     onDismiss: () -> Unit,
     onOpenConversation: (String) -> Unit,
     onProfileClick: (String) -> Unit
 ) {
+    var search by rememberSaveable { mutableStateOf("") }
 
-    var search by rememberSaveable {
-        mutableStateOf("")
-    }
-
-    val candidates =
-        remember(
-            conversations,
-            search
-        ) {
-
-            conversations.filter {
-
-                search.isBlank() ||
-                        it.partnerName.contains(
-                            search,
-                            ignoreCase = true
-                        ) ||
-                        it.partnerUsername.contains(
-                            search,
-                            ignoreCase = true
-                        )
+    val candidates = remember(profiles, currentUsername, search) {
+        val query = search.trim()
+        profiles
+            .asSequence()
+            .filter { it.username.isNotBlank() }
+            .filterNot { it.username.equals(currentUsername, ignoreCase = true) }
+            .distinctBy { it.id.ifBlank { it.username.lowercase() } }
+            .filter { profile ->
+                query.isBlank() ||
+                    profile.fullName.contains(query, ignoreCase = true) ||
+                    profile.username.contains(query.removePrefix("@"), ignoreCase = true) ||
+                    profile.university.contains(query, ignoreCase = true)
             }
-        }
+            .sortedWith(
+                compareByDescending<UserProfile> { it.onlineNow }
+                    .thenBy { it.fullName.lowercase() }
+            )
+            .take(60)
+            .toList()
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState =
-            rememberModalBottomSheetState(
-                skipPartiallyExpanded = false
-            )
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     ) {
-
         Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = 16.dp,
-                        vertical = 8.dp
-                    )
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-
+            Text("New conversation", fontSize = 21.sp, fontWeight = FontWeight.Black)
+            Spacer(Modifier.height(5.dp))
             Text(
-                "New conversation",
-                fontSize = 21.sp,
-                fontWeight =
-                    FontWeight.Black
-            )
-
-            Spacer(
-                modifier =
-                    Modifier.height(5.dp)
-            )
-
-            Text(
-                "Find a student, seller or campus contact.",
+                "Search everyone on Blink — not only people you have messaged before.",
                 fontSize = 10.sp,
-                color =
-                    MaterialTheme
-                        .colorScheme
-                        .onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
-            Spacer(
-                modifier =
-                    Modifier.height(12.dp)
-            )
+            Spacer(Modifier.height(12.dp))
 
             Surface(
-                modifier =
-                    Modifier.fillMaxWidth(),
-                shape =
-                    RoundedCornerShape(
-                        100.dp
-                    ),
-                color =
-                    MaterialTheme
-                        .colorScheme
-                        .surfaceVariant
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(100.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant
             ) {
-
                 TextField(
                     value = search,
-                    onValueChange = {
-                        search = it
-                    },
-                    placeholder = {
-                        Text(
-                            "Name or username..."
-                        )
-                    },
-                    leadingIcon = {
-
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription =
-                                null
-                        )
-                    },
+                    onValueChange = { search = it },
+                    placeholder = { Text("Name, @username or university...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     singleLine = true,
-                    colors =
-                        TextFieldDefaults.colors(
-                            focusedContainerColor =
-                                Color.Transparent,
-                            unfocusedContainerColor =
-                                Color.Transparent,
-                            focusedIndicatorColor =
-                                Color.Transparent,
-                            unfocusedIndicatorColor =
-                                Color.Transparent
-                        ),
-                    modifier =
-                        Modifier.fillMaxWidth()
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent
+                    ),
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
-            Spacer(
-                modifier =
-                    Modifier.height(13.dp)
-            )
+            Spacer(Modifier.height(13.dp))
 
-            LazyColumn(
-                modifier =
-                    Modifier
+            if (candidates.isEmpty()) {
+                Column(
+                    modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(
-                            max = 480.dp
-                        ),
-                verticalArrangement =
-                    Arrangement.spacedBy(
-                        5.dp
+                        .padding(vertical = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        Icons.Default.PersonSearch,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-            ) {
-
-                items(
-                    candidates,
-                    key = {
-                        "new_${it.id}"
-                    }
-                ) { conversation ->
-
-                    Row(
-                        modifier =
-                            Modifier
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (search.isBlank()) "No other profiles are available yet."
+                        else "No profile matches your search.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 480.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    items(
+                        items = candidates,
+                        key = { profile -> "new_${profile.id.ifBlank { profile.username }}" }
+                    ) { profile ->
+                        Row(
+                            modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    onOpenConversation(
-                                        conversation.partnerUsername
+                                    onDismiss()
+                                    onOpenConversation(profile.username)
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box {
+                                AsyncImage(
+                                    model = profile.avatarUrl,
+                                    contentDescription = profile.fullName.ifBlank { profile.username },
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(45.dp)
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            onDismiss()
+                                            onProfileClick(profile.username)
+                                        }
+                                )
+                                if (profile.onlineNow) {
+                                    Box(
+                                        Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .size(11.dp)
+                                            .background(BlinkOnlineGreen, CircleShape)
                                     )
                                 }
-                                .padding(
-                                    vertical = 8.dp
-                                ),
-                        verticalAlignment =
-                            Alignment.CenterVertically
-                    ) {
+                            }
 
-                        AsyncImage(
-                            model =
-                                conversation.partnerAvatar,
-                            contentDescription =
-                                conversation.partnerName,
-                            contentScale =
-                                ContentScale.Crop,
-                            modifier =
-                                Modifier
-                                    .size(45.dp)
-                                    .clip(
-                                        CircleShape
+                            Spacer(Modifier.width(10.dp))
+
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        profile.fullName.ifBlank { profile.username },
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
-                                    .clickable {
-                                        onProfileClick(
-                                            conversation.partnerUsername
+                                    if (profile.verificationBadge != VerificationBadge.NONE) {
+                                        Spacer(Modifier.width(4.dp))
+                                        VerifiedMark(
+                                            badge = profile.verificationBadge,
+                                            size = 14.dp
                                         )
                                     }
-                        )
+                                }
+                                Text(
+                                    "@${profile.username}",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 9.sp
+                                )
+                                profile.university.takeIf { it.isNotBlank() }?.let { university ->
+                                    Text(
+                                        university,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 9.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
 
-                        Spacer(
-                            modifier =
-                                Modifier.width(10.dp)
-                        )
-
-                        Column(
-                            modifier =
-                                Modifier.weight(1f)
-                        ) {
-
-                            Text(
-                                conversation.partnerName,
-                                fontWeight =
-                                    FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
-
-                            Text(
-                                "@${conversation.partnerUsername}",
-                                color =
-                                    MaterialTheme
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                fontSize = 9.sp
-                            )
+                            Icon(Icons.Default.ChevronRight, contentDescription = "Open chat")
                         }
-
-                        Icon(
-                            Icons.Default.ChevronRight,
-                            contentDescription =
-                                "Open chat"
-                        )
                     }
                 }
             }
 
-            Spacer(
-                modifier =
-                    Modifier.height(10.dp)
-            )
+            Spacer(Modifier.height(10.dp))
         }
     }
 }
