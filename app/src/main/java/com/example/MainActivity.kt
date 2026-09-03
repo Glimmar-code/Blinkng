@@ -71,6 +71,13 @@ class MainActivity : ComponentActivity() {
         intent.removeExtra(BlinkNotificationHelper.EXTRA_ACTION)
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (viewModel.uiState.value.destination == AppDestination.MAIN) {
+            viewModel.fetchSupabaseData()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -128,7 +135,10 @@ class MainActivity : ComponentActivity() {
                                 AppDestination.SPLASH -> {
                                     SplashScreen(
                                         onTimeout = {
-                                            viewModel.setDestination(AppDestination.ONBOARDING)
+                                            if (com.example.data.supabase.SupabaseService.accessToken().isNullOrBlank() &&
+                                                com.example.data.supabase.SupabaseService.refreshToken().isNullOrBlank()) {
+                                                viewModel.setDestination(AppDestination.ONBOARDING)
+                                            }
                                         }
                                     )
                                 }
@@ -142,7 +152,9 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 AppDestination.SIGN_IN -> {
+                                    val recent = remember { AccountSessionStore.list(this@MainActivity).firstOrNull() }
                                     SignInScreen(
+                                        initialIdentifier = recent?.email?.takeIf { it.isNotBlank() } ?: recent?.username.orEmpty(),
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
                                         onSignInWithCredentials = { emailOrUser, password, onResult ->
                                             viewModel.signInWithCredentials(emailOrUser, password, onResult)
@@ -218,6 +230,7 @@ fun MainAppContent(
                 uiState.isActivityOpen ||
                 uiState.isGetVerifiedOpen ||
                 uiState.isCreatePostOpen ||
+                uiState.isCreateStoryOpen ||
                 uiState.activeViewingStory != null ||
                 uiState.showSellerCongratulationsDialog
     ) {
@@ -233,6 +246,7 @@ fun MainAppContent(
             uiState.viewingProduct != null -> viewModel.closeProductDetail()
             uiState.isGetVerifiedOpen -> viewModel.openGetVerified(false)
             uiState.isCreatePostOpen -> viewModel.openCreatePost(false)
+            uiState.isCreateStoryOpen -> viewModel.openCreateStory(false)
             uiState.activeViewingStory != null -> viewModel.closeStory()
             uiState.showSellerCongratulationsDialog -> viewModel.dismissSellerCongratulations()
         }
@@ -266,8 +280,9 @@ fun MainAppContent(
                         onBookmarkPost = { viewModel.toggleBookmark(it) },
                         onSharePost = { viewModel.sharePost(it) },
                         onOptionsClick = { viewModel.openPostOptions(it) },
+                        onDeletePost = { viewModel.deletePost(it) },
                         onProfileClick = { viewModel.openProfile(it) },
-                        onAddStoryClick = { viewModel.openCreatePost(true) },
+                        onAddStoryClick = { viewModel.openCreateStory(true) },
                         onStoryClick = { story -> viewModel.openStory(story) },
                         onOpenCreatePost = { viewModel.openCreatePost(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
@@ -290,9 +305,17 @@ fun MainAppContent(
 
                 MainTab.SEARCH -> {
                     SearchScreen(
-                        posts = uiState.posts,
+                        profiles = uiState.profiles,
+                        posts = (uiState.posts + uiState.reels).distinctBy { it.id },
+                        currentUsername = uiState.myProfile.username,
                         onProfileClick = { viewModel.openProfile(it) },
                         onPostClick = { viewModel.openCommentsForPost(it.id) },
+                        onLikePost = { viewModel.togglePostLike(it) },
+                        onCommentPost = { viewModel.openCommentsForPost(it) },
+                        onBookmarkPost = { viewModel.toggleBookmark(it) },
+                        onSharePost = { viewModel.sharePost(it) },
+                        onOptionsClick = { viewModel.openPostOptions(it) },
+                        onDeletePost = { viewModel.deletePost(it) },
                         isDark = uiState.isDarkMode
                     )
                 }
@@ -348,6 +371,7 @@ fun MainAppContent(
                 !uiState.isActivityOpen &&
                 !uiState.isGetVerifiedOpen &&
                 !uiState.isCreatePostOpen &&
+                !uiState.isCreateStoryOpen &&
                 uiState.activeViewingStory == null &&
                 !uiState.showSellerCongratulationsDialog &&
                 uiState.activePostOptionsPost == null &&
@@ -448,6 +472,7 @@ fun MainAppContent(
                     onBookmarkPost = { viewModel.toggleBookmark(it) },
                     onSharePost = { viewModel.sharePost(it) },
                     onOptionsClick = { viewModel.openPostOptions(it) },
+                    onDeletePost = { viewModel.deletePost(it) },
                     onProfileClick = { viewModel.openProfile(it) },
                     onMarketItemClick = { viewModel.openProductDetail(it) },
                     onOpenGetVerified = { viewModel.openGetVerified(true) },
@@ -552,9 +577,8 @@ fun MainAppContent(
                     onBack = { viewModel.closeConversation() },
                     onSendMessage = { text -> viewModel.sendMessage(convo.partnerUsername, text) },
                     onSendVideo = { uri -> viewModel.sendVideoMessage(convo.partnerUsername, uri) },
-                    onProfileClick = { 
-                        viewModel.closeConversation()
-                        viewModel.openProfile(it) 
+                    onProfileClick = { username ->
+                        viewModel.openProfileFromChat(username)
                     },
                     isDark = uiState.isDarkMode,
                     isConnected = uiState.isLiveSupabaseConnected,
@@ -598,6 +622,21 @@ fun MainAppContent(
                 onDismiss = { viewModel.openGetVerified(false) },
                 onUpgrade = { tier ->
                     viewModel.applyVerification(tier)
+                }
+            )
+        }
+
+        AnimatedVisibility(
+            visible = uiState.isCreateStoryOpen,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            CreateStoryScreen(
+                profile = uiState.myProfile,
+                isUploading = uiState.isCreatingStory,
+                onBack = { viewModel.openCreateStory(false) },
+                onPublish = { uri, caption, isVideo ->
+                    viewModel.publishStory(uri, caption, isVideo)
                 }
             )
         }
