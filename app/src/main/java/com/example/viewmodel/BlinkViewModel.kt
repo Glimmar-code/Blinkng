@@ -790,7 +790,34 @@ private suspend fun restoreSupabaseSession() {
             }
         }
     }
-    fun deletePost(postId: String) { val posts = _uiState.value.posts; val reels = _uiState.value.reels; _uiState.value = _uiState.value.copy(posts = posts.filterNot { it.id == postId }, reels = reels.filterNot { it.id == postId }, activePostOptionsPost = null); viewModelScope.launch { if (runCatching { supabaseService.deleteFeedPost(postId) }.getOrDefault(false)) showToast("Post removed from your feed.") else { _uiState.value = _uiState.value.copy(posts = posts, reels = reels); showToast("Failed to delete post.") } } }
+    fun deletePost(postId: String) {
+        val state = _uiState.value
+        val target = (state.posts + state.reels).firstOrNull { it.id == postId } ?: return
+        val me = state.myProfile.username.trim()
+        if (me.isBlank() || !target.author.equals(me, ignoreCase = true)) {
+            _uiState.value = state.copy(activePostOptionsPost = null)
+            showToast("You can only delete your own post or reel.")
+            return
+        }
+
+        val postsBefore = state.posts
+        val reelsBefore = state.reels
+        _uiState.value = state.copy(
+            posts = postsBefore.filterNot { it.id == postId },
+            reels = reelsBefore.filterNot { it.id == postId },
+            activePostOptionsPost = null
+        )
+
+        viewModelScope.launch {
+            val deleted = runCatching { supabaseService.deleteFeedPost(postId) }.getOrDefault(false)
+            if (deleted) {
+                showToast(if (target.videoUrl.isNullOrBlank()) "Post deleted." else "Reel deleted.")
+            } else {
+                _uiState.value = _uiState.value.copy(posts = postsBefore, reels = reelsBefore)
+                showToast("Delete failed. Only the owner can delete this content.")
+            }
+        }
+    }
     fun reportPost(postId: String, reason: String) {
         _uiState.value = _uiState.value.copy(activePostOptionsPost = null)
         viewModelScope.launch {
@@ -975,7 +1002,23 @@ private suspend fun restoreSupabaseSession() {
             is RealtimeEvent.MessageEvent -> handleIncomingRealtimeMessage(event.message)
             is RealtimeEvent.ConversationEvent -> viewModelScope.launch { _uiState.value = _uiState.value.copy(conversations = chatRepository.fetchConversations()) }
             is RealtimeEvent.NotificationEvent -> fetchSupabaseData()
-            is RealtimeEvent.FeedPostEvent -> viewModelScope.launch { val fresh = postRepository.fetchFeed(); if (fresh.isNotEmpty()) _uiState.value = _uiState.value.copy(posts = fresh.filter { !it.isReel && it.videoUrl.isNullOrBlank() }, reels = fresh.filter { it.isReel || !it.videoUrl.isNullOrBlank() }) }
+            is RealtimeEvent.FeedPostEvent -> viewModelScope.launch {
+                val fresh = postRepository.fetchFeed()
+                if (fresh.isNotEmpty()) {
+                    val muted = _uiState.value.mutedUsers
+                    _uiState.value = _uiState.value.copy(
+                        posts = fresh.filter {
+                            it.videoUrl.isNullOrBlank() &&
+                                !it.isReel &&
+                                it.author.lowercase() !in muted
+                        },
+                        reels = fresh.filter {
+                            !it.videoUrl.isNullOrBlank() &&
+                                it.author.lowercase() !in muted
+                        }
+                    )
+                }
+            }
         }
     }
 
