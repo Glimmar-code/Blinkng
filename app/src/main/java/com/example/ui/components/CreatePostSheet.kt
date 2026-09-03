@@ -7,16 +7,66 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Poll
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,6 +74,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -34,18 +85,50 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.example.data.models.FeedPost
+import com.example.data.models.PollOption
 import com.example.data.models.PostDraft
 import com.example.data.models.PostPoll
-import com.example.data.models.PollOption
 import com.example.data.models.ScheduledPost
 import com.example.data.models.UserProfile
 import org.json.JSONArray
 import java.util.UUID
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun CreatePostSheet(profile: UserProfile, savedDrafts: List<PostDraft> = emptyList(), scheduledPosts: List<ScheduledPost> = emptyList(), onDismiss: () -> Unit, onSubmitPost: (String, String, String?, String?, List<String>, List<String>, PostPoll?, Boolean, String, String, String?, String?, Boolean, Boolean, Boolean, Boolean, String?, String?) -> Unit, onSaveDraft: (PostDraft) -> Unit = {}, onDeleteDraft: (String) -> Unit = {}, onSchedulePost: (FeedPost, Long, String) -> Unit = { _, _, _ -> }, isDark: Boolean) {
+fun CreatePostSheet(
+    profile: UserProfile,
+    savedDrafts: List<PostDraft> = emptyList(),
+    scheduledPosts: List<ScheduledPost> = emptyList(),
+    onDismiss: () -> Unit,
+    onSubmitPost: (
+        String,
+        String,
+        String?,
+        String?,
+        List<String>,
+        List<String>,
+        PostPoll?,
+        Boolean,
+        String,
+        String,
+        String?,
+        String?,
+        Boolean,
+        Boolean,
+        Boolean,
+        Boolean,
+        String?,
+        String?
+    ) -> Unit,
+    onSaveDraft: (PostDraft) -> Unit = {},
+    onDeleteDraft: (String) -> Unit = {},
+    onSchedulePost: (FeedPost, Long, String) -> Unit = { _, _, _ -> },
+    isDark: Boolean,
+    isSubmitting: Boolean = false
+) {
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
+
     var text by rememberSaveable { mutableStateOf("") }
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
@@ -56,35 +139,944 @@ fun CreatePostSheet(profile: UserProfile, savedDrafts: List<PostDraft> = emptyLi
     var category by rememberSaveable { mutableStateOf("Campus Life") }
     var allowComments by rememberSaveable { mutableStateOf(true) }
     var showPoll by rememberSaveable { mutableStateOf(false) }
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uris -> if (uris.isNotEmpty()) { selectedImages = uris.map(Uri::toString); selectedVideo = null; mode = "post" } }
-    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) { selectedVideo = uri.toString(); selectedImages = emptyList(); mode = "reel" } }
-    fun submit() {
-        val cleanText = text.trim(); val validOptions = pollOptions.map(String::trim).filter(String::isNotBlank)
-        val hasContent = cleanText.isNotBlank() || selectedImages.isNotEmpty() || selectedVideo != null || (showPoll && pollQuestion.isNotBlank() && validOptions.size >= 2)
-        if (!hasContent) { Toast.makeText(context, "Add text, image, video, or a poll first.", Toast.LENGTH_SHORT).show(); return }
-        val poll = if (showPoll && pollQuestion.isNotBlank() && validOptions.size >= 2) PostPoll(pollQuestion.trim(), validOptions.map { PollOption(UUID.randomUUID().toString(), it) }) else null
-        val imagePayload = selectedImages.takeIf { it.isNotEmpty() }?.let { JSONArray(it).toString() }
-        onSubmitPost(cleanText, profile.faculty, imagePayload, selectedVideo, emptyList(), emptyList(), poll, selectedVideo != null, audience, category, null, null, allowComments, false, false, false, null, null)
+    var audienceMenuOpen by rememberSaveable { mutableStateOf(false) }
+    var categoryMenuOpen by rememberSaveable { mutableStateOf(false) }
+
+    val audiences = listOf("Everyone", "Campus", "Followers")
+    val categories = listOf(
+        "Campus Life",
+        "Academic",
+        "Events",
+        "Sports",
+        "Entertainment",
+        "Marketplace"
+    )
+
+    val imagePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(10)
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            selectedImages = uris.map(Uri::toString)
+            selectedVideo = null
+            mode = "post"
+        }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = if (isDark) MaterialTheme.colorScheme.background else Color.White) {
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 8.dp)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Close") }; Text("Create post", Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 19.sp); Button(onClick = ::submit, enabled = text.isNotBlank() || selectedImages.isNotEmpty() || selectedVideo != null || showPoll) { Text(if (mode == "reel") "Post Reel" else "Post") } }
-            HorizontalDivider()
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { FilterChip(selected = mode == "post", onClick = { mode = "post" }, label = { Text("Post") }); FilterChip(selected = mode == "reel", onClick = { mode = "reel" }, label = { Text("Reel") }); FilterChip(selected = showPoll, onClick = { showPoll = !showPoll }, label = { Text("Poll") }) }
-            OutlinedTextField(value = text, onValueChange = { if (it.length <= 5000) text = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), minLines = 5, placeholder = { Text("What's happening on campus?") }, shape = RoundedCornerShape(18.dp))
-            if (selectedImages.isNotEmpty()) LazyRow(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { itemsIndexed(selectedImages) { index, uri -> Box(Modifier.size(110.dp).clip(RoundedCornerShape(12.dp))) { AsyncImage(model = uri, contentDescription = "Selected image ${index + 1}", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()); IconButton(onClick = { selectedImages = selectedImages.toMutableList().also { it.removeAt(index) } }, Modifier.align(Alignment.TopEnd).size(30.dp)) { Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.55f)) { Icon(imageVector = Icons.Default.Close, contentDescription = null, tint = Color.White, modifier = Modifier.padding(6.dp)) } } } } }
-            selectedVideo?.let { VideoComposerPreview(it) { selectedVideo = null; mode = "post" } }
-            if (showPoll) Card(Modifier.fillMaxWidth().padding(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f))) { Column(Modifier.padding(12.dp)) { Text("Poll", fontWeight = FontWeight.Bold); OutlinedTextField(pollQuestion, { pollQuestion = it }, Modifier.fillMaxWidth().padding(top = 8.dp), placeholder = { Text("Ask a question") }, singleLine = true); pollOptions.forEachIndexed { index, value -> Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) { OutlinedTextField(value, { v -> pollOptions = pollOptions.toMutableList().also { it[index] = v } }, Modifier.weight(1f), placeholder = { Text("Option ${index + 1}") }, singleLine = true); if (pollOptions.size > 2) IconButton(onClick = { pollOptions = pollOptions.toMutableList().also { it.removeAt(index) } }) { Icon(Icons.Default.Delete, "Remove option") } } }; if (pollOptions.size < 4) TextButton(onClick = { pollOptions = pollOptions + "" }) { Text("+ Add option") } } }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) { AssistChip(onClick = { imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, label = { Text("Images") }, leadingIcon = { Icon(Icons.Default.Image, null) }); AssistChip(onClick = { videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }, label = { Text("Video → Reel") }, leadingIcon = { Icon(Icons.Default.VideoLibrary, null) }) }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) { Text("Allow comments", Modifier.weight(1f)); Switch(checked = allowComments, onCheckedChange = { allowComments = it }) }
+
+    val videoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            selectedVideo = uri.toString()
+            selectedImages = emptyList()
+            mode = "reel"
+            showPoll = false
+        }
+    }
+
+    fun imagePayload(images: List<String>): String? {
+        return when (images.size) {
+            0 -> null
+            1 -> images.first()
+            else -> JSONArray(images).toString()
+        }
+    }
+
+    fun parseDraftImages(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        val clean = raw.trim()
+        if (!clean.startsWith("[")) return listOf(clean)
+        return runCatching {
+            val array = JSONArray(clean)
+            buildList {
+                for (index in 0 until array.length()) {
+                    array.optString(index)
+                        .takeIf { it.isNotBlank() }
+                        ?.let(::add)
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    val cleanText = text.trim()
+    val validPollOptions = pollOptions.map(String::trim).filter(String::isNotBlank)
+    val pollValid = showPoll && pollQuestion.isNotBlank() && validPollOptions.size >= 2
+    val hasContent = cleanText.isNotBlank() ||
+        selectedImages.isNotEmpty() ||
+        selectedVideo != null ||
+        pollValid
+    val canSubmit = hasContent && !isSubmitting
+
+    fun submit() {
+        if (!canSubmit) {
+            if (!isSubmitting) {
+                Toast.makeText(
+                    context,
+                    if (showPoll && !pollValid) "Add a poll question and at least two options." else "Add something to your post first.",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            return
+        }
+
+        val poll = if (pollValid) {
+            PostPoll(
+                question = pollQuestion.trim(),
+                options = validPollOptions.map {
+                    PollOption(UUID.randomUUID().toString(), it)
+                }
+            )
+        } else null
+
+        onSubmitPost(
+            cleanText,
+            profile.faculty,
+            imagePayload(selectedImages),
+            selectedVideo,
+            emptyList(),
+            emptyList(),
+            poll,
+            selectedVideo != null,
+            audience,
+            category,
+            null,
+            null,
+            allowComments,
+            false,
+            false,
+            false,
+            null,
+            null
+        )
+    }
+
+    fun saveDraft() {
+        if (!hasContent) {
+            Toast.makeText(context, "Add something before saving a draft.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        onSaveDraft(
+            PostDraft(
+                text = text,
+                faculty = profile.faculty,
+                imageUri = imagePayload(selectedImages),
+                videoUri = selectedVideo,
+                isReel = selectedVideo != null,
+                category = category,
+                audience = audience
+            )
+        )
+        Toast.makeText(context, "Draft saved.", Toast.LENGTH_SHORT).show()
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = {
+            if (!isSubmitting) onDismiss()
+        },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+        ) {
+            ComposerTopBar(
+                isSubmitting = isSubmitting,
+                canSubmit = canSubmit,
+                isReel = selectedVideo != null,
+                onDismiss = onDismiss,
+                onSubmit = ::submit
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState)
+                    .padding(bottom = 18.dp)
+            ) {
+                AuthorComposerHeader(
+                    profile = profile,
+                    audience = audience,
+                    audienceMenuOpen = audienceMenuOpen,
+                    onAudienceMenuChanged = { audienceMenuOpen = it },
+                    audiences = audiences,
+                    onAudienceSelected = {
+                        audience = it
+                        audienceMenuOpen = false
+                    }
+                )
+
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = mode == "post" && !showPoll,
+                        onClick = {
+                            mode = "post"
+                            showPoll = false
+                        },
+                        enabled = !isSubmitting,
+                        label = { Text("Post") }
+                    )
+                    FilterChip(
+                        selected = mode == "reel",
+                        onClick = {
+                            mode = "reel"
+                            showPoll = false
+                            if (selectedVideo == null) {
+                                videoPicker.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                                )
+                            }
+                        },
+                        enabled = !isSubmitting,
+                        label = { Text("Reel") }
+                    )
+                    FilterChip(
+                        selected = showPoll,
+                        onClick = {
+                            showPoll = !showPoll
+                            if (showPoll) {
+                                mode = "post"
+                                selectedVideo = null
+                            }
+                        },
+                        enabled = !isSubmitting,
+                        label = { Text("Poll") }
+                    )
+                }
+
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = {
+                        if (it.length <= 5000) text = it
+                    },
+                    enabled = !isSubmitting,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    minLines = 5,
+                    maxLines = 12,
+                    placeholder = {
+                        Text(
+                            if (selectedVideo != null) "Write a caption for your reel..."
+                            else "What's happening on campus?"
+                        )
+                    },
+                    supportingText = {
+                        Row(Modifier.fillMaxWidth()) {
+                            Text(
+                                if (selectedImages.isNotEmpty()) {
+                                    "${selectedImages.size}/10 photos selected"
+                                } else {
+                                    "Be clear, useful, and respectful."
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text("${text.length}/5000")
+                        }
+                    },
+                    shape = RoundedCornerShape(20.dp)
+                )
+
+                if (selectedImages.isNotEmpty()) {
+                    LazyRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        itemsIndexed(
+                            items = selectedImages,
+                            key = { _, uri -> uri }
+                        ) { index, uri ->
+                            SelectedImagePreview(
+                                uri = uri,
+                                index = index,
+                                onRemove = {
+                                    selectedImages = selectedImages.toMutableList().also {
+                                        it.removeAt(index)
+                                    }
+                                }
+                            )
+                        }
+
+                        if (selectedImages.size < 10) {
+                            item {
+                                Surface(
+                                    modifier = Modifier
+                                        .size(116.dp)
+                                        .clickable(enabled = !isSubmitting) {
+                                            imagePicker.launch(
+                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                            )
+                                        },
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(Icons.Default.Add, contentDescription = null)
+                                        Spacer(Modifier.height(4.dp))
+                                        Text("Add more", fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                selectedVideo?.let {
+                    VideoComposerPreview(
+                        uri = it,
+                        onRemove = {
+                            if (!isSubmitting) {
+                                selectedVideo = null
+                                mode = "post"
+                            }
+                        }
+                    )
+                }
+
+                if (showPoll) {
+                    PollComposer(
+                        question = pollQuestion,
+                        onQuestionChanged = { pollQuestion = it.take(240) },
+                        options = pollOptions,
+                        onOptionsChanged = { pollOptions = it },
+                        enabled = !isSubmitting
+                    )
+                }
+
+                AddToPostCard(
+                    enabled = !isSubmitting,
+                    onImages = {
+                        imagePicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    onVideo = {
+                        videoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                        )
+                    },
+                    onPoll = {
+                        showPoll = !showPoll
+                        if (showPoll) {
+                            selectedVideo = null
+                            mode = "post"
+                        }
+                    }
+                )
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .4f)
+                    )
+                ) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text(
+                            "Post settings",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleSmall
+                        )
+
+                        Spacer(Modifier.height(8.dp))
+
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Category",
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Box {
+                                AssistChip(
+                                    onClick = { categoryMenuOpen = true },
+                                    enabled = !isSubmitting,
+                                    label = { Text(category) }
+                                )
+                                DropdownMenu(
+                                    expanded = categoryMenuOpen,
+                                    onDismissRequest = { categoryMenuOpen = false }
+                                ) {
+                                    categories.forEach { item ->
+                                        DropdownMenuItem(
+                                            text = { Text(item) },
+                                            onClick = {
+                                                category = item
+                                                categoryMenuOpen = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Allow comments", fontWeight = FontWeight.Medium)
+                                Text(
+                                    "Let people reply to this post.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = allowComments,
+                                onCheckedChange = { allowComments = it },
+                                enabled = !isSubmitting
+                            )
+                        }
+                    }
+                }
+
+                if (savedDrafts.isNotEmpty()) {
+                    Text(
+                        "Recent drafts",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleSmall
+                    )
+
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(savedDrafts.take(4), key = { it.id }) { draft ->
+                            DraftCard(
+                                draft = draft,
+                                onLoad = {
+                                    text = draft.text
+                                    selectedImages = parseDraftImages(draft.imageUri)
+                                    selectedVideo = draft.videoUri
+                                    mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
+                                    audience = draft.audience
+                                    category = draft.category
+                                    showPoll = false
+                                },
+                                onDelete = { onDeleteDraft(draft.id) }
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = ::saveDraft,
+                        enabled = hasContent && !isSubmitting,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            Icons.Default.Save,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Save draft")
+                    }
+
+                    Button(
+                        onClick = ::submit,
+                        enabled = canSubmit,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (isSubmitting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Publishing")
+                        } else {
+                            Text(if (selectedVideo != null) "Post reel" else "Publish")
+                        }
+                    }
+                }
+
+                if (scheduledPosts.isNotEmpty()) {
+                    Text(
+                        "${scheduledPosts.size} scheduled post${if (scheduledPosts.size == 1) "" else "s"}",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun VideoComposerPreview(uri: String, onRemove: () -> Unit) {
+private fun ComposerTopBar(
+    isSubmitting: Boolean,
+    canSubmit: Boolean,
+    isReel: Boolean,
+    onDismiss: () -> Unit,
+    onSubmit: () -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(
+            onClick = onDismiss,
+            enabled = !isSubmitting
+        ) {
+            Icon(Icons.Default.Close, contentDescription = "Close")
+        }
+
+        Column(Modifier.weight(1f)) {
+            Text(
+                if (isReel) "Create reel" else "Create post",
+                fontWeight = FontWeight.Black,
+                fontSize = 19.sp
+            )
+            Text(
+                if (isReel) "Share a vertical video with campus" else "Share something with your community",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Button(
+            onClick = onSubmit,
+            enabled = canSubmit
+        ) {
+            if (isSubmitting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(17.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            } else {
+                Text("Post")
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuthorComposerHeader(
+    profile: UserProfile,
+    audience: String,
+    audienceMenuOpen: Boolean,
+    onAudienceMenuChanged: (Boolean) -> Unit,
+    audiences: List<String>,
+    onAudienceSelected: (String) -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+            model = profile.avatarUrl,
+            contentDescription = profile.fullName,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(46.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        )
+
+        Spacer(Modifier.width(11.dp))
+
+        Column(Modifier.weight(1f)) {
+            Text(
+                profile.fullName.ifBlank { profile.username },
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                "@${profile.username}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Box {
+            AssistChip(
+                onClick = { onAudienceMenuChanged(true) },
+                label = { Text(audience) },
+                leadingIcon = {
+                    Icon(
+                        when (audience) {
+                            "Followers" -> Icons.Default.People
+                            "Campus" -> Icons.Default.Lock
+                            else -> Icons.Default.Public
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+            )
+
+            DropdownMenu(
+                expanded = audienceMenuOpen,
+                onDismissRequest = { onAudienceMenuChanged(false) }
+            ) {
+                audiences.forEach { item ->
+                    DropdownMenuItem(
+                        text = { Text(item) },
+                        onClick = { onAudienceSelected(item) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectedImagePreview(
+    uri: String,
+    index: Int,
+    onRemove: () -> Unit
+) {
+    Box(
+        Modifier
+            .size(116.dp)
+            .clip(RoundedCornerShape(16.dp))
+    ) {
+        AsyncImage(
+            model = uri,
+            contentDescription = "Selected image ${index + 1}",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(4.dp)
+                .size(30.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = Color.Black.copy(alpha = .62f)
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Remove image",
+                    tint = Color.White,
+                    modifier = Modifier.padding(6.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PollComposer(
+    question: String,
+    onQuestionChanged: (String) -> Unit,
+    options: List<String>,
+    onOptionsChanged: (List<String>) -> Unit,
+    enabled: Boolean
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
+        )
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Poll, contentDescription = null)
+                Spacer(Modifier.width(7.dp))
+                Text("Poll", fontWeight = FontWeight.Bold)
+            }
+
+            OutlinedTextField(
+                value = question,
+                onValueChange = onQuestionChanged,
+                enabled = enabled,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                placeholder = { Text("Ask a question") },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp)
+            )
+
+            options.forEachIndexed { index, value ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = { newValue ->
+                            onOptionsChanged(
+                                options.toMutableList().also {
+                                    it[index] = newValue.take(120)
+                                }
+                            )
+                        },
+                        enabled = enabled,
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Option ${index + 1}") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp)
+                    )
+
+                    if (options.size > 2) {
+                        IconButton(
+                            onClick = {
+                                onOptionsChanged(
+                                    options.toMutableList().also {
+                                        it.removeAt(index)
+                                    }
+                                )
+                            },
+                            enabled = enabled
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Remove option"
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (options.size < 4) {
+                TextButton(
+                    onClick = { onOptionsChanged(options + "") },
+                    enabled = enabled
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add option")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddToPostCard(
+    enabled: Boolean,
+    onImages: () -> Unit,
+    onVideo: () -> Unit,
+    onPoll: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 7.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                "Add to your post",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleSmall
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                AssistChip(
+                    onClick = onImages,
+                    enabled = enabled,
+                    label = { Text("Photos") },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Image,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                )
+
+                AssistChip(
+                    onClick = onVideo,
+                    enabled = enabled,
+                    label = { Text("Video") },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.VideoLibrary,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                )
+
+                AssistChip(
+                    onClick = onPoll,
+                    enabled = enabled,
+                    label = { Text("Poll") },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Poll,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DraftCard(
+    draft: PostDraft,
+    onLoad: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .width(210.dp)
+            .clickable(onClick = onLoad),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f)
+    ) {
+        Row(
+            Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    draft.text.ifBlank {
+                        if (!draft.videoUri.isNullOrBlank()) "Video draft" else "Media draft"
+                    },
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    draft.category,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete draft",
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VideoComposerPreview(
+    uri: String,
+    onRemove: () -> Unit
+) {
     val context = LocalContext.current
-    val player = remember(uri) { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(uri)); prepare(); playWhenReady = true; repeatMode = Player.REPEAT_MODE_ONE } }
-    DisposableEffect(player) { onDispose { player.release() } }
-    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(240.dp).clip(RoundedCornerShape(16.dp)).background(Color.Black)) { AndroidView(factory = { ctx -> PlayerView(ctx).apply { useController = true; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT; this.player = player } }, update = { it.player = player }, modifier = Modifier.fillMaxSize()); IconButton(onClick = onRemove, Modifier.align(Alignment.TopEnd).padding(6.dp)) { Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.55f)) { Icon(imageVector = Icons.Default.Close, contentDescription = "Remove video", tint = Color.White, modifier = Modifier.padding(7.dp)) } } }
+    val player = remember(uri) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(uri))
+            prepare()
+            playWhenReady = true
+            repeatMode = Player.REPEAT_MODE_ONE
+        }
+    }
+
+    DisposableEffect(player) {
+        onDispose {
+            player.release()
+        }
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .height(260.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.Black)
+    ) {
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    useController = true
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    this.player = player
+                }
+            },
+            update = { it.player = player },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = Color.Black.copy(alpha = .62f)
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Remove video",
+                    tint = Color.White,
+                    modifier = Modifier.padding(7.dp)
+                )
+            }
+        }
+    }
 }
