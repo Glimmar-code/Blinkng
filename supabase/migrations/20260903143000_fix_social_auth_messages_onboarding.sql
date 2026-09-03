@@ -123,4 +123,47 @@ $$;
 revoke all on function public.get_or_create_direct_conversation(text) from public, anon;
 grant execute on function public.get_or_create_direct_conversation(text) to authenticated;
 
+
+create or replace function public.complete_profile_onboarding(
+  p_university text,
+  p_department text,
+  p_academic_level text,
+  p_bio text default '',
+  p_core_skills text[] default '{}'::text[],
+  p_phone text default null,
+  p_whatsapp text default null
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_me uuid := auth.uid();
+begin
+  if v_me is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  if nullif(trim(p_university), '') is null then raise exception 'UNIVERSITY_REQUIRED'; end if;
+  if nullif(trim(p_department), '') is null then raise exception 'DEPARTMENT_REQUIRED'; end if;
+  if nullif(trim(p_academic_level), '') is null then raise exception 'ACADEMIC_LEVEL_REQUIRED'; end if;
+
+  update public.profiles
+     set university = trim(p_university),
+         department = trim(p_department),
+         academic_level = trim(p_academic_level),
+         bio = coalesce(trim(p_bio), ''),
+         core_skills = coalesce(p_core_skills, '{}'::text[]),
+         phone = coalesce(nullif(trim(p_phone), ''), phone),
+         whatsapp = coalesce(nullif(trim(p_whatsapp), ''), whatsapp),
+         onboarding_completed = true,
+         updated_at = now()
+   where id = v_me;
+
+  if not found then raise exception 'PROFILE_NOT_FOUND'; end if;
+  return true;
+end;
+$$;
+
+revoke all on function public.complete_profile_onboarding(text,text,text,text,text[],text,text) from public, anon;
+grant execute on function public.complete_profile_onboarding(text,text,text,text,text[],text,text) to authenticated;
+
 commit;
