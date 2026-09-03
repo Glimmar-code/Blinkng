@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.VerificationBadge
+import com.example.data.models.LeaderboardUser
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.*
 import kotlinx.coroutines.delay
@@ -57,6 +58,7 @@ data class GameLeader(
 @Composable
 fun GameSection(
     userAvatar: String,
+    leaderboardUsers: List<LeaderboardUser> = emptyList(),
     isDark: Boolean,
     onOpenMenu: () -> Unit,
     onOpenActivity: () -> Unit,
@@ -138,13 +140,21 @@ fun GameSection(
 
     val currentQ = questions[currentQuestionIndex % questions.size]
 
-    val leaders = remember {
-        listOf(
-            GameLeader(1, "David Adeleke", "davido_aluta", "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&fit=crop", 1450, 12, VerificationBadge.GOLD),
-            GameLeader(2, "Amaka Johnson", "amaka_j", "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&fit=crop", 1280, 9, VerificationBadge.BLUE),
-            GameLeader(3, "Femi Otedola", "femi_code", "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&fit=crop", 1120, 7, VerificationBadge.BLUE),
-            GameLeader(4, "Khadija Umar", "khadija_u", "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&fit=crop", 980, 5, VerificationBadge.NONE)
-        )
+    val leaders = remember(leaderboardUsers) {
+        leaderboardUsers
+            .sortedBy { it.rank }
+            .take(10)
+            .map {
+                GameLeader(
+                    rank = it.rank,
+                    name = it.fullName.ifBlank { it.username },
+                    username = it.username,
+                    avatarUrl = it.avatar,
+                    score = it.points,
+                    streak = it.streakDays,
+                    badge = it.verificationBadge
+                )
+            }
     }
 
     LazyColumn(
@@ -541,6 +551,23 @@ fun GameSection(
         }
 
         item { Spacer(modifier = Modifier.height(10.dp)) }
+
+        if (leaders.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "No live leaderboard users yet.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
 
         items(leaders.size) { index ->
             val leader = leaders[index]
