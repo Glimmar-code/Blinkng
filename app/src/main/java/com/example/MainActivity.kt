@@ -184,7 +184,7 @@ class MainActivity : ComponentActivity() {
                                         studentName = uiState.myProfile.fullName,
                                         studentUsername = uiState.myProfile.username,
                                         onComplete = { uni, dept, level, bio, skills ->
-                                            viewModel.completeProfileOnboarding(uni, level, bio, skills)
+                                            viewModel.completeProfileOnboarding(uni, dept, level, bio, skills)
                                         }
                                     )
                                 }

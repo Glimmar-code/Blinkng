@@ -2,6 +2,8 @@ package com.example.data.local
 
 import android.content.Context
 import android.util.Log
+import com.example.data.models.ChatConversation
+import com.example.data.models.ChatMessage
 import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
 import com.squareup.moshi.JsonAdapter
@@ -9,6 +11,7 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -16,6 +19,7 @@ import kotlinx.coroutines.flow.map
 class OfflineContentStore(context: Context) {
     companion object {
         private const val TAG = "OfflineContentStore"
+        private const val DEFAULT_CACHE_MAX_AGE_MS = 7L * 24L * 60L * 60L * 1000L
     }
 
     private val dao = BlinkDatabase.getInstance(context).cachedContentDao()
@@ -35,6 +39,24 @@ class OfflineContentStore(context: Context) {
         .map { rows -> rows.mapNotNull { codec.decodeProfile(it.payloadJson) } }
         .distinctUntilChanged()
         .flowOn(Dispatchers.Default)
+
+    val conversations: Flow<List<ChatConversation>> =
+        combine(dao.observeConversations(), dao.observeMessages()) { conversations, messages ->
+            val grouped = messages.groupBy { it.conversationId }
+            conversations.mapNotNull { row ->
+                val base = codec.decodeConversation(row.payloadJson) ?: return@mapNotNull null
+                val hydratedMessages = grouped[row.id]
+                    .orEmpty()
+                    .sortedBy { it.displayOrder }
+                    .mapNotNull { codec.decodeMessage(it.payloadJson) }
+                    .toMutableList()
+                base.copy(messages = hydratedMessages)
+            }
+        }.distinctUntilChanged().flowOn(Dispatchers.Default)
+
+    val pendingOutboxCount: Flow<Int> = dao.observePendingOutboxCount()
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.IO)
 
     suspend fun replaceFeed(posts: List<FeedPost>, reels: List<FeedPost>) {
         val cachedAt = System.currentTimeMillis()
@@ -72,6 +94,37 @@ class OfflineContentStore(context: Context) {
         dao.replaceProfiles(rows)
     }
 
+    suspend fun replaceConversations(conversations: List<ChatConversation>) {
+        val cachedAt = System.currentTimeMillis()
+        val conversationRows = conversations.distinctBy { it.id }.mapIndexedNotNull { index, conversation ->
+            codec.encodeConversation(conversation.copy(messages = mutableListOf()))?.let { json ->
+                CachedConversationEntity(
+                    id = conversation.id,
+                    partnerUsername = conversation.partnerUsername.lowercase(),
+                    displayOrder = index,
+                    payloadJson = json,
+                    cachedAt = cachedAt
+                )
+            }
+        }
+        val messageRows = conversations.flatMap { conversation ->
+            conversation.messages.distinctBy { it.id }.mapIndexedNotNull { index, message ->
+                val stableId = message.id.ifBlank { "${conversation.id}_${index}_${message.rawTimestamp}" }
+                codec.encodeMessage(message)?.let { json ->
+                    CachedMessageEntity(
+                        id = stableId,
+                        conversationId = conversation.id,
+                        displayOrder = index,
+                        rawTimestamp = message.rawTimestamp,
+                        payloadJson = json,
+                        cachedAt = cachedAt
+                    )
+                }
+            }
+        }
+        dao.replaceConversations(conversationRows, messageRows)
+    }
+
     suspend fun upsertProfile(profile: UserProfile) {
         if (profile.id.isBlank() && profile.username.isBlank()) return
         val json = codec.encodeProfile(profile) ?: return
@@ -88,7 +141,42 @@ class OfflineContentStore(context: Context) {
         )
     }
 
+    suspend fun enqueueMessage(localId: String, receiverUsername: String, content: String) {
+        dao.upsertOutbox(
+            MessageOutboxEntity(
+                localId = localId,
+                receiverUsername = receiverUsername.trim(),
+                content = content,
+                createdAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun pendingOutbox(limit: Int = 30): List<MessageOutboxEntity> =
+        dao.pendingOutbox(System.currentTimeMillis(), limit.coerceIn(1, 100))
+
+    suspend fun markOutboxFailure(item: MessageOutboxEntity, error: String) {
+        val nextAttempt = item.attemptCount + 1
+        val delayMs = (5_000L * (1L shl nextAttempt.coerceAtMost(6))).coerceAtMost(30L * 60L * 1000L)
+        dao.markOutboxFailure(
+            localId = item.localId,
+            attemptCount = nextAttempt,
+            nextRetryAt = System.currentTimeMillis() + delayMs,
+            error = error.take(400)
+        )
+    }
+
+    suspend fun resetOutbox(localId: String) = dao.resetOutbox(localId)
+    suspend fun deleteOutbox(localId: String) = dao.deleteOutbox(localId)
     suspend fun deletePost(postId: String) = dao.deletePost(postId)
+
+    suspend fun pruneOldCaches(maxAgeMs: Long = DEFAULT_CACHE_MAX_AGE_MS) {
+        val before = System.currentTimeMillis() - maxAgeMs.coerceAtLeast(60_000L)
+        dao.prunePosts(before)
+        dao.pruneProfiles(before)
+        dao.pruneConversations(before)
+        dao.pruneMessages(before)
+    }
 }
 
 internal class OfflineContentCodec {
@@ -98,6 +186,8 @@ internal class OfflineContentCodec {
 
     private val postAdapter: JsonAdapter<FeedPost> = moshi.adapter(FeedPost::class.java)
     private val profileAdapter: JsonAdapter<UserProfile> = moshi.adapter(UserProfile::class.java)
+    private val conversationAdapter: JsonAdapter<ChatConversation> = moshi.adapter(ChatConversation::class.java)
+    private val messageAdapter: JsonAdapter<ChatMessage> = moshi.adapter(ChatMessage::class.java)
 
     fun encodePost(post: FeedPost): String? = runCatching { postAdapter.toJson(post) }
         .onFailure { Log.w("OfflineContentCodec", "Unable to encode cached post", it) }
@@ -113,5 +203,23 @@ internal class OfflineContentCodec {
 
     fun decodeProfile(json: String): UserProfile? = runCatching { profileAdapter.fromJson(json) }
         .onFailure { Log.w("OfflineContentCodec", "Ignoring an unreadable cached profile", it) }
+        .getOrNull()
+
+    fun encodeConversation(conversation: ChatConversation): String? =
+        runCatching { conversationAdapter.toJson(conversation) }
+            .onFailure { Log.w("OfflineContentCodec", "Unable to encode cached conversation", it) }
+            .getOrNull()
+
+    fun decodeConversation(json: String): ChatConversation? =
+        runCatching { conversationAdapter.fromJson(json) }
+            .onFailure { Log.w("OfflineContentCodec", "Ignoring an unreadable cached conversation", it) }
+            .getOrNull()
+
+    fun encodeMessage(message: ChatMessage): String? = runCatching { messageAdapter.toJson(message) }
+        .onFailure { Log.w("OfflineContentCodec", "Unable to encode cached message", it) }
+        .getOrNull()
+
+    fun decodeMessage(json: String): ChatMessage? = runCatching { messageAdapter.fromJson(json) }
+        .onFailure { Log.w("OfflineContentCodec", "Ignoring an unreadable cached message", it) }
         .getOrNull()
 }
