@@ -3,10 +3,11 @@ package com.example.ui.components
 import android.content.Intent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -82,7 +83,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -99,7 +99,7 @@ import com.example.ui.theme.BlinkPink
 import kotlinx.coroutines.delay
 
 private object MenuMotion {
-    val Chevron = spring<Float>(
+    val chevron = spring<Float>(
         dampingRatio = Spring.DampingRatioMediumBouncy,
         stiffness = Spring.StiffnessLow
     )
@@ -142,10 +142,10 @@ fun AppMenuSheet(
     ) {
         var contentVisible by remember { mutableStateOf(false) }
         LaunchedEffect(Unit) { delay(25); contentVisible = true }
-
         var expandedSections by rememberSaveable {
             mutableStateOf(setOf("Profile", "Marketplace", "Privacy & Security", "Session"))
         }
+
         fun toggle(title: String) {
             expandedSections = if (title in expandedSections) expandedSections - title else expandedSections + title
         }
@@ -334,7 +334,7 @@ private fun MenuSection(
     onToggle: () -> Unit,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val rotation by animateFloatAsState(if (expanded) 90f else 0f, MenuMotion.Chevron, label = "menuChevron")
+    val rotation by animateFloatAsState(if (expanded) 90f else 0f, MenuMotion.chevron, label = "menuChevron")
     Column {
         Row(
             modifier = Modifier
