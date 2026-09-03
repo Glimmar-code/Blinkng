@@ -439,11 +439,16 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun signUp(fullName: String, username: String, email: String, password: String = "", faculty: String = "SIMME") {
+    fun signUp(fullName: String, username: String, email: String, password: String = "", faculty: String = "") {
+        if (fullName.isBlank()) { showToast("Please enter your real name."); return }
+        if (username.isBlank()) { showToast("Please choose a username."); return }
         if (password.isBlank()) { showToast("Please create a password before continuing."); return }
-        val cleanName = fullName.trim().ifBlank { "Campus Student" }
-        val cleanUsername = username.trim().lowercase().removePrefix("@").ifBlank { "student_${System.currentTimeMillis() % 10000}" }
+
+        val cleanName = fullName.trim()
+        val cleanUsername = username.trim().lowercase().removePrefix("@")
         val cleanEmail = email.trim().lowercase()
+
+        if (cleanUsername.isBlank()) { showToast("Please choose a username."); return }
         if (cleanEmail.isBlank() || !cleanEmail.contains("@")) { showToast("Please enter a valid email address."); return }
         val initialProfile = _uiState.value.myProfile.copy(fullName = cleanName, username = cleanUsername, email = ContactField(cleanEmail, true), faculty = faculty.trim())
         _uiState.value = _uiState.value.copy(myProfile = initialProfile)
