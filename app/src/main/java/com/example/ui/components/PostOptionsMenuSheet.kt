@@ -671,14 +671,17 @@ fun PostOptionsMenuSheet(
                 icon =
                     Icons.Default.Settings,
                 iconTint =
-                    MaterialTheme
-                        .colorScheme
-                        .onSurface,
+                    if (compactPreview) BlinkPurple
+                    else MaterialTheme.colorScheme.onSurface,
                 title =
-                    "Post preferences",
+                    if (compactPreview) "Full post preview"
+                    else "Compact post preview",
                 subtitle =
-                    "Manage how this content appears to you",
-                onClick = {},
+                    if (compactPreview) "Show the full preview in this menu"
+                    else "Use a smaller preview while managing this post",
+                onClick = {
+                    compactPreview = !compactPreview
+                },
                 testTag =
                     "post_preferences_action"
             )
