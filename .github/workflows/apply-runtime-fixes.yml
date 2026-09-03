@@ -1,8 +1,6 @@
 name: Apply runtime fixes
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
