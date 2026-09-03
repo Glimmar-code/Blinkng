@@ -2148,7 +2148,9 @@ suspend fun uploadPostMedia(
                     newRequestBuilder(
                         "/rest/v1/profiles" +
                                 "?select=*" +
-                                "&limit=100"
+                                "&order=created_at.desc" +
+                                "&limit=100",
+                        authenticated = true
                     )
                         .get()
                         .build()
