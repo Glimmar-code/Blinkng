@@ -19,6 +19,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,7 +43,7 @@ class AccountSwitcherActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             BlinkTheme {
-                val accounts = remember { AccountSessionStore.list(this@AccountSwitcherActivity) }
+                var accounts by remember { mutableStateOf(AccountSessionStore.list(this@AccountSwitcherActivity)) }
                 var switchingUserId by remember { mutableStateOf<String?>(null) }
                 var error by remember { mutableStateOf<String?>(null) }
 
@@ -97,6 +98,7 @@ class AccountSwitcherActivity : ComponentActivity() {
                     OutlinedButton(
                         onClick = {
                             AccountSessionStore.clear(this@AccountSwitcherActivity)
+                            accounts = emptyList()
                             error = "Saved accounts cleared."
                         },
                         modifier = Modifier.fillMaxWidth()

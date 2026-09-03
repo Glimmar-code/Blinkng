@@ -47,7 +47,39 @@ fun CreateStoryScreen(profile:UserProfile,isUploading:Boolean,onBack:()->Unit,on
                 Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){
                     val uri=selectedUri
                     if(uri==null){Column(horizontalAlignment=Alignment.CenterHorizontally){Text("Create a new story",style=MaterialTheme.typography.titleMedium,fontWeight=androidx.compose.ui.text.font.FontWeight.Bold);Spacer(Modifier.height(6.dp));Text("Choose a photo or video from your device",color=MaterialTheme.colorScheme.onSurfaceVariant);Spacer(Modifier.height(20.dp));Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){StoryMediaChoice(Icons.Default.Image,"Photo"){imagePicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))};StoryMediaChoice(Icons.Default.VideoLibrary,"Video"){videoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))}}}}
-                    else{AnimatedVisibility(true,enter=fadeIn()+scaleIn()){if(!isVideo)AsyncImage(model=uri,contentDescription="Story preview",contentScale=ContentScale.Crop,modifier=Modifier.fillMaxSize())else Column(horizontalAlignment=Alignment.CenterHorizontally){Icon(Icons.Default.VideoLibrary,null,tint=BlinkPink,modifier=Modifier.size(64.dp));Spacer(Modifier.height(10.dp));Text("Video selected",fontWeight=androidx.compose.ui.text.font.FontWeight.Bold);Text("It will upload securely to Supabase",color=MaterialTheme.colorScheme.onSurfaceVariant)}};TextButton(onClick={selectedUri=null},enabled=!isUploading,modifier=Modifier.align(Alignment.TopEnd).padding(8.dp)){Text("Change")}}
+                    else{
+                        Box(Modifier.fillMaxSize()){
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = true,
+                                modifier = Modifier.fillMaxSize(),
+                                enter = fadeIn() + scaleIn()
+                            ){
+                                if(!isVideo) {
+                                    AsyncImage(
+                                        model = uri,
+                                        contentDescription = "Story preview",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    Column(
+                                        modifier = Modifier.align(Alignment.Center),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ){
+                                        Icon(Icons.Default.VideoLibrary,null,tint=BlinkPink,modifier=Modifier.size(64.dp))
+                                        Spacer(Modifier.height(10.dp))
+                                        Text("Video selected",fontWeight=androidx.compose.ui.text.font.FontWeight.Bold)
+                                        Text("It will upload securely to Supabase",color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                            TextButton(
+                                onClick={selectedUri=null},
+                                enabled=!isUploading,
+                                modifier=Modifier.align(Alignment.TopEnd).padding(8.dp)
+                            ){Text("Change")}
+                        }
+                    }
                 }
             }
             OutlinedTextField(value=caption,onValueChange={caption=it.take(500)},modifier=Modifier.fillMaxWidth().padding(16.dp),placeholder={Text("Add a caption…")},enabled=!isUploading,minLines=2,maxLines=4,shape=RoundedCornerShape(20.dp))
