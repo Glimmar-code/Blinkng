@@ -128,6 +128,9 @@ new_fetch = '''    fun fetchSupabaseData() {
 
             val curUser = supabaseService.getCurrentUsername() ?: myProfile.username
             val curUid = supabaseService.getCurrentUserId() ?: ""
+            if (curUid.isNotBlank() && myProfile.username.isNotBlank()) {
+                AccountSessionStore.recordCurrentSession(appContext, curUid, myProfile.username, myProfile.fullName, myProfile.email.value, myProfile.avatarUrl)
+            }
             if (curUser.isNotBlank() || curUid.isNotBlank()) {
                 realtimeManager.connect(curUser, curUid)
             }
