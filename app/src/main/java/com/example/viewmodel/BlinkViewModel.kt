@@ -382,6 +382,14 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    suspend fun searchBlink(query: String): Pair<List<UserProfile>, List<FeedPost>> {
+        val clean = query.trim()
+        if (clean.length < 2) return emptyList<UserProfile>() to emptyList()
+        val people = runCatching { supabaseService.searchProfiles(clean) }.getOrDefault(emptyList())
+        val posts = runCatching { supabaseService.searchFeedPosts(clean) }.getOrDefault(emptyList())
+        return people to posts
+    }
+
     fun refreshLeaderboard() {
         viewModelScope.launch {
             runCatching { supabaseService.fetchLeaderboard() }
