@@ -1,5 +1,8 @@
 package com.example.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -37,11 +40,14 @@ import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
 
 @Composable
-fun PostCard(post: FeedPost, isDark: Boolean, onLike: () -> Unit, onComment: () -> Unit, onBookmark: () -> Unit, onShare: () -> Unit, onOptionsClick: () -> Unit, onProfileClick: (String) -> Unit, onViewed: () -> Unit = {}, onVotePoll: (postId: String, optionId: String) -> Unit = { _, _ -> }, modifier: Modifier = Modifier) {
+fun PostCard(post: FeedPost, isDark: Boolean, onLike: () -> Unit, onComment: () -> Unit, onBookmark: () -> Unit, onShare: () -> Unit, onOptionsClick: () -> Unit, onProfileClick: (String) -> Unit, onViewed: () -> Unit = {}, onVotePoll: (postId: String, optionId: String) -> Unit = { _, _ -> }, isAuthor: Boolean = false, onDelete: () -> Unit = {}, modifier: Modifier = Modifier) {
     var showImageFullscreen by remember(post.id) { mutableStateOf(false) }
     var showVideoFullscreen by remember(post.id) { mutableStateOf(false) }
     var imagePage by remember(post.id) { mutableIntStateOf(0) }
     var expanded by remember(post.id) { mutableStateOf(false) }
+    var likedPulse by remember(post.id) { mutableStateOf(false) }
+    val likeScale by animateFloatAsState(if (likedPulse) 1.16f else 1f, spring(), label = "postLikeScale")
+    LaunchedEffect(likedPulse) { if (likedPulse) { kotlinx.coroutines.delay(140); likedPulse = false } }
     LaunchedEffect(post.id) { onViewed() }
     Card(modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = if (isDark) MaterialTheme.colorScheme.surface else Color.White), elevation = CardDefaults.cardElevation(defaultElevation = if (isDark) 0.dp else 2.dp)) {
         Column(Modifier.fillMaxWidth()) {
@@ -67,11 +73,12 @@ fun PostCard(post: FeedPost, isDark: Boolean, onLike: () -> Unit, onComment: () 
                 Spacer(Modifier.height(10.dp)); VideoPreview(url, Modifier.fillMaxWidth().padding(horizontal = 10.dp).height(330.dp).clip(RoundedCornerShape(14.dp))) { showVideoFullscreen = true }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                Text("${post.likes} likes", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TextButton(onClick = onLike) { Icon(imageVector = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder, contentDescription = null, tint = if (post.isLiked) BlinkPink else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("Like", fontSize = 10.sp) }
+                TextButton(onClick = { likedPulse = true; onLike() }, modifier = Modifier.scale(likeScale)) { Icon(imageVector = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder, contentDescription = null, tint = if (post.isLiked) BlinkPink else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("${post.likes}", fontSize = 10.sp) }
                 TextButton(onClick = onComment) { Icon(imageVector = Icons.Default.ChatBubbleOutline, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("${post.commentsCount}", fontSize = 10.sp) }
-                TextButton(onClick = onBookmark) { Icon(imageVector = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("Save", fontSize = 10.sp) }
+                TextButton(onClick = onBookmark) { Icon(imageVector = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text(if (post.isBookmarked) "Saved" else "Save", fontSize = 10.sp) }
                 TextButton(onClick = onShare) { Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("${post.sharesCount}", fontSize = 10.sp) }
+                TextButton(onClick = {}, enabled = false) { Icon(Icons.Default.Visibility, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(3.dp)); Text("${post.viewsCount}", fontSize = 10.sp) }
+                if (isAuthor) IconButton(onClick = onDelete) { Icon(Icons.Default.DeleteOutline, "Delete post", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(19.dp)) }
             }
         }
     }
