@@ -26,6 +26,8 @@ import com.example.data.models.Comment
 import com.example.data.models.CommentReply
 import com.example.data.models.ActivityItem
 import com.example.data.models.NotificationFilter
+import com.example.data.models.GameActionResult
+import com.example.data.models.GameSpinResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Mutex
@@ -845,17 +847,13 @@ fun getCurrentUserId(): String? {
 
     suspend fun checkServerStatus(): Boolean = withContext(Dispatchers.IO) {
         try {
-            val healthToken = accessToken()?.takeIf { it.isNotBlank() } ?: anonKey
             val request = Request.Builder()
-                .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/")
+                .url("${SupabaseConfig.url.trimEnd('/')}/auth/v1/health")
                 .addHeader("apikey", anonKey)
-                .addHeader("Authorization", "Bearer $healthToken")
                 .addHeader("Accept", "application/json")
                 .get()
                 .build()
-            client.newCall(request).execute().use { response ->
-                response.isSuccessful
-            }
+            client.newCall(request).execute().use { response -> response.isSuccessful }
         } catch (e: Exception) {
             Log.e(TAG, "checkServerStatus failed", e)
             false
@@ -1182,7 +1180,8 @@ fun getCurrentUserId(): String? {
                         )
 
                 if (
-                    cleanUsername.isBlank()
+                    cleanUsername.isBlank() ||
+                    cleanUsername.equals("null", ignoreCase = true)
                 ) {
                     return@withContext null
                 }
@@ -1323,11 +1322,11 @@ fun getCurrentUserId(): String? {
                             i in 0 until array.length()
                         ) {
 
-                            add(
-                                parseUserProfile(
-                                    array.getJSONObject(i)
-                                )
-                            )
+                            parseUserProfile(array.getJSONObject(i)).let { profile ->
+                                if (profile.username.isNotBlank() &&
+                                    !profile.username.equals("null", ignoreCase = true)
+                                ) add(profile)
+                            }
                         }
                     }
                 }
@@ -2190,11 +2189,11 @@ suspend fun uploadPostMedia(
                             i in 0 until array.length()
                         ) {
 
-                            add(
-                                parseUserProfile(
-                                    array.getJSONObject(i)
-                                )
-                            )
+                            parseUserProfile(array.getJSONObject(i)).let { profile ->
+                                if (profile.username.isNotBlank() &&
+                                    !profile.username.equals("null", ignoreCase = true)
+                                ) add(profile)
+                            }
                         }
                     }
                 }
@@ -2535,6 +2534,12 @@ suspend fun uploadPostMedia(
     // ============================================================
 
 
+    private fun JSONObject.cleanString(key: String, fallback: String = ""): String {
+        if (!has(key) || isNull(key)) return fallback
+        val value = optString(key, fallback).trim()
+        return if (value.equals("null", ignoreCase = true)) fallback else value
+    }
+
     private fun parseFeedPost(obj: JSONObject): FeedPost {
         val author = obj.optString("author", obj.optString("username", ""))
         val imagesArray = obj.optJSONArray("images")
@@ -2641,7 +2646,28 @@ suspend fun uploadPostMedia(
             altText = obj.optString("alt_text", null).takeIf { it?.isNotBlank() == true }
         )
     }
-    private fun parseLeaderboardUser(obj:JSONObject,rank:Int=obj.optInt("rank",0)):LeaderboardUser{val badgeStr=obj.optString("verification_badge","").uppercase(Locale.US);val badge=when(badgeStr){"GOLD"->VerificationBadge.GOLD;"BLUE"->VerificationBadge.BLUE;else->VerificationBadge.NONE};return LeaderboardUser(rank=rank,username=obj.optString("username",""),fullName=obj.optString("name",obj.optString("full_name","")),avatar=obj.optString("avatar_url",""),points=obj.optInt("score",obj.optInt("points",0)),faculty=obj.optString("faculty",""),university=obj.optString("university",""),level=obj.optString("academic_level", ""),streakDays=obj.optInt("streak",0),verificationBadge=badge)}
+    private fun parseLeaderboardUser(obj: JSONObject, rank: Int = obj.optInt("rank", 0)): LeaderboardUser {
+        val badgeStr = obj.cleanString("verification_badge").uppercase(Locale.US)
+        val badge = when (badgeStr) {
+            "GOLD" -> VerificationBadge.GOLD
+            "BLUE" -> VerificationBadge.BLUE
+            else -> VerificationBadge.NONE
+        }
+        return LeaderboardUser(
+            rank = obj.optInt("world_rank", rank).takeIf { it > 0 } ?: rank,
+            username = obj.cleanString("username"),
+            fullName = obj.cleanString("name").ifBlank { obj.cleanString("full_name") },
+            avatar = obj.cleanString("avatar_url"),
+            points = obj.optInt("score", obj.optInt("points", 0)),
+            faculty = obj.cleanString("faculty"),
+            university = obj.cleanString("university"),
+            level = obj.cleanString("academic_level"),
+            streakDays = obj.optInt("streak", 0),
+            coins = obj.optInt("coins", 0),
+            bestStreak = obj.optInt("best_streak", 0),
+            verificationBadge = badge
+        )
+    }
 
     private fun parseMarketItem(obj: JSONObject): MarketItem {
         val imagesArray = obj.optJSONArray("images")
@@ -2762,45 +2788,40 @@ suspend fun uploadPostMedia(
             }
         }
         
-        val availabilityStr = obj.optString("custom_status", "")
-        val availabilityStatus = try {
-            if (availabilityStr.isNotBlank()) {
-                AvailabilityStatus.valueOf(availabilityStr)
-            } else {
-                AvailabilityStatus.NONE
-            }
-        } catch (e: Exception) {
-            AvailabilityStatus.NONE
-        }
+        val availabilityStr = obj.cleanString("availability").ifBlank { obj.cleanString("custom_status") }
+        val availabilityStatus = AvailabilityStatus.entries.firstOrNull {
+            it.label.equals(availabilityStr, ignoreCase = true) ||
+                it.name.equals(availabilityStr, ignoreCase = true)
+        } ?: AvailabilityStatus.NONE
 
         return UserProfile(
             id = obj.optString("id", ""),
-            fullName = obj.optString("full_name", obj.optString("name", "")),
-            username = obj.optString("username", ""),
-            avatarUrl = obj.optString("avatar_url", ""),
-            coverPhotoUrl = obj.optString("cover_photo", obj.optString("cover_photo_url", obj.optString("cover_url", ""))),
+            fullName = obj.cleanString("full_name").ifBlank { obj.cleanString("name") },
+            username = obj.cleanString("username"),
+            avatarUrl = obj.cleanString("avatar_url"),
+            coverPhotoUrl = obj.cleanString("cover_photo").ifBlank { obj.cleanString("cover_photo_url").ifBlank { obj.cleanString("cover_url") } },
             verificationBadge = badge,
-            professionalHeadline = obj.optString("professional_headline", ""),
-            currentJobTitle = obj.optString("current_job_title", ""),
-            university = obj.optString("university", ""),
-            faculty = obj.optString("faculty", ""),
-            department = obj.optString("department", ""),
-            courseOfStudy = obj.optString("course_of_study", ""),
-            academicLevel = obj.optString("academic_level", ""),
-            graduationYear = obj.optString("graduation_year", ""),
-            bio = obj.optString("bio", ""),
+            professionalHeadline = obj.cleanString("professional_headline"),
+            currentJobTitle = obj.cleanString("current_job_title"),
+            university = obj.cleanString("university"),
+            faculty = obj.cleanString("faculty"),
+            department = obj.cleanString("department"),
+            courseOfStudy = obj.cleanString("course_of_study"),
+            academicLevel = obj.cleanString("academic_level"),
+            graduationYear = obj.cleanString("graduation_year"),
+            bio = obj.cleanString("bio"),
             availability = availabilityStatus,
-            countryOfOrigin = obj.optString("country_of_origin", ""),
-            currentCityState = obj.optString("current_city_state", ""),
-            email = ContactField(obj.optString("email", ""), true),
-            phone = ContactField(obj.optString("phone", ""), true),
-            whatsapp = ContactField(obj.optString("whatsapp", ""), true),
+            countryOfOrigin = obj.cleanString("country_of_origin"),
+            currentCityState = obj.cleanString("current_city_state"),
+            email = ContactField(obj.cleanString("email"), true),
+            phone = ContactField(obj.cleanString("phone"), true),
+            whatsapp = ContactField(obj.cleanString("whatsapp"), true),
             links = links,
             coreSkills = skills,
             skillEndorsements = endorsementsList,
             hobbies = hobbiesList,
             languages = languagesList,
-            favoriteQuote = obj.optString("favorite_quote", ""),
+            favoriteQuote = obj.cleanString("favorite_quote"),
             followerCount = obj.optInt("follower_count", 0),
             followingCount = obj.optInt("following_count", 0),
             profileViewsThisWeek = obj.optInt("profile_views_this_week", obj.optInt("profile_views", 0)),
@@ -2809,9 +2830,9 @@ suspend fun uploadPostMedia(
             campusRank = obj.optInt("campus_rank", 0),
             onlineNow = obj.optBoolean("online_now", false),
             verifiedAtMillis = obj.optLong("verified_at_millis", 0L),
-            joinedLabel = obj.optString("joined_label", ""),
+            joinedLabel = obj.cleanString("joined_label"),
             isSellerActive = obj.optBoolean("is_seller_active", false),
-            sellerStoreName = obj.optString("seller_store_name", ""),
+            sellerStoreName = obj.cleanString("seller_store_name"),
             badges = badgesList
         )
     }
@@ -3171,20 +3192,251 @@ suspend fun uploadPostMedia(
             Result.failure(e)
         }
     }
-    suspend fun recordActivity(recipientUsername:String,action:String,category:NotificationFilter=NotificationFilter.ALL,targetPostId:String?=null,targetMarketId:String?=null,targetUsername:String?=null,targetType:String?=null,previewText:String?=null): Boolean = withContext(Dispatchers.IO){
-        try{val actor=getCurrentUserId()?:throw IllegalStateException("Not authenticated.");val target=fetchProfileByUsername(recipientUsername.removePrefix("@"))?:return@withContext false;if(target.id==actor)return@withContext false;val entityId=targetPostId?:targetMarketId;val type=targetType?:when{targetPostId!=null->"post";targetMarketId!=null->"market";else->null};val body=JSONObject().apply{put("recipient_id",target.id);put("actor_id",actor);put("activity_type",category.name);put("message",action);type?.let{put("entity_type",it)};entityId?.let{put("entity_id",it)}};executeRequest(newRequestBuilder("/rest/v1/activities",true).post(body.toString().toRequestBody(jsonMediaType)).build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Activity creation failed."));true}}catch(e:Exception){Log.e(TAG,"recordActivity failed",e);false}}
+    suspend fun recordActivity(
+        recipientUsername: String,
+        action: String,
+        category: NotificationFilter = NotificationFilter.ALL,
+        targetPostId: String? = null,
+        targetMarketId: String? = null,
+        targetUsername: String? = null,
+        targetType: String? = null,
+        previewText: String? = null
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (getCurrentUserId() == null) throw IllegalStateException("Not authenticated.")
+            val rawEntity = targetPostId ?: targetMarketId
+            val entityId = rawEntity?.takeIf { isValidUuid(it) }
+            val entityType = targetType ?: when {
+                targetPostId != null -> "POST"
+                targetMarketId != null -> "MARKET"
+                targetUsername != null -> "CHAT"
+                else -> null
+            }
+            val body = JSONObject().apply {
+                put("p_recipient_username", recipientUsername.removePrefix("@").trim())
+                put("p_action", action.trim())
+                put("p_category", category.name)
+                if (!entityType.isNullOrBlank()) put("p_entity_type", entityType)
+                if (entityId != null) put("p_entity_id", entityId)
+            }
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/create_activity", true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Activity creation failed."))
+                }
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "recordActivity failed", e)
+            false
+        }
+    }
+
     suspend fun markActivityRead(activityId:String):Boolean=withContext(Dispatchers.IO){try{val uid=getCurrentUserId()?:throw IllegalStateException("Not authenticated.");val body=JSONObject().put("is_read",true);executeRequest(newRequestBuilder("/rest/v1/activities?id=eq.${encodeValue(activityId)}&recipient_id=eq.${encodeValue(uid)}",true).patch(body.toString().toRequestBody(jsonMediaType)).build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Could not mark activity read."));true}}catch(e:Exception){Log.e(TAG,"markActivityRead failed",e);false}}
     suspend fun markAllActivitiesRead(): Boolean = withContext(Dispatchers.IO){try{val uid=getCurrentUserId()?:throw IllegalStateException("Not authenticated.");val body=JSONObject().put("is_read",true);executeRequest(newRequestBuilder("/rest/v1/activities?recipient_id=eq.${encodeValue(uid)}&is_read=eq.false",true).patch(body.toString().toRequestBody(jsonMediaType)).build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Could not mark activities read."));true}}catch(e:Exception){Log.e(TAG,"markAllActivitiesRead failed",e);false}}
     suspend fun recordSkillEndorsement(targetUsername:String,skillName:String,endorserUsername:String):Boolean=withContext(Dispatchers.IO){try{val actor=getCurrentUserId()?:throw IllegalStateException("Not authenticated.");val profile=fetchProfileByUsername(targetUsername.removePrefix("@"))?:return@withContext false;val skillsRaw=executeRequest(newRequestBuilder("/rest/v1/skills?normalized_name=eq.${encodeValue(skillName.trim().lowercase(Locale.US))}&select=id&limit=1",true).get().build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Skill lookup failed."));b};val skillId=JSONArray(if(skillsRaw.isBlank())"[]" else skillsRaw).optJSONObject(0)?.optString("id")?:return@withContext false;val body=JSONObject().apply{put("skill_id",skillId);put("profile_user_id",profile.id);put("endorser_user_id",actor)};executeRequest(newRequestBuilder("/rest/v1/skill_endorsements",true).addHeader("Prefer","resolution=merge-duplicates").post(body.toString().toRequestBody(jsonMediaType)).build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Skill endorsement failed."));true}}catch(e:Exception){Log.e(TAG,"recordSkillEndorsement failed",e);false}}
 
-    suspend fun submitVerificationRequest(tier: String, paymentReference: String, amount: Int): Boolean = withContext(Dispatchers.IO) {
+    suspend fun submitVerificationRequest(
+        tier: String,
+        paymentReference: String,
+        amount: Int
+    ): Boolean = withContext(Dispatchers.IO) {
         try {
-            val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
-            val body=JSONObject().apply{put("user_id",uid);put("tier",tier);put("payment_reference",paymentReference);put("amount",amount);put("status","pending")}
-            executeRequest(newRequestBuilder("/rest/v1/verification_requests",true).post(body.toString().toRequestBody(jsonMediaType)).build()).use{resp->val raw=resp.body?.string().orEmpty();if(!resp.isSuccessful)throw IllegalStateException(parseSupabaseError(raw,"Verification request failed."));true}
-        }catch(e:Exception){Log.e(TAG,"submitVerificationRequest failed",e);false}
+            if (getCurrentUserId() == null) throw IllegalStateException("Not authenticated.")
+            val submitted = JSONObject().apply {
+                put("payment_reference", paymentReference.trim())
+                put("amount", amount)
+                put("currency", "NGN")
+                put("provider", "paystack")
+                put("client_status", "unverified")
+            }
+            val body = JSONObject().apply {
+                put("p_verification_type", tier.uppercase(Locale.US))
+                put("p_submitted_data", submitted)
+            }
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/submit_verification_request", true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Verification request failed."))
+                }
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "submitVerificationRequest failed", e)
+            false
+        }
     }
-    suspend fun updateGameStats(score:Int,coins:Int,streak:Int):Boolean=withContext(Dispatchers.IO){try{val uid=getCurrentUserId()?:throw IllegalStateException("Not authenticated.");val body=JSONObject().apply{put("user_id",uid);put("score",score);put("coins",coins);put("streak",streak);put("updated_at",nowIso())};executeRequest(newRequestBuilder("/rest/v1/game_profiles?on_conflict=user_id",true).addHeader("Prefer","resolution=merge-duplicates,return=representation").post(body.toString().toRequestBody(jsonMediaType)).build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Game stats update failed."));true}}catch(e:Exception){Log.e(TAG,"updateGameStats failed",e);false}}
+
+    suspend fun recordTriviaResult(questionId: String, correct: Boolean): GameActionResult? =
+        withContext(Dispatchers.IO) {
+            try {
+                val body = JSONObject().apply {
+                    put("p_question_id", questionId.trim())
+                    put("p_correct", correct)
+                }
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/record_trivia_result", true)
+                        .post(body.toString().toRequestBody(jsonMediaType))
+                        .build()
+                ).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        throw IllegalStateException(parseSupabaseError(raw, "Could not record trivia result."))
+                    }
+                    val obj = if (raw.trim().startsWith("[")) {
+                        JSONArray(raw).optJSONObject(0) ?: JSONObject()
+                    } else JSONObject(if (raw.isBlank()) "{}" else raw)
+                    GameActionResult(
+                        awardedScore = obj.optInt("awardedScore", 0),
+                        awardedCoins = obj.optInt("awardedCoins", 0),
+                        streak = obj.optInt("streak", 0),
+                        bestStreak = obj.optInt("bestStreak", 0)
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "recordTriviaResult failed", e)
+                null
+            }
+        }
+
+    suspend fun claimDailySpin(): GameSpinResult? = withContext(Dispatchers.IO) {
+        try {
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/claim_daily_spin", true)
+                    .post("{}".toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Daily spin is unavailable."))
+                }
+                val obj = if (raw.trim().startsWith("[")) {
+                    JSONArray(raw).optJSONObject(0) ?: JSONObject()
+                } else JSONObject(if (raw.isBlank()) "{}" else raw)
+                GameSpinResult(
+                    label = obj.optString("label", "Reward claimed"),
+                    awardedScore = obj.optInt("awardedScore", 0),
+                    awardedCoins = obj.optInt("awardedCoins", 0)
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "claimDailySpin failed", e)
+            null
+        }
+    }
+
+    suspend fun reportPost(postId: String, reason: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (!isValidUuid(postId)) return@withContext false
+            val body = JSONObject().apply {
+                put("p_post_id", postId)
+                put("p_reason", reason.trim())
+            }
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/report_post", true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Report submission failed."))
+                }
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "reportPost failed", e)
+            false
+        }
+    }
+
+    suspend fun muteUser(username: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            val target = fetchProfileByUsername(username.removePrefix("@")) ?: return@withContext false
+            if (target.id == uid) return@withContext false
+            val body = JSONObject().apply {
+                put("user_id", uid)
+                put("muted_id", target.id)
+            }
+            executeRequest(
+                newRequestBuilder("/rest/v1/muted_users", true)
+                    .addHeader("Prefer", "resolution=merge-duplicates")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Mute failed."))
+                }
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "muteUser failed", e)
+            false
+        }
+    }
+
+    suspend fun fetchMutedUsernames(): Set<String> = withContext(Dispatchers.IO) {
+        try {
+            val uid = getCurrentUserId() ?: return@withContext emptySet()
+            val raw = executeRequest(
+                newRequestBuilder("/rest/v1/muted_users?user_id=eq.${encodeValue(uid)}&select=muted_id", true)
+                    .get().build()
+            ).use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@withContext emptySet()
+                body
+            }
+            val arr = JSONArray(if (raw.isBlank()) "[]" else raw)
+            buildSet {
+                for (i in 0 until arr.length()) {
+                    val id = arr.optJSONObject(i)?.optString("muted_id").orEmpty()
+                    if (isValidUuid(id)) {
+                        fetchProfileById(id)?.username
+                            ?.takeIf { it.isNotBlank() && !it.equals("null", true) }
+                            ?.let { add(it.lowercase(Locale.US)) }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchMutedUsernames failed", e)
+            emptySet()
+        }
+    }
+
+    suspend fun sharePost(postId: String, shareType: String = "share"): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                if (!isValidUuid(postId)) return@withContext false
+                val body = JSONObject().apply {
+                    put("p_post_id", postId)
+                    put("p_share_type", shareType)
+                }
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/share_post", true)
+                        .post(body.toString().toRequestBody(jsonMediaType))
+                        .build()
+                ).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        throw IllegalStateException(parseSupabaseError(raw, "Share failed."))
+                    }
+                    true
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "sharePost failed", e)
+                false
+            }
+        }
+
 }
 
 enum class ProfileMediaType {
