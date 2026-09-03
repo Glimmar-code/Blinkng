@@ -49,11 +49,29 @@ class AuthRepository(private val context: Context, private val supabaseService: 
 
     suspend fun signInWithGoogle(email: String): AuthResult = withContext(Dispatchers.IO) {
         try {
+            val now = System.currentTimeMillis()
+            val lastLaunch = prefs.getLong("google_oauth_started_at", 0L)
+
+            // Prevent rapid double taps from launching two OAuth state transactions.
+            // A second callback for an older state is what produces "state not found or expired".
+            if (now - lastLaunch < 15_000L) {
+                return@withContext AuthResult.failure("GOOGLE_OAUTH_STARTED")
+            }
+
             val redirect = URLEncoder.encode(googleRedirect, "UTF-8")
             val url = "$baseUrl/auth/v1/authorize?provider=google&redirect_to=$redirect&flow_type=implicit"
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            prefs.edit()
+                .putLong("google_oauth_started_at", now)
+                .remove("google_oauth_error")
+                .apply()
+
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
             AuthResult.failure("GOOGLE_OAUTH_STARTED")
         } catch (e: Exception) {
+            prefs.edit().putLong("google_oauth_started_at", 0L).apply()
             Log.e("AuthRepository", "Unable to launch Google OAuth", e)
             AuthResult.failure("Unable to open Google sign-in. Check that a browser is installed.")
         }
