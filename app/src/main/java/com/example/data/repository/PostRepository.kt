@@ -15,9 +15,9 @@ class PostRepository(
     suspend fun fetchFeed(isReel: Boolean? = null): List<FeedPost> = withContext(Dispatchers.IO) {
         try {
             when (isReel) {
-                true -> supabaseService.fetchFeedPage(limit = 30, feedType = "reels")
-                false -> supabaseService.fetchFeedPage(limit = 30, feedType = "posts")
-                null -> supabaseService.fetchFeedPosts()
+                true -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_reels")
+                false -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_posts")
+                null -> supabaseService.fetchFeedPage(limit = 60, feedType = "ranked_all")
             }
         } catch (e: Exception) {
             Log.e("PostRepository", "fetchFeed error: ${e.message}")
@@ -35,7 +35,7 @@ class PostRepository(
             limit = limit,
             beforeCreatedAt = beforeCreatedAt,
             beforeId = beforeId,
-            feedType = if (isReel) "reels" else "posts"
+            feedType = if (isReel) "ranked_reels" else "ranked_posts"
         )
     }
 

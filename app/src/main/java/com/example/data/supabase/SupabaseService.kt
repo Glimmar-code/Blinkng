@@ -276,6 +276,9 @@ class SupabaseService {
 
     
     private val refreshMutex = Mutex()
+    private val discoveryCursorMutex = Mutex()
+    private val discoveryOffsets = mutableMapOf<String, Int>()
+    private val discoveryAsOf = mutableMapOf<String, String>()
 
     private suspend fun executeRequest(request: Request): okhttp3.Response {
         val isAuthenticated = request.header("X-Authenticated") == "true"
@@ -1638,32 +1641,96 @@ fun getCurrentUserId(): String? {
             throw IllegalStateException("No authenticated Supabase session is available for the feed.")
         }
 
-        val rpcName = if (searchQuery.isNullOrBlank()) "get_feed_page" else "search_feed_page"
-        val rpcBody = JSONObject().apply {
-            put("p_limit", limit.coerceIn(1, 60))
-            put("p_before", beforeCreatedAt ?: JSONObject.NULL)
-            put("p_before_id", beforeId ?: JSONObject.NULL)
-            if (searchQuery.isNullOrBlank()) {
-                put("p_feed_type", feedType)
-            } else {
-                put("p_query", searchQuery.trim())
-            }
-        }
+        val normalizedFeedType = feedType
+            .removePrefix("ranked_")
+            .lowercase(Locale.US)
+            .takeIf { it == "posts" || it == "reels" || it == "all" }
+            ?: "posts"
+        val useRankedDiscovery = searchQuery.isNullOrBlank() && feedType.startsWith("ranked_")
 
-        val postsRaw = executeRequest(
-            newRequestBuilder(
-                "/rest/v1/rpc/$rpcName",
-                authenticated = true
-            )
-                .addHeader("Content-Type", "application/json")
-                .post(rpcBody.toString().toRequestBody(jsonMediaType))
-                .build()
-        ).use { response ->
-            val raw = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                throw IllegalStateException(parseSupabaseError(raw, "Feed page fetch failed."))
+        val postsRaw: JSONArray = if (useRankedDiscovery) {
+            val isInitialPage = beforeCreatedAt.isNullOrBlank() && beforeId.isNullOrBlank()
+            val cursorKey = normalizedFeedType
+            val (offset, asOf) = discoveryCursorMutex.withLock {
+                if (isInitialPage) {
+                    discoveryOffsets[cursorKey] = 0
+                    discoveryAsOf.remove(cursorKey)
+                }
+                (discoveryOffsets[cursorKey] ?: 0) to discoveryAsOf[cursorKey]
             }
-            JSONArray(if (raw.isBlank()) "[]" else raw)
+
+            val rpcBody = JSONObject().apply {
+                put("p_limit", limit.coerceIn(1, 60))
+                put("p_offset", offset)
+                put("p_as_of", asOf ?: JSONObject.NULL)
+                put("p_feed_type", normalizedFeedType)
+            }
+
+            val rankedRows = executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/rpc/get_ranked_feed_page",
+                    authenticated = true
+                )
+                    .addHeader("Content-Type", "application/json")
+                    .post(rpcBody.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(
+                        parseSupabaseError(raw, "Ranked discovery feed fetch failed.")
+                    )
+                }
+                JSONArray(if (raw.isBlank()) "[]" else raw)
+            }
+
+            val items = JSONArray()
+            var resolvedAsOf = asOf
+            var nextOffset = offset
+            for (index in 0 until rankedRows.length()) {
+                val ranked = rankedRows.optJSONObject(index) ?: continue
+                ranked.optJSONObject("item")?.let(items::put)
+                ranked.cleanString("as_of")
+                    .takeIf { it.isNotBlank() }
+                    ?.let { resolvedAsOf = it }
+                nextOffset = maxOf(nextOffset, ranked.optInt("next_offset", nextOffset))
+            }
+
+            discoveryCursorMutex.withLock {
+                discoveryOffsets[cursorKey] = nextOffset
+                resolvedAsOf
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { discoveryAsOf[cursorKey] = it }
+            }
+            items
+        } else {
+            val rpcName = if (searchQuery.isNullOrBlank()) "get_feed_page" else "search_feed_page"
+            val rpcBody = JSONObject().apply {
+                put("p_limit", limit.coerceIn(1, 60))
+                put("p_before", beforeCreatedAt ?: JSONObject.NULL)
+                put("p_before_id", beforeId ?: JSONObject.NULL)
+                if (searchQuery.isNullOrBlank()) {
+                    put("p_feed_type", normalizedFeedType)
+                } else {
+                    put("p_query", searchQuery.trim())
+                }
+            }
+
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/rpc/$rpcName",
+                    authenticated = true
+                )
+                    .addHeader("Content-Type", "application/json")
+                    .post(rpcBody.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Feed page fetch failed."))
+                }
+                JSONArray(if (raw.isBlank()) "[]" else raw)
+            }
         }
 
         val userIds = buildSet {
