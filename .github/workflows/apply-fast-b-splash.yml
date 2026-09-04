@@ -22,9 +22,6 @@ jobs:
       - name: Apply splash update
         run: python .github/scripts/apply_fast_b_splash.py
 
-      - name: Compile Kotlin
-        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
-
       - name: Commit and push app changes
         run: |
           git config user.name "github-actions[bot]"
