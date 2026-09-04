@@ -25,11 +25,14 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -109,10 +112,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -215,6 +221,374 @@ private fun ChatConnectionNotice() {
 }
 
 // ============================================================================
+// SHIMMER / SKELETON LOADING
+// ============================================================================
+
+private fun Modifier.shimmerBackground(
+    shape: Shape = RoundedCornerShape(6.dp)
+): Modifier = composed {
+
+    val transition =
+        rememberInfiniteTransition(
+            label = "shimmer_transition"
+        )
+
+    val translate by
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec =
+                infiniteRepeatable(
+                    animation =
+                        tween(
+                            1100,
+                            easing = LinearEasing
+                        ),
+                    repeatMode =
+                        RepeatMode.Restart
+                ),
+            label = "shimmer_translate"
+        )
+
+    val baseColor =
+        MaterialTheme.colorScheme
+            .surfaceVariant
+            .copy(alpha = 0.35f)
+
+    val highlightColor =
+        MaterialTheme.colorScheme
+            .surfaceVariant
+            .copy(alpha = 0.85f)
+
+    val brush = Brush.linearGradient(
+        colors =
+            listOf(
+                baseColor,
+                highlightColor,
+                baseColor
+            ),
+        start =
+            Offset(
+                translate * 900f - 400f,
+                0f
+            ),
+        end =
+            Offset(
+                translate * 900f,
+                400f
+            )
+    )
+
+    this
+        .clip(shape)
+        .background(brush)
+}
+
+@Composable
+private fun SkeletonBox(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(6.dp)
+) {
+
+    Box(
+        modifier =
+            modifier.shimmerBackground(
+                shape
+            )
+    )
+}
+
+@Composable
+private fun ConversationSkeletonItem(
+    compact: Boolean = false
+) {
+
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal =
+                        if (compact) 18.dp else 15.dp,
+                    vertical = 3.dp
+                )
+                .padding(
+                    if (compact) 10.dp else 12.dp
+                ),
+        verticalAlignment =
+            Alignment.CenterVertically
+    ) {
+
+        SkeletonBox(
+            modifier =
+                Modifier.size(52.dp),
+            shape = CircleShape
+        )
+
+        Spacer(
+            modifier =
+                Modifier.width(11.dp)
+        )
+
+        Column(
+            modifier =
+                Modifier.weight(1f)
+        ) {
+
+            SkeletonBox(
+                modifier =
+                    Modifier
+                        .fillMaxWidth(0.5f)
+                        .height(13.dp)
+            )
+
+            Spacer(
+                modifier =
+                    Modifier.height(8.dp)
+            )
+
+            SkeletonBox(
+                modifier =
+                    Modifier
+                        .fillMaxWidth(0.82f)
+                        .height(11.dp)
+            )
+
+            if (!compact) {
+
+                Spacer(
+                    modifier =
+                        Modifier.height(8.dp)
+                )
+
+                SkeletonBox(
+                    modifier =
+                        Modifier
+                            .width(58.dp)
+                            .height(15.dp),
+                    shape =
+                        RoundedCornerShape(100.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessagesListSkeleton(
+    compact: Boolean = false
+) {
+
+    Column(
+        modifier =
+            Modifier.fillMaxWidth()
+    ) {
+
+        Row(
+            modifier =
+                Modifier.padding(
+                    horizontal = 15.dp,
+                    vertical = 10.dp
+                ),
+            horizontalArrangement =
+                Arrangement.spacedBy(12.dp)
+        ) {
+
+            repeat(5) {
+
+                Column(
+                    horizontalAlignment =
+                        Alignment.CenterHorizontally,
+                    modifier =
+                        Modifier.width(62.dp)
+                ) {
+
+                    SkeletonBox(
+                        modifier =
+                            Modifier.size(58.dp),
+                        shape = CircleShape
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(6.dp)
+                    )
+
+                    SkeletonBox(
+                        modifier =
+                            Modifier
+                                .width(40.dp)
+                                .height(8.dp)
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier =
+                Modifier.padding(
+                    horizontal = 16.dp,
+                    vertical = 8.dp
+                ),
+            horizontalArrangement =
+                Arrangement.spacedBy(7.dp)
+        ) {
+
+            repeat(4) {
+
+                SkeletonBox(
+                    modifier =
+                        Modifier
+                            .width(58.dp)
+                            .height(28.dp),
+                    shape =
+                        RoundedCornerShape(100.dp)
+                )
+            }
+        }
+
+        repeat(8) {
+            ConversationSkeletonItem(
+                compact = compact
+            )
+        }
+    }
+}
+
+@Composable
+private fun MessageBubbleSkeleton(
+    isFromMe: Boolean,
+    widthFraction: Float
+) {
+
+    Row(
+        modifier =
+            Modifier.fillMaxWidth(),
+        horizontalArrangement =
+            if (isFromMe)
+                Arrangement.End
+            else
+                Arrangement.Start
+    ) {
+
+        SkeletonBox(
+            modifier =
+                Modifier
+                    .fillMaxWidth(widthFraction)
+                    .height(38.dp),
+            shape =
+                RoundedCornerShape(
+                    topStart =
+                        if (isFromMe) 17.dp else 5.dp,
+                    topEnd =
+                        if (isFromMe) 5.dp else 17.dp,
+                    bottomStart = 17.dp,
+                    bottomEnd = 17.dp
+                )
+        )
+    }
+}
+
+@Composable
+private fun ChatMessagesSkeleton() {
+
+    val pattern =
+        listOf(
+            false to 0.55f,
+            true to 0.40f,
+            false to 0.65f,
+            false to 0.35f,
+            true to 0.50f,
+            true to 0.30f,
+            false to 0.60f,
+            true to 0.45f
+        )
+
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(
+                    horizontal = 13.dp,
+                    vertical = 10.dp
+                ),
+        verticalArrangement =
+            Arrangement.spacedBy(10.dp)
+    ) {
+
+        pattern.forEach {
+            (isFromMe, widthFraction) ->
+
+            MessageBubbleSkeleton(
+                isFromMe = isFromMe,
+                widthFraction = widthFraction
+            )
+        }
+    }
+}
+
+// ============================================================================
+// STAGGERED ENTRANCE ANIMATION
+// ============================================================================
+
+/**
+ * Fades + slides an item in shortly after it first enters composition.
+ * Keyed by a stable [key] (not [index]) so reordering an already-visible
+ * item (e.g. a new message arriving above older ones) never replays the
+ * animation — only genuinely new items animate in.
+ */
+@Composable
+private fun StaggeredAppear(
+    key: Any,
+    index: Int,
+    staggerMs: Long = 40L,
+    maxStaggerIndex: Int = 10,
+    content: @Composable () -> Unit
+) {
+
+    val visibleState =
+        remember(key) {
+            MutableTransitionState(false)
+        }
+
+    LaunchedEffect(key) {
+
+        if (!visibleState.targetState) {
+
+            delay(
+                staggerMs *
+                        index.coerceAtMost(
+                            maxStaggerIndex
+                        )
+            )
+
+            visibleState.targetState = true
+        }
+    }
+
+    AnimatedVisibility(
+        visibleState = visibleState,
+        enter =
+            fadeIn(
+                animationSpec =
+                    tween(
+                        260,
+                        easing = FastOutSlowInEasing
+                    )
+            ) + slideInVertically(
+                initialOffsetY = { it / 6 },
+                animationSpec =
+                    tween(
+                        260,
+                        easing = FastOutSlowInEasing
+                    )
+            )
+    ) {
+        content()
+    }
+}
+
+// ============================================================================
 // MESSAGES HOME
 // ============================================================================
 
@@ -228,7 +602,8 @@ fun MessagesScreen(
     onSendMessage: (String, String) -> Unit,
     onProfileClick: (String) -> Unit,
     isDark: Boolean,
-    isConnected: Boolean = true
+    isConnected: Boolean = true,
+    isLoading: Boolean = false
 ) {
 
     var searchQuery by rememberSaveable {
@@ -364,173 +739,205 @@ fun MessagesScreen(
                 )
             }
 
-            if (!isConnected) {
-                item(key = "messages_connection_notice") {
+            item(key = "messages_connection_notice") {
+                AnimatedVisibility(
+                    visible = !isConnected && !isLoading,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
                     MessagesConnectionNotice()
                 }
             }
 
-            if (showSearch) {
+            if (isLoading) {
 
                 item(
-                    key = "message_search"
+                    key = "messages_skeleton"
                 ) {
 
-                    PremiumMessageSearch(
-                        value = searchQuery,
-                        onValueChange = {
-                            searchQuery = it
-                        },
-                        onClear = {
-                            searchQuery = ""
-                        }
-                    )
-                }
-            }
-
-            item(
-                key = "online_users"
-            ) {
-
-                OnlineStudentsRail(
-                    conversations = conversations,
-                    onOpenConversation =
-                        onOpenConversation,
-                    onProfileClick =
-                        onProfileClick
-                )
-            }
-
-            item(
-                key = "filters"
-            ) {
-
-                MessageFilterRail(
-                    selectedFilter =
-                        selectedFilter,
-                    onSelected = {
-                        selectedFilter = it
-                    }
-                )
-            }
-
-            item(
-                key = "inbox_summary"
-            ) {
-
-                InboxSummaryCard(
-                    total = conversations.size,
-                    unread = unreadCount,
-                    online = onlineCount
-                )
-            }
-
-            item(
-                key = "section_header"
-            ) {
-
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(
-                                start = 18.dp,
-                                end = 17.dp,
-                                top = 12.dp,
-                                bottom = 6.dp
-                            ),
-                    verticalAlignment =
-                        Alignment.CenterVertically
-                ) {
-
-                    Text(
-                        text = when {
-                            selectedFilter == "Unread" ->
-                                "Unread messages"
-
-                            selectedFilter == "Online" ->
-                                "Online conversations"
-
-                            selectedFilter == "Sellers" ->
-                                "Marketplace conversations"
-
-                            selectedFilter == "Groups" ->
-                                "Group conversations"
-
-                            else ->
-                                "All messages"
-                        },
-                        fontSize = 15.sp,
-                        fontWeight =
-                            FontWeight.Black
-                    )
-
-                    Spacer(
-                        modifier =
-                            Modifier.weight(1f)
-                    )
-
-                    IconButton(
-                        onClick = {
-                            compactMode = !compactMode
-                        }
-                    ) {
-
-                        Icon(
-                            imageVector =
-                                if (compactMode)
-                                    Icons.Default.ViewAgenda
-                                else
-                                    Icons.Default.ViewCompact,
-                            contentDescription =
-                                "Toggle conversation density"
-                        )
-                    }
-                }
-            }
-
-            if (filteredConversations.isEmpty()) {
-
-                item(
-                    key = "empty_messages"
-                ) {
-
-                    EmptyMessagesState(
-                        searching =
-                            searchQuery.isNotBlank(),
-                        onClear = {
-                            searchQuery = ""
-                            selectedFilter = "All"
-                        },
-                        onStartChat = {
-                            showNewChat = true
-                        }
+                    MessagesListSkeleton(
+                        compact = compactMode
                     )
                 }
 
             } else {
 
-                items(
-                    items = filteredConversations,
-                    key = {
-                        it.id
-                    }
-                ) { conversation ->
+                item(
+                    key = "message_search"
+                ) {
 
-                    ConversationListItem(
-                        conversation = conversation,
-                        compact = compactMode,
-                        onClick = {
-                            onOpenConversation(
-                                conversation.partnerUsername
-                            )
-                        },
-                        onProfileClick = {
-                            onProfileClick(
-                                conversation.partnerUsername
-                            )
+                    AnimatedVisibility(
+                        visible = showSearch,
+                        enter =
+                            fadeIn() +
+                                    expandVertically(),
+                        exit =
+                            fadeOut() +
+                                    shrinkVertically()
+                    ) {
+
+                        PremiumMessageSearch(
+                            value = searchQuery,
+                            onValueChange = {
+                                searchQuery = it
+                            },
+                            onClear = {
+                                searchQuery = ""
+                            }
+                        )
+                    }
+                }
+
+                item(
+                    key = "online_users"
+                ) {
+
+                    OnlineStudentsRail(
+                        conversations = conversations,
+                        onOpenConversation =
+                            onOpenConversation,
+                        onProfileClick =
+                            onProfileClick
+                    )
+                }
+
+                item(
+                    key = "filters"
+                ) {
+
+                    MessageFilterRail(
+                        selectedFilter =
+                            selectedFilter,
+                        onSelected = {
+                            selectedFilter = it
                         }
                     )
+                }
+
+                item(
+                    key = "inbox_summary"
+                ) {
+
+                    InboxSummaryCard(
+                        total = conversations.size,
+                        unread = unreadCount,
+                        online = onlineCount
+                    )
+                }
+
+                item(
+                    key = "section_header"
+                ) {
+
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    start = 18.dp,
+                                    end = 17.dp,
+                                    top = 12.dp,
+                                    bottom = 6.dp
+                                ),
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+
+                        Text(
+                            text = when {
+                                selectedFilter == "Unread" ->
+                                    "Unread messages"
+
+                                selectedFilter == "Online" ->
+                                    "Online conversations"
+
+                                selectedFilter == "Sellers" ->
+                                    "Marketplace conversations"
+
+                                selectedFilter == "Groups" ->
+                                    "Group conversations"
+
+                                else ->
+                                    "All messages"
+                            },
+                            fontSize = 15.sp,
+                            fontWeight =
+                                FontWeight.Black
+                        )
+
+                        Spacer(
+                            modifier =
+                                Modifier.weight(1f)
+                        )
+
+                        IconButton(
+                            onClick = {
+                                compactMode = !compactMode
+                            }
+                        ) {
+
+                            Icon(
+                                imageVector =
+                                    if (compactMode)
+                                        Icons.Default.ViewAgenda
+                                    else
+                                        Icons.Default.ViewCompact,
+                                contentDescription =
+                                    "Toggle conversation density"
+                            )
+                        }
+                    }
+                }
+
+                if (filteredConversations.isEmpty()) {
+
+                    item(
+                        key = "empty_messages"
+                    ) {
+
+                        EmptyMessagesState(
+                            searching =
+                                searchQuery.isNotBlank(),
+                            onClear = {
+                                searchQuery = ""
+                                selectedFilter = "All"
+                            },
+                            onStartChat = {
+                                showNewChat = true
+                            }
+                        )
+                    }
+
+                } else {
+
+                    itemsIndexed(
+                        items = filteredConversations,
+                        key = { _, conversation ->
+                            conversation.id
+                        }
+                    ) { index, conversation ->
+
+                        StaggeredAppear(
+                            key = conversation.id,
+                            index = index
+                        ) {
+
+                            ConversationListItem(
+                                conversation = conversation,
+                                compact = compactMode,
+                                onClick = {
+                                    onOpenConversation(
+                                        conversation.partnerUsername
+                                    )
+                                },
+                                onProfileClick = {
+                                    onProfileClick(
+                                        conversation.partnerUsername
+                                    )
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1065,6 +1472,12 @@ private fun OnlineStudentItem(
                         )
                         .padding(2.dp)
             ) {
+
+                SkeletonBox(
+                    modifier =
+                        Modifier.fillMaxSize(),
+                    shape = CircleShape
+                )
 
                 AsyncImage(
                     model =
@@ -1669,6 +2082,12 @@ private fun ConversationAvatar(
                     onClick()
                 }
     ) {
+
+        SkeletonBox(
+            modifier =
+                Modifier.fillMaxSize(),
+            shape = CircleShape
+        )
 
         AsyncImage(
             model =
@@ -2580,7 +2999,8 @@ fun ChatConversationView(
     onRetryMessage: ((ChatMessage) -> Unit)? = null,
     hasMoreMessages: Boolean = false,
     isLoadingOlder: Boolean = false,
-    onLoadOlder: () -> Unit = {}
+    onLoadOlder: () -> Unit = {},
+    isLoadingMessages: Boolean = false
 ) {
 
     var messageText by rememberSaveable {
@@ -2730,7 +3150,11 @@ fun ChatConversationView(
                     )
                 }
 
-                if (!isConnected) {
+                AnimatedVisibility(
+                    visible = !isConnected,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
                     ChatConnectionNotice()
                 }
 
@@ -2862,7 +3286,11 @@ fun ChatConversationView(
 
                 ConversationSecurityBanner()
 
-                if (
+                if (isLoadingMessages) {
+
+                    ChatMessagesSkeleton()
+
+                } else if (
                     filteredMessages.isEmpty() &&
                     chatSearchQuery.isNotBlank()
                 ) {
@@ -2926,50 +3354,58 @@ fun ChatConversationView(
                             }
                         ) { index, message ->
 
-                            MessageRow(
-                                message =
-                                    message,
-                                isDark =
-                                    isDark,
-                                isHighlighted =
-                                    chatSearchQuery
-                                        .isNotBlank(),
-                                onReply = {
-                                    replyingTo =
-                                        message.text
-                                },
-                                onEdit = {
+                            StaggeredAppear(
+                                key = message.id,
+                                index = index,
+                                staggerMs = 25L,
+                                maxStaggerIndex = 8
+                            ) {
 
-                                    if (
-                                        message.isFromMe
-                                    ) {
-                                        editingMessage =
-                                            message.id
-                                        messageText =
+                                MessageRow(
+                                    message =
+                                        message,
+                                    isDark =
+                                        isDark,
+                                    isHighlighted =
+                                        chatSearchQuery
+                                            .isNotBlank(),
+                                    onReply = {
+                                        replyingTo =
                                             message.text
-                                    }
-                                },
-                                onCopy = {
+                                    },
+                                    onEdit = {
 
-                                    clipboard
-                                        .setText(
-                                            AnnotatedString(
+                                        if (
+                                            message.isFromMe
+                                        ) {
+                                            editingMessage =
+                                                message.id
+                                            messageText =
                                                 message.text
+                                        }
+                                    },
+                                    onCopy = {
+
+                                        clipboard
+                                            .setText(
+                                                AnnotatedString(
+                                                    message.text
+                                                )
                                             )
-                                        )
-                                },
-                                onReaction = {
-                                    showReactionSheet =
-                                        true
-                                },
-                                onMore = {
-                                    showChatMoreSheet =
-                                        true
-                                },
-                                onRetry = {
-                                    onRetryMessage?.invoke(message)
-                                }
-                            )
+                                    },
+                                    onReaction = {
+                                        showReactionSheet =
+                                            true
+                                    },
+                                    onMore = {
+                                        showChatMoreSheet =
+                                            true
+                                    },
+                                    onRetry = {
+                                        onRetryMessage?.invoke(message)
+                                    }
+                                )
+                            }
 
                             if (
                                 index ==
@@ -3515,6 +3951,13 @@ private fun MessageRow(
             modifier =
                 Modifier
                     .scale(scale)
+                    .animateContentSize(
+                        animationSpec =
+                            tween(
+                                200,
+                                easing = FastOutSlowInEasing
+                            )
+                    )
                     .pointerInput(
                         message.id
                     ) {
