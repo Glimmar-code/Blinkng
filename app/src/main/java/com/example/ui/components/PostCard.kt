@@ -47,7 +47,6 @@ fun PostCard(
     onShare: () -> Unit,
     onOptionsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
-    onViewed: () -> Unit = {},
     onVotePoll: (postId: String, optionId: String) -> Unit = { _, _ -> },
     isAuthor: Boolean = false,
     onDelete: () -> Unit = {},
@@ -76,8 +75,6 @@ fun PostCard(
             likedPulse = false
         }
     }
-    LaunchedEffect(post.id) { onViewed() }
-
     Card(
         modifier = modifier
             .fillMaxWidth()

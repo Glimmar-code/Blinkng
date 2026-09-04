@@ -133,6 +133,8 @@ fun FeedScreen(
     val listState = rememberLazyListState()
     val pullToRefreshState = rememberPullToRefreshState()
     val bottomBarVisibility by rememberUpdatedState(onBottomBarVisibilityChange)
+    val recordVisiblePost by rememberUpdatedState(onViewedPost)
+    val postIds = remember(posts) { posts.mapTo(linkedSetOf()) { it.id } }
 
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
@@ -153,6 +155,28 @@ fun FeedScreen(
 
     LaunchedEffect(selectedTopTab) {
         bottomBarVisibility(true)
+    }
+
+    LaunchedEffect(listState, postIds, selectedTopTab) {
+        if (selectedTopTab != 0 || postIds.isEmpty()) return@LaunchedEffect
+
+        val tracker = PostImpressionTracker()
+        snapshotFlow {
+            val layoutInfo = listState.layoutInfo
+            layoutInfo.visibleItemsInfo.mapNotNullTo(linkedSetOf()) { item ->
+                val postId = item.key as? String
+                postId?.takeIf {
+                    it in postIds && qualifiesForPostImpression(
+                        itemOffset = item.offset,
+                        itemSize = item.size,
+                        viewportStart = layoutInfo.viewportStartOffset,
+                        viewportEnd = layoutInfo.viewportEndOffset
+                    )
+                }
+            }
+        }.collect { qualifiedPostIds ->
+            tracker.update(qualifiedPostIds).forEach(recordVisiblePost)
+        }
     }
 
     fun navigate(tab: Int) {
@@ -316,7 +340,6 @@ fun FeedScreen(
                                             onProfileClick = onProfileClick,
                                             isAuthor = post.author.equals(currentUsername, true),
                                             onDelete = { onDeletePost(post.id) },
-                                            onViewed = { onViewedPost(post.id) },
                                             onVotePoll = onVotePoll
                                         )
                                         Spacer(Modifier.height(8.dp))
