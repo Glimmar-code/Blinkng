@@ -105,7 +105,9 @@ fun StoryBar(
     modifier: Modifier = Modifier
 ) {
     val visibleStories = remember(stories) {
-        stories.filter { !it.isUser }
+        // Keep real stories uploaded by the current user. Only hide the synthetic
+        // "Your Story" placeholder when it has no media.
+        stories.filterNot { it.id == "story_me" && it.storyImage.isBlank() }
     }
 
     val listState = rememberLazyListState()
@@ -319,24 +321,27 @@ fun StoryBar(
             // OTHER STORIES
             // ========================================================
 
-            items(
-                items = visibleStories,
-                key = { story ->
-                    story.username
+            if (visibleStories.isEmpty()) {
+                items(4, key = { index -> "story_skeleton_$index" }) {
+                    StorySkeletonItem()
                 }
-            ) { story ->
-
-                PremiumStoryItem(
-                    story = story,
-                    pressed = pressedStoryId == story.username,
-                    onPressed = {
-                        pressedStoryId = story.username
-                    },
-                    onClick = {
-                        showNewBadge = false
-                        onStoryClick(story)
-                    }
-                )
+            } else {
+                items(
+                    items = visibleStories,
+                    key = { story -> story.id }
+                ) { story ->
+                    PremiumStoryItem(
+                        story = story,
+                        pressed = pressedStoryId == story.id,
+                        onPressed = {
+                            pressedStoryId = story.id
+                        },
+                        onClick = {
+                            showNewBadge = false
+                            onStoryClick(story)
+                        }
+                    )
+                }
             }
         }
 
@@ -426,6 +431,41 @@ fun StoryBar(
                 }
             }
         }
+    }
+}
+
+// ====================================================================
+// EMPTY STORY SKELETON
+// ====================================================================
+
+@Composable
+private fun StorySkeletonItem() {
+    val base = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)
+    val highlight = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .16f)
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(70.dp)
+    ) {
+        Box(
+            Modifier
+                .size(64.dp)
+                .shimmerBackground(CircleShape, base, highlight)
+        )
+        Spacer(Modifier.height(7.dp))
+        Box(
+            Modifier
+                .width(46.dp)
+                .height(9.dp)
+                .shimmerBackground(RoundedCornerShape(100.dp), base, highlight)
+        )
+        Spacer(Modifier.height(4.dp))
+        Box(
+            Modifier
+                .width(32.dp)
+                .height(7.dp)
+                .shimmerBackground(RoundedCornerShape(100.dp), base, highlight)
+        )
     }
 }
 
@@ -659,9 +699,9 @@ private fun PremiumStoryItem(
             .width(70.dp)
             .scale(scale)
             .testTag(
-                "story_item_${story.username}"
+                "story_item_${story.id}"
             )
-            .pointerInput(story.username) {
+            .pointerInput(story.id) {
 
                 detectTapGestures(
 

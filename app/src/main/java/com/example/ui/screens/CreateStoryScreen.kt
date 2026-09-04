@@ -35,7 +35,7 @@ fun CreateStoryScreen(profile:UserProfile,isUploading:Boolean,onBack:()->Unit,on
     val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()){uri->uri?.let{selectedUri=it.toString();isVideo=false}}
     val videoPicker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()){uri->uri?.let{selectedUri=it.toString();isVideo=true}}
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.background,BlinkPurple.copy(alpha=.10f),BlinkPink.copy(alpha=.06f))))){
-        Column(Modifier.fillMaxSize().systemBarsPadding()){
+        Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()){
             Row(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically){
                 IconButton(onClick=onBack,enabled=!isUploading){Icon(Icons.Default.ArrowBack,"Back")}
                 Text("Add Story",style=MaterialTheme.typography.titleLarge,fontWeight=androidx.compose.ui.text.font.FontWeight.Black,modifier=Modifier.weight(1f))
@@ -63,7 +63,7 @@ fun CreateStoryScreen(profile:UserProfile,isUploading:Boolean,onBack:()->Unit,on
                                     )
                                 } else {
                                     Column(
-                                        modifier = Modifier.align(Alignment.Center),
+                                        modifier = Modifier.fillMaxSize().wrapContentSize(Alignment.Center),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ){
                                         Icon(Icons.Default.VideoLibrary,null,tint=BlinkPink,modifier=Modifier.size(64.dp))

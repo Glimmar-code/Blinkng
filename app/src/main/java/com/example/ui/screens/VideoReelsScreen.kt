@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.VerticalPager
@@ -190,7 +191,9 @@ private fun ReelsContent(
                 onBookmark = onBookmark,
                 onShare = onShare,
                 onDelete = onDelete,
-                onProfileClick = onProfileClick
+                onProfileClick = onProfileClick,
+                onSwipeToHome = onBackToPosts,
+                onSwipeToProfile = { onProfileClick(reel.author) }
             )
         }
 
@@ -389,7 +392,9 @@ private fun ReelPage(
     onBookmark: (String) -> Unit,
     onShare: (String) -> Unit,
     onDelete: (String) -> Unit,
-    onProfileClick: (String) -> Unit
+    onProfileClick: (String) -> Unit,
+    onSwipeToHome: () -> Unit,
+    onSwipeToProfile: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
 
@@ -398,6 +403,7 @@ private fun ReelPage(
     var showMuteHint by remember(reel.id) { mutableStateOf(false) }
     var isBuffering by remember(reel.id) { mutableStateOf(false) }
     var progress by remember(reel.id) { mutableStateOf(0f) }
+    var horizontalDrag by remember(reel.id) { mutableFloatStateOf(0f) }
 
     LaunchedEffect(showMuteHint) {
         if (showMuteHint) {
@@ -427,6 +433,24 @@ private fun ReelPage(
                         showMuteHint = true
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     }
+                )
+            }
+            .pointerInput(reel.id, isActive) {
+                if (!isActive) return@pointerInput
+                val swipeThreshold = 84.dp.toPx()
+                detectHorizontalDragGestures(
+                    onDragStart = { horizontalDrag = 0f },
+                    onHorizontalDrag = { _, dragAmount ->
+                        horizontalDrag += dragAmount
+                    },
+                    onDragEnd = {
+                        when {
+                            horizontalDrag <= -swipeThreshold -> onSwipeToHome()
+                            horizontalDrag >= swipeThreshold -> onSwipeToProfile()
+                        }
+                        horizontalDrag = 0f
+                    },
+                    onDragCancel = { horizontalDrag = 0f }
                 )
             }
     ) {

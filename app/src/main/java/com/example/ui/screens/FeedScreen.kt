@@ -127,6 +127,7 @@ fun FeedScreen(
     isLoadingMoreReels: Boolean = false,
     onLoadMorePosts: () -> Unit = {},
     onLoadMoreReels: () -> Unit = {},
+    homeReselectSignal: Int = 0,
     onBottomBarVisibilityChange: (Boolean) -> Unit = {}
 ) {
     val selectedTopTab = currentSubTab
@@ -134,21 +135,38 @@ fun FeedScreen(
     val pullToRefreshState = rememberPullToRefreshState()
     val bottomBarVisibility by rememberUpdatedState(onBottomBarVisibilityChange)
     val recordVisiblePost by rememberUpdatedState(onViewedPost)
+    val refreshFeed by rememberUpdatedState(onRefresh)
     val postIds = remember(posts) { posts.mapTo(linkedSetOf()) { it.id } }
 
     val nestedScrollConnection = remember(selectedTopTab) {
         object : NestedScrollConnection {
             private var lastVisible = true
+            private var accumulatedScroll = 0f
 
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput || available.y == 0f) return Offset.Zero
+
+                // Do not animate the bottom bar for every tiny finger movement. Accumulate
+                // intentional movement and only change visibility after a meaningful swipe.
+                if ((accumulatedScroll > 0f && available.y < 0f) ||
+                    (accumulatedScroll < 0f && available.y > 0f)
+                ) {
+                    accumulatedScroll = 0f
+                }
+
+                accumulatedScroll = (accumulatedScroll + available.y).coerceIn(-160f, 160f)
                 val shouldBeVisible = when {
-                    available.y < -8f -> false
-                    available.y > 8f -> true
+                    accumulatedScroll <= -56f -> false
+                    accumulatedScroll >= 56f -> true
                     else -> null
                 }
-                if (shouldBeVisible != null && shouldBeVisible != lastVisible) {
-                    lastVisible = shouldBeVisible
-                    bottomBarVisibility(shouldBeVisible)
+
+                if (shouldBeVisible != null) {
+                    accumulatedScroll = 0f
+                    if (shouldBeVisible != lastVisible) {
+                        lastVisible = shouldBeVisible
+                        bottomBarVisibility(shouldBeVisible)
+                    }
                 }
                 return Offset.Zero
             }
@@ -157,6 +175,24 @@ fun FeedScreen(
 
     LaunchedEffect(selectedTopTab) {
         bottomBarVisibility(true)
+    }
+
+    LaunchedEffect(homeReselectSignal, selectedTopTab) {
+        if (homeReselectSignal <= 0 || selectedTopTab != 0) return@LaunchedEffect
+
+        bottomBarVisibility(true)
+        val isAlreadyAtTop = listState.firstVisibleItemIndex == 0 &&
+            listState.firstVisibleItemScrollOffset == 0
+
+        if (!isAlreadyAtTop) {
+            // For long feeds, jump near the top first so the visible smooth animation is quick
+            // instead of trying to animate through hundreds of composed rows.
+            if (listState.firstVisibleItemIndex > 8) {
+                listState.scrollToItem(8)
+            }
+            listState.animateScrollToItem(0)
+        }
+        refreshFeed()
     }
 
     LaunchedEffect(listState, postIds, selectedTopTab) {

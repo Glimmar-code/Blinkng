@@ -224,6 +224,7 @@ fun MainAppContent(
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
+    var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
 
     LaunchedEffect(uiState.selectedTab) {
         isBottomBarVisibleByScroll = true
@@ -358,6 +359,7 @@ fun MainAppContent(
                         isLoadingMoreReels = uiState.isLoadingMoreReels,
                         onLoadMorePosts = { viewModel.loadMoreFeed(false) },
                         onLoadMoreReels = { viewModel.loadMoreFeed(true) },
+                        homeReselectSignal = homeReselectSignal,
                         onBottomBarVisibilityChange = { isVisible ->
                             isBottomBarVisibleByScroll = isVisible
                         }
@@ -475,9 +477,14 @@ fun MainAppContent(
         ) {
             FloatingBottomBar(
                 currentTab = uiState.selectedTab,
-                onTabSelected = {
+                onTabSelected = { tab ->
                     isBottomBarVisibleByScroll = true
-                    viewModel.setTab(it)
+                    if (tab == MainTab.HOME && uiState.selectedTab == MainTab.HOME) {
+                        viewModel.setFeedSubTab(0)
+                        homeReselectSignal++
+                    } else {
+                        viewModel.setTab(tab)
+                    }
                 },
                 isDark = uiState.isDarkMode
             )

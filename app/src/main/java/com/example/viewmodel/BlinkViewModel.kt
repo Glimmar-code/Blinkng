@@ -1947,7 +1947,7 @@ private suspend fun restoreSupabaseSession() {
         val s=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,storyImage,caption,"Just now",faculty.ifBlank{p.faculty},p.university,0,false,p.verificationBadge)
         viewModelScope.launch(Dispatchers.IO){
             if(postRepository.createStory(s,false)){
-                _uiState.value=_uiState.value.copy(stories=listOf(s)+_uiState.value.stories.filter{!it.isUser&&it.id!="story_me"})
+                _uiState.value=_uiState.value.copy(stories=listOf(s)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=s.id})
                 showToast("✨ Story published!")
             }else showToast("Failed to persist story to Supabase.")
         }
@@ -1966,7 +1966,7 @@ private suspend fun restoreSupabaseSession() {
                 val p=_uiState.value.myProfile
                 val story=Story(UUID.randomUUID().toString(),p.username,p.avatarUrl,false,true,url,caption.trim(),"Just now",p.faculty,p.university,0,false,p.verificationBadge)
                 if(!postRepository.createStory(story,isVideo))throw IllegalStateException("Story save failed.")
-                _uiState.value=_uiState.value.copy(stories=listOf(story)+_uiState.value.stories.filter{!it.isUser&&it.id!="story_me"},isCreateStoryOpen=false)
+                _uiState.value=_uiState.value.copy(stories=listOf(story)+_uiState.value.stories.filter{it.id!="story_me"&&it.id!=story.id},isCreateStoryOpen=false)
                 showToast("Story shared.")
             }catch(e:Exception){
                 Log.e(TAG,"publishStory failed",e)
