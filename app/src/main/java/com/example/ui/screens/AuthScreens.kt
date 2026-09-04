@@ -53,107 +53,48 @@ import kotlinx.coroutines.launch
 fun SplashScreen(
     onTimeout: () -> Unit
 ) {
-    val infinite = rememberInfiniteTransition(
-        label = "splash_animation"
+    var started by remember { mutableStateOf(false) }
+
+    val bScale by animateFloatAsState(
+        targetValue = if (started) 1f else 0.78f,
+        animationSpec = tween(
+            durationMillis = 260,
+            easing = FastOutSlowInEasing
+        ),
+        label = "splash_b_scale"
     )
 
-    val logoScale by infinite.animateFloat(
-        initialValue = 0.94f,
-        targetValue = 1.06f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                1200,
-                easing = FastOutSlowInEasing
-            ),
-            repeatMode = RepeatMode.Reverse
+    val bAlpha by animateFloatAsState(
+        targetValue = if (started) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = 180,
+            easing = FastOutSlowInEasing
         ),
-        label = "logo_scale"
-    )
-
-    val glowAlpha by infinite.animateFloat(
-        initialValue = 0.15f,
-        targetValue = 0.42f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1400),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glow_alpha"
+        label = "splash_b_alpha"
     )
 
     LaunchedEffect(Unit) {
-        delay(1800)
+        started = true
+        delay(300)
         onTimeout()
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF37104B),
-                        Color(0xFF1B0929),
-                        DarkBackground
-                    ),
-                    radius = 1100f
-                )
-            ),
+            .background(DarkBackground),
         contentAlignment = Alignment.Center
     ) {
-
-        Box(
+        Text(
+            text = "B",
+            color = BlinkCream,
+            fontSize = 74.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = (-2).sp,
             modifier = Modifier
-                .size(220.dp)
-                .alpha(glowAlpha)
-                .background(
-                    Brush.radialGradient(
-                        listOf(
-                            BlinkPink,
-                            BlinkPurple,
-                            Color.Transparent
-                        )
-                    ),
-                    CircleShape
-                )
+                .alpha(bAlpha)
+                .scale(bScale)
         )
-
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-
-            Box(
-                modifier = Modifier.scale(logoScale)
-            ) {
-                BlinkMark(
-                    size = 82.dp,
-                    showText = false
-                )
-            }
-
-            Spacer(modifier = Modifier.height(26.dp))
-
-            Text(
-                text = "BLINK",
-                fontSize = 38.sp,
-                fontWeight = FontWeight.Black,
-                letterSpacing = 7.sp,
-                color = Color.White
-            )
-
-            Spacer(modifier = Modifier.height(7.dp))
-
-            Text(
-                text = "CAMPUS • COMMUNITY • MARKET",
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 2.2.sp,
-                color = BlinkPink
-            )
-
-            Spacer(modifier = Modifier.height(42.dp))
-
-            LoadingDots()
-        }
     }
 }
 
