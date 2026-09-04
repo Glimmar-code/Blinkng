@@ -42,7 +42,14 @@ jobs:
       - name: Compile Kotlin
         run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
 
-      - name: Commit source fixes
+      - name: Verify public Supabase share previews
+        run: |
+          base="https://jhwgifrlxwspoedxjaly.supabase.co/functions/v1/share-preview"
+          curl -fsS "$base/profile/6cfec578-97a7-4d51-8873-97ac36195055?format=json" | grep -q '"type":"profile"'
+          curl -fsS "$base/post/f829eb58-a442-4239-b906-465643c97b0b?format=json" | grep -q '"type":"post"'
+          curl -fsS "$base/reel/661cd2ac-935f-4c91-9b21-6cf6bf874485?format=json" | grep -q '"type":"reel"'
+
+      - name: Commit, rebase, verify and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -61,4 +68,6 @@ jobs:
             exit 0
           fi
           git commit -m "feat: add share links deep routing and richer timestamps"
+          git pull --rebase origin main
+          gradle :app:compileDebugKotlin --stacktrace --no-daemon
           git push origin main
