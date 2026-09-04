@@ -1073,7 +1073,7 @@ private fun MessagesHeader(
 
                     Text(
                         text =
-                            "$totalChats chats",
+                            "$totalChats people",
                         fontSize = 9.5.sp,
                         color =
                             MaterialTheme
@@ -1607,7 +1607,7 @@ private fun InboxSummaryCard(
                     Icons.Default.Chat,
                 value =
                     total.toString(),
-                label = "Chats"
+                label = "People"
             )
 
             MessageStat(

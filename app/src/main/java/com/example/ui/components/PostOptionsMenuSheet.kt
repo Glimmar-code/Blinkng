@@ -1532,7 +1532,7 @@ private fun DeletePostDialog(
         },
         title = {
             Text(
-                "Delete this post?",
+                "Are you sure you want to delete this post?",
                 fontWeight =
                     FontWeight.Bold
             )

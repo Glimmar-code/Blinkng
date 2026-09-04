@@ -1,5 +1,11 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -48,6 +54,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,6 +86,8 @@ import com.example.ui.components.shimmerBackground
 import com.example.ui.theme.BlinkBlack
 import com.example.ui.theme.BlinkCream
 import com.example.ui.theme.BlinkPink
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 
 @OptIn(
     androidx.compose.foundation.ExperimentalFoundationApi::class,
@@ -139,14 +150,52 @@ fun FeedScreen(
     val recordVisiblePost by rememberUpdatedState(onViewedPost)
     val refreshFeed by rememberUpdatedState(onRefresh)
     val postIds = remember(posts) { posts.mapTo(linkedSetOf()) { it.id } }
+    // 0 = full header + tabs, 1 = compact utility header, 2 = hidden while scrolling.
+    var chromeStage by remember { mutableIntStateOf(0) }
+    var fabVisible by remember { mutableStateOf(true) }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collectLatest { scrolling ->
+            if (!scrolling) {
+                delay(800)
+                if (!listState.isScrollInProgress) {
+                    // After 0.8s idle, restore the compact menu/home/notification/profile row.
+                    if (chromeStage == 2) chromeStage = 1
+                    fabVisible = true
+                }
+            }
+        }
+    }
 
     val nestedScrollConnection = remember(selectedTopTab) {
         object : NestedScrollConnection {
             private var lastVisible = true
             private var accumulatedScroll = 0f
+            private var chromeScroll = 0f
 
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.UserInput || available.y == 0f) return Offset.Zero
+
+                if (available.y < 0f) {
+                    // Upward swipe: fold Home/Reel/Connect/Game first, then fade utilities.
+                    chromeScroll += -available.y
+                    fabVisible = false
+                    when {
+                        chromeStage == 0 && chromeScroll >= 44f -> {
+                            chromeStage = 1
+                            chromeScroll = 0f
+                        }
+                        chromeStage == 1 && chromeScroll >= 72f -> {
+                            chromeStage = 2
+                            chromeScroll = 0f
+                        }
+                    }
+                } else {
+                    // Downward navigation restores the full chrome immediately.
+                    chromeScroll = 0f
+                    chromeStage = 0
+                    fabVisible = true
+                }
 
                 // Do not animate the bottom bar for every tiny finger movement. Accumulate
                 // intentional movement and only change visibility after a meaningful swipe.
@@ -177,6 +226,8 @@ fun FeedScreen(
 
     LaunchedEffect(selectedTopTab) {
         bottomBarVisibility(true)
+        chromeStage = 0
+        fabVisible = true
     }
 
     LaunchedEffect(homeReselectSignal, selectedTopTab) {
@@ -324,24 +375,49 @@ fun FeedScreen(
                             },
                         contentPadding = PaddingValues(bottom = 92.dp)
                     ) {
-                        item {
-                            HomeHeader(
-                                userAvatar = userAvatar,
-                                onMenuClick = onOpenMenu,
-                                onNotificationClick = onOpenActivity,
-                                onProfileClick = { onProfileClick("you") }
-                            )
-                        }
+                        stickyHeader(key = "home_feed_chrome") {
+                            Surface(
+                                color = MaterialTheme.colorScheme.background,
+                                tonalElevation = if (chromeStage < 2) 2.dp else 0.dp
+                            ) {
+                                Column {
+                                    AnimatedVisibility(
+                                        visible = chromeStage < 2,
+                                        enter = fadeIn(tween(180)) + expandVertically(),
+                                        exit = fadeOut(tween(140)) + shrinkVertically()
+                                    ) {
+                                        HomeHeader(
+                                            userAvatar = userAvatar,
+                                            onMenuClick = onOpenMenu,
+                                            onNotificationClick = onOpenActivity,
+                                            onProfileClick = { onProfileClick("you") }
+                                        )
+                                    }
 
-                    item {
-                        TopNavigation(
-                            selected = selectedTopTab,
-                            onHome = { navigate(0) },
-                            onReel = { navigate(1) },
-                            onConnect = { navigate(2) },
-                            onGame = { navigate(3) }
-                        )
-                    }
+                                    AnimatedVisibility(
+                                        visible = chromeStage == 0,
+                                        enter = fadeIn(tween(180)) + expandVertically(),
+                                        exit = fadeOut(tween(140)) + shrinkVertically()
+                                    ) {
+                                        TopNavigation(
+                                            selected = selectedTopTab,
+                                            onHome = { navigate(0) },
+                                            onReel = { navigate(1) },
+                                            onConnect = { navigate(2) },
+                                            onGame = { navigate(3) }
+                                        )
+                                    }
+
+                                    AnimatedVisibility(
+                                        visible = isRefreshing,
+                                        enter = fadeIn(tween(150)) + expandVertically(),
+                                        exit = fadeOut(tween(150)) + shrinkVertically()
+                                    ) {
+                                        FeedRefreshingBanner()
+                                    }
+                                }
+                            }
+                        }
 
                         if (!errorMessage.isNullOrBlank() && posts.isNotEmpty()) {
                             item(key = "stale_feed_banner") {
@@ -427,21 +503,27 @@ fun FeedScreen(
                 }
                 }
 
-                FloatingActionButton(
-                    onClick = onOpenCreatePost,
-                    containerColor = if (isDark) BlinkCream else BlinkBlack,
-                    contentColor = if (isDark) BlinkBlack else BlinkCream,
+                AnimatedVisibility(
+                    visible = fabVisible,
+                    enter = fadeIn(tween(180)),
+                    exit = fadeOut(tween(140)),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
-                        .padding(end = 20.dp, bottom = 16.dp)
-                        .testTag("create_post_fab")
+                        .padding(end = 20.dp, bottom = 92.dp)
                 ) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = "Create post",
-                        modifier = Modifier.size(27.dp)
-                    )
+                    FloatingActionButton(
+                        onClick = onOpenCreatePost,
+                        containerColor = if (isDark) BlinkCream else BlinkBlack,
+                        contentColor = if (isDark) BlinkBlack else BlinkCream,
+                        modifier = Modifier.testTag("create_post_fab")
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "Create post",
+                            modifier = Modifier.size(27.dp)
+                        )
+                    }
                 }
             }
         }
@@ -576,6 +658,32 @@ private fun TopTab(
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
         )
+    }
+}
+
+@Composable
+private fun FeedRefreshingBanner() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(15.dp),
+                strokeWidth = 2.dp
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Refreshing feed…",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

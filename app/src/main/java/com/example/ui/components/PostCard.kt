@@ -309,17 +309,6 @@ fun PostCard(
                     Text("${post.sharesCount}", fontSize = 10.sp)
                 }
 
-                // Delete is never exposed on somebody else's post.
-                if (isAuthor) {
-                    IconButton(onClick = onDelete) {
-                        Icon(
-                            Icons.Default.DeleteOutline,
-                            contentDescription = "Delete your post",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
-                }
             }
         }
     }

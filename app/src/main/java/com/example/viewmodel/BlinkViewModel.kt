@@ -478,6 +478,35 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /**
+     * Server conversation summaries intentionally do not contain message pages.
+     * Never replace the local list outright: doing so erases visible chat history
+     * and optimistic/offline messages whenever a realtime summary event arrives.
+     */
+    private fun mergeConversationSummaries(
+        summaries: List<ChatConversation>,
+        local: List<ChatConversation>
+    ): List<ChatConversation> {
+        val server = summaries
+            .distinctBy { it.id.ifBlank { it.partnerUsername.lowercase() } }
+            .map { summary ->
+                val cached = local.firstOrNull {
+                    it.id == summary.id || it.partnerUsername.equals(summary.partnerUsername, true)
+                }
+                summary.copy(messages = cached?.messages?.toMutableList() ?: mutableListOf())
+            }
+
+        val localOnly = local.filter { cached ->
+            server.none {
+                it.id == cached.id || it.partnerUsername.equals(cached.partnerUsername, true)
+            }
+        }
+
+        // Local-only entries are pending/new chats and should stay visible at the top
+        // until Supabase returns their real conversation id.
+        return localOnly + server
+    }
+
     fun refreshIfStale(maxAgeMillis: Long = 60_000L) {
         val lastSync = lastSuccessfulSyncAt
         val isFresh = lastSync != 0L && SystemClock.elapsedRealtime() - lastSync < maxAgeMillis
@@ -601,12 +630,10 @@ private suspend fun restoreSupabaseSession() {
 
                     val conversationsResult = conversationsRequest.await()
                     val conversationSummaries = conversationsResult.getOrDefault(before.conversations)
-                    val conversations = conversationSummaries.map { summary ->
-                        val cached = before.conversations.firstOrNull {
-                            it.id == summary.id || it.partnerUsername.equals(summary.partnerUsername, true)
-                        }
-                        summary.copy(messages = cached?.messages ?: mutableListOf())
-                    }
+                    val conversations = mergeConversationSummaries(
+                        summaries = conversationSummaries,
+                        local = before.conversations
+                    )
                     if (conversationsResult.isSuccess) {
                         cacheWriteMutex.withLock {
                             runCatching { offlineContentStore.replaceConversations(conversations, _uiState.value.myProfile.username) }
@@ -1619,10 +1646,15 @@ private suspend fun restoreSupabaseSession() {
             val updated = latest.conversations.map { conversation ->
                 if (conversation.id != conversationId) conversation
                 else {
-                    val merged = if (older) page + conversation.messages else page + conversation.messages.filter {
-                        it.status != MessageStatus.SENT || it.id.startsWith("temp_")
-                    }
-                    conversation.copy(messages = merged.distinctBy { it.id }.sortedBy { it.rawTimestamp }.toMutableList())
+                    // A just-sent message can briefly be absent from the first server page.
+                    // Merge instead of replacing so entering the chat never makes it disappear.
+                    val merged = page + conversation.messages
+                    conversation.copy(
+                        messages = merged
+                            .distinctBy { it.id }
+                            .sortedBy { it.rawTimestamp.ifBlank { it.timestamp } }
+                            .toMutableList()
+                    )
                 }
             }
             _uiState.value = latest.copy(
@@ -1757,11 +1789,16 @@ private suspend fun restoreSupabaseSession() {
             ?: return
         withContext(Dispatchers.Main) {
             val latest = _uiState.value
-            val index = latest.conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }
-            if (index < 0) return@withContext
-            val local = latest.conversations[index]
-            val merged = server.copy(messages = local.messages)
-            val conversations = latest.conversations.toMutableList().apply { this[index] = merged }
+            val index = latest.conversations.indexOfFirst {
+                it.partnerUsername.equals(partnerUsername, true)
+            }
+            val conversations = latest.conversations.toMutableList()
+            if (index >= 0) {
+                val local = conversations[index]
+                conversations[index] = server.copy(messages = local.messages.toMutableList())
+            } else {
+                conversations.add(0, server)
+            }
             _uiState.value = latest.copy(conversations = conversations)
             persistConversations()
         }
@@ -1770,7 +1807,20 @@ private suspend fun restoreSupabaseSession() {
     private fun handleRealtimeEvent(event: RealtimeEvent) {
         when (event) {
             is RealtimeEvent.MessageEvent -> handleIncomingRealtimeMessage(event.message)
-            is RealtimeEvent.ConversationEvent -> viewModelScope.launch { _uiState.value = _uiState.value.copy(conversations = chatRepository.fetchConversations()) }
+            is RealtimeEvent.ConversationEvent -> viewModelScope.launch {
+                val latest = _uiState.value
+                runCatching { chatRepository.fetchConversations() }
+                    .onSuccess { summaries ->
+                        _uiState.value = latest.copy(
+                            conversations = mergeConversationSummaries(
+                                summaries = summaries,
+                                local = latest.conversations
+                            )
+                        )
+                        persistConversations()
+                    }
+                    .onFailure { Log.w(TAG, "Conversation summary refresh failed", it) }
+            }
             is RealtimeEvent.NotificationEvent -> fetchSupabaseData()
             is RealtimeEvent.ConnectHubEvent -> refreshConnectHub()
             is RealtimeEvent.FeedPostEvent -> viewModelScope.launch {
@@ -1905,7 +1955,7 @@ private suspend fun restoreSupabaseSession() {
     private fun appendMessageToState(partnerUsername: String, message: ChatMessage) {
         val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }
         if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(lastMessage = message.text, lastMessageTime = message.timestamp, lastMessageRawTime = message.rawTimestamp, messages = (old.messages + message).toMutableList()) }
-        else conversations.add(0, ChatConversation("conv_$partnerUsername", partnerUsername, partnerName = partnerUsername.replace(".", " ").replace("_", " ").capitalizeWords(), partnerAvatar = "", lastMessage = message.text, lastMessageTime = message.timestamp, messages = mutableListOf(message)))
+        else conversations.add(0, ChatConversation("local_${UUID.randomUUID()}", partnerUsername, partnerName = partnerUsername.replace(".", " ").replace("_", " ").capitalizeWords(), partnerAvatar = "", lastMessage = message.text, lastMessageTime = message.timestamp, messages = mutableListOf(message)))
         _uiState.value = _uiState.value.copy(conversations = conversations)
         persistConversations()
     }
