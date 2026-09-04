@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.auth.AccountSessionStore
+import com.example.data.local.CachedAppSnapshot
 import com.example.data.local.OfflineContentStore
 import com.example.data.models.*
 import com.example.data.network.NetworkMonitor
@@ -112,6 +113,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_COVER = "cover_url"
         private const val KEY_VERIFICATION = "verification_badge"
         private const val KEY_SELLER_ACTIVE = "is_seller_active"
+        private const val KEY_DARK_MODE = "ui_dark_mode"
+        private const val KEY_SELECTED_TAB = "ui_selected_tab"
+        private const val KEY_FEED_SUB_TAB = "ui_feed_sub_tab"
     }
 
     private val application = application
@@ -140,8 +144,20 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         SupabaseService.initialize(appContext)
+        restoreUiPreferences()
         _uiState.value = _uiState.value.copy(isOnline = networkMonitor.isCurrentlyOnline())
+
+        // Render the last authenticated account immediately. Supabase verification and
+        // refresh continue in the background instead of blocking the first usable frame.
+        val recoverableLocalSession = hasLocalAuthenticatedProfile() && (
+            !SupabaseService.accessToken().isNullOrBlank() ||
+                !SupabaseService.refreshToken().isNullOrBlank() ||
+                AccountSessionStore.list(appContext).isNotEmpty()
+            )
+        if (recoverableLocalSession) restoreLocalSession()
+
         observeCachedContent()
+        viewModelScope.launch { restoreCachedAppSnapshot() }
         observeNetworkStatus()
         observeAuthState()
         viewModelScope.launch { restoreSupabaseSession() }
@@ -179,6 +195,14 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
 private suspend fun restoreSupabaseSession() {
         try {
+            // Local state is already usable when available; this call only validates and
+            // refreshes the cloud session. Never blank the cached UI while it runs.
+            if (_uiState.value.destination != AppDestination.MAIN && hasLocalAuthenticatedProfile()) {
+                val recoverable = !SupabaseService.accessToken().isNullOrBlank() ||
+                    !SupabaseService.refreshToken().isNullOrBlank() ||
+                    AccountSessionStore.list(appContext).isNotEmpty()
+                if (recoverable) restoreLocalSession()
+            }
             var restored = supabaseService.restoreSession()
 
             // Recover the encrypted refresh token saved by AccountSessionStore if the
@@ -287,6 +311,68 @@ private suspend fun restoreSupabaseSession() {
 
     private fun saveSession(profile: UserProfile) = saveLocalProfile(profile)
 
+    private fun restoreUiPreferences() {
+        val tabName = prefs.getString(KEY_SELECTED_TAB, MainTab.HOME.name).orEmpty()
+        val selected = MainTab.entries.firstOrNull { it.name == tabName } ?: MainTab.HOME
+        _uiState.value = _uiState.value.copy(
+            isDarkMode = prefs.getBoolean(KEY_DARK_MODE, true),
+            selectedTab = selected,
+            feedSubTab = prefs.getInt(KEY_FEED_SUB_TAB, 0).coerceIn(0, 3)
+        )
+    }
+
+    private fun persistUiPreferences() {
+        val state = _uiState.value
+        prefs.edit()
+            .putBoolean(KEY_DARK_MODE, state.isDarkMode)
+            .putString(KEY_SELECTED_TAB, state.selectedTab.name)
+            .putInt(KEY_FEED_SUB_TAB, state.feedSubTab)
+            .apply()
+    }
+
+    private suspend fun restoreCachedAppSnapshot() {
+        val cached = offlineContentStore.loadAppSnapshot() ?: return
+        val current = _uiState.value
+        val activeUsername = current.myProfile.username
+        if (activeUsername.isBlank() || !cached.ownerUsername.equals(activeUsername, true)) return
+
+        _uiState.value = current.copy(
+            myProfile = cached.myProfile.takeIf { it.username.equals(activeUsername, true) } ?: current.myProfile,
+            stories = cached.stories.ifEmpty { current.stories },
+            marketItems = cached.marketItems,
+            leaderboardUsers = cached.leaderboardUsers,
+            activities = cached.activities,
+            connectHub = cached.connectHub,
+            mutedUsers = cached.mutedUsers,
+            isConnectHubLoading = false,
+            activitiesLoading = false,
+            isFeedLoading = false
+        )
+    }
+
+    private fun persistExtendedCache() {
+        val snapshot = _uiState.value
+        if (snapshot.myProfile.username.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            cacheWriteMutex.withLock {
+                runCatching {
+                    offlineContentStore.saveAppSnapshot(
+                        CachedAppSnapshot(
+                            ownerUsername = snapshot.myProfile.username,
+                            myProfile = snapshot.myProfile,
+                            stories = snapshot.stories,
+                            marketItems = snapshot.marketItems,
+                            leaderboardUsers = snapshot.leaderboardUsers,
+                            activities = snapshot.activities,
+                            connectHub = snapshot.connectHub,
+                            mutedUsers = snapshot.mutedUsers
+                        )
+                    )
+                }.onFailure { Log.w(TAG, "Unable to persist extended app cache", it) }
+            }
+        }
+    }
+
     private fun observeCachedContent() {
         viewModelScope.launch {
             offlineContentStore.posts.collectLatest { cachedPosts ->
@@ -317,7 +403,12 @@ private suspend fun restoreSupabaseSession() {
         }
         viewModelScope.launch {
             offlineContentStore.conversations.collectLatest { cachedConversations ->
-                if (cachedConversations.isNotEmpty() && _uiState.value.conversations.isEmpty()) {
+                val owner = offlineContentStore.cachedOwnerUsername()
+                val activeUsername = _uiState.value.myProfile.username
+                if (
+                    owner.isNotBlank() && owner.equals(activeUsername, true) &&
+                    cachedConversations.isNotEmpty() && _uiState.value.conversations.isEmpty()
+                ) {
                     _uiState.value = _uiState.value.copy(conversations = cachedConversations)
                 }
             }
@@ -362,7 +453,7 @@ private suspend fun restoreSupabaseSession() {
         viewModelScope.launch(Dispatchers.IO) {
             cacheWriteMutex.withLock {
                 runCatching {
-                    offlineContentStore.replaceFeed(snapshot.posts, snapshot.reels)
+                    offlineContentStore.replaceFeed(snapshot.posts, snapshot.reels, snapshot.myProfile.username)
                 }.onFailure { Log.w(TAG, "Unable to persist the current feed snapshot", it) }
             }
         }
@@ -381,7 +472,7 @@ private suspend fun restoreSupabaseSession() {
         val snapshot = _uiState.value.conversations
         viewModelScope.launch(Dispatchers.IO) {
             cacheWriteMutex.withLock {
-                runCatching { offlineContentStore.replaceConversations(snapshot) }
+                runCatching { offlineContentStore.replaceConversations(snapshot, _uiState.value.myProfile.username) }
                     .onFailure { Log.w(TAG, "Unable to persist conversations", it) }
             }
         }
@@ -456,7 +547,7 @@ private suspend fun restoreSupabaseSession() {
                     if (feedSucceeded) {
                         cacheWriteMutex.withLock {
                             runCatching {
-                                offlineContentStore.replaceFeed(normalPosts, fetchedReels)
+                                offlineContentStore.replaceFeed(normalPosts, fetchedReels, _uiState.value.myProfile.username)
                             }.onFailure { Log.w(TAG, "Feed cache update failed", it) }
                         }
                     }
@@ -500,7 +591,7 @@ private suspend fun restoreSupabaseSession() {
 
                     if (profilesResult.isSuccess) {
                         cacheWriteMutex.withLock {
-                            runCatching { offlineContentStore.replaceProfiles(liveProfiles) }
+                            runCatching { offlineContentStore.replaceProfiles(liveProfiles, _uiState.value.myProfile.username) }
                                 .onFailure { Log.w(TAG, "Profile cache update failed", it) }
                         }
                     }
@@ -518,7 +609,7 @@ private suspend fun restoreSupabaseSession() {
                     }
                     if (conversationsResult.isSuccess) {
                         cacheWriteMutex.withLock {
-                            runCatching { offlineContentStore.replaceConversations(conversations) }
+                            runCatching { offlineContentStore.replaceConversations(conversations, _uiState.value.myProfile.username) }
                                 .onFailure { Log.w(TAG, "Conversation cache update failed", it) }
                         }
                     }
@@ -603,6 +694,7 @@ private suspend fun restoreSupabaseSession() {
                         isRefreshingContent = false,
                         isSyncingContent = false
                     )
+                    persistExtendedCache()
                 }
             }
         }
@@ -615,6 +707,7 @@ private suspend fun restoreSupabaseSession() {
             runCatching { supabaseService.fetchLeaderboard() }
                 .onSuccess { live ->
                     _uiState.value = _uiState.value.copy(leaderboardUsers = live)
+                    persistExtendedCache()
                     showToast("Leaderboard refreshed from Supabase.")
                 }
                 .onFailure {
@@ -954,10 +1047,19 @@ private suspend fun restoreSupabaseSession() {
 
     fun setDestination(destination: AppDestination) { _uiState.value = _uiState.value.copy(destination = destination) }
     fun navigateTo(destination: AppDestination) = setDestination(destination)
-    fun selectTab(tab: MainTab) { _uiState.value = _uiState.value.copy(selectedTab = tab, viewingProfile = null, viewingProduct = null, isConversationFullScreen = false) }
+    fun selectTab(tab: MainTab) {
+        _uiState.value = _uiState.value.copy(selectedTab = tab, viewingProfile = null, viewingProduct = null, isConversationFullScreen = false)
+        persistUiPreferences()
+    }
     fun setTab(tab: MainTab) = selectTab(tab)
-    fun setFeedSubTab(tab: Int) { _uiState.value = _uiState.value.copy(feedSubTab = tab.coerceIn(0, 3)) }
-    fun toggleDarkMode() { _uiState.value = _uiState.value.copy(isDarkMode = !_uiState.value.isDarkMode) }
+    fun setFeedSubTab(tab: Int) {
+        _uiState.value = _uiState.value.copy(feedSubTab = tab.coerceIn(0, 3))
+        persistUiPreferences()
+    }
+    fun toggleDarkMode() {
+        _uiState.value = _uiState.value.copy(isDarkMode = !_uiState.value.isDarkMode)
+        persistUiPreferences()
+    }
     fun openMenu(open: Boolean) { _uiState.value = _uiState.value.copy(isMenuOpen = open) }
     fun openActivity(open: Boolean) { _uiState.value = _uiState.value.copy(isActivityOpen = open) }
 

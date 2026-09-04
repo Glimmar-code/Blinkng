@@ -2,28 +2,55 @@ package com.example.data.local
 
 import android.content.Context
 import android.util.Log
+import com.example.data.models.ActivityItem
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
+import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
+import com.example.data.models.LeaderboardUser
+import com.example.data.models.MarketItem
+import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+
+data class CachedAppSnapshot(
+    val ownerUsername: String = "",
+    val myProfile: UserProfile = UserProfile(),
+    val stories: List<Story> = emptyList(),
+    val marketItems: List<MarketItem> = emptyList(),
+    val leaderboardUsers: List<LeaderboardUser> = emptyList(),
+    val activities: List<ActivityItem> = emptyList(),
+    val connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
+    val mutedUsers: Set<String> = emptySet(),
+    val cachedAt: Long = 0L
+)
 
 class OfflineContentStore(context: Context) {
     companion object {
         private const val TAG = "OfflineContentStore"
-        private const val DEFAULT_CACHE_MAX_AGE_MS = 7L * 24L * 60L * 60L * 1000L
+        private const val DEFAULT_CACHE_MAX_AGE_MS = 30L * 24L * 60L * 60L * 1000L
     }
 
     private val dao = BlinkDatabase.getInstance(context).cachedContentDao()
     private val codec = OfflineContentCodec()
+    private val snapshotFile = File(context.noBackupFilesDir, "blink_main_snapshot.json")
+    private val metadataPrefs = context.getSharedPreferences("blink_offline_cache_meta", Context.MODE_PRIVATE)
+
+    fun cachedOwnerUsername(): String = metadataPrefs.getString("owner_username", "").orEmpty()
+
+    private fun rememberOwner(username: String) {
+        if (username.isNotBlank()) metadataPrefs.edit().putString("owner_username", username.lowercase()).apply()
+    }
 
     val posts: Flow<List<FeedPost>> = dao.observePosts()
         .map { rows -> rows.mapNotNull { codec.decodePost(it.payloadJson) } }
@@ -58,7 +85,8 @@ class OfflineContentStore(context: Context) {
         .distinctUntilChanged()
         .flowOn(Dispatchers.IO)
 
-    suspend fun replaceFeed(posts: List<FeedPost>, reels: List<FeedPost>) {
+    suspend fun replaceFeed(posts: List<FeedPost>, reels: List<FeedPost>, ownerUsername: String = "") {
+        rememberOwner(ownerUsername)
         val cachedAt = System.currentTimeMillis()
         val rows = buildList {
             posts.distinctBy { it.id }.forEachIndexed { index, post ->
@@ -75,7 +103,8 @@ class OfflineContentStore(context: Context) {
         dao.replaceFeed(rows)
     }
 
-    suspend fun replaceProfiles(profiles: List<UserProfile>) {
+    suspend fun replaceProfiles(profiles: List<UserProfile>, ownerUsername: String = "") {
+        rememberOwner(ownerUsername)
         val cachedAt = System.currentTimeMillis()
         val rows = profiles
             .filter { it.id.isNotBlank() || it.username.isNotBlank() }
@@ -94,7 +123,8 @@ class OfflineContentStore(context: Context) {
         dao.replaceProfiles(rows)
     }
 
-    suspend fun replaceConversations(conversations: List<ChatConversation>) {
+    suspend fun replaceConversations(conversations: List<ChatConversation>, ownerUsername: String = "") {
+        rememberOwner(ownerUsername)
         val cachedAt = System.currentTimeMillis()
         val conversationRows = conversations.distinctBy { it.id }.mapIndexedNotNull { index, conversation ->
             codec.encodeConversation(conversation.copy(messages = mutableListOf()))?.let { json ->
@@ -166,6 +196,27 @@ class OfflineContentStore(context: Context) {
         )
     }
 
+    suspend fun loadAppSnapshot(): CachedAppSnapshot? = withContext(Dispatchers.IO) {
+        if (!snapshotFile.exists()) return@withContext null
+        runCatching { codec.decodeAppSnapshot(snapshotFile.readText()) }
+            .onFailure { Log.w(TAG, "Unable to read cached app snapshot", it) }
+            .getOrNull()
+    }
+
+    suspend fun saveAppSnapshot(snapshot: CachedAppSnapshot) = withContext(Dispatchers.IO) {
+        val normalized = snapshot.copy(cachedAt = System.currentTimeMillis())
+        val json = codec.encodeAppSnapshot(normalized) ?: return@withContext
+        rememberOwner(normalized.ownerUsername)
+        val temp = File(snapshotFile.parentFile, "${snapshotFile.name}.tmp")
+        runCatching {
+            temp.writeText(json)
+            if (!temp.renameTo(snapshotFile)) {
+                snapshotFile.writeText(json)
+                temp.delete()
+            }
+        }.onFailure { Log.w(TAG, "Unable to save cached app snapshot", it) }
+    }
+
     suspend fun resetOutbox(localId: String) = dao.resetOutbox(localId)
     suspend fun deleteOutbox(localId: String) = dao.deleteOutbox(localId)
     suspend fun deletePost(postId: String) = dao.deletePost(postId)
@@ -188,6 +239,7 @@ internal class OfflineContentCodec {
     private val profileAdapter: JsonAdapter<UserProfile> = moshi.adapter(UserProfile::class.java)
     private val conversationAdapter: JsonAdapter<ChatConversation> = moshi.adapter(ChatConversation::class.java)
     private val messageAdapter: JsonAdapter<ChatMessage> = moshi.adapter(ChatMessage::class.java)
+    private val appSnapshotAdapter: JsonAdapter<CachedAppSnapshot> = moshi.adapter(CachedAppSnapshot::class.java)
 
     fun encodePost(post: FeedPost): String? = runCatching { postAdapter.toJson(post) }
         .onFailure { Log.w("OfflineContentCodec", "Unable to encode cached post", it) }
@@ -221,5 +273,13 @@ internal class OfflineContentCodec {
 
     fun decodeMessage(json: String): ChatMessage? = runCatching { messageAdapter.fromJson(json) }
         .onFailure { Log.w("OfflineContentCodec", "Ignoring an unreadable cached message", it) }
+        .getOrNull()
+
+    fun encodeAppSnapshot(snapshot: CachedAppSnapshot): String? = runCatching { appSnapshotAdapter.toJson(snapshot) }
+        .onFailure { Log.w("OfflineContentCodec", "Unable to encode app snapshot", it) }
+        .getOrNull()
+
+    fun decodeAppSnapshot(json: String): CachedAppSnapshot? = runCatching { appSnapshotAdapter.fromJson(json) }
+        .onFailure { Log.w("OfflineContentCodec", "Ignoring an unreadable app snapshot", it) }
         .getOrNull()
 }
