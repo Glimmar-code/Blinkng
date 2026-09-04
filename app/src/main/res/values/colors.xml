@@ -7,4 +7,8 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Startup splash colors: matched to the Compose Blink brand palette. -->
+    <color name="blink_splash_background">#FF050505</color>
+    <color name="blink_splash_mark">#FFF5EBDD</color>
 </resources>
