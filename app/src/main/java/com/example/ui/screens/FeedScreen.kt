@@ -314,7 +314,7 @@ fun FeedScreen(
                                         horizontalDrag += dragAmount
                                     },
                                     onDragEnd = {
-                                        if (horizontalDrag <= -openMenuThreshold) {
+                                        if (horizontalDrag >= openMenuThreshold) {
                                             onOpenMenu()
                                         }
                                         horizontalDrag = 0f

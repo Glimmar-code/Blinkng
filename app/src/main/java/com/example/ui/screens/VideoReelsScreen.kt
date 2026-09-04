@@ -445,8 +445,8 @@ private fun ReelPage(
                     },
                     onDragEnd = {
                         when {
-                            horizontalDrag <= -swipeThreshold -> onSwipeToHome()
-                            horizontalDrag >= swipeThreshold -> onSwipeToProfile()
+                            horizontalDrag >= swipeThreshold -> onSwipeToHome()
+                            horizontalDrag <= -swipeThreshold -> onSwipeToProfile()
                         }
                         horizontalDrag = 0f
                     },
@@ -868,7 +868,7 @@ private fun ReelPreview(reel: FeedPost) {
         AsyncImage(
             model = preview,
             contentDescription = null,
-            contentScale = ContentScale.Crop,
+            contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -948,7 +948,7 @@ private fun ReelVideo(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     useController = false
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     keepScreenOn = true
                     this.player = player
                 }
