@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -55,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -65,6 +67,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -144,6 +147,7 @@ fun CreatePostSheet(
     var showPoll by rememberSaveable { mutableStateOf(false) }
     var audienceMenuOpen by rememberSaveable { mutableStateOf(false) }
     var categoryMenuOpen by rememberSaveable { mutableStateOf(false) }
+    var showDiscardDialog by rememberSaveable { mutableStateOf(false) }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = listOf(
@@ -272,11 +276,35 @@ fun CreatePostSheet(
         Toast.makeText(context, "Draft saved.", Toast.LENGTH_SHORT).show()
     }
 
+    val currentHasContent by rememberUpdatedState(hasContent)
+    val currentIsSubmitting by rememberUpdatedState(isSubmitting)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { targetValue ->
+            when {
+                targetValue != SheetValue.Hidden -> true
+                currentIsSubmitting -> false
+                currentHasContent -> {
+                    showDiscardDialog = true
+                    false
+                }
+                else -> true
+            }
+        }
+    )
+
+    fun requestDismiss() {
+        if (isSubmitting) return
+        if (hasContent) {
+            showDiscardDialog = true
+        } else {
+            onDismiss()
+        }
+    }
+
     ModalBottomSheet(
-        onDismissRequest = {
-            if (!isSubmitting) onDismiss()
-        },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        onDismissRequest = ::requestDismiss,
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(
@@ -289,7 +317,7 @@ fun CreatePostSheet(
                 isSubmitting = isSubmitting,
                 canSubmit = canSubmit,
                 isReel = selectedVideo != null,
-                onDismiss = onDismiss,
+                onDismiss = ::requestDismiss,
                 onSubmit = ::submit
             )
 
@@ -637,6 +665,31 @@ fun CreatePostSheet(
                 }
             }
         }
+    }
+
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("Discard this post?") },
+            text = {
+                Text("Your post is still here. Keep editing, or discard everything you added.")
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) {
+                    Text("Keep editing")
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDiscardDialog = false
+                        onDismiss()
+                    }
+                ) {
+                    Text("Discard", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        )
     }
 }
 
