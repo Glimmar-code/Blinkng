@@ -28,6 +28,9 @@ import com.example.ui.components.*
 import com.example.auth.AccountSessionStore
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.BlinkFirebaseMessagingService
+import com.example.sharing.DeepLinkRouter
+import com.example.sharing.ShareContentType
+import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
 import com.example.viewmodel.AppDestination
@@ -42,7 +45,15 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
         handleNotificationIntent(intent)
+        DeepLinkRouter.parse(intent?.data)?.let { deepLink ->
+            viewModel.handleDeepLink(deepLink)
+            intent?.data = null
+        }
     }
 
     private fun handleNotificationIntent(intent: Intent?) {
@@ -235,7 +246,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        handleNotificationIntent(intent)
+        handleIncomingIntent(intent)
     }
 }
 
@@ -247,6 +258,24 @@ fun MainAppContent(
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    fun sharePostOrReel(postId: String) {
+        val post = (uiState.posts + uiState.reels).firstOrNull { it.id == postId }
+        if (post == null) {
+            viewModel.showToast("This content is unavailable.")
+            return
+        }
+        viewModel.sharePost(postId)
+        ShareLinkManager.share(
+            context = context,
+            type = if (post.isReel) ShareContentType.REEL else ShareContentType.POST,
+            id = post.id,
+            title = if (post.isReel) "Share reel" else "Share post",
+            message = post.text.take(180),
+            previewImageUrl = post.images.firstOrNull() ?: post.authorAvatar.takeIf { it.isNotBlank() }
+        )
+    }
 
     LaunchedEffect(uiState.selectedTab) {
         isBottomBarVisibleByScroll = true
@@ -267,9 +296,11 @@ fun MainAppContent(
                 uiState.isCreatePostOpen ||
                 uiState.isCreateStoryOpen ||
                 uiState.activeViewingStory != null ||
-                uiState.showSellerCongratulationsDialog
+                uiState.showSellerCongratulationsDialog ||
+                uiState.deepLinkedPost != null
     ) {
         when {
+            uiState.deepLinkedPost != null -> viewModel.closeDeepLinkedPost()
             uiState.activePostOptionsPost != null -> viewModel.openPostOptions(null)
             uiState.isMenuOpen -> viewModel.openMenu(false)
             uiState.isEditProfileOpen -> viewModel.openEditProfile(false)
@@ -354,7 +385,7 @@ fun MainAppContent(
                         onLikePost = { viewModel.togglePostLike(it) },
                         onCommentPost = { viewModel.openCommentsForPost(it) },
                         onBookmarkPost = { viewModel.toggleBookmark(it) },
-                        onSharePost = { viewModel.sharePost(it) },
+                        onSharePost = { sharePostOrReel(it) },
                         onOptionsClick = { viewModel.openPostOptions(it) },
                         onDeletePost = { viewModel.deletePost(it) },
                         onProfileClick = { viewModel.openProfile(it) },
@@ -402,7 +433,7 @@ fun MainAppContent(
                         onLikePost = { viewModel.togglePostLike(it) },
                         onCommentPost = { viewModel.openCommentsForPost(it) },
                         onBookmarkPost = { viewModel.toggleBookmark(it) },
-                        onSharePost = { viewModel.sharePost(it) },
+                        onSharePost = { sharePostOrReel(it) },
                         onOptionsClick = { viewModel.openPostOptions(it) },
                         onDeletePost = { viewModel.deletePost(it) },
                         isDark = uiState.isDarkMode
@@ -472,6 +503,7 @@ fun MainAppContent(
                 !uiState.showSellerCongratulationsDialog &&
                 uiState.activePostOptionsPost == null &&
                 uiState.activeCommentsPostId == null &&
+                uiState.deepLinkedPost == null &&
                 !uiState.isMenuOpen &&
                 isBottomBarVisibleByScroll
 
@@ -510,6 +542,29 @@ fun MainAppContent(
                 },
                 isDark = uiState.isDarkMode
             )
+        }
+
+        AnimatedVisibility(
+            visible = uiState.deepLinkedPost != null,
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+        ) {
+            uiState.deepLinkedPost?.let { post ->
+                SharedPostScreen(
+                    post = post,
+                    currentUsername = uiState.myProfile.username,
+                    isDark = uiState.isDarkMode,
+                    onBack = { viewModel.closeDeepLinkedPost() },
+                    onLike = { viewModel.togglePostLike(post.id) },
+                    onComment = { viewModel.openCommentsForPost(post.id) },
+                    onBookmark = { viewModel.toggleBookmark(post.id) },
+                    onShare = { sharePostOrReel(post.id) },
+                    onOptions = { viewModel.openPostOptions(post) },
+                    onDelete = { viewModel.deletePost(post.id) },
+                    onProfileClick = { viewModel.openProfile(it) },
+                    onVotePoll = { postId, optionId -> viewModel.votePoll(postId, optionId) }
+                )
+            }
         }
 
         // Sub-screen Overlays: Product Detail
@@ -571,7 +626,7 @@ fun MainAppContent(
                     onLikePost = { viewModel.togglePostLike(it) },
                     onCommentPost = { viewModel.openCommentsForPost(it) },
                     onBookmarkPost = { viewModel.toggleBookmark(it) },
-                    onSharePost = { viewModel.sharePost(it) },
+                    onSharePost = { sharePostOrReel(it) },
                     onOptionsClick = { viewModel.openPostOptions(it) },
                     onDeletePost = { viewModel.deletePost(it) },
                     onProfileClick = { viewModel.openProfile(it) },
@@ -661,7 +716,7 @@ fun MainAppContent(
                 isDark = uiState.isDarkMode,
                 onDismiss = { viewModel.openPostOptions(null) },
                 onToggleSave = { viewModel.toggleBookmark(post.id) },
-                onShare = { viewModel.sharePost(post.id) },
+                onShare = { sharePostOrReel(post.id) },
                 onDelete = { viewModel.deletePost(post.id) },
                 onReport = { reason -> viewModel.reportPost(post.id, reason) },
                 onMuteUser = { username -> viewModel.muteUser(username) }

@@ -18,6 +18,8 @@ import com.example.data.supabase.SupabaseRealtimeManager
 import com.example.data.supabase.SupabaseService
 import com.example.data.supabase.MessageMediaService
 import com.example.notification.BlinkNotificationHelper
+import com.example.sharing.AppDeepLink
+import com.example.sharing.ShareContentType
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -60,6 +62,7 @@ data class BlinkUiState(
     val isCreatingStory: Boolean = false,
     val activeCommentsPostId: String? = null,
     val activePostOptionsPost: FeedPost? = null,
+    val deepLinkedPost: FeedPost? = null,
     val activeConversationPartner: String? = null,
     val activeViewingStory: Story? = null,
     val isConversationFullScreen: Boolean = false,
@@ -138,6 +141,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private var syncJob: Job? = null
     private var lastSuccessfulSyncAt = 0L
     private var discoverSearchJob: Job? = null
+    private var pendingDeepLink: AppDeepLink? = null
     private val _uiState = MutableStateFlow(BlinkUiState())
     val uiState: StateFlow<BlinkUiState> = _uiState.asStateFlow()
     private val _snackBarMessages = MutableSharedFlow<String>(extraBufferCapacity = 10)
@@ -168,6 +172,84 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                 .onFailure { Log.w(TAG, "Offline cache pruning failed", it) }
         }
         viewModelScope.launch { realtimeManager.events.collect { handleRealtimeEvent(it) } }
+        viewModelScope.launch {
+            _uiState.collectLatest { state ->
+                val link = pendingDeepLink
+                if (link != null && state.destination == AppDestination.MAIN && state.myProfile.id.isNotBlank()) {
+                    pendingDeepLink = null
+                    routeDeepLink(link)
+                }
+            }
+        }
+    }
+
+    fun handleDeepLink(link: AppDeepLink) {
+        pendingDeepLink = link
+        val state = _uiState.value
+        if (state.destination == AppDestination.MAIN && state.myProfile.id.isNotBlank()) {
+            pendingDeepLink = null
+            routeDeepLink(link)
+        }
+    }
+
+    private fun routeDeepLink(link: AppDeepLink) {
+        viewModelScope.launch {
+            when (link.type) {
+                ShareContentType.PROFILE -> {
+                    val profile = runCatching { supabaseService.fetchProfileById(link.id) }.getOrNull()
+                    if (profile == null) {
+                        showToast("This profile is unavailable.")
+                    } else {
+                        val state = _uiState.value
+                        _uiState.value = state.copy(
+                            selectedTab = MainTab.HOME,
+                            viewingProfile = profile,
+                            deepLinkedPost = null,
+                            activePostOptionsPost = null,
+                            activeCommentsPostId = null
+                        )
+                        persistProfile(profile)
+                    }
+                }
+
+                ShareContentType.POST, ShareContentType.REEL -> {
+                    val post = runCatching { postRepository.fetchPostById(link.id) }.getOrNull()
+                    val expectsReel = link.type == ShareContentType.REEL
+                    if (post == null || post.isReel != expectsReel) {
+                        showToast(if (expectsReel) "This reel is unavailable." else "This post is unavailable.")
+                        return@launch
+                    }
+
+                    val state = _uiState.value
+                    if (expectsReel) {
+                        _uiState.value = state.copy(
+                            selectedTab = MainTab.HOME,
+                            feedSubTab = 1,
+                            reels = listOf(post) + state.reels.filterNot { it.id == post.id },
+                            viewingProfile = null,
+                            deepLinkedPost = null,
+                            activePostOptionsPost = null,
+                            activeCommentsPostId = null
+                        )
+                    } else {
+                        _uiState.value = state.copy(
+                            selectedTab = MainTab.HOME,
+                            feedSubTab = 0,
+                            posts = listOf(post) + state.posts.filterNot { it.id == post.id },
+                            viewingProfile = null,
+                            deepLinkedPost = post,
+                            activePostOptionsPost = null,
+                            activeCommentsPostId = null
+                        )
+                    }
+                    persistCurrentFeed()
+                }
+            }
+        }
+    }
+
+    fun closeDeepLinkedPost() {
+        _uiState.value = _uiState.value.copy(deepLinkedPost = null)
     }
 
     private fun observeAuthState() {

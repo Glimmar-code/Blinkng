@@ -24,6 +24,8 @@ android {
     targetSdk = 36
     versionCode = 1
     versionName = "1.0"
+    manifestPlaceholders["shareHost"] = "my-app.com"
+    buildConfigField("String", "SHARE_BASE_URL", "\"https://my-app.com\"")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
   signingConfigs {

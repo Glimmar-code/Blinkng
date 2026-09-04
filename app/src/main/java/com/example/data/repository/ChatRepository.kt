@@ -5,6 +5,7 @@ import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
+import com.example.util.TimeFormatters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -52,7 +53,10 @@ class ChatRepository(
                             partnerName = o.optString("partner_name").ifBlank { o.optString("partner_username") },
                             partnerAvatar = o.optString("partner_avatar"),
                             isOnline = o.optBoolean("partner_online", false),
-                            lastSeen = o.optString("partner_last_seen").ifBlank { "Last seen recently" },
+                            lastSeen = o.optString("partner_last_seen")
+                                .takeIf { it.isNotBlank() && !it.equals("null", true) }
+                                ?.let(TimeFormatters::relativeOrDate)
+                                ?: "recently",
                             lastMessage = o.optString("last_message"),
                             lastMessageTime = o.optString("last_message_at").takeIf { it.isNotBlank() }?.let { formatMessageTime(it) }.orEmpty(),
                             lastMessageRawTime = o.optString("last_message_at"),

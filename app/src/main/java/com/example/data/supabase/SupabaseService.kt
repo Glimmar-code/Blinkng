@@ -28,6 +28,7 @@ import com.example.data.models.ActivityItem
 import com.example.data.models.NotificationFilter
 import com.example.data.models.GameActionResult
 import com.example.data.models.IdentityAvailability
+import com.example.util.TimeFormatters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Mutex
@@ -1623,6 +1624,58 @@ fun getCurrentUserId(): String? {
     suspend fun fetchFeedPosts(): List<FeedPost> =
         fetchFeedPage(limit = 40, feedType = "all")
 
+    suspend fun fetchFeedPostById(postId: String): FeedPost? = withContext(Dispatchers.IO) {
+        val cleanId = postId.trim()
+        if (!isValidUuid(cleanId)) return@withContext null
+
+        if (!isAuthenticated() && !refreshToken().isNullOrBlank()) {
+            refreshSession()
+        }
+        val uid = getCurrentUserId() ?: return@withContext null
+
+        val source = executeRequest(
+            newRequestBuilder(
+                "/rest/v1/feed_posts?id=eq.${encodeValue(cleanId)}&is_active=eq.true&select=*&limit=1",
+                authenticated = true
+            ).get().build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful || raw.isBlank() || raw == "[]") return@withContext null
+            JSONArray(raw).optJSONObject(0) ?: return@withContext null
+        }
+
+        val profile = fetchProfileById(source.cleanString("user_id")) ?: return@withContext null
+        val mapped = JSONObject(source.toString()).apply {
+            put("author", profile.username)
+            put("author_avatar", profile.avatarUrl)
+            put("username", profile.username)
+            put("is_verified", profile.verificationBadge != VerificationBadge.NONE)
+            put("verification_badge", profile.verificationBadge.name)
+        }
+
+        val liked = executeRequest(
+            newRequestBuilder(
+                "/rest/v1/post_likes?post_id=eq.${encodeValue(cleanId)}&user_id=eq.${encodeValue(uid)}&select=post_id&limit=1",
+                true
+            ).get().build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            response.isSuccessful && raw.isNotBlank() && raw != "[]"
+        }
+
+        val bookmarked = executeRequest(
+            newRequestBuilder(
+                "/rest/v1/post_bookmarks?post_id=eq.${encodeValue(cleanId)}&user_id=eq.${encodeValue(uid)}&select=post_id&limit=1",
+                true
+            ).get().build()
+        ).use { response ->
+            val raw = response.body?.string().orEmpty()
+            response.isSuccessful && raw.isNotBlank() && raw != "[]"
+        }
+
+        parseFeedPost(mapped).copy(isLiked = liked, isBookmarked = bookmarked)
+    }
+
     suspend fun fetchFeedPage(
         limit: Int = 30,
         beforeCreatedAt: String? = null,
@@ -2943,7 +2996,8 @@ suspend fun uploadPostMedia(
             facultyTag = obj.cleanString("faculty_tag").ifBlank { obj.cleanString("faculty") },
             isVerified = isVerified,
             verificationBadge = badge,
-            timeAgo = obj.cleanString("time_ago", "Recently"),
+            timeAgo = obj.cleanString("created_at").takeIf { it.isNotBlank() }?.let(TimeFormatters::relativeOrDate)
+                ?: obj.cleanString("time_ago", "Recently"),
             text = obj.cleanString("text").ifBlank { obj.cleanString("caption") },
             createdAt = obj.cleanString("created_at"),
             images = imagesList,
@@ -3372,87 +3426,8 @@ suspend fun uploadPostMedia(
             )
     }
 
-    private fun formatTimeAgo(
-        dateString: String
-    ): String {
-
-        if (
-            dateString.isBlank()
-        ) {
-            return "Just now"
-        }
-
-        return try {
-
-            val normalized =
-                dateString
-                    .trim()
-                    .replace(
-                        "Z",
-                        ""
-                    )
-
-            val formatter =
-                SimpleDateFormat(
-                    "yyyy-MM-dd'T'HH:mm:ss",
-                    Locale.US
-                )
-
-            formatter.timeZone =
-                TimeZone.getTimeZone(
-                    "UTC"
-                )
-
-            val date =
-                formatter.parse(
-                    normalized
-                        .substringBefore(".")
-                )
-
-            if (
-                date == null
-            ) {
-                return "Recent"
-            }
-
-            val diff =
-                System.currentTimeMillis() -
-                        date.time
-
-            val minutes =
-                diff /
-                        60_000L
-
-            val hours =
-                minutes /
-                        60L
-
-            val days =
-                hours /
-                        24L
-
-            when {
-
-                minutes < 1L ->
-                    "Just now"
-
-                minutes < 60L ->
-                    "${minutes}m ago"
-
-                hours < 24L ->
-                    "${hours}h ago"
-
-                else ->
-                    "${days}d ago"
-            }
-
-        } catch (
-            _: Exception
-        ) {
-
-            "Recent"
-        }
-    }
+    private fun formatTimeAgo(dateString: String): String =
+        TimeFormatters.relativeOrDate(dateString)
 
     // COMMENTS
     // ============================================================

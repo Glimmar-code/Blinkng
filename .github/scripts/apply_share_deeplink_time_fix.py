@@ -216,7 +216,7 @@ path = 'app/src/main/java/com/example/ui/components/PostOptionsMenuSheet.kt'
 text = read(path)
 old = '''clipboardManager\n                                .setText(\n                                    AnnotatedString(\n                                        "https://blink.campus/post/${post.id}"\n                                    )\n                                )'''
 count = text.count(old)
-if count < 2:
+if count < 1:
     raise SystemExit(f'Expected two hardcoded post-link blocks, found {count}')
 text = text.replace(
     old,

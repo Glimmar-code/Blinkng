@@ -54,6 +54,8 @@ import com.example.ui.components.FollowerGrowthChart
 import com.example.ui.components.PostCard
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.*
+import com.example.sharing.ShareContentType
+import com.example.sharing.ShareLinkManager
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -944,13 +946,30 @@ fun ProfileScreen(
     // SHARE SHEET
     // ================================================================
     if (showShareSheet) {
+        val shareProfileId = profile.id.ifBlank { profile.username }
         ProfileShareSheet(
             username = profile.username,
             fullName = profile.fullName,
+            avatarUrl = profile.avatarUrl,
             onDismiss = { showShareSheet = false },
+            onShare = {
+                ShareLinkManager.share(
+                    context = context,
+                    type = ShareContentType.PROFILE,
+                    id = shareProfileId,
+                    title = "Share ${profile.fullName}",
+                    message = "View @${profile.username} on Blink",
+                    previewImageUrl = profile.avatarUrl
+                )
+                showShareSheet = false
+            },
             onCopy = {
-                clipboard.setText(AnnotatedString("https://blink.app/@${profile.username}"))
-                Toast.makeText(context, "Profile link copied", Toast.LENGTH_SHORT).show()
+                ShareLinkManager.copyLink(
+                    context = context,
+                    type = ShareContentType.PROFILE,
+                    id = shareProfileId,
+                    toastMessage = "Profile link copied"
+                )
                 showShareSheet = false
             }
         )
@@ -1842,7 +1861,9 @@ private fun ProfileLink(
 private fun ProfileShareSheet(
     username: String,
     fullName: String,
+    avatarUrl: String,
     onDismiss: () -> Unit,
+    onShare: () -> Unit,
     onCopy: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -1851,6 +1872,27 @@ private fun ProfileShareSheet(
             Text("@$username", fontSize = 11.sp, color = BlinkPink)
 
             Spacer(modifier = Modifier.height(15.dp))
+
+            if (avatarUrl.isNotBlank()) {
+                AsyncImage(
+                    model = avatarUrl,
+                    contentDescription = "$fullName profile preview",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .align(Alignment.CenterHorizontally)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            Button(onClick = onShare, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Share, contentDescription = null)
+                Spacer(modifier = Modifier.width(7.dp))
+                Text("Share via…")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             FilledTonalButton(onClick = onCopy, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Default.ContentCopy, contentDescription = null)

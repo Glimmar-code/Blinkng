@@ -25,6 +25,10 @@ class PostRepository(
         }
     }
 
+    suspend fun fetchPostById(postId: String): FeedPost? = withContext(Dispatchers.IO) {
+        supabaseService.fetchFeedPostById(postId)
+    }
+
     suspend fun fetchFeedPage(
         isReel: Boolean,
         beforeCreatedAt: String? = null,

@@ -79,6 +79,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -96,6 +97,8 @@ import com.example.data.models.FeedPost
 import com.example.ui.theme.BlinkGold
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
+import com.example.sharing.ShareContentType
+import com.example.sharing.ShareLinkManager
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -113,6 +116,7 @@ fun PostOptionsMenuSheet(
 ) {
     val clipboardManager: ClipboardManager =
         LocalClipboardManager.current
+    val context = LocalContext.current
 
     var showReportDialog by rememberSaveable {
         mutableStateOf(false)
@@ -445,12 +449,12 @@ fun PostOptionsMenuSheet(
                                 .onSurface,
                         onClick = {
 
-                            clipboardManager
-                                .setText(
-                                    AnnotatedString(
-                                        "https://blink.campus/post/${post.id}"
-                                    )
-                                )
+                            ShareLinkManager.copyLink(
+                                context = context,
+                                type = if (post.isReel) ShareContentType.REEL else ShareContentType.POST,
+                                id = post.id,
+                                toastMessage = if (post.isReel) "Reel link copied" else "Post link copied"
+                            )
 
                             showCopiedFeedback = true
                         },
