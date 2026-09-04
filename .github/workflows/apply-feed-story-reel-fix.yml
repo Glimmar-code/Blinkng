@@ -1,0 +1,55 @@
+name: Apply feed story reel fixes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/apply_feed_story_reel_fix.py'
+      - '.github/workflows/apply-feed-story-reel-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply feed, story and reel fixes
+        run: python3 .github/scripts/apply_feed_story_reel_fix.py
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit source fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/MainActivity.kt \
+                  app/src/main/java/com/example/ui/screens/FeedScreen.kt \
+                  app/src/main/java/com/example/ui/components/StoryBar.kt \
+                  app/src/main/java/com/example/ui/screens/CreateStoryScreen.kt \
+                  app/src/main/java/com/example/ui/screens/VideoReelsScreen.kt \
+                  app/src/main/java/com/example/viewmodel/BlinkViewModel.kt
+          if git diff --cached --quiet; then
+            echo "No source changes needed."
+            exit 0
+          fi
+          git commit -m "fix: smooth feed and repair stories and reel gestures"
+          git push origin main
