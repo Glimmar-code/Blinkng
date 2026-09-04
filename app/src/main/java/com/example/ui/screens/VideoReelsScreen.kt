@@ -175,7 +175,7 @@ private fun ReelsContent(
         VerticalPager(
             state = pager,
             key = { index -> reels[index].id },
-            beyondViewportPageCount = 1,
+            beyondViewportPageCount = 0,
             modifier = Modifier.fillMaxSize()
         ) { index ->
             val reel = reels[index]
@@ -431,7 +431,7 @@ private fun ReelPage(
             }
     ) {
         val url = reel.videoUrl?.trim()
-        if (!url.isNullOrBlank()) {
+        if (!url.isNullOrBlank() && isActive) {
             ReelVideo(
                 url = url,
                 isActive = isActive,
@@ -439,6 +439,8 @@ private fun ReelPage(
                 onProgressChange = { progress = it },
                 onBufferingChange = { isBuffering = it }
             )
+        } else if (!url.isNullOrBlank()) {
+            ReelPreview(reel)
         } else {
             Box(
                 Modifier.fillMaxSize().background(Color.Black),
@@ -536,7 +538,7 @@ private fun ReelPage(
                 ) { onDelete(reel.id) }
             }
             Spacer(Modifier.height(10.dp))
-            SpinningDisc(reel.authorAvatar)
+            StaticDisc(reel.authorAvatar)
         }
 
         Column(
@@ -814,18 +816,11 @@ private fun ReelAction(
 }
 
 @Composable
-private fun SpinningDisc(avatar: String) {
-    val transition = rememberInfiniteTransition(label = "disc")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(6500, easing = LinearEasing)),
-        label = "discRotation"
-    )
+private fun StaticDisc(avatar: String) {
     Surface(
         shape = CircleShape,
         color = Color(0xFF202020),
-        modifier = Modifier.size(42.dp).rotate(rotation)
+        modifier = Modifier.size(42.dp)
     ) {
         Box(Modifier.padding(7.dp), contentAlignment = Alignment.Center) {
             AsyncImage(
@@ -835,6 +830,23 @@ private fun SpinningDisc(avatar: String) {
                 modifier = Modifier.fillMaxSize().clip(CircleShape)
             )
         }
+    }
+}
+
+@Composable
+private fun ReelPreview(reel: FeedPost) {
+    val preview = remember(reel.id, reel.images) {
+        reel.images.firstOrNull { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+    }
+    if (preview == null) {
+        Box(Modifier.fillMaxSize().background(Color.Black))
+    } else {
+        AsyncImage(
+            model = preview,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 

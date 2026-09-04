@@ -3,6 +3,7 @@ package com.example.viewmodel
 import android.app.Application
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -18,6 +19,7 @@ import com.example.data.supabase.MessageMediaService
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -127,6 +129,8 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val networkMonitor = NetworkMonitor(appContext)
     private val syncMutex = Mutex()
     private val cacheWriteMutex = Mutex()
+    private var syncJob: Job? = null
+    private var lastSuccessfulSyncAt = 0L
     private var discoverSearchJob: Job? = null
     private val _uiState = MutableStateFlow(BlinkUiState())
     val uiState: StateFlow<BlinkUiState> = _uiState.asStateFlow()
@@ -382,8 +386,18 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    fun refreshIfStale(maxAgeMillis: Long = 60_000L) {
+        val lastSync = lastSuccessfulSyncAt
+        val isFresh = lastSync != 0L && SystemClock.elapsedRealtime() - lastSync < maxAgeMillis
+        if (!isFresh) fetchSupabaseData()
+    }
+
     fun fetchSupabaseData(showRefreshIndicator: Boolean = false) {
-        viewModelScope.launch {
+        // Auth restore, onResume, reconnect and realtime can all request a refresh at once.
+        // Coalesce those requests instead of queueing several full Supabase syncs back-to-back.
+        if (syncJob?.isActive == true) return
+
+        syncJob = viewModelScope.launch {
             if (!_uiState.value.isOnline) {
                 _uiState.value = _uiState.value.copy(
                     isFeedLoading = false,
@@ -410,14 +424,21 @@ private suspend fun restoreSupabaseSession() {
 
                 try {
                     runCatching { supabaseService.setMyPresence(true) }
-                    val postsResult = runCatching { postRepository.fetchFeed(isReel = false) }
-                        .onFailure { Log.e(TAG, "Post page fetch failed", it) }
-                    val reelsResult = runCatching { postRepository.fetchFeed(isReel = true) }
-                        .onFailure { Log.e(TAG, "Reel page fetch failed", it) }
+                    val postsRequest = async {
+                        runCatching { postRepository.fetchFeed(isReel = false) }
+                            .onFailure { Log.e(TAG, "Post page fetch failed", it) }
+                    }
+                    val reelsRequest = async {
+                        runCatching { postRepository.fetchFeed(isReel = true) }
+                            .onFailure { Log.e(TAG, "Reel page fetch failed", it) }
+                    }
+                    val postsResult = postsRequest.await()
+                    val reelsResult = reelsRequest.await()
 
                     val normalPosts = postsResult.getOrDefault(before.posts).distinctBy { it.id }
                     val fetchedReels = reelsResult.getOrDefault(before.reels).distinctBy { it.id }
                     val feedSucceeded = postsResult.isSuccess || reelsResult.isSuccess
+                    if (feedSucceeded) lastSuccessfulSyncAt = SystemClock.elapsedRealtime()
 
                     _uiState.value = _uiState.value.copy(
                         posts = normalPosts,
@@ -439,8 +460,38 @@ private suspend fun restoreSupabaseSession() {
                         }
                     }
 
-                    val profilesResult = runCatching { supabaseService.fetchProfiles() }
-                        .onFailure { Log.e(TAG, "Profiles fetch failed", it) }
+                    // These sections are independent. Fetching them together makes startup
+                    // wait for the slowest request instead of the sum of every request.
+                    val profilesRequest = async {
+                        runCatching { supabaseService.fetchProfiles() }
+                            .onFailure { Log.e(TAG, "Profiles fetch failed", it) }
+                    }
+                    val marketRequest = async {
+                        runCatching { supabaseService.fetchMarketItems() }
+                            .onFailure { Log.e(TAG, "Market fetch failed", it) }
+                    }
+                    val conversationsRequest = async {
+                        runCatching { MessageMediaService.hydrateVideos(chatRepository.fetchConversations()) }
+                            .onFailure { Log.e(TAG, "Message fetch failed", it) }
+                    }
+                    val leaderboardRequest = async {
+                        runCatching { supabaseService.fetchLeaderboard() }
+                            .onFailure { Log.e(TAG, "Leaderboard fetch failed", it) }
+                    }
+                    val connectHubRequest = async {
+                        runCatching { connectHubRepository.fetchSnapshot() }
+                            .onFailure { Log.e(TAG, "Connect Hub fetch failed", it) }
+                    }
+                    val storiesRequest = async {
+                        runCatching { supabaseService.fetchStories() }
+                            .onFailure { Log.e(TAG, "Stories fetch failed", it) }
+                    }
+                    val activitiesRequest = async {
+                        runCatching { supabaseService.fetchActivities() }
+                            .onFailure { Log.e(TAG, "Activities fetch failed", it) }
+                    }
+
+                    val profilesResult = profilesRequest.await()
                     val liveProfiles = profilesResult
                         .getOrDefault(before.profiles)
                         .filter { it.username.isNotBlank() }
@@ -453,13 +504,10 @@ private suspend fun restoreSupabaseSession() {
                         }
                     }
 
-                    val market = runCatching { supabaseService.fetchMarketItems() }
-                        .onFailure { Log.e(TAG, "Market fetch failed", it) }
+                    val market = marketRequest.await()
                         .getOrDefault(before.marketItems)
 
-                    val conversationsResult = runCatching {
-                        MessageMediaService.hydrateVideos(chatRepository.fetchConversations())
-                    }.onFailure { Log.e(TAG, "Message fetch failed", it) }
+                    val conversationsResult = conversationsRequest.await()
                     val conversationSummaries = conversationsResult.getOrDefault(before.conversations)
                     val conversations = conversationSummaries.map { summary ->
                         val cached = before.conversations.firstOrNull {
@@ -474,16 +522,13 @@ private suspend fun restoreSupabaseSession() {
                         }
                     }
 
-                    val leaderboard = runCatching { supabaseService.fetchLeaderboard() }
-                        .onFailure { Log.e(TAG, "Leaderboard fetch failed", it) }
+                    val leaderboard = leaderboardRequest.await()
                         .getOrDefault(before.leaderboardUsers)
 
-                    val connectHub = runCatching { connectHubRepository.fetchSnapshot() }
-                        .onFailure { Log.e(TAG, "Connect Hub fetch failed", it) }
+                    val connectHub = connectHubRequest.await()
                         .getOrDefault(before.connectHub)
 
-                    val cloudStories = runCatching { supabaseService.fetchStories() }
-                        .onFailure { Log.e(TAG, "Stories fetch failed", it) }
+                    val cloudStories = storiesRequest.await()
                         .getOrDefault(before.stories.filterNot { it.id == "story_me" })
 
                     val myProfile = _uiState.value.myProfile
@@ -509,8 +554,6 @@ private suspend fun restoreSupabaseSession() {
 
                     _uiState.value = _uiState.value.copy(
                         profiles = liveProfiles,
-                        posts = normalPosts,
-                        reels = fetchedReels,
                         marketItems = market,
                         conversations = conversations,
                         leaderboardUsers = leaderboard,
@@ -521,7 +564,7 @@ private suspend fun restoreSupabaseSession() {
                         activitiesError = null
                     )
 
-                    runCatching { supabaseService.fetchActivities() }
+                    activitiesRequest.await()
                         .onSuccess { result ->
                             result.fold(
                                 { activities ->

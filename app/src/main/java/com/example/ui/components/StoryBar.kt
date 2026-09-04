@@ -1,6 +1,5 @@
 package com.example.ui.components
 
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.border
 
 import androidx.compose.animation.AnimatedContent
@@ -8,12 +7,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -440,33 +435,9 @@ fun StoryBar(
 
 @Composable
 private fun StoryHeaderIcon() {
-
-    val transition =
-        rememberInfiniteTransition(
-            label = "story_header_glow"
-        )
-
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec =
-            infiniteRepeatable(
-                animation = tween(
-                    durationMillis = 6500,
-                    easing = LinearEasing
-                ),
-                repeatMode =
-                    RepeatMode.Restart
-            ),
-        label = "story_header_rotation"
-    )
-
     Box(
         modifier = Modifier
             .size(31.dp)
-            .graphicsLayer {
-                rotationZ = rotation
-            }
             .background(
                 Brush.sweepGradient(
                     listOf(
@@ -576,28 +547,9 @@ private fun AddStoryCard(
                     )
             )
 
-            // Animated plus glow
-            val infinite =
-                rememberInfiniteTransition(
-                    label = "plus_pulse"
-                )
-
-            val plusScale by infinite.animateFloat(
-                initialValue = 0.92f,
-                targetValue = 1.08f,
-                animationSpec =
-                    infiniteRepeatable(
-                        animation = tween(900),
-                        repeatMode =
-                            RepeatMode.Reverse
-                    ),
-                label = "plus_scale"
-            )
-
             Box(
                 modifier = Modifier
                     .size(23.dp)
-                    .scale(plusScale)
                     .align(Alignment.BottomEnd)
                     .offset(
                         x = (-1).dp,
@@ -672,40 +624,6 @@ private fun PremiumStoryItem(
             ),
         label = "story_scale"
     )
-
-    val ringTransition =
-        rememberInfiniteTransition(
-            label = "story_ring_animation"
-        )
-
-    val ringRotation by
-        ringTransition.animateFloat(
-            initialValue = 0f,
-            targetValue = 360f,
-            animationSpec =
-                infiniteRepeatable(
-                    animation = tween(
-                        durationMillis = 5600,
-                        easing = LinearEasing
-                    ),
-                    repeatMode =
-                        RepeatMode.Restart
-                ),
-            label = "story_ring_rotation"
-        )
-
-    val pulseAlpha by
-        ringTransition.animateFloat(
-            initialValue = 0.60f,
-            targetValue = 1f,
-            animationSpec =
-                infiniteRepeatable(
-                    animation = tween(900),
-                    repeatMode =
-                        RepeatMode.Reverse
-                ),
-            label = "story_pulse"
-        )
 
     val ringBrush = if (story.hasUnseen) {
 
@@ -786,19 +704,6 @@ private fun PremiumStoryItem(
                 modifier = Modifier
                     .size(64.dp)
                     .align(Alignment.Center)
-                    .graphicsLayer {
-                        rotationZ =
-                            if (story.hasUnseen)
-                                ringRotation
-                            else
-                                0f
-
-                        alpha =
-                            if (story.hasUnseen)
-                                pulseAlpha
-                            else
-                                1f
-                    }
                     .background(
                         ringBrush,
                         CircleShape

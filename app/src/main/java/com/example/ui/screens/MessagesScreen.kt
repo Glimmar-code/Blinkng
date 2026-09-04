@@ -1421,26 +1421,6 @@ private fun OnlineStudentItem(
     onClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
-
-    val pulse =
-        rememberInfiniteTransition(
-            label = "online_avatar_pulse"
-        )
-
-    val ringAlpha by
-        pulse.animateFloat(
-            initialValue = 0.25f,
-            targetValue = 0.8f,
-            animationSpec =
-                infiniteRepeatable(
-                    animation =
-                        tween(1100),
-                    repeatMode =
-                        RepeatMode.Reverse
-                ),
-            label = "online_ring_alpha"
-        )
-
     Column(
         horizontalAlignment =
             Alignment.CenterHorizontally,
@@ -1465,8 +1445,7 @@ private fun OnlineStudentItem(
                         .border(
                             2.dp,
                             BlinkOnlineGreen.copy(
-                                alpha =
-                                    ringAlpha
+                                alpha = 0.72f
                             ),
                             CircleShape
                         )

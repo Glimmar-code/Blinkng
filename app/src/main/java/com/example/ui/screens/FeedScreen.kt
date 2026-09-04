@@ -136,21 +136,23 @@ fun FeedScreen(
     val recordVisiblePost by rememberUpdatedState(onViewedPost)
     val postIds = remember(posts) { posts.mapTo(linkedSetOf()) { it.id } }
 
-    val nestedScrollConnection = remember {
+    val nestedScrollConnection = remember(selectedTopTab) {
         object : NestedScrollConnection {
+            private var lastVisible = true
+
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < -8f) bottomBarVisibility(false)
-                else if (available.y > 8f) bottomBarVisibility(true)
+                val shouldBeVisible = when {
+                    available.y < -8f -> false
+                    available.y > 8f -> true
+                    else -> null
+                }
+                if (shouldBeVisible != null && shouldBeVisible != lastVisible) {
+                    lastVisible = shouldBeVisible
+                    bottomBarVisibility(shouldBeVisible)
+                }
                 return Offset.Zero
             }
         }
-    }
-
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-            .collect { (index, offset) ->
-                if (index == 0 && offset < 50) bottomBarVisibility(true)
-            }
     }
 
     LaunchedEffect(selectedTopTab) {
@@ -326,24 +328,26 @@ fun FeedScreen(
                         }
 
                         else -> {
-                            items(items = posts, key = { it.id }) { post ->
-                                Box(Modifier.animateItem()) {
-                                    Column {
-                                        PostCard(
-                                            post = post,
-                                            isDark = isDark,
-                                            onLike = { onLikePost(post.id) },
-                                            onComment = { onCommentPost(post.id) },
-                                            onBookmark = { onBookmarkPost(post.id) },
-                                            onShare = { onSharePost(post.id) },
-                                            onOptionsClick = { onOptionsClick(post) },
-                                            onProfileClick = onProfileClick,
-                                            isAuthor = post.author.equals(currentUsername, true),
-                                            onDelete = { onDeletePost(post.id) },
-                                            onVotePoll = onVotePoll
-                                        )
-                                        Spacer(Modifier.height(8.dp))
-                                    }
+                            items(
+                                items = posts,
+                                key = { it.id },
+                                contentType = { feedPostContentType(it) }
+                            ) { post ->
+                                Column {
+                                    PostCard(
+                                        post = post,
+                                        isDark = isDark,
+                                        onLike = { onLikePost(post.id) },
+                                        onComment = { onCommentPost(post.id) },
+                                        onBookmark = { onBookmarkPost(post.id) },
+                                        onShare = { onSharePost(post.id) },
+                                        onOptionsClick = { onOptionsClick(post) },
+                                        onProfileClick = onProfileClick,
+                                        isAuthor = post.author.equals(currentUsername, true),
+                                        onDelete = { onDeletePost(post.id) },
+                                        onVotePoll = onVotePoll
+                                    )
+                                    Spacer(Modifier.height(8.dp))
                                 }
                             }
                             if (hasMorePosts) {
@@ -387,6 +391,15 @@ fun FeedScreen(
             }
         }
     }
+}
+
+private fun feedPostContentType(post: FeedPost): Int {
+    var type = 0
+    if (post.text.isNotBlank()) type = type or 1
+    if (post.images.any { it.isNotBlank() && !it.equals("null", ignoreCase = true) }) type = type or 2
+    if (post.poll != null) type = type or 4
+    if (post.isSponsored) type = type or 8
+    return type
 }
 
 @Composable

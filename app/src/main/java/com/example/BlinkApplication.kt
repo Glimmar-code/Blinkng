@@ -84,10 +84,10 @@ class BlinkApplication : Application(), ImageLoaderFactory {
             .allowHardware(true)
             .build()
 
-    override fun onTrimMemory(level: Int) {
-        super.onTrimMemory(level)
-        if (level >= TRIM_MEMORY_BACKGROUND) {
-            coil.Coil.imageLoader(this).memoryCache?.clear()
-        }
+    override fun onLowMemory() {
+        super.onLowMemory()
+        // Preserve decoded images during ordinary app backgrounding so returning to
+        // the feed does not force a burst of disk decodes. Clear only on real pressure.
+        coil.Coil.imageLoader(this).memoryCache?.clear()
     }
 }

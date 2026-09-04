@@ -197,20 +197,36 @@ fun PostCard(
                         .padding(horizontal = 10.dp)
                         .clip(RoundedCornerShape(14.dp))
                 ) {
-                    LazyRow(Modifier.fillMaxWidth()) {
-                        itemsIndexed(displayImages) { index, image ->
-                            AsyncImage(
-                                model = image,
-                                contentDescription = "Post image ${index + 1}",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillParentMaxWidth()
-                                    .height(300.dp)
-                                    .clickable {
-                                        imagePage = index
-                                        showImageFullscreen = true
-                                    }
-                            )
+                    if (displayImages.size == 1) {
+                        // Avoid creating a nested lazy layout for the common one-photo post.
+                        AsyncImage(
+                            model = displayImages.first(),
+                            contentDescription = "Post image",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(300.dp)
+                                .clickable {
+                                    imagePage = 0
+                                    showImageFullscreen = true
+                                }
+                        )
+                    } else {
+                        LazyRow(Modifier.fillMaxWidth()) {
+                            itemsIndexed(displayImages, key = { _, image -> image }) { index, image ->
+                                AsyncImage(
+                                    model = image,
+                                    contentDescription = "Post image ${index + 1}",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillParentMaxWidth()
+                                        .height(300.dp)
+                                        .clickable {
+                                            imagePage = index
+                                            showImageFullscreen = true
+                                        }
+                                )
+                            }
                         }
                     }
                     if (displayImages.size > 1) {

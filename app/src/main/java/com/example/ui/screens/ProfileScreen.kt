@@ -60,21 +60,19 @@ import kotlin.math.roundToInt
 /* ============================================================================
  * PROFILE SCREEN
  *
- * A polished, animated profile experience:
+ * A polished profile experience with restrained interaction motion:
  *  - Parallax cover header with collapsing title
  *  - Staggered entrance for the identity block
- *  - Spring-driven avatar reveal with a pulsing halo
+ *  - Spring-driven avatar reveal with a static premium glow
  *  - A real sliding-pill tab indicator (measured, not faked)
- *  - Animated cross-fade + slide between tab contents
+ *  - Lazy post and marketplace content for smooth scrolling
  *  - A count-up animation on the follower stat
  *  - A completion bar that animates in from zero
  *  - A refresh FAB that spins while refreshing and hides on scroll-down
  * ==========================================================================*/
 
 private object ProfileMotion {
-    val EnterSpec = spring<Float>(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
     val TabIndicatorSpec = spring<Dp>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
-    val ContentTransition = 260
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -150,14 +148,26 @@ fun ProfileScreen(
         }
     }
 
-    // FAB hides while actively scrolling down, reappears otherwise.
-    var previousScrollOffset by remember { mutableIntStateOf(0) }
-    val fabVisible by remember {
-        derivedStateOf {
-            val current = scrollState.firstVisibleItemScrollOffset
-            val goingUp = current <= previousScrollOffset
-            previousScrollOffset = current
-            goingUp || scrollState.firstVisibleItemIndex == 0
+    // Update the FAB only when scroll direction meaningfully changes. Avoid mutating
+    // Compose state from inside derivedStateOf, which can invalidate every scroll frame.
+    var fabVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(scrollState) {
+        var previousIndex = scrollState.firstVisibleItemIndex
+        var previousOffset = scrollState.firstVisibleItemScrollOffset
+        snapshotFlow {
+            scrollState.firstVisibleItemIndex to scrollState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            val nextVisible = when {
+                index == 0 && offset < 24 -> true
+                index < previousIndex -> true
+                index > previousIndex -> false
+                offset < previousOffset - 12 -> true
+                offset > previousOffset + 12 -> false
+                else -> fabVisible
+            }
+            if (nextVisible != fabVisible) fabVisible = nextVisible
+            previousIndex = index
+            previousOffset = offset
         }
     }
 
@@ -167,16 +177,9 @@ fun ProfileScreen(
         label = "followScale"
     )
 
-    val profileGlow = rememberInfiniteTransition(label = "profileGlow")
-    val glowAlpha by profileGlow.animateFloat(
-        initialValue = 0.15f,
-        targetValue = 0.35f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "profileGlowAlpha"
-    )
+    // Keep the premium avatar glow static so the whole profile header does not
+    // invalidate on every animation frame while the user scrolls.
+    val glowAlpha = 0.24f
 
     val refreshRotation by animateFloatAsState(
         targetValue = if (isRefreshing) 360f else 0f,
@@ -687,150 +690,111 @@ fun ProfileScreen(
                     )
                 }
 
-                // ============================================================
-                // CONTENT — cross-faded + slide-animated per tab
-                // ============================================================
-                item(key = "tab_content") {
-                    AnimatedContent(
-                        targetState = selectedTab,
-                        transitionSpec = {
-                            val forward = targetState > initialState
-                            (
-                                fadeIn(tween(ProfileMotion.ContentTransition)) +
-                                    slideInHorizontally(
-                                        animationSpec = tween(ProfileMotion.ContentTransition),
-                                        initialOffsetX = { if (forward) it / 6 else -it / 6 }
-                                    )
-                                ).togetherWith(
-                                fadeOut(tween(ProfileMotion.ContentTransition / 2))
-                            ).using(
-                                SizeTransform(clip = false)
+                // Keep post cards as real LazyColumn items. The old single-item Column
+                // composed every profile post at once and animated each one on entry.
+                when (selectedTab) {
+                    0 -> profilePostItems(
+                        keyPrefix = "posts",
+                        posts = userPosts,
+                        profile = profile,
+                        canDelete = isMe,
+                        onDelete = onDeletePost,
+                        isDark = isDark,
+                        textPrimary = textPrimary,
+                        textSecondary = textSecondary,
+                        onLike = onLikePost,
+                        onComment = onCommentPost,
+                        onBookmark = onBookmarkPost,
+                        onShare = onSharePost,
+                        onOptions = onOptionsClick,
+                        onProfileClick = onProfileClick
+                    )
+
+                    1 -> item(key = "growth") {
+                        FollowerGrowthChart(
+                            profile = profile,
+                            isDark = isDark,
+                            onOpenGetVerified = onOpenGetVerified,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
+                        )
+                    }
+
+                    2 -> profilePostItems(
+                        keyPrefix = "liked",
+                        posts = likedPosts,
+                        profile = profile,
+                        canDelete = isMe,
+                        onDelete = onDeletePost,
+                        isDark = isDark,
+                        textPrimary = textPrimary,
+                        textSecondary = textSecondary,
+                        emptyTitle = "No liked posts yet ❤️",
+                        emptySubtitle = "Posts you like will be collected here.",
+                        onLike = onLikePost,
+                        onComment = onCommentPost,
+                        onBookmark = onBookmarkPost,
+                        onShare = onSharePost,
+                        onOptions = onOptionsClick,
+                        onProfileClick = onProfileClick
+                    )
+
+                    3 -> if (isMe) {
+                        profilePostItems(
+                            keyPrefix = "saved",
+                            posts = savedPosts,
+                            profile = profile,
+                            canDelete = true,
+                            onDelete = onDeletePost,
+                            isDark = isDark,
+                            textPrimary = textPrimary,
+                            textSecondary = textSecondary,
+                            emptyTitle = "Nothing saved yet 🔖",
+                            emptySubtitle = "Save useful campus posts, tips and deals.",
+                            onLike = onLikePost,
+                            onComment = onCommentPost,
+                            onBookmark = onBookmarkPost,
+                            onShare = onSharePost,
+                            onOptions = onOptionsClick,
+                            onProfileClick = onProfileClick
+                        )
+                    } else {
+                        profileMarketItems(
+                            items = userMarketItems,
+                            isDark = isDark,
+                            textPrimary = textPrimary,
+                            textSecondary = textSecondary,
+                            onItemClick = onMarketItemClick
+                        )
+                    }
+
+                    4 -> if (isMe) {
+                        profileMarketItems(
+                            items = userMarketItems,
+                            isDark = isDark,
+                            textPrimary = textPrimary,
+                            textSecondary = textSecondary,
+                            onItemClick = onMarketItemClick
+                        )
+                    } else item(key = "skills") {
+                        SkillsAndBadgesSection(
+                            profile, isMe, cardBg, borderColor, textPrimary, textSecondary,
+                            onEndorseSkill, onOpenGetVerified
+                        )
+                    }
+
+                    5 -> item(key = if (isMe) "skills" else "about") {
+                        if (isMe) {
+                            SkillsAndBadgesSection(
+                                profile, isMe, cardBg, borderColor, textPrimary, textSecondary,
+                                onEndorseSkill, onOpenGetVerified
                             )
-                        },
-                        label = "tabContent"
-                    ) { tabIndex ->
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            when (tabIndex) {
-                                0 -> ProfilePostsSection(
-                                    posts = userPosts,
-                                    profile = profile,
-                                    canDelete = isMe,
-                                    onDelete = onDeletePost,
-                                    isDark = isDark,
-                                    textPrimary = textPrimary,
-                                    textSecondary = textSecondary,
-                                    onLike = onLikePost,
-                                    onComment = onCommentPost,
-                                    onBookmark = onBookmarkPost,
-                                    onShare = onSharePost,
-                                    onOptions = onOptionsClick,
-                                    onProfileClick = onProfileClick
-                                )
-
-                                1 -> FollowerGrowthChart(
-                                    profile = profile,
-                                    isDark = isDark,
-                                    onOpenGetVerified = onOpenGetVerified,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
-                                )
-
-                                2 -> ProfilePostsSection(
-                                    posts = likedPosts,
-                                    profile = profile,
-                                    canDelete = isMe,
-                                    onDelete = onDeletePost,
-                                    isDark = isDark,
-                                    textPrimary = textPrimary,
-                                    textSecondary = textSecondary,
-                                    emptyTitle = "No liked posts yet ❤️",
-                                    emptySubtitle = "Posts you like will be collected here.",
-                                    onLike = onLikePost,
-                                    onComment = onCommentPost,
-                                    onBookmark = onBookmarkPost,
-                                    onShare = onSharePost,
-                                    onOptions = onOptionsClick,
-                                    onProfileClick = onProfileClick
-                                )
-
-                                3 -> if (isMe) {
-                                    ProfilePostsSection(
-                                        posts = savedPosts,
-                                        profile = profile,
-                                        canDelete = isMe,
-                                        onDelete = onDeletePost,
-                                        isDark = isDark,
-                                        textPrimary = textPrimary,
-                                        textSecondary = textSecondary,
-                                        emptyTitle = "Nothing saved yet 🔖",
-                                        emptySubtitle = "Save useful campus posts, tips and deals.",
-                                        onLike = onLikePost,
-                                        onComment = onCommentPost,
-                                        onBookmark = onBookmarkPost,
-                                        onShare = onSharePost,
-                                        onOptions = onOptionsClick,
-                                        onProfileClick = onProfileClick
-                                    )
-                                } else {
-                                    MarketGridSection(
-                                        items = userMarketItems,
-                                        isDark = isDark,
-                                        textPrimary = textPrimary,
-                                        textSecondary = textSecondary,
-                                        onItemClick = onMarketItemClick
-                                    )
-                                }
-
-                                4 -> if (isMe) {
-                                    MarketGridSection(
-                                        items = userMarketItems,
-                                        isDark = isDark,
-                                        textPrimary = textPrimary,
-                                        textSecondary = textSecondary,
-                                        onItemClick = onMarketItemClick
-                                    )
-                                } else {
-                                    SkillsAndBadgesSection(
-                                        profile = profile,
-                                        isMe = isMe,
-                                        cardBg = cardBg,
-                                        borderColor = borderColor,
-                                        textPrimary = textPrimary,
-                                        textSecondary = textSecondary,
-                                        onEndorseSkill = onEndorseSkill,
-                                        onOpenGetVerified = onOpenGetVerified
-                                    )
-                                }
-
-                                5 -> if (isMe) {
-                                    SkillsAndBadgesSection(
-                                        profile = profile,
-                                        isMe = isMe,
-                                        cardBg = cardBg,
-                                        borderColor = borderColor,
-                                        textPrimary = textPrimary,
-                                        textSecondary = textSecondary,
-                                        onEndorseSkill = onEndorseSkill,
-                                        onOpenGetVerified = onOpenGetVerified
-                                    )
-                                } else {
-                                    AboutSection(
-                                        profile = profile,
-                                        cardBg = cardBg,
-                                        borderColor = borderColor,
-                                        textPrimary = textPrimary,
-                                        textSecondary = textSecondary
-                                    )
-                                }
-
-                                6 -> AboutSection(
-                                    profile = profile,
-                                    cardBg = cardBg,
-                                    borderColor = borderColor,
-                                    textPrimary = textPrimary,
-                                    textSecondary = textSecondary
-                                )
-                            }
+                        } else {
+                            AboutSection(profile, cardBg, borderColor, textPrimary, textSecondary)
                         }
+                    }
+
+                    6 -> item(key = "about") {
+                        AboutSection(profile, cardBg, borderColor, textPrimary, textSecondary)
                     }
                 }
             }
@@ -1034,11 +998,11 @@ private fun AnimatedTabRow(
 }
 
 // =====================================================================
-// PROFILE POSTS (plain column — driven by the AnimatedContent host)
+// PROFILE POSTS
 // =====================================================================
 
-@Composable
-private fun ProfilePostsSection(
+private fun LazyListScope.profilePostItems(
+    keyPrefix: String,
     posts: List<FeedPost>,
     profile: UserProfile,
     canDelete: Boolean,
@@ -1056,44 +1020,34 @@ private fun ProfilePostsSection(
     onProfileClick: (String) -> Unit
 ) {
     if (posts.isEmpty()) {
-        EmptyProfileState(
-            title = emptyTitle,
-            subtitle = emptySubtitle,
-            textPrimary = textPrimary,
-            textSecondary = textSecondary
-        )
+        item(key = "${keyPrefix}_empty", contentType = "profile_empty") {
+            EmptyProfileState(
+                title = emptyTitle,
+                subtitle = emptySubtitle,
+                textPrimary = textPrimary,
+                textSecondary = textSecondary
+            )
+        }
         return
     }
 
-    Column {
-        posts.forEachIndexed { index, post ->
-            var itemVisible by remember(post.id) { mutableStateOf(false) }
-            LaunchedEffect(post.id) {
-                delay((index.coerceAtMost(6)) * 35L)
-                itemVisible = true
-            }
-
-            AnimatedVisibility(
-                visible = itemVisible,
-                enter = fadeIn(tween(260)) + slideInVertically(
-                    animationSpec = tween(260),
-                    initialOffsetY = { it / 10 }
-                )
-            ) {
-                PostCard(
-                    post = post,
-                    isDark = isDark,
-                    onLike = { onLike(post.id) },
-                    onComment = { onComment(post.id) },
-                    onBookmark = { onBookmark(post.id) },
-                    onShare = { onShare(post.id) },
-                    onOptionsClick = { onOptions(post) },
-                    onProfileClick = onProfileClick,
-                    isAuthor = canDelete && post.author.equals(profile.username, true),
-                    onDelete = { onDelete(post.id) }
-                )
-            }
-        }
+    items(
+        items = posts,
+        key = { post -> "${keyPrefix}_${post.id}" },
+        contentType = { "profile_post" }
+    ) { post ->
+        PostCard(
+            post = post,
+            isDark = isDark,
+            onLike = { onLike(post.id) },
+            onComment = { onComment(post.id) },
+            onBookmark = { onBookmark(post.id) },
+            onShare = { onShare(post.id) },
+            onOptionsClick = { onOptions(post) },
+            onProfileClick = onProfileClick,
+            isAuthor = canDelete && post.author.equals(profile.username, true),
+            onDelete = { onDelete(post.id) }
+        )
     }
 }
 
@@ -1448,8 +1402,7 @@ private fun AboutSection(
 // MARKET
 // =====================================================================
 
-@Composable
-private fun MarketGridSection(
+private fun LazyListScope.profileMarketItems(
     items: List<MarketItem>,
     isDark: Boolean,
     textPrimary: Color,
@@ -1457,43 +1410,36 @@ private fun MarketGridSection(
     onItemClick: (MarketItem) -> Unit
 ) {
     if (items.isEmpty()) {
-        EmptyProfileState(
-            title = "No market listings 🛒",
-            subtitle = "Items listed by this student will appear here.",
-            textPrimary = textPrimary,
-            textSecondary = textSecondary
-        )
+        item(key = "market_empty", contentType = "profile_empty") {
+            EmptyProfileState(
+                title = "No market listings 🛒",
+                subtitle = "Items listed by this student will appear here.",
+                textPrimary = textPrimary,
+                textSecondary = textSecondary
+            )
+        }
         return
     }
 
-    Column {
-        items.chunked(2).forEachIndexed { rowIndex, row ->
-            var visible by remember(rowIndex) { mutableStateOf(false) }
-            LaunchedEffect(rowIndex) {
-                delay(rowIndex * 45L)
-                visible = true
+    items(
+        items = items.chunked(2),
+        key = { row -> "market_${row.joinToString("_") { it.id }}" },
+        contentType = { "market_row" }
+    ) { row ->
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 5.dp)
+        ) {
+            row.forEach { item ->
+                Box(modifier = Modifier.weight(1f)) {
+                    ProductCard(item = item, onClick = { onItemClick(item) }, isDark = isDark)
+                }
             }
 
-            AnimatedVisibility(
-                visible = visible,
-                enter = fadeIn(tween(240)) + slideInVertically(initialOffsetY = { it / 10 })
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 5.dp)
-                ) {
-                    row.forEach { item ->
-                        Box(modifier = Modifier.weight(1f)) {
-                            ProductCard(item = item, onClick = { onItemClick(item) }, isDark = isDark)
-                        }
-                    }
-
-                    if (row.size == 1) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                }
+            if (row.size == 1) {
+                Spacer(modifier = Modifier.weight(1f))
             }
         }
     }

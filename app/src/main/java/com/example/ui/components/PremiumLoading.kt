@@ -27,9 +27,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -43,24 +41,11 @@ fun Modifier.shimmerBackground(
     shape: Shape,
     baseColor: Color,
     highlightColor: Color
-): Modifier = composed {
-    val transition = rememberInfiniteTransition(label = "shimmer")
-    val offset = transition.animateFloat(
-        initialValue = -500f,
-        targetValue = 1_300f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1_250, easing = LinearEasing)
-        ),
-        label = "shimmerOffset"
-    ).value
-    clip(shape).background(
-        Brush.linearGradient(
-            colors = listOf(baseColor, highlightColor, baseColor),
-            start = Offset(offset - 420f, 0f),
-            end = Offset(offset, 420f)
-        )
-    )
-}
+): Modifier = clip(shape).background(
+    // A static highlight keeps the premium skeleton treatment without starting a
+    // separate infinite animation for every placeholder currently on screen.
+    Brush.horizontalGradient(listOf(baseColor, highlightColor, baseColor))
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,13 +58,17 @@ fun PremiumPullRefreshIndicator(
 ) {
     val progress = state.distanceFraction.coerceIn(0f, 1f)
     val refreshThresholdPx = with(LocalDensity.current) { 80.dp.toPx() }
-    val transition = rememberInfiniteTransition(label = "refreshShimmer")
-    val shimmerOffset = transition.animateFloat(
-        initialValue = -90f,
-        targetValue = 190f,
-        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
-        label = "refreshShimmerOffset"
-    ).value
+    val shimmerOffset = if (isRefreshing) {
+        val transition = rememberInfiniteTransition(label = "refreshShimmer")
+        transition.animateFloat(
+            initialValue = -90f,
+            targetValue = 190f,
+            animationSpec = infiniteRepeatable(tween(1_100, easing = LinearEasing)),
+            label = "refreshShimmerOffset"
+        ).value
+    } else {
+        -70f + (progress * 240f)
+    }
 
     AnimatedVisibility(
         visible = isRefreshing || progress > 0.04f,

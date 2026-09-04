@@ -75,7 +75,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
-            viewModel.fetchSupabaseData()
+            viewModel.refreshIfStale()
         }
     }
 
@@ -137,20 +137,8 @@ class MainActivity : ComponentActivity() {
                                 if (initialState == AppDestination.SPLASH || targetState == AppDestination.SPLASH) {
                                     EnterTransition.None togetherWith ExitTransition.None
                                 } else {
-                                    (fadeIn(
-                                        animationSpec = tween(340, easing = FastOutSlowInEasing)
-                                    ) + slideInVertically(
-                                        animationSpec = tween(420, easing = FastOutSlowInEasing),
-                                        initialOffsetY = { it / 18 }
-                                    ) + scaleIn(
-                                        initialScale = 0.985f,
-                                        animationSpec = tween(420, easing = FastOutSlowInEasing)
-                                    )) togetherWith
-                                            (fadeOut(animationSpec = tween(180)) +
-                                                    scaleOut(
-                                                        targetScale = 0.995f,
-                                                        animationSpec = tween(180)
-                                                    ))
+                                    fadeIn(animationSpec = tween(160)) togetherWith
+                                            fadeOut(animationSpec = tween(120))
                                 }
                             },
                             label = "AppNavigation"
@@ -282,8 +270,8 @@ fun MainAppContent(
             targetState = uiState.selectedTab,
             label = "TabAnimatedContent",
             transitionSpec = {
-                androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically(initialOffsetY = { 50 }) togetherWith 
-                androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically(targetOffsetY = { -50 })
+                androidx.compose.animation.fadeIn(animationSpec = tween(140)) togetherWith
+                    androidx.compose.animation.fadeOut(animationSpec = tween(90))
             }
         ) { tab ->
             when (tab) {
