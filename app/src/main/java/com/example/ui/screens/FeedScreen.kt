@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +57,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -302,7 +304,24 @@ fun FeedScreen(
                         state = listState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .nestedScroll(nestedScrollConnection),
+                            .nestedScroll(nestedScrollConnection)
+                            .pointerInput(selectedTopTab) {
+                                var horizontalDrag = 0f
+                                val openMenuThreshold = 76.dp.toPx()
+                                detectHorizontalDragGestures(
+                                    onDragStart = { horizontalDrag = 0f },
+                                    onHorizontalDrag = { _, dragAmount ->
+                                        horizontalDrag += dragAmount
+                                    },
+                                    onDragEnd = {
+                                        if (horizontalDrag <= -openMenuThreshold) {
+                                            onOpenMenu()
+                                        }
+                                        horizontalDrag = 0f
+                                    },
+                                    onDragCancel = { horizontalDrag = 0f }
+                                )
+                            },
                         contentPadding = PaddingValues(bottom = 92.dp)
                     ) {
                         item {

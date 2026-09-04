@@ -175,6 +175,9 @@ class ChatRepository(
                 if (messageId.isBlank() || messageId == "null") {
                     return@withContext Result.failure(Exception("Message was not created."))
                 }
+                SupabaseService.accessToken()?.takeIf { it.isNotBlank() }?.let { currentToken ->
+                    runCatching { triggerMessagePush(messageId, currentToken) }
+                }
                 Result.success(
                     ChatMessage(
                         id = messageId,
@@ -191,6 +194,24 @@ class ChatRepository(
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "Unable to send message.", e))
         }
+    }
+
+
+    private fun triggerMessagePush(messageId: String, accessToken: String) {
+        if (messageId.isBlank() || accessToken.isBlank()) return
+        val body = JSONObject()
+            .put("message_id", messageId)
+            .toString()
+            .toRequestBody(jsonMediaType)
+        client.newCall(
+            Request.Builder()
+                .url("${SupabaseConfig.url.trimEnd('/')}/functions/v1/send-push-notification")
+                .addHeader("apikey", SupabaseConfig.anonKey)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .addHeader("Content-Type", "application/json")
+                .post(body)
+                .build()
+        ).execute().use { /* Message delivery succeeds even if push is unavailable. */ }
     }
 
     private suspend fun refreshSession(): Boolean = withContext(Dispatchers.IO) {

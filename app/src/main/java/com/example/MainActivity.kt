@@ -1,9 +1,14 @@
 package com.example
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -17,10 +22,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.*
 import com.example.auth.AccountSessionStore
 import com.example.notification.BlinkNotificationHelper
+import com.example.notification.BlinkFirebaseMessagingService
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
 import com.example.viewmodel.AppDestination
@@ -45,9 +52,10 @@ class MainActivity : ComponentActivity() {
             BlinkNotificationHelper.ACTION_OPEN_CHAT -> {
                 val username = intent.getStringExtra(BlinkNotificationHelper.EXTRA_PARTNER_USERNAME).orEmpty()
                 val name = intent.getStringExtra(BlinkNotificationHelper.EXTRA_PARTNER_NAME)
+                val avatar = intent.getStringExtra(BlinkNotificationHelper.EXTRA_PARTNER_AVATAR)
                 if (username.isNotBlank()) {
                     viewModel.setTab(MainTab.MESSAGES)
-                    viewModel.openChatWithUser(username, name, null)
+                    viewModel.openChatWithUser(username, name, avatar)
                 }
             }
 
@@ -93,6 +101,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
+            val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { }
 
             // Persist the account that has actually reached the authenticated main app.
             // Keying by destination + user id prevents repeated writes during recomposition.
@@ -106,6 +117,16 @@ class MainActivity : ComponentActivity() {
                         email = uiState.myProfile.email.value,
                         avatarUrl = uiState.myProfile.avatarUrl
                     )
+                    BlinkFirebaseMessagingService.syncCurrentToken(this@MainActivity)
+                    if (
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(
+                            this@MainActivity,
+                            Manifest.permission.POST_NOTIFICATIONS
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
                 }
             }
 

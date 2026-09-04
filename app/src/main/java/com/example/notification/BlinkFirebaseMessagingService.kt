@@ -43,9 +43,9 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 val uid = SupabaseService().getCurrentUserId() ?: return
                 val accessToken = SupabaseService.accessToken() ?: return
                 val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
-                val body = JSONObject().put("fcm_token", token).toString().toRequestBody("application/json".toMediaType())
+                val body = JSONObject().put("p_token", token).toString().toRequestBody("application/json".toMediaType())
                 val request = Request.Builder()
-                    .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/profiles?id=eq.$uid")
+                    .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/register_my_fcm_token")
                     .addHeader("apikey", SupabaseConfig.anonKey)
                     .addHeader("Authorization", "Bearer $accessToken")
                     .addHeader("Content-Type", "application/json")
@@ -72,14 +72,18 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         val type = data["type"] ?: "social"
         val sender = data["sender_username"].orEmpty()
         val senderName = data["sender_name"] ?: sender.ifBlank { "Blink" }
+        val senderAvatar = data["sender_avatar"].orEmpty()
         when {
             type.equals("message", ignoreCase = true) && sender.isNotBlank() -> {
-                BlinkNotificationHelper.showChatMessageNotification(
-                    this,
-                    sender,
-                    senderName,
-                    body
-                )
+                CoroutineScope(Dispatchers.IO).launch {
+                    BlinkNotificationHelper.showChatMessageNotification(
+                        this@BlinkFirebaseMessagingService,
+                        sender,
+                        senderName,
+                        body,
+                        senderAvatar
+                    )
+                }
             }
 
             type.equals("market", ignoreCase = true) -> {

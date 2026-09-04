@@ -8,6 +8,7 @@ import com.example.data.supabase.SupabaseService
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
+import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
@@ -45,7 +46,29 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
                     if (lastSeen.isBlank() || created > lastSeen) {
                         val title = row.optString("text", "Blink notification")
                         val body = row.optString("sub_text", "")
-                        BlinkNotificationHelper.showSocialNotification(applicationContext, title, body, row.optString("post_id").takeIf { it.isNotBlank() && it != "null" })
+                        val actorId = row.optString("actor_id")
+                        val looksLikeMessage = title.contains(" sent you a message", ignoreCase = true)
+                        if (looksLikeMessage && actorId.isNotBlank()) {
+                            val actor = fetchActorProfile(token, actorId)
+                            if (actor != null) {
+                                BlinkNotificationHelper.showChatMessageNotification(
+                                    applicationContext,
+                                    actor.optString("username"),
+                                    actor.optString("full_name").ifBlank { actor.optString("username") },
+                                    body,
+                                    actor.optString("avatar_url")
+                                )
+                            } else {
+                                BlinkNotificationHelper.showSocialNotification(applicationContext, title, body)
+                            }
+                        } else {
+                            BlinkNotificationHelper.showSocialNotification(
+                                applicationContext,
+                                title,
+                                body,
+                                row.optString("post_id").takeIf { it.isNotBlank() && it != "null" }
+                            )
+                        }
                         newlyShown++
                     }
                 }
@@ -58,4 +81,23 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
             Result.retry()
         }
     }
+
+
+    private fun fetchActorProfile(accessToken: String, actorId: String): JSONObject? {
+        if (actorId.isBlank()) return null
+        return runCatching {
+            val endpoint = "${SupabaseConfig.url.trimEnd('/')}/rest/v1/profiles?id=eq.$actorId&select=username,full_name,avatar_url&limit=1"
+            val request = Request.Builder()
+                .url(endpoint)
+                .addHeader("apikey", SupabaseConfig.anonKey)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val rows = JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+                rows.optJSONObject(0)
+            }
+        }.getOrNull()
+    }
+
 }

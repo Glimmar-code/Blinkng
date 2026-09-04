@@ -8,6 +8,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
@@ -15,7 +17,10 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.IconCompat
 import com.example.MainActivity
+import java.net.HttpURLConnection
+import java.net.URL
 import kotlin.math.absoluteValue
 
 /**
@@ -93,6 +98,7 @@ object BlinkNotificationHelper {
     const val EXTRA_ACTION = "EXTRA_ACTION"
     const val EXTRA_PARTNER_USERNAME = "EXTRA_PARTNER_USERNAME"
     const val EXTRA_PARTNER_NAME = "EXTRA_PARTNER_NAME"
+    const val EXTRA_PARTNER_AVATAR = "EXTRA_PARTNER_AVATAR"
     const val EXTRA_POST_ID = "EXTRA_POST_ID"
     const val EXTRA_MARKET_ID = "EXTRA_MARKET_ID"
 
@@ -480,7 +486,8 @@ object BlinkNotificationHelper {
     private fun buildChatPendingIntent(
         context: Context,
         senderUsername: String,
-        senderName: String
+        senderName: String,
+        senderAvatar: String = ""
     ): PendingIntent {
 
         val intent =
@@ -506,6 +513,11 @@ object BlinkNotificationHelper {
                 putExtra(
                     EXTRA_PARTNER_NAME,
                     senderName
+                )
+
+                putExtra(
+                    EXTRA_PARTNER_AVATAR,
+                    senderAvatar
                 )
             }
 
@@ -606,119 +618,66 @@ object BlinkNotificationHelper {
     // CHAT NOTIFICATION
     // ================================================================
 
+    private fun loadAvatarBitmap(url: String): Bitmap? {
+        if (url.isBlank()) return null
+        return runCatching {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.connectTimeout = 5_000
+            connection.readTimeout = 5_000
+            connection.instanceFollowRedirects = true
+            connection.inputStream.use { BitmapFactory.decodeStream(it) }
+        }.getOrNull()
+    }
+
     fun showChatMessageNotification(
         context: Context,
         senderUsername: String,
         senderName: String,
-        messageText: String
+        messageText: String,
+        senderAvatar: String = ""
     ) {
+        if (!hasNotificationPermission(context)) return
+        createNotificationChannels(context)
 
-        if (
-            !hasNotificationPermission(
-                context
-            )
-        ) {
-            return
-        }
+        val avatarBitmap = loadAvatarBitmap(senderAvatar)
+        val personBuilder = Person.Builder()
+            .setName(senderName)
+            .setKey(senderUsername)
+        avatarBitmap?.let { personBuilder.setIcon(IconCompat.createWithBitmap(it)) }
+        val person = personBuilder.build()
 
-        createNotificationChannels(
-            context
+        val messagingStyle = NotificationCompat.MessagingStyle(
+            Person.Builder().setName("You").setKey("blink_self").build()
         )
+            .addMessage(messageText, System.currentTimeMillis(), person)
+            .setConversationTitle(senderName)
+            .setGroupConversation(false)
 
-        val person =
-            Person.Builder()
-                .setName(senderName)
-                .setKey(senderUsername)
-                .build()
+        val chatIntent = buildChatPendingIntent(context, senderUsername, senderName, senderAvatar)
+        val builder = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
+            .setSmallIcon(android.R.drawable.ic_dialog_email)
+            .setContentTitle(senderName)
+            .setContentText(messageText)
+            .setStyle(messagingStyle)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setColor(PINK_COLOR)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(true)
+            .setWhen(System.currentTimeMillis())
+            .setContentIntent(chatIntent)
+            .addAction(android.R.drawable.ic_menu_send, "Reply", chatIntent)
+            .setGroup(GROUP_KEY_MESSAGES)
+            .setGroupSummary(false)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
 
-        val messagingStyle =
-            NotificationCompat.MessagingStyle(
-                Person.Builder()
-                    .setName("You")
-                    .setKey("blink_self")
-                    .build()
-            )
-                .addMessage(
-                    messageText,
-                    System.currentTimeMillis(),
-                    person
-                )
-                .setConversationTitle(
-                    senderName
-                )
-                .setGroupConversation(
-                    false
-                )
-
-        val notification =
-            NotificationCompat.Builder(
-                context,
-                CHANNEL_MESSAGES
-            )
-                .setSmallIcon(
-                    android.R.drawable
-                        .ic_dialog_email
-                )
-                .setContentTitle(
-                    senderName
-                )
-                .setContentText(
-                    messageText
-                )
-                .setStyle(
-                    messagingStyle
-                )
-                .setCategory(
-                    NotificationCompat
-                        .CATEGORY_MESSAGE
-                )
-                .setPriority(
-                    NotificationCompat
-                        .PRIORITY_HIGH
-                )
-                .setColor(
-                    PINK_COLOR
-                )
-                .setAutoCancel(
-                    true
-                )
-                .setOnlyAlertOnce(
-                    false
-                )
-                .setShowWhen(
-                    true
-                )
-                .setWhen(
-                    System.currentTimeMillis()
-                )
-                .setContentIntent(
-                    buildChatPendingIntent(
-                        context,
-                        senderUsername,
-                        senderName
-                    )
-                )
-                .setGroup(
-                    GROUP_KEY_MESSAGES
-                )
-                .setGroupSummary(
-                    false
-                )
-                .setVisibility(
-                    NotificationCompat
-                        .VISIBILITY_PRIVATE
-                )
-                .build()
+        avatarBitmap?.let { builder.setLargeIcon(it) }
 
         notifySafely(
             context = context,
-            id =
-                MSG_ID_BASE +
-                        positiveHash(
-                            senderUsername
-                        ) % 700,
-            notification =
-                notification
+            id = MSG_ID_BASE + positiveHash(senderUsername) % 700,
+            notification = builder.build()
         )
     }
 

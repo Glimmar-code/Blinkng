@@ -143,7 +143,7 @@ fun AppMenuSheet(
         var contentVisible by remember { mutableStateOf(false) }
         LaunchedEffect(Unit) { delay(25); contentVisible = true }
         var expandedSections by rememberSaveable {
-            mutableStateOf(setOf("Profile", "Marketplace", "Privacy & Security", "Session"))
+            mutableStateOf(setOf("Profile", "Experience", "Marketplace", "Privacy & Security", "Session"))
         }
 
         fun toggle(title: String) {

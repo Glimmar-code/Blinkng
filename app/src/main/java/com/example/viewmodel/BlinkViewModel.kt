@@ -16,6 +16,7 @@ import com.example.data.supabase.RealtimeEvent
 import com.example.data.supabase.SupabaseRealtimeManager
 import com.example.data.supabase.SupabaseService
 import com.example.data.supabase.MessageMediaService
+import com.example.notification.BlinkNotificationHelper
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -1633,15 +1634,34 @@ private suspend fun restoreSupabaseSession() {
                             targetType = "CHAT"
                         )
                     }
+                    reconcileConversationSummary(item.receiverUsername)
                 },
                 onFailure = { error ->
                     offlineContentStore.markOutboxFailure(item, error.message ?: "Message send failed")
                     withContext(Dispatchers.Main) {
                         updateMessageStatusInState(item.receiverUsername, item.localId, MessageStatus.FAILED)
                         persistConversations()
+                        showToast(error.message ?: "Message failed. Please try again.")
                     }
                 }
             )
+        }
+    }
+
+
+    private suspend fun reconcileConversationSummary(partnerUsername: String) {
+        val server = runCatching { chatRepository.fetchConversations() }.getOrDefault(emptyList())
+            .firstOrNull { it.partnerUsername.equals(partnerUsername, true) }
+            ?: return
+        withContext(Dispatchers.Main) {
+            val latest = _uiState.value
+            val index = latest.conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }
+            if (index < 0) return@withContext
+            val local = latest.conversations[index]
+            val merged = server.copy(messages = local.messages)
+            val conversations = latest.conversations.toMutableList().apply { this[index] = merged }
+            _uiState.value = latest.copy(conversations = conversations)
+            persistConversations()
         }
     }
 
@@ -1673,17 +1693,111 @@ private suspend fun restoreSupabaseSession() {
     }
 
     private fun handleIncomingRealtimeMessage(msg: ChatMessage) {
-        val currentUsername = supabaseService.getCurrentUsername() ?: ""
-        val partner = if (msg.isFromMe || (currentUsername.isNotBlank() && msg.senderUsername.equals(currentUsername, true))) msg.receiverUsername else msg.senderUsername
-        if (partner.isBlank()) return
-        val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partner, true) }; val active = _uiState.value.activeConversationPartner?.equals(partner, true) == true
-        if (index >= 0) {
-            val old = conversations[index]; val msgs = old.messages.toMutableList(); val existing = msgs.indexOfFirst { it.id == msg.id || (it.status == MessageStatus.SENDING && it.text == msg.text) }; if (existing >= 0) msgs[existing] = msg else msgs.add(msg)
-            conversations[index] = old.copy(lastMessage = msg.text, lastMessageTime = msg.timestamp, lastMessageRawTime = msg.rawTimestamp, unreadCount = if (active) 0 else old.unreadCount + if (!msg.isFromMe) 1 else 0, messages = msgs.sortedBy { it.rawTimestamp.ifBlank { it.timestamp } }.toMutableList())
-        } else conversations.add(0, ChatConversation("conv_$partner", partner, partnerName = partner.replace(".", " ").replace("_", " ").capitalizeWords(), partnerAvatar = "", lastMessage = msg.text, lastMessageTime = msg.timestamp, lastMessageRawTime = msg.rawTimestamp, unreadCount = if (!msg.isFromMe && !active) 1 else 0, messages = mutableListOf(msg)))
-        _uiState.value = _uiState.value.copy(conversations = conversations)
-        persistConversations()
-        if (!msg.isFromMe && active) viewModelScope.launch { chatRepository.markConversationRead(partner) }
+        val myId = supabaseService.getCurrentUserId().orEmpty()
+        if (msg.isFromMe || (myId.isNotBlank() && msg.senderId == myId)) return
+
+        viewModelScope.launch {
+            val initial = _uiState.value
+            var senderProfile = initial.profiles.firstOrNull { it.id == msg.senderId }
+            if (senderProfile == null && msg.senderId.isNotBlank()) {
+                senderProfile = try {
+                    profileRepository.fetchById(msg.senderId)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+
+            var serverSummary = initial.conversations.firstOrNull {
+                msg.conversationId?.let { id -> id.isNotBlank() && it.id == id } == true
+            }
+            if (serverSummary == null) {
+                val fresh = runCatching { chatRepository.fetchConversations() }.getOrDefault(emptyList())
+                serverSummary = fresh.firstOrNull {
+                    msg.conversationId?.let { id -> id.isNotBlank() && it.id == id } == true
+                } ?: fresh.firstOrNull { it.partnerId == msg.senderId }
+            }
+
+            val partner = senderProfile?.username?.takeIf { it.isNotBlank() }
+                ?: serverSummary?.partnerUsername?.takeIf { it.isNotBlank() }
+                ?: msg.senderUsername.takeIf { it.isNotBlank() }
+                ?: return@launch
+            val displayName = senderProfile?.fullName?.takeIf { it.isNotBlank() }
+                ?: serverSummary?.partnerName?.takeIf { it.isNotBlank() }
+                ?: partner
+            val avatar = senderProfile?.avatarUrl?.takeIf { it.isNotBlank() }
+                ?: serverSummary?.partnerAvatar.orEmpty()
+            val conversationId = msg.conversationId?.takeIf { it.isNotBlank() }
+                ?: serverSummary?.id
+                ?: "conv_$partner"
+            val enriched = msg.copy(
+                conversationId = conversationId,
+                senderUsername = partner,
+                isFromMe = false
+            )
+
+            val latest = _uiState.value
+            val active = latest.activeConversationPartner?.equals(partner, true) == true
+            val conversations = latest.conversations.toMutableList()
+            val index = conversations.indexOfFirst {
+                it.id == conversationId || it.partnerUsername.equals(partner, true)
+            }
+            if (index >= 0) {
+                val old = conversations[index]
+                val messages = old.messages.toMutableList()
+                val existing = messages.indexOfFirst { it.id == enriched.id }
+                if (existing >= 0) messages[existing] = enriched else messages.add(enriched)
+                conversations[index] = old.copy(
+                    id = if (old.id.startsWith("local_") && !conversationId.startsWith("local_")) conversationId else old.id,
+                    partnerId = old.partnerId.ifBlank { msg.senderId },
+                    partnerName = if (old.partnerName.isBlank() || old.partnerName.equals(old.partnerUsername, true)) displayName else old.partnerName,
+                    partnerAvatar = old.partnerAvatar.ifBlank { avatar },
+                    lastMessage = enriched.text,
+                    lastMessageTime = enriched.timestamp,
+                    lastMessageRawTime = enriched.rawTimestamp,
+                    unreadCount = if (active) 0 else old.unreadCount + 1,
+                    messages = messages.distinctBy { it.id }.sortedBy { it.rawTimestamp.ifBlank { it.timestamp } }.toMutableList()
+                )
+            } else {
+                conversations.add(
+                    0,
+                    (serverSummary ?: ChatConversation(
+                        id = conversationId,
+                        partnerUsername = partner,
+                        partnerId = msg.senderId,
+                        partnerName = displayName,
+                        partnerAvatar = avatar
+                    )).copy(
+                        id = conversationId,
+                        partnerUsername = partner,
+                        partnerId = msg.senderId,
+                        partnerName = displayName,
+                        partnerAvatar = avatar,
+                        lastMessage = enriched.text,
+                        lastMessageTime = enriched.timestamp,
+                        lastMessageRawTime = enriched.rawTimestamp,
+                        unreadCount = if (active) 0 else 1,
+                        messages = mutableListOf(enriched)
+                    )
+                )
+            }
+            _uiState.value = latest.copy(conversations = conversations)
+            persistConversations()
+
+            if (active) {
+                chatRepository.markConversationRead(partner)
+            } else {
+                _snackBarMessages.tryEmit("💬 $displayName: ${enriched.text.take(120)}")
+                withContext(Dispatchers.IO) {
+                    BlinkNotificationHelper.showChatMessageNotification(
+                        appContext,
+                        partner,
+                        displayName,
+                        enriched.text,
+                        avatar
+                    )
+                }
+            }
+        }
     }
 
     private fun appendMessageToState(partnerUsername: String, message: ChatMessage) {
