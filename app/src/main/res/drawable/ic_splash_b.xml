@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Simple Blink "B" mark used only by the Android system startup splash. -->
+    <path
+        android:fillColor="@color/blink_splash_mark"
+        android:pathData="M30,18 L58,18 C74,18 84,27 84,41 C84,49 80,56 72,60 C81,63 86,71 86,81 C86,96 75,104 58,104 L30,104 Z" />
+
+    <path
+        android:fillColor="@color/blink_splash_background"
+        android:pathData="M46,32 L58,32 C65,32 69,36 69,42 C69,48 65,52 58,52 L46,52 Z" />
+
+    <path
+        android:fillColor="@color/blink_splash_background"
+        android:pathData="M46,68 L59,68 C67,68 71,72 71,79 C71,86 67,90 59,90 L46,90 Z" />
+</vector>
