@@ -23,7 +23,7 @@ jobs:
         run: python .github/scripts/apply_fast_b_splash.py
 
       - name: Compile Kotlin
-        run: ./gradlew :app:compileDebugKotlin --stacktrace --no-daemon
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
 
       - name: Commit and push app changes
         run: |
