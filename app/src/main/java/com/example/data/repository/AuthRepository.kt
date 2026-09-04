@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
@@ -57,7 +60,77 @@ class AuthRepository(private val context: Context, private val supabaseService: 
 
     suspend fun signInWithEmail(emailOrUsername: String, password: String): AuthResult = withContext(Dispatchers.IO) {
         val cleanInput = emailOrUsername.trim().lowercase(); if (cleanInput.isBlank() || password.isBlank()) return@withContext AuthResult.failure("Please enter both email/username and password.")
-        try { val result = supabaseService.authenticateUser(cleanInput, password); if (result.isSuccess) { val profile = result.getOrThrow(); persistSession(profile); _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken()); AuthResult.success(profile) } else AuthResult.failure(result.exceptionOrNull()?.message ?: "Invalid email or password.") } catch (e: Exception) { Log.e("AuthRepository", "signInWithEmail error", e); AuthResult.failure(e.message ?: "Connection error. Please try again.") }
+        try {
+            val isEmail = cleanInput.contains("@") && !cleanInput.startsWith("@")
+            val result = if (isEmail) {
+                supabaseService.authenticateUser(cleanInput, password)
+            } else {
+                authenticateWithUsername(cleanInput, password)
+            }
+            if (result.isSuccess) { val profile = result.getOrThrow(); persistSession(profile); _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken()); AuthResult.success(profile) } else AuthResult.failure(result.exceptionOrNull()?.message ?: "Invalid email/username or password.")
+        } catch (e: Exception) { Log.e("AuthRepository", "signInWithEmail error", e); AuthResult.failure(e.message ?: "Connection error. Please try again.") }
+    }
+
+    private suspend fun authenticateWithUsername(username: String, password: String): Result<UserProfile> = withContext(Dispatchers.IO) {
+        try {
+            val cleanUsername = username.trim().removePrefix("@").lowercase()
+            if (cleanUsername.isBlank()) return@withContext Result.failure(Exception("Username is required."))
+
+            val body = JSONObject().apply {
+                put("username", cleanUsername)
+                put("password", password)
+            }
+            val request = Request.Builder()
+                .url("$baseUrl/functions/v1/username-login")
+                .addHeader("apikey", anonKey)
+                .addHeader("Accept", "application/json")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    val serverMessage = runCatching { JSONObject(raw).optString("error") }.getOrNull()?.takeIf { it.isNotBlank() }
+                    return@withContext Result.failure(Exception(serverMessage ?: "Invalid email/username or password."))
+                }
+
+                val auth = JSONObject(raw)
+                val accessToken = auth.optString("access_token", "")
+                val refreshToken = auth.optString("refresh_token", "")
+                val user = auth.optJSONObject("user")
+                if (accessToken.isBlank() || user == null) {
+                    return@withContext Result.failure(Exception("Supabase did not return a valid authenticated session."))
+                }
+
+                SupabaseService.saveSession(accessToken = accessToken, refreshToken = refreshToken)
+
+                val userId = user.optString("id", "")
+                val userEmail = user.optString("email", "")
+                if (userId.isBlank() || userEmail.isBlank()) {
+                    SupabaseService.clearSession()
+                    return@withContext Result.failure(Exception("Supabase did not return a complete user session."))
+                }
+
+                val metadata = user.optJSONObject("user_metadata")
+                val resolvedUsername = metadata?.optString("username", "")?.trim()?.takeIf { it.isNotBlank() } ?: cleanUsername
+                val fullName = metadata?.optString("full_name", "")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: metadata?.optString("name", "")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: resolvedUsername
+
+                val profile = supabaseService.ensureAuthenticatedProfile(
+                    userId = userId,
+                    email = userEmail,
+                    username = resolvedUsername,
+                    fullName = fullName,
+                    faculty = metadata?.optString("faculty", "")?.trim()?.takeIf { it.isNotBlank() },
+                    university = metadata?.optString("university", "")?.trim()?.takeIf { it.isNotBlank() }
+                )
+                Result.success(profile)
+            }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "authenticateWithUsername error", e)
+            Result.failure(Exception(e.message ?: "Authentication failed."))
+        }
     }
 
     suspend fun signInWithGoogle(email: String): AuthResult = withContext(Dispatchers.IO) {
