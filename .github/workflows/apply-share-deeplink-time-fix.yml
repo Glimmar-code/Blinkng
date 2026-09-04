@@ -49,7 +49,7 @@ jobs:
           curl -fsS "$base/post/f829eb58-a442-4239-b906-465643c97b0b?format=json" | grep -q '"type":"post"'
           curl -fsS "$base/reel/661cd2ac-935f-4c91-9b21-6cf6bf874485?format=json" | grep -q '"type":"reel"'
 
-      - name: Commit, rebase, verify and push
+      - name: Commit and safely publish source fixes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -68,6 +68,27 @@ jobs:
             exit 0
           fi
           git commit -m "feat: add share links deep routing and richer timestamps"
-          git pull --rebase origin main
+
+          # Validate once after integrating the current main. If a real source conflict
+          # appears, rebase exits non-zero rather than overwriting another change.
+          git fetch origin main
+          git rebase origin/main
           gradle :app:compileDebugKotlin --stacktrace --no-daemon
-          git push origin main
+
+          # Other maintenance workflows can advance main every few seconds. Keep
+          # rebasing the already-validated commit and push immediately; never force-push.
+          published=false
+          for attempt in $(seq 1 30); do
+            git fetch origin main
+            git rebase origin/main
+            if git push origin HEAD:main; then
+              published=true
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$published" != "true" ]; then
+            echo "Could not publish after concurrency-safe retries."
+            exit 1
+          fi
