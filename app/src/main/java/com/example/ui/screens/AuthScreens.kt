@@ -424,15 +424,33 @@ fun SignInScreen(
     val coroutineScope =
         rememberCoroutineScope()
 
+    var entranceReady by remember { mutableStateOf(false) }
+    val entranceAlpha by animateFloatAsState(
+        targetValue = if (entranceReady) 1f else 0f,
+        animationSpec = tween(420, easing = FastOutSlowInEasing),
+        label = "signin_alpha"
+    )
+    val entranceOffset by animateDpAsState(
+        targetValue = if (entranceReady) 0.dp else 18.dp,
+        animationSpec = tween(520, easing = FastOutSlowInEasing),
+        label = "signin_offset"
+    )
+
+    LaunchedEffect(Unit) { entranceReady = true }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(DarkBackground)
+            .background(blinkBackgroundBrush(isDark = true))
     ) {
+
+        DecorativeAuthBackground()
 
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .alpha(entranceAlpha)
+                .offset(y = entranceOffset)
                 .statusBarsPadding()
                 .padding(horizontal = 22.dp),
             contentPadding = PaddingValues(
@@ -568,8 +586,9 @@ fun SignInScreen(
                                 rememberMe = it
                             },
                             colors = CheckboxDefaults.colors(
-                                checkedColor = BlinkPink,
-                                uncheckedColor = DarkTextSecondary
+                                checkedColor = BlinkGold,
+                                checkmarkColor = BlinkBlack,
+                                uncheckedColor = DarkTextMuted
                             )
                         )
 
@@ -588,7 +607,7 @@ fun SignInScreen(
 
                         Text(
                             "Forgot password?",
-                            color = BlinkLavender,
+                            color = BlinkGoldSoft,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.5.sp
                         )
@@ -637,7 +656,10 @@ fun SignInScreen(
                     },
                     enabled = !isSubmitting,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = BlinkPink
+                        containerColor = BlinkCream,
+                        contentColor = BlinkBlack,
+                        disabledContainerColor = DarkSurfaceElevated,
+                        disabledContentColor = DarkTextMuted
                     ),
                     shape = RoundedCornerShape(100.dp),
                     modifier = Modifier
@@ -650,7 +672,7 @@ fun SignInScreen(
 
                         CircularProgressIndicator(
                             modifier = Modifier.size(21.dp),
-                            color = Color.White,
+                            color = BlinkBlack,
                             strokeWidth = 2.dp
                         )
 
@@ -707,7 +729,7 @@ fun SignInScreen(
 
                         Text(
                             "Create account",
-                            color = BlinkPink,
+                            color = BlinkGoldSoft,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -789,6 +811,20 @@ fun SignUpScreen(
 
     val coroutineScope = rememberCoroutineScope()
 
+    var entranceReady by remember { mutableStateOf(false) }
+    val entranceAlpha by animateFloatAsState(
+        targetValue = if (entranceReady) 1f else 0f,
+        animationSpec = tween(420, easing = FastOutSlowInEasing),
+        label = "signup_alpha"
+    )
+    val entranceOffset by animateDpAsState(
+        targetValue = if (entranceReady) 0.dp else 18.dp,
+        animationSpec = tween(520, easing = FastOutSlowInEasing),
+        label = "signup_offset"
+    )
+
+    LaunchedEffect(Unit) { entranceReady = true }
+
     val isFormReady =
         fullName.trim().length >= 2 &&
                 username.trim().length >= 3 &&
@@ -799,12 +835,16 @@ fun SignUpScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(DarkBackground)
+            .background(blinkBackgroundBrush(isDark = true))
     ) {
+
+        DecorativeAuthBackground()
 
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .alpha(entranceAlpha)
+                .offset(y = entranceOffset)
                 .statusBarsPadding()
                 .padding(horizontal = 22.dp),
             contentPadding = PaddingValues(
@@ -1026,7 +1066,9 @@ fun SignUpScreen(
                             acceptTerms = it
                         },
                         colors = CheckboxDefaults.colors(
-                            checkedColor = BlinkPink
+                            checkedColor = BlinkGold,
+                            checkmarkColor = BlinkBlack,
+                            uncheckedColor = DarkTextMuted
                         )
                     )
 
@@ -1078,8 +1120,10 @@ fun SignUpScreen(
                     },
                     enabled = isFormReady,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = BlinkPink,
-                        disabledContainerColor = DarkSurface
+                        containerColor = BlinkCream,
+                        contentColor = BlinkBlack,
+                        disabledContainerColor = DarkSurfaceElevated,
+                        disabledContentColor = DarkTextMuted
                     ),
                     shape = RoundedCornerShape(100.dp),
                     modifier = Modifier
@@ -1135,7 +1179,7 @@ fun SignUpScreen(
 
                         Text(
                             "Sign In",
-                            color = BlinkPink,
+                            color = BlinkGoldSoft,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -1842,8 +1886,9 @@ fun GoogleSignInButton(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(100.dp),
-        color = Color.White,
-        shadowElevation = 4.dp,
+        color = BlinkCreamBright,
+        border = BorderStroke(1.dp, BlinkGold.copy(alpha = 0.30f)),
+        shadowElevation = 0.dp,
         modifier = modifier
             .fillMaxWidth()
             .height(50.dp)
@@ -1890,7 +1935,11 @@ private fun AuthField(
         value = value,
         onValueChange = onValueChange,
         label = {
-            Text(label)
+            Text(
+                label,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium
+            )
         },
         leadingIcon = {
 
@@ -1906,15 +1955,22 @@ private fun AuthField(
                 keyboardType = keyboardType
             ),
         singleLine = true,
-        shape = RoundedCornerShape(16.dp),
+        textStyle = MaterialTheme.typography.bodyLarge.copy(
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.sp
+        ),
+        shape = RoundedCornerShape(18.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = BlinkPink,
-            unfocusedBorderColor = DarkBorder,
-            focusedTextColor = Color.White,
-            unfocusedTextColor = Color.White,
-            focusedLabelColor = BlinkPink,
+            focusedBorderColor = BlinkGoldSoft,
+            unfocusedBorderColor = DarkBorderSoft,
+            focusedTextColor = DarkTextPrimary,
+            unfocusedTextColor = DarkTextPrimary,
+            cursorColor = BlinkGoldSoft,
+            focusedLabelColor = BlinkGoldSoft,
             unfocusedLabelColor = DarkTextSecondary,
-            focusedContainerColor = DarkSurface,
+            focusedLeadingIconColor = BlinkGoldSoft,
+            unfocusedLeadingIconColor = DarkTextSecondary,
+            focusedContainerColor = DarkSurfaceElevated,
             unfocusedContainerColor = DarkSurface
         ),
         modifier = Modifier
@@ -1949,7 +2005,11 @@ private fun AuthPasswordField(
             onFocus()
         },
         label = {
-            Text("Password")
+            Text(
+                "Password",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium
+            )
         },
         leadingIcon = {
 
@@ -1983,15 +2043,22 @@ private fun AuthPasswordField(
             else
                 PasswordVisualTransformation(),
         singleLine = true,
-        shape = RoundedCornerShape(16.dp),
+        textStyle = MaterialTheme.typography.bodyLarge.copy(
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.sp
+        ),
+        shape = RoundedCornerShape(18.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = BlinkPink,
-            unfocusedBorderColor = DarkBorder,
-            focusedTextColor = Color.White,
-            unfocusedTextColor = Color.White,
-            focusedLabelColor = BlinkPink,
+            focusedBorderColor = BlinkGoldSoft,
+            unfocusedBorderColor = DarkBorderSoft,
+            focusedTextColor = DarkTextPrimary,
+            unfocusedTextColor = DarkTextPrimary,
+            cursorColor = BlinkGoldSoft,
+            focusedLabelColor = BlinkGoldSoft,
             unfocusedLabelColor = DarkTextSecondary,
-            focusedContainerColor = DarkSurface,
+            focusedLeadingIconColor = BlinkGoldSoft,
+            unfocusedLeadingIconColor = DarkTextSecondary,
+            focusedContainerColor = DarkSurfaceElevated,
             unfocusedContainerColor = DarkSurface
         ),
         modifier = Modifier
@@ -2027,6 +2094,11 @@ private fun PasswordStrengthBar(
         ).count { it }
 
     val progress = score / 4f
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(320, easing = FastOutSlowInEasing),
+        label = "password_strength_progress"
+    )
 
     val color =
         when (score) {
@@ -2074,7 +2146,7 @@ private fun PasswordStrengthBar(
 
         LinearProgressIndicator(
             progress = {
-                progress
+                animatedProgress
             },
             modifier = Modifier
                 .fillMaxWidth()
@@ -2127,9 +2199,10 @@ private fun AuthTopBar(
 
             Text(
                 title,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
+                color = DarkTextPrimary,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.2).sp
             )
 
             Text(
@@ -2179,9 +2252,10 @@ private fun AuthHeroBadge(
 
             Text(
                 title,
-                fontWeight = FontWeight.Black,
-                fontSize = 22.sp,
-                color = Color.White
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.45).sp,
+                color = DarkTextPrimary
             )
 
             Spacer(
@@ -2286,7 +2360,7 @@ private fun AuthMessageCard(
 
             Text(
                 message,
-                color = Color.White,
+                color = DarkTextPrimary,
                 fontSize = 11.sp,
                 lineHeight = 16.sp,
                 modifier = Modifier.weight(1f)
@@ -2428,6 +2502,12 @@ private fun PremiumChoiceChip(
     onClick: () -> Unit
 ) {
 
+    val chipScale by animateFloatAsState(
+        targetValue = if (selected) 1.035f else 1f,
+        animationSpec = tween(180, easing = FastOutSlowInEasing),
+        label = "auth_choice_chip_scale"
+    )
+
     Surface(
         shape = RoundedCornerShape(100.dp),
         color =
@@ -2443,9 +2523,9 @@ private fun PremiumChoiceChip(
                 else
                     DarkBorder
             ),
-        modifier = Modifier.clickable {
-            onClick()
-        }
+        modifier = Modifier
+            .scale(chipScale)
+            .clickable { onClick() }
     ) {
 
         Row(
@@ -2461,7 +2541,7 @@ private fun PremiumChoiceChip(
                 Icon(
                     Icons.Default.Check,
                     contentDescription = null,
-                    tint = Color.White,
+                    tint = BlinkBlack,
                     modifier = Modifier.size(13.dp)
                 )
 
@@ -2474,7 +2554,7 @@ private fun PremiumChoiceChip(
                 text,
                 color =
                     if (selected)
-                        Color.White
+                        BlinkBlack
                     else
                         DarkTextSecondary,
                 fontSize = 10.sp,
@@ -2876,7 +2956,7 @@ private fun PremiumAuthButton(
             Icon(
                 icon,
                 contentDescription = null,
-                tint = Color.White,
+                tint = if (primary) BlinkBlack else DarkTextPrimary,
                 modifier = Modifier.size(17.dp)
             )
 
@@ -2886,9 +2966,9 @@ private fun PremiumAuthButton(
 
             Text(
                 text,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.5.sp
+                color = if (primary) BlinkBlack else DarkTextPrimary,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold
             )
         }
     }
