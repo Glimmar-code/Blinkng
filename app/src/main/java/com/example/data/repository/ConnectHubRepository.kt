@@ -2,7 +2,7 @@ package com.example.data.repository
 
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.ConnectRequestItem
-import com.example.data.models.DailySpinReward
+import com.example.data.models.ChallengeGameType
 import com.example.data.models.GameChallenge
 import com.example.data.models.GameProfileStats
 import com.example.data.models.HousingAgentListing
@@ -211,13 +211,15 @@ class ConnectHubRepository(
             ).isNotBlank()
         }
 
-    suspend fun challengeUser(userId: String, gameType: String = "trivia"): Boolean =
+    suspend fun challengeUser(userId: String, gameType: String = ChallengeGameType.GENERAL_KNOWLEDGE.apiName): Boolean =
         withContext(Dispatchers.IO) {
-            write(
-                "/rest/v1/game_challenges",
-                JSONObject().put("challenged_id", userId).put("game_type", gameType),
-                "POST"
-            )
+            val canonicalType = ChallengeGameType.fromApiName(gameType).apiName
+            rpc(
+                "create_game_challenge",
+                JSONObject()
+                    .put("p_opponent_id", userId)
+                    .put("p_game_type", canonicalType)
+            ).isNotBlank()
         }
 
     suspend fun respondToConnectRequest(kind: String, requestId: String, accept: Boolean): Boolean =
@@ -228,7 +230,7 @@ class ConnectHubRepository(
                     .put("p_kind", kind)
                     .put("p_request_id", requestId)
                     .put("p_accept", accept)
-            ).isNotBlank()
+            ).equals("true", ignoreCase = true)
         }
 
     suspend fun respondToChallenge(challengeId: String, accept: Boolean): Boolean =
@@ -238,7 +240,7 @@ class ConnectHubRepository(
                 JSONObject()
                     .put("p_challenge_id", challengeId)
                     .put("p_accept", accept)
-            ).isNotBlank()
+            ).equals("true", ignoreCase = true)
         }
 
     suspend fun submitChallengeScore(challengeId: String, score: Int): Boolean =
@@ -261,18 +263,6 @@ class ConnectHubRepository(
                     .put("p_coins_earned", 0)
             ).isNotBlank()
         }
-
-    suspend fun claimDailySpin(): Result<DailySpinReward> = withContext(Dispatchers.IO) {
-        runCatching {
-            val raw = rpc("claim_daily_spin", JSONObject())
-            val json = JSONObject(raw)
-            DailySpinReward(
-                label = json.optString("label", "Reward claimed"),
-                awardedScore = json.optInt("awardedScore", 0),
-                awardedCoins = json.optInt("awardedCoins", 0)
-            )
-        }
-    }
 
     private fun getArray(path: String): JSONArray {
         val request = baseRequest(path).get().build()
@@ -387,11 +377,11 @@ class ConnectHubRepository(
     private fun parseChallenge(o: JSONObject) = GameChallenge(
         id = o.optString("id"),
         challengerId = o.optString("challenger_id"),
-        challengedId = o.optString("challenged_id"),
+        opponentId = o.optString("opponent_id"),
         gameType = o.optString("game_type"),
         status = o.optString("status"),
         challengerScore = o.optNullableInt("challenger_score"),
-        challengedScore = o.optNullableInt("challenged_score"),
+        opponentScore = o.optNullableInt("opponent_score"),
         winnerId = o.optString("winner_id").takeIf { it.isNotBlank() && it != "null" },
         createdAt = o.optString("created_at")
     )

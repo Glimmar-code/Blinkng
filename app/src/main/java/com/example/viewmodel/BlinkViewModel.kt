@@ -409,6 +409,7 @@ private suspend fun restoreSupabaseSession() {
                 )
 
                 try {
+                    runCatching { supabaseService.setMyPresence(true) }
                     val postsResult = runCatching { postRepository.fetchFeed(isReel = false) }
                         .onFailure { Log.e(TAG, "Post page fetch failed", it) }
                     val reelsResult = runCatching { postRepository.fetchFeed(isReel = true) }
@@ -689,6 +690,8 @@ private suspend fun restoreSupabaseSession() {
                     if (ok) {
                         showToast(successMessage)
                         refreshConnectHub()
+                    } else {
+                        showToast("That request is no longer available.")
                     }
                 }
                 .onFailure {
@@ -765,15 +768,34 @@ private suspend fun restoreSupabaseSession() {
             connectHubRepository.applyToHousingRequest(requestId, message)
         }
 
-    fun challengeUser(userId: String, gameType: String = "trivia") =
+    fun challengeUser(
+        userId: String,
+        gameType: String = ChallengeGameType.GENERAL_KNOWLEDGE.apiName
+    ) =
         runConnectAction("Game challenge sent.") {
             connectHubRepository.challengeUser(userId, gameType)
         }
 
-    fun respondToGameChallenge(challengeId: String, accept: Boolean) =
-        runConnectAction(if (accept) "Challenge accepted." else "Challenge declined.") {
-            connectHubRepository.respondToChallenge(challengeId, accept)
+    fun respondToGameChallenge(challengeId: String, accept: Boolean) {
+        viewModelScope.launch {
+            runCatching { connectHubRepository.respondToChallenge(challengeId, accept) }
+                .onSuccess { updated ->
+                    if (!updated) {
+                        showToast("This challenge is no longer available.")
+                        return@onSuccess
+                    }
+                    showToast(if (accept) "Challenge accepted — game on!" else "Challenge declined.")
+                    if (accept) {
+                        _uiState.value = _uiState.value.copy(feedSubTab = 3)
+                    }
+                    refreshConnectHub()
+                }
+                .onFailure { error ->
+                    Log.e(TAG, "Game challenge response failed", error)
+                    showToast(error.message ?: "Couldn't update the challenge.")
+                }
         }
+    }
 
     fun respondToConnectRequest(kind: String, requestId: String, accept: Boolean) =
         runConnectAction(if (accept) "Request accepted." else "Request declined.") {
@@ -788,25 +810,6 @@ private suspend fun restoreSupabaseSession() {
     fun recordGameResult(gameType: String, score: Int) {
         runConnectAction("Game result synced.") {
             connectHubRepository.recordGameSession(gameType, score)
-        }
-    }
-
-    fun claimDailyGameSpin() {
-        viewModelScope.launch {
-            connectHubRepository.claimDailySpin().fold(
-                onSuccess = { reward ->
-                    showToast("🎉 ${reward.label}")
-                    refreshConnectHub()
-                },
-                onFailure = { error ->
-                    val message = when {
-                        error.message?.contains("DAILY_SPIN_ALREADY_CLAIMED", true) == true ->
-                            "You've already claimed today's spin."
-                        else -> error.message ?: "Couldn't claim today's spin."
-                    }
-                    showToast(message)
-                }
-            )
         }
     }
 
@@ -1009,8 +1012,32 @@ private suspend fun restoreSupabaseSession() {
     fun updateProfile(updated: UserProfile) {
         viewModelScope.launch {
             try {
-                if (profileRepository.updateProfile(updated)) {
-                    val authoritative = profileRepository.fetchCurrent(updated.username) ?: updated
+                val cleanUsername = updated.username.trim().lowercase().removePrefix("@")
+                val cleanName = updated.fullName.trim()
+                if (!cleanUsername.matches(Regex("^[a-z0-9][a-z0-9._-]{1,29}$"))) {
+                    showToast("Use 2–30 lowercase letters, numbers, dots, dashes or underscores for your username.")
+                    return@launch
+                }
+                if (cleanName.length !in 2..60 || cleanName.equals("Blink User", ignoreCase = true)) {
+                    showToast("Please choose a display name between 2 and 60 characters.")
+                    return@launch
+                }
+                val availability = supabaseService.checkProfileIdentity(
+                    username = cleanUsername,
+                    fullName = cleanName,
+                    excludeCurrentUser = true
+                )
+                if (availability?.usernameAvailable == false) {
+                    showToast("That username is already taken. Please choose another one.")
+                    return@launch
+                }
+                if (availability?.fullNameAvailable == false) {
+                    showToast("That display name is already in use. Add a middle name or another identifier.")
+                    return@launch
+                }
+                val normalized = updated.copy(username = cleanUsername, fullName = cleanName)
+                if (profileRepository.updateProfile(normalized)) {
+                    val authoritative = profileRepository.fetchCurrent(normalized.username) ?: normalized
                     _uiState.value = _uiState.value.copy(myProfile = authoritative, isEditProfileOpen = false, viewingProfile = if (_uiState.value.viewingProfile?.username?.equals(authoritative.username, true) == true) authoritative else _uiState.value.viewingProfile)
                     saveLocalProfile(authoritative); persistProfile(authoritative); updateLocalAuthorData(authoritative); showToast("✅ Profile saved successfully.")
                 } else showToast("❌ Failed to update profile.")
@@ -1798,16 +1825,6 @@ private suspend fun restoreSupabaseSession() {
         return result
     }
 
-    suspend fun claimDailySpin(): GameSpinResult? {
-        val result = supabaseService.claimDailySpin()
-        if (result != null) {
-            val live = runCatching { supabaseService.fetchLeaderboard() }
-                .getOrDefault(_uiState.value.leaderboardUsers)
-            _uiState.value = _uiState.value.copy(leaderboardUsers = live)
-        }
-        return result
-    }
-
     fun recordPostView(postId: String) {
         viewModelScope.launch {
             val views = supabaseService.recordPostView(postId, _uiState.value.myProfile.username)
@@ -1866,10 +1883,17 @@ private suspend fun restoreSupabaseSession() {
     fun logout() {
         realtimeManager.disconnect()
         viewModelScope.launch {
+            runCatching { supabaseService.setMyPresence(false) }
             runCatching { authRepository.signOut() }
             SupabaseService.clearSession(); prefs.edit().clear().apply()
             _uiState.value = BlinkUiState(destination = AppDestination.SIGN_IN, isDarkMode = _uiState.value.isDarkMode)
             showToast("Logged out successfully.")
+        }
+    }
+
+    fun updatePresence(online: Boolean) {
+        viewModelScope.launch {
+            runCatching { supabaseService.setMyPresence(online) }
         }
     }
 

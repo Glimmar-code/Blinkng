@@ -20,8 +20,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -30,13 +28,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.VerificationBadge
 import com.example.data.models.LeaderboardUser
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.*
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 data class TriviaQuestion(
     val id: String,
@@ -46,14 +44,6 @@ data class TriviaQuestion(
     val explanation: String,
     val category: String
 )
-
-private enum class GameMode(val apiName: String, val label: String, val emoji: String) {
-    TRIVIA("trivia", "Trivia", "🎓"),
-    MATH("math", "Math", "➗"),
-    LOGIC("logic", "Logic", "🧩"),
-    MEMORY("memory", "Memory", "🧠"),
-    SPEED("speed", "Speed", "⚡")
-}
 
 data class GameLeader(
     val rank: Int,
@@ -82,39 +72,53 @@ fun GameSection(
     onGameClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val coroutineScope = rememberCoroutineScope()
-
     val cardBg = if (isDark) DarkSurface else LightSurface
     val cardBorder = if (isDark) DarkBorder else LightBorder
 
-    var selectedModeName by rememberSaveable { mutableStateOf(GameMode.TRIVIA.name) }
-    val selectedMode = remember(selectedModeName) { GameMode.valueOf(selectedModeName) }
+    var selectedModeName by rememberSaveable { mutableStateOf(ChallengeGameType.GENERAL_KNOWLEDGE.name) }
+    val selectedMode = remember(selectedModeName) {
+        ChallengeGameType.entries.firstOrNull { it.name == selectedModeName }
+            ?: ChallengeGameType.GENERAL_KNOWLEDGE
+    }
     val questions = remember(selectedMode) { questionsForMode(selectedMode) }
 
     var currentQuestionIndex by remember { mutableIntStateOf(0) }
     var selectedOptionIndex by remember { mutableStateOf<Int?>(null) }
     var isAnswerSubmitted by remember { mutableStateOf(false) }
     var roundScore by remember(selectedMode) { mutableIntStateOf(0) }
-    var remainingSeconds by remember(selectedMode, currentQuestionIndex) { mutableIntStateOf(if (selectedMode == GameMode.SPEED) 8 else 0) }
+    var remainingSeconds by remember(selectedMode, currentQuestionIndex) {
+        mutableIntStateOf(selectedMode.timedSeconds ?: 0)
+    }
     var score by remember(connectHub.gameStats.score) { mutableIntStateOf(connectHub.gameStats.score) }
     var streak by remember(connectHub.gameStats.streak) { mutableIntStateOf(connectHub.gameStats.streak) }
-    var coins by remember(connectHub.gameStats.coins) { mutableIntStateOf(connectHub.gameStats.coins) }
-
-    // Spin Wheel State
-    var isSpinning by remember { mutableStateOf(false) }
-    var spinReward by remember { mutableStateOf<String?>(null) }
-    val spinRotation = remember { Animatable(0f) }
+    val coins = connectHub.gameStats.coins
+    var focusPromptIndex by rememberSaveable { mutableIntStateOf(0) }
+    val focusPrompts = remember {
+        listOf(
+            "Recall three key ideas from your last lecture without checking your notes.",
+            "Solve the next question, then explain your reasoning in one clear sentence.",
+            "Choose one weak topic and complete a focused five-minute review.",
+            "Teach a concept aloud as if you were helping a first-year student."
+        )
+    }
 
     val currentQ = questions[currentQuestionIndex % questions.size]
+    val latestActiveChallenge = remember(connectHub.gameChallenges) {
+        connectHub.gameChallenges.firstOrNull {
+            it.status == "accepted" || it.status == "in_progress"
+        }
+    }
     val activeChallenge = remember(connectHub.gameChallenges, selectedMode) {
         connectHub.gameChallenges.firstOrNull {
-            it.status == "accepted" && it.gameType.equals(selectedMode.apiName, true)
+            (it.status == "accepted" || it.status == "in_progress") &&
+                ChallengeGameType.fromApiName(it.gameType) == selectedMode
         }
     }
 
     LaunchedEffect(selectedMode, currentQuestionIndex, isAnswerSubmitted) {
-        if (selectedMode == GameMode.SPEED && !isAnswerSubmitted) {
-            remainingSeconds = 8
+        val timeLimit = selectedMode.timedSeconds
+        if (timeLimit != null && !isAnswerSubmitted) {
+            remainingSeconds = timeLimit
             while (remainingSeconds > 0 && !isAnswerSubmitted) {
                 delay(1_000)
                 remainingSeconds--
@@ -123,6 +127,12 @@ fun GameSection(
                 isAnswerSubmitted = true
                 streak = 0
             }
+        }
+    }
+
+    LaunchedEffect(latestActiveChallenge?.id) {
+        latestActiveChallenge?.let { challenge ->
+            selectedModeName = ChallengeGameType.fromApiName(challenge.gameType).name
         }
     }
 
@@ -247,7 +257,7 @@ fun GameSection(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    GameMode.entries.forEach { mode ->
+                    ChallengeGameType.entries.forEach { mode ->
                         val selected = mode == selectedMode
                         Surface(
                             modifier = Modifier.clickable { selectedModeName = mode.name },
@@ -325,7 +335,7 @@ fun GameSection(
                         }
 
                         Text(
-                            text = if (selectedMode == GameMode.SPEED && !isAnswerSubmitted) {
+                            text = if (selectedMode.timedSeconds != null && !isAnswerSubmitted) {
                                 "⏱ ${remainingSeconds}s"
                             } else {
                                 "Q ${((currentQuestionIndex) % questions.size) + 1} / ${questions.size}"
@@ -379,7 +389,7 @@ fun GameSection(
                                     selectedOptionIndex = index
                                     isAnswerSubmitted = true
                                     if (index == currentQ.correctIndex) {
-                                        val earned = if (selectedMode == GameMode.SPEED) 70 else 50
+                                        val earned = if (selectedMode.timedSeconds != null) 70 else 50
                                         score += earned
                                         roundScore += earned
                                         streak += 1
@@ -480,7 +490,7 @@ fun GameSection(
 
         item { Spacer(modifier = Modifier.height(20.dp)) }
 
-        // Daily Campus Lucky Wheel
+        // A deterministic study prompt keeps the daily experience useful and age-appropriate.
         item {
             Surface(
                 shape = RoundedCornerShape(22.dp),
@@ -491,8 +501,7 @@ fun GameSection(
                     .padding(horizontal = 16.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(18.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    modifier = Modifier.padding(18.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -500,7 +509,7 @@ fun GameSection(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Daily Campus Wheel",
+                            text = "Daily Brain Boost",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground
@@ -510,7 +519,7 @@ fun GameSection(
                             color = BlinkGold.copy(alpha = 0.2f)
                         ) {
                             Text(
-                                text = "Free Daily Spin",
+                                text = "Focus practice",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = BlinkGold,
@@ -521,67 +530,52 @@ fun GameSection(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Animated Wheel Graphic
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(140.dp)
-                            .rotate(spinRotation.value)
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             shape = CircleShape,
-                            color = Color.Transparent,
-                            border = androidx.compose.foundation.BorderStroke(4.dp, Brush.sweepGradient(listOf(BlinkPink, BlinkGold, BlinkPurple, BlinkOnlineGreen, BlinkPink))),
-                            modifier = Modifier.fillMaxSize()
-                        ) {}
-
-                        Icon(
-                            imageVector = Icons.Default.Casino,
-                            contentDescription = "Spin Wheel",
-                            tint = BlinkGold,
-                            modifier = Modifier.size(52.dp)
-                        )
+                            color = BlinkPurple.copy(alpha = .15f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Psychology,
+                                contentDescription = null,
+                                tint = BlinkPurple,
+                                modifier = Modifier.padding(11.dp).size(28.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        AnimatedContent(
+                            targetState = focusPromptIndex,
+                            transitionSpec = {
+                                (fadeIn() + slideInVertically { it / 3 }) togetherWith
+                                    (fadeOut() + slideOutVertically { -it / 3 })
+                            },
+                            label = "brainBoostPrompt"
+                        ) { promptIndex ->
+                            Text(
+                                text = focusPrompts[promptIndex],
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                lineHeight = 19.sp
+                            )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    if (spinReward != null) {
-                        Text(
-                            text = "🎉 You won $spinReward!",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = BlinkOnlineGreen
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     Button(
                         onClick = {
-                            if (!isSpinning) {
-                                isSpinning = true
-                                spinReward = null
-                                coroutineScope.launch {
-                                    val target = spinRotation.value + 1440f + (0..360).random()
-                                    spinRotation.animateTo(
-                                        targetValue = target,
-                                        animationSpec = tween(durationMillis = 2000, easing = FastOutSlowInEasing)
-                                    )
-                                    spinReward = "Reward verified by Blink"
-                                    connectHubActions.claimDailySpin()
-                                    isSpinning = false
-                                }
-                            }
+                            focusPromptIndex = (focusPromptIndex + 1) % focusPrompts.size
                         },
-                        enabled = !isSpinning,
                         shape = RoundedCornerShape(100.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = if (isDark) BlinkCream else BlinkBlack),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(42.dp)
-                            .testTag("spin_wheel_button")
+                            .testTag("next_brain_boost_button")
                     ) {
                         Text(
-                            text = if (isSpinning) "Spinning..." else "Spin Wheel 🎡",
+                            text = "Show another focus prompt",
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
                             color = if (isDark) BlinkBlack else BlinkCream
@@ -712,41 +706,48 @@ fun GameSection(
     }
 }
 
-private fun questionsForMode(mode: GameMode): List<TriviaQuestion> = when (mode) {
-    GameMode.TRIVIA -> listOf(
+private fun questionsForMode(mode: ChallengeGameType): List<TriviaQuestion> = when (mode) {
+    ChallengeGameType.GENERAL_KNOWLEDGE -> listOf(
         TriviaQuestion("t1", "Which is the oldest university in Nigeria, founded in 1948?", listOf("University of Lagos", "University of Ibadan", "Ahmadu Bello University", "University of Nigeria, Nsukka"), 1, "University of Ibadan was established in 1948.", "Campus History"),
         TriviaQuestion("t2", "What does JAMB stand for?", listOf("Joint Admissions and Matriculation Board", "Junior Academic Management Board", "Joint Association of Matriculated Brethren", "Judicial Academic Monitoring Bureau"), 0, "JAMB is the Joint Admissions and Matriculation Board.", "Academics"),
         TriviaQuestion("t3", "Which Nigerian university is situated along the Lagos Lagoon?", listOf("Covenant University", "LASU", "University of Lagos", "Babcock University"), 2, "UNILAG's Akoka campus borders the Lagos Lagoon.", "Campus Life"),
         TriviaQuestion("t4", "What is the motto of Obafemi Awolowo University?", listOf("In Deed and In Truth", "For Learning and Culture", "Character and Sound Knowledge", "Excellence in Action"), 1, "OAU's motto is commonly translated as For Learning and Culture.", "Tradition"),
         TriviaQuestion("t5", "On a 5.0 scale, which classification commonly starts at 4.50?", listOf("Second Class Upper", "First Class Honours", "Distinction Pass", "Merit"), 1, "4.50–5.00 is commonly First Class on a 5-point scale.", "Academics")
     )
-    GameMode.MATH -> listOf(
+    ChallengeGameType.MATH_SPRINT -> listOf(
         TriviaQuestion("m1", "18 × 7 = ?", listOf("116", "126", "136", "146"), 1, "18 × 7 = 126.", "Math Sprint"),
         TriviaQuestion("m2", "144 ÷ 12 = ?", listOf("10", "11", "12", "14"), 2, "144 ÷ 12 = 12.", "Math Sprint"),
         TriviaQuestion("m3", "15% of 200 = ?", listOf("20", "25", "30", "35"), 2, "0.15 × 200 = 30.", "Percentages"),
         TriviaQuestion("m4", "If x + 9 = 23, x = ?", listOf("12", "13", "14", "15"), 2, "23 − 9 = 14.", "Algebra"),
         TriviaQuestion("m5", "√225 = ?", listOf("12", "13", "14", "15"), 3, "15 × 15 = 225.", "Numbers")
     )
-    GameMode.LOGIC -> listOf(
+    ChallengeGameType.LOGIC -> listOf(
         TriviaQuestion("l1", "What comes next: 2, 6, 12, 20, 30, ?", listOf("36", "40", "42", "44"), 2, "Differences are +4,+6,+8,+10,+12.", "Sequence"),
         TriviaQuestion("l2", "All Zips are Nors. Some Nors are Veks. Which is guaranteed?", listOf("Some Zips are Veks", "All Nors are Zips", "All Zips are Nors", "No Veks are Zips"), 2, "Only the original statement that all Zips are Nors is guaranteed.", "Deduction"),
         TriviaQuestion("l3", "Odd one out: 16, 25, 36, 45, 49", listOf("16", "25", "45", "49"), 2, "45 is not a perfect square.", "Pattern"),
         TriviaQuestion("l4", "A clock shows 3:00. What is the angle between the hands?", listOf("30°", "60°", "90°", "120°"), 2, "At 3:00 the hands are 90° apart.", "Spatial"),
         TriviaQuestion("l5", "If CAT → DBU by shifting each letter +1, DOG → ?", listOf("EPH", "EOG", "FPH", "DPI"), 0, "D→E, O→P, G→H.", "Code")
     )
-    GameMode.MEMORY -> listOf(
+    ChallengeGameType.MEMORY -> listOf(
         TriviaQuestion("mry1", "Remember: PURPLE • 7 • STAR. Which number appeared?", listOf("5", "6", "7", "8"), 2, "The sequence contained 7.", "Memory"),
         TriviaQuestion("mry2", "Remember: BOOK • LAMP • TREE. Which item was second?", listOf("Book", "Lamp", "Tree", "Pen"), 1, "Lamp was second.", "Memory"),
         TriviaQuestion("mry3", "Remember: 4 • 9 • 2 • 6. Which came after 9?", listOf("4", "2", "6", "9"), 1, "2 followed 9.", "Memory"),
         TriviaQuestion("mry4", "Remember: RED • BLUE • GOLD. Which color was last?", listOf("Red", "Blue", "Gold", "Green"), 2, "Gold was last.", "Memory"),
         TriviaQuestion("mry5", "Remember: A3 • B8 • C1. What was paired with B?", listOf("1", "3", "8", "9"), 2, "B was paired with 8.", "Memory")
     )
-    GameMode.SPEED -> listOf(
-        TriviaQuestion("s1", "9 + 8 = ?", listOf("15", "16", "17", "18"), 2, "9 + 8 = 17.", "8-second Speed"),
-        TriviaQuestion("s2", "6 × 6 = ?", listOf("30", "32", "36", "42"), 2, "6 × 6 = 36.", "8-second Speed"),
-        TriviaQuestion("s3", "100 − 37 = ?", listOf("53", "63", "67", "73"), 1, "100 − 37 = 63.", "8-second Speed"),
-        TriviaQuestion("s4", "Half of 86 = ?", listOf("41", "42", "43", "44"), 2, "86 ÷ 2 = 43.", "8-second Speed"),
-        TriviaQuestion("s5", "11 × 5 = ?", listOf("50", "55", "60", "65"), 1, "11 × 5 = 55.", "8-second Speed")
+    ChallengeGameType.BRAIN_MIX -> listOf(
+        TriviaQuestion("b1", "What comes next: 3, 6, 12, 24, ?", listOf("30", "36", "42", "48"), 3, "Each number doubles, so 24 becomes 48.", "Pattern Sprint"),
+        TriviaQuestion("b2", "Which word is closest in meaning to concise?", listOf("Brief", "Noisy", "Ancient", "Hidden"), 0, "Concise means brief and clear.", "Word Power"),
+        TriviaQuestion("b3", "If all labs are rooms and this place is a lab, what must be true?", listOf("It is a room", "It is outdoors", "It is empty", "It is a library"), 0, "A lab must be a room under the stated rule.", "Quick Logic"),
+        TriviaQuestion("b4", "Remember 8 • BLUE • K. Which color appeared?", listOf("Gold", "Green", "Blue", "Red"), 2, "Blue was the middle item.", "Memory Flash"),
+        TriviaQuestion("b5", "27 + 16 = ?", listOf("41", "42", "43", "44"), 2, "27 + 16 = 43.", "Math Sprint")
+    )
+    ChallengeGameType.WORD_POWER -> listOf(
+        TriviaQuestion("w1", "Choose the correctly spelled word.", listOf("Accomodate", "Acommodate", "Accommodate", "Acomodate"), 2, "Accommodate has two c's and two m's.", "Spelling"),
+        TriviaQuestion("w2", "What is the opposite of scarce?", listOf("Rare", "Abundant", "Small", "Costly"), 1, "Abundant means available in large quantities.", "Vocabulary"),
+        TriviaQuestion("w3", "Which word completes the analogy: Book is to read as song is to ___?", listOf("Listen", "Write", "Draw", "Count"), 0, "A book is read and a song is listened to.", "Analogy"),
+        TriviaQuestion("w4", "Which word is a noun?", listOf("Quickly", "Create", "Curious", "Knowledge"), 3, "Knowledge names an idea, so it is a noun.", "Grammar"),
+        TriviaQuestion("w5", "Rearrange L I S T E N to form another word.", listOf("Silent", "Tinsel", "Enlist", "All three"), 3, "Silent, tinsel and enlist all use the same letters.", "Anagram")
     )
 }
 

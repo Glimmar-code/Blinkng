@@ -8,7 +8,6 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -28,13 +27,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.HomeWork
 import androidx.compose.material.icons.filled.PersonSearch
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +47,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -60,10 +61,16 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.ConnectRequestItem
+import com.example.data.models.ChallengeGameType
 import com.example.data.models.GameChallenge
 import com.example.data.models.UserProfile
 import com.example.ui.theme.BlinkOnlineGreen
 import com.example.ui.theme.BlinkPink
+import com.example.ui.components.shimmerBackground
+import java.time.Duration
+import java.time.Instant
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.min
 
 data class ConnectHubActions(
@@ -81,8 +88,7 @@ data class ConnectHubActions(
     val respondChallenge: (String, Boolean) -> Unit = { _, _ -> },
     val respondRequest: (String, String, Boolean) -> Unit = { _, _, _ -> },
     val submitChallengeScore: (String, Int) -> Unit = { _, _ -> },
-    val recordGameResult: (String, Int) -> Unit = { _, _ -> },
-    val claimDailySpin: () -> Unit = {}
+    val recordGameResult: (String, Int) -> Unit = { _, _ -> }
 )
 
 private enum class HubForm {
@@ -101,6 +107,10 @@ fun ConnectHubPremiumPanel(
 ) {
     var match by remember { mutableStateOf<Pair<UserProfile, Int>?>(null) }
     var form by rememberSaveable { mutableStateOf(HubForm.NONE) }
+    var hubQuery by rememberSaveable { mutableStateOf("") }
+    var isMatching by remember { mutableStateOf(false) }
+    var challengeTarget by remember { mutableStateOf<UserProfile?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     val candidates = remember(hub.smartMatches, profiles, current) {
         if (hub.smartMatches.isNotEmpty()) {
@@ -117,7 +127,9 @@ fun ConnectHubPremiumPanel(
                         academicLevel = candidate.academicLevel,
                         relationshipStatus = candidate.relationshipStatus,
                         onlineNow = candidate.onlineNow,
-                        lastSeenAt = candidate.lastSeenAt
+                        lastSeenAt = candidate.lastSeenAt,
+                        coreSkills = candidate.commonSkills.toMutableList(),
+                        hobbies = candidate.commonHobbies
                     ) to candidate.compatibilityScore
                 }
             }
@@ -127,6 +139,37 @@ fun ConnectHubPremiumPanel(
                 .filter { it.id.isNotBlank() && it.id != me.id && it.username.isNotBlank() }
                 .sortedByDescending { compatibilityScore(me, it) }
                 .map { it to compatibilityScore(me, it) }
+        }
+    }
+    val filteredRoommates = remember(hub.roommates, hubQuery) {
+        hub.roommates.filter {
+            matchesHubQuery(hubQuery, it.title, it.description, it.location, it.roomType)
+        }
+    }
+    val filteredMentors = remember(hub.mentors, hubQuery) {
+        hub.mentors.filter {
+            matchesHubQuery(hubQuery, it.headline, it.description, it.subjects.joinToString(" "))
+        }
+    }
+    val filteredReadingMates = remember(hub.readingMates, hubQuery) {
+        hub.readingMates.filter {
+            matchesHubQuery(
+                hubQuery,
+                it.courses.joinToString(" "),
+                it.studyStyle,
+                it.preferredLocation,
+                it.description
+            )
+        }
+    }
+    val filteredHousingAgents = remember(hub.housingAgents, hubQuery) {
+        hub.housingAgents.filter {
+            matchesHubQuery(hubQuery, it.businessName, it.bio, it.serviceAreas.joinToString(" "))
+        }
+    }
+    val filteredHousingRequests = remember(hub.housingRequests, hubQuery) {
+        hub.housingRequests.filter {
+            matchesHubQuery(hubQuery, it.title, it.description, it.preferredLocation)
         }
     }
 
@@ -165,17 +208,23 @@ fun ConnectHubPremiumPanel(
                     Button(
                         onClick = {
                             val pool = candidates.take(8)
-                            if (pool.isNotEmpty()) {
-                                val weighted = pool.flatMap { candidate ->
-                                    List((candidate.second / 10).coerceAtLeast(1)) { candidate }
+                            if (pool.isNotEmpty() && !isMatching) {
+                                coroutineScope.launch {
+                                    isMatching = true
+                                    match = null
+                                    delay(450)
+                                    val weighted = pool.flatMap { candidate ->
+                                        List((candidate.second / 10).coerceAtLeast(1)) { candidate }
+                                    }
+                                    match = weighted.random()
+                                    isMatching = false
                                 }
-                                match = weighted.random()
                             }
                         },
-                        enabled = candidates.isNotEmpty(),
+                        enabled = candidates.isNotEmpty() && !isMatching,
                         shape = RoundedCornerShape(100.dp)
                     ) {
-                        Text("Spin")
+                        Text(if (isMatching) "Matching…" else "Spin")
                     }
                 }
 
@@ -184,7 +233,8 @@ fun ConnectHubPremiumPanel(
                     transitionSpec = { (fadeIn() + scaleIn(initialScale = .94f)) togetherWith (fadeOut() + scaleOut(targetScale = .96f)) },
                     label = "smartMatchResult"
                 ) { result ->
-                    result?.let { (person, serverScore) ->
+                    if (result != null) {
+                        val (person, serverScore) = result
                         Column {
                             Spacer(Modifier.height(14.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -195,9 +245,16 @@ fun ConnectHubPremiumPanel(
                                 compatibilityOverride = serverScore,
                                 onProfileClick = { onProfileClick(person.username) },
                                 onMessage = { onMessageUser(person.username, person.fullName, person.avatarUrl) },
-                                onChallenge = { actions.challengeUser(person.id, "trivia") }
+                                onChallenge = { challengeTarget = person }
                             )
                         }
+                    } else if (isMatching) {
+                        Text(
+                            "Finding your strongest campus match…",
+                            modifier = Modifier.padding(top = 14.dp),
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -227,18 +284,34 @@ fun ConnectHubPremiumPanel(
             HubActionChip("Need housing", Icons.Default.HomeWork) { form = HubForm.HOUSING }
         }
 
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(
+            value = hubQuery,
+            onValueChange = { hubQuery = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Search roommates, mentors, courses or areas") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            singleLine = true,
+            shape = RoundedCornerShape(18.dp)
+        )
+
         if (isLoading) {
             Spacer(Modifier.height(10.dp))
-            Text(
-                "Refreshing live Connect Hub…",
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(42.dp)
+                    .shimmerBackground(
+                        shape = RoundedCornerShape(16.dp),
+                        baseColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f),
+                        highlightColor = MaterialTheme.colorScheme.surface.copy(alpha = .95f)
+                    )
             )
         }
 
-        if (hub.roommates.isNotEmpty()) {
+        if (filteredRoommates.isNotEmpty()) {
             HubSectionTitle("Roommate requests", "Students actively searching")
-            hub.roommates.take(3).forEach { listing ->
+            filteredRoommates.take(6).forEach { listing ->
                 val owner = profiles.firstOrNull { it.id == listing.userId }
                 HubListingCard(
                     title = owner?.fullName?.ifBlank { owner.username } ?: listing.title,
@@ -252,9 +325,9 @@ fun ConnectHubPremiumPanel(
             }
         }
 
-        if (hub.mentors.isNotEmpty()) {
+        if (filteredMentors.isNotEmpty()) {
             HubSectionTitle("Mentors", "Senior students and skilled peers")
-            hub.mentors.take(3).forEach { listing ->
+            filteredMentors.take(6).forEach { listing ->
                 val owner = profiles.firstOrNull { it.id == listing.userId }
                 HubListingCard(
                     title = owner?.fullName?.ifBlank { owner.username } ?: listing.headline.ifBlank { "Mentor" },
@@ -268,9 +341,9 @@ fun ConnectHubPremiumPanel(
             }
         }
 
-        if (hub.readingMates.isNotEmpty()) {
+        if (filteredReadingMates.isNotEmpty()) {
             HubSectionTitle("Reading mates", "Find someone to study with")
-            hub.readingMates.take(3).forEach { listing ->
+            filteredReadingMates.take(6).forEach { listing ->
                 val owner = profiles.firstOrNull { it.id == listing.userId }
                 HubListingCard(
                     title = owner?.fullName?.ifBlank { owner.username } ?: "Reading mate",
@@ -289,9 +362,9 @@ fun ConnectHubPremiumPanel(
         val currentIsVerifiedAgent = remember(hub.housingAgents, current?.id) {
             hub.housingAgents.any { it.userId == current?.id && it.verified }
         }
-        if (currentIsVerifiedAgent && hub.housingRequests.isNotEmpty()) {
+        if (currentIsVerifiedAgent && filteredHousingRequests.isNotEmpty()) {
             HubSectionTitle("Students needing housing", "Verified agents can apply to help")
-            hub.housingRequests.take(6).forEach { request ->
+            filteredHousingRequests.take(6).forEach { request ->
                 val student = profiles.firstOrNull { it.id == request.studentId }
                 val budget = listOfNotNull(
                     request.budgetMin?.let { "₦${it.toInt()}" },
@@ -314,9 +387,9 @@ fun ConnectHubPremiumPanel(
             }
         }
 
-        if (hub.housingAgents.isNotEmpty()) {
+        if (filteredHousingAgents.isNotEmpty()) {
             HubSectionTitle("Verified housing agents", "Chat only with reviewed agents")
-            hub.housingAgents.take(3).forEach { agent ->
+            filteredHousingAgents.take(6).forEach { agent ->
                 val owner = profiles.firstOrNull { it.id == agent.userId }
                 HubListingCard(
                     title = agent.businessName,
@@ -332,9 +405,12 @@ fun ConnectHubPremiumPanel(
             }
         }
 
-        if (hub.requests.isNotEmpty()) {
+        val nonGameRequests = remember(hub.requests) {
+            hub.requests.filterNot { it.kind.equals("game", ignoreCase = true) }
+        }
+        if (nonGameRequests.isNotEmpty()) {
             HubSectionTitle("Request inbox", "Incoming and outgoing Connect requests")
-            hub.requests.take(8).forEach { request ->
+            nonGameRequests.take(8).forEach { request ->
                 ConnectRequestCard(
                     request = request,
                     other = profiles.firstOrNull { it.id == request.otherUserId },
@@ -344,9 +420,21 @@ fun ConnectHubPremiumPanel(
             }
         }
 
+        val noListingMatches = filteredRoommates.isEmpty() && filteredMentors.isEmpty() &&
+            filteredReadingMates.isEmpty() && filteredHousingAgents.isEmpty() &&
+            filteredHousingRequests.isEmpty()
+        if (hubQuery.isNotBlank() && noListingMatches) {
+            Text(
+                "No Connect listings match “${hubQuery.trim()}” yet.",
+                modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
+        }
+
         val incoming = remember(hub.gameChallenges, current?.id) {
             hub.gameChallenges.filter {
-                it.challengedId == current?.id && it.status == "pending"
+                it.opponentId == current?.id && it.status == "pending"
             }
         }
         if (incoming.isNotEmpty()) {
@@ -412,6 +500,17 @@ fun ConnectHubPremiumPanel(
             }
         )
     }
+
+    challengeTarget?.let { target ->
+        ChallengeModeDialog(
+            targetName = target.fullName.ifBlank { target.username },
+            onDismiss = { challengeTarget = null },
+            onSelect = { mode ->
+                actions.challengeUser(target.id, mode.apiName)
+                challengeTarget = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -449,15 +548,34 @@ private fun MatchResultCard(
     onChallenge: () -> Unit
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        AsyncImage(
-            model = person.avatarUrl,
-            contentDescription = person.fullName,
-            contentScale = ContentScale.Crop,
+        Box(
             modifier = Modifier
                 .size(62.dp)
                 .clip(CircleShape)
-                .clickable(onClick = onProfileClick)
-        )
+                .clickable(onClick = onProfileClick),
+            contentAlignment = Alignment.Center
+        ) {
+            if (person.avatarUrl.isBlank()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().height(62.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = CircleShape
+                ) {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = person.fullName,
+                        modifier = Modifier.padding(17.dp)
+                    )
+                }
+            } else {
+                AsyncImage(
+                    model = person.avatarUrl,
+                    contentDescription = person.fullName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(62.dp)
+                )
+            }
+        }
         Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -487,10 +605,18 @@ private fun MatchResultCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+            val shared = sharedTraits(current, person)
+            if (shared.isNotEmpty()) {
+                Text(
+                    "In common: ${shared.take(3).joinToString(" • ")}",
+                    fontSize = 10.sp,
+                    color = BlinkPink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Text(
-                if (person.onlineNow) "Active now"
-                else person.lastSeenAt.takeIf { it.isNotBlank() }?.let { "Last seen ${it.replace("T", " ").take(16)}" }
-                    ?: "Offline",
+                presenceLabel(person),
                 fontSize = 10.sp,
                 color = if (person.onlineNow) BlinkOnlineGreen else MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -653,17 +779,57 @@ private fun ChallengeCard(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                challenge.gameType.replaceFirstChar { it.uppercase() },
+                ChallengeGameType.fromApiName(challenge.gameType).label,
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onDecline, modifier = Modifier.weight(1f)) { Text("Decline") }
-                Button(onClick = onAccept, modifier = Modifier.weight(1f)) { Text("Accept") }
+                Button(onClick = onAccept, modifier = Modifier.weight(1f)) { Text("Accept & play") }
             }
         }
     }
+}
+
+@Composable
+private fun ChallengeModeDialog(
+    targetName: String,
+    onDismiss: () -> Unit,
+    onSelect: (ChallengeGameType) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Challenge $targetName", fontWeight = FontWeight.Black) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text(
+                    "Choose a five-question game. Both players receive the same mode.",
+                    fontSize = 11.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                ChallengeGameType.entries.forEach { mode ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelect(mode) },
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(mode.emoji, fontSize = 18.sp)
+                            Spacer(Modifier.width(9.dp))
+                            Text(mode.label, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable
@@ -737,7 +903,44 @@ private fun compatibilityScore(current: UserProfile?, candidate: UserProfile): I
     return score.coerceIn(0, 100)
 }
 
+internal fun presenceLabel(profile: UserProfile): String {
+    if (profile.onlineNow) return "Active now"
+    val lastSeen = profile.lastSeenAt.trim()
+    if (lastSeen.isBlank()) return "Offline"
+    val elapsed = runCatching { Duration.between(Instant.parse(lastSeen), Instant.now()) }.getOrNull()
+        ?: return "Last seen recently"
+    val minutes = elapsed.toMinutes().coerceAtLeast(0)
+    return when {
+        minutes < 1 -> "Last seen just now"
+        minutes < 60 -> "Last seen ${minutes}m ago"
+        minutes < 1_440 -> "Last seen ${elapsed.toHours()}h ago"
+        minutes < 10_080 -> "Last seen ${elapsed.toDays()}d ago"
+        else -> "Last seen over a week ago"
+    }
+}
+
+private fun sharedTraits(current: UserProfile?, candidate: UserProfile): List<String> {
+    val me = current ?: return emptyList()
+    val sharedSkills = me.coreSkills.map { it.trim().lowercase() }.toSet()
+        .intersect(candidate.coreSkills.map { it.trim().lowercase() }.toSet())
+    val sharedHobbies = me.hobbies.map { it.trim().lowercase() }.toSet()
+        .intersect(candidate.hobbies.map { it.trim().lowercase() }.toSet())
+    val academic = buildList {
+        if (same(me.department, candidate.department)) add(candidate.department)
+        if (same(me.university, candidate.university)) add(candidate.university)
+        if (same(me.academicLevel, candidate.academicLevel)) add(candidate.academicLevel)
+    }
+    return (academic + sharedSkills + sharedHobbies)
+        .filter { it.isNotBlank() }
+        .distinct()
+}
+
 private fun same(a: String, b: String): Boolean =
     a.isNotBlank() && b.isNotBlank() &&
         !a.equals("null", true) && !b.equals("null", true) &&
         a.equals(b, ignoreCase = true)
+
+private fun matchesHubQuery(query: String, vararg values: String): Boolean {
+    val clean = query.trim()
+    return clean.isBlank() || values.any { it.contains(clean, ignoreCase = true) }
+}

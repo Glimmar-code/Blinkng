@@ -68,7 +68,8 @@ fun PremiumPullRefreshIndicator(
     state: PullToRefreshState,
     isRefreshing: Boolean,
     modifier: Modifier = Modifier,
-    darkSurface: Boolean = false
+    darkSurface: Boolean = false,
+    refreshingLabel: String = "Updating your feed"
 ) {
     val progress = state.distanceFraction.coerceIn(0f, 1f)
     val refreshThresholdPx = with(LocalDensity.current) { 80.dp.toPx() }
@@ -106,7 +107,7 @@ fun PremiumPullRefreshIndicator(
             ) {
                 Text(
                     text = when {
-                        isRefreshing -> "Updating your feed"
+                        isRefreshing -> refreshingLabel
                         progress >= 1f -> "Release to refresh"
                         else -> "Pull to refresh"
                     },

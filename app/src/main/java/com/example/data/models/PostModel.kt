@@ -166,12 +166,6 @@ data class GameActionResult(
     val bestStreak: Int = 0
 )
 
-data class GameSpinResult(
-    val label: String = "",
-    val awardedScore: Int = 0,
-    val awardedCoins: Int = 0
-)
-
 data class CommentReply(
     val id: String,
     val user: String,

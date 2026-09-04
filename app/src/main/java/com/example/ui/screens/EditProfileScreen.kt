@@ -139,6 +139,12 @@ fun EditProfileScreen(
         )
     }
 
+    var relationshipStatus by remember {
+        mutableStateOf(
+            profile.relationshipStatus.ifBlank { "Private" }
+        )
+    }
+
     var email by remember {
         mutableStateOf(
             profile.email.value
@@ -309,12 +315,13 @@ fun EditProfileScreen(
             faculty,
             department,
             academicLevel,
+            relationshipStatus,
             email,
             phone,
             website
         ).count {
             it.isNotBlank()
-        } * 100 / 13
+        } * 100 / 14
 
     Scaffold(
         topBar = {
@@ -473,6 +480,9 @@ fun EditProfileScreen(
 
                                             graduationYear =
                                                 graduationYear.trim(),
+
+                                            relationshipStatus =
+                                                relationshipStatus,
 
                                             email =
                                                 ContactField(
@@ -845,6 +855,25 @@ fun EditProfileScreen(
                         singleLine =
                             false
                     )
+
+                    Text(
+                        "Connection status",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("Single", "Taken", "Private").forEach { status ->
+                            FilterChip(
+                                selected = relationshipStatus == status,
+                                onClick = { relationshipStatus = status },
+                                label = { Text(status) }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1292,6 +1321,9 @@ fun EditProfileScreen(
 
                                         graduationYear =
                                             graduationYear.trim(),
+
+                                        relationshipStatus =
+                                            relationshipStatus,
 
                                         email =
                                             ContactField(

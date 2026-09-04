@@ -79,6 +79,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        if (viewModel.uiState.value.destination == AppDestination.MAIN) {
+            viewModel.updatePresence(false)
+        }
+        super.onStop()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -310,8 +317,7 @@ fun MainAppContent(
                             },
                             recordGameResult = { gameType, score ->
                                 viewModel.recordGameResult(gameType, score)
-                            },
-                            claimDailySpin = { viewModel.claimDailyGameSpin() }
+                            }
                         ),
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,

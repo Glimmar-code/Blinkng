@@ -27,7 +27,7 @@ import com.example.data.models.CommentReply
 import com.example.data.models.ActivityItem
 import com.example.data.models.NotificationFilter
 import com.example.data.models.GameActionResult
-import com.example.data.models.GameSpinResult
+import com.example.data.models.IdentityAvailability
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Mutex
@@ -860,6 +860,57 @@ fun getCurrentUserId(): String? {
         }
     }
 
+    suspend fun checkProfileIdentity(
+        username: String,
+        fullName: String,
+        excludeCurrentUser: Boolean = false
+    ): IdentityAvailability? = withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject().apply {
+                put("p_username", username.trim())
+                put("p_full_name", fullName.trim())
+                val excludedId = if (excludeCurrentUser) getCurrentUserId() else null
+                put("p_exclude_id", excludedId ?: JSONObject.NULL)
+            }
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/rpc/check_profile_identity",
+                    authenticated = isAuthenticated()
+                ).post(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful || raw.isBlank()) return@withContext null
+                val result = JSONObject(raw)
+                IdentityAvailability(
+                    usernameAvailable = result.optBoolean("username_available", false),
+                    fullNameAvailable = result.optBoolean("full_name_available", false)
+                )
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "PROFILE_IDENTITY_CHECK failed", error)
+            null
+        }
+    }
+
+    suspend fun setMyPresence(online: Boolean): Boolean = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) return@withContext false
+        try {
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/set_my_presence", authenticated = true)
+                    .post(
+                        JSONObject()
+                            .put("p_online", online)
+                            .toString()
+                            .toRequestBody(jsonMediaType)
+                    )
+                    .build()
+            ).use { it.isSuccessful }
+        } catch (error: Exception) {
+            Log.w(TAG, "PRESENCE_UPDATE failed", error)
+            false
+        }
+    }
+
     // ============================================================
     // PROFILE
     // ============================================================
@@ -1352,6 +1403,7 @@ fun getCurrentUserId(): String? {
                 put("featured_link", profile.links.featuredLink); put("featured_link_label", profile.links.featuredLinkLabel)
                 put("favorite_quote", profile.favoriteQuote)
                 put("availability", profile.availability.label)
+                put("relationship_status", profile.relationshipStatus)
                 put("core_skills", JSONArray(profile.coreSkills)); put("hobbies", JSONArray(profile.hobbies)); put("languages", JSONArray(profile.languages))
                 put("updated_at", nowIso())
             }
@@ -3470,32 +3522,6 @@ suspend fun uploadPostMedia(
                 null
             }
         }
-
-    suspend fun claimDailySpin(): GameSpinResult? = withContext(Dispatchers.IO) {
-        try {
-            executeRequest(
-                newRequestBuilder("/rest/v1/rpc/claim_daily_spin", true)
-                    .post("{}".toRequestBody(jsonMediaType))
-                    .build()
-            ).use { response ->
-                val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    throw IllegalStateException(parseSupabaseError(raw, "Daily spin is unavailable."))
-                }
-                val obj = if (raw.trim().startsWith("[")) {
-                    JSONArray(raw).optJSONObject(0) ?: JSONObject()
-                } else JSONObject(if (raw.isBlank()) "{}" else raw)
-                GameSpinResult(
-                    label = obj.optString("label", "Reward claimed"),
-                    awardedScore = obj.optInt("awardedScore", 0),
-                    awardedCoins = obj.optInt("awardedCoins", 0)
-                )
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "claimDailySpin failed", e)
-            null
-        }
-    }
 
     suspend fun activateMarketplaceProfile(storeName: String): Boolean = withContext(Dispatchers.IO) {
         try {

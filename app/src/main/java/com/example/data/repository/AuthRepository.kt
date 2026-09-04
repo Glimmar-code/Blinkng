@@ -37,8 +37,21 @@ class AuthRepository(private val context: Context, private val supabaseService: 
     private val googleRedirect = "blink://auth/callback"
 
     suspend fun signUpWithEmail(email: String, password: String, username: String, fullName: String? = null, faculty: String = "SIMME"): AuthResult = withContext(Dispatchers.IO) {
-        val cleanEmail = email.trim().lowercase(); val cleanUsername = username.trim().lowercase().replace("@", ""); val cleanName = fullName?.trim()?.ifBlank { null } ?: cleanUsername.replace(".", " ")
+        val cleanEmail = email.trim().lowercase(); val cleanUsername = username.trim().lowercase().removePrefix("@"); val cleanName = fullName?.trim()?.ifBlank { null } ?: cleanUsername.replace(".", " ")
         if (cleanEmail.isBlank() || password.isBlank() || cleanUsername.isBlank()) return@withContext AuthResult.failure("Please complete all required fields.")
+        if (!cleanUsername.matches(Regex("^[a-z0-9][a-z0-9._-]{1,29}$"))) {
+            return@withContext AuthResult.failure("Use 2–30 lowercase letters, numbers, dots, dashes or underscores for your username.")
+        }
+        if (cleanName.length !in 2..60 || cleanName.equals("Blink User", ignoreCase = true)) {
+            return@withContext AuthResult.failure("Please choose a display name between 2 and 60 characters.")
+        }
+        val availability = supabaseService.checkProfileIdentity(cleanUsername, cleanName)
+        if (availability?.usernameAvailable == false) {
+            return@withContext AuthResult.failure("That username is already taken. Please choose another one.")
+        }
+        if (availability?.fullNameAvailable == false) {
+            return@withContext AuthResult.failure("That display name is already in use. Add a middle name or another identifier.")
+        }
         try { val result = supabaseService.signUpUser(cleanEmail, password, cleanUsername, cleanName, faculty); if (result.isSuccess) { val profile = result.getOrThrow(); persistSession(profile); _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken()); AuthResult.success(profile) } else AuthResult.failure(result.exceptionOrNull()?.message ?: "Sign up failed.") } catch (e: Exception) { Log.e("AuthRepository", "signUpWithEmail error", e); AuthResult.failure(e.message ?: "Sign up failed.") }
     }
 

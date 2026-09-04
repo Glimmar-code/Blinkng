@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -39,6 +41,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +63,7 @@ import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.VerifiedMark
+import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.theme.BlinkOnlineGreen
 
 private enum class LivePeopleFilter(val label: String) {
@@ -67,6 +72,7 @@ private enum class LivePeopleFilter(val label: String) {
     ONLINE("Online")
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectSection(
     profiles: List<UserProfile>,
@@ -89,6 +95,7 @@ fun ConnectSection(
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf(LivePeopleFilter.ALL) }
+    val pullToRefreshState = rememberPullToRefreshState()
 
     val current = remember(profiles, currentUsername) {
         profiles.firstOrNull { it.username.equals(currentUsername, ignoreCase = true) }
@@ -127,6 +134,7 @@ fun ConnectSection(
             matchesQuery && matchesFilter
         }
     }
+    val activeNowCount = remember(liveProfiles) { liveProfiles.count { it.onlineNow } }
 
     Column(
         modifier = modifier
@@ -150,10 +158,24 @@ fun ConnectSection(
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 120.dp)
+        PullToRefreshBox(
+            isRefreshing = isConnectHubLoading,
+            onRefresh = connectHubActions.refresh,
+            state = pullToRefreshState,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            indicator = {
+                PremiumPullRefreshIndicator(
+                    state = pullToRefreshState,
+                    isRefreshing = isConnectHubLoading,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    refreshingLabel = "Updating Connect Hub"
+                )
+            }
         ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 120.dp)
+            ) {
             item {
                 Row(
                     modifier = Modifier
@@ -179,7 +201,7 @@ fun ConnectSection(
                         color = BlinkOnlineGreen.copy(alpha = .13f)
                     ) {
                         Text(
-                            "${liveProfiles.size} live",
+                            "$activeNowCount active",
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             color = BlinkOnlineGreen,
                             fontSize = 11.sp,
@@ -261,6 +283,7 @@ fun ConnectSection(
                         }
                     )
                 }
+            }
             }
         }
     }
@@ -475,13 +498,7 @@ private fun LiveProfileCard(
                     }
 
                     Text(
-                        text = if (profile.onlineNow) {
-                            "Active now"
-                        } else {
-                            profile.lastSeenAt.takeIf { it.isNotBlank() }
-                                ?.let { "Last seen ${it.replace("T", " ").take(16)}" }
-                                ?: "Offline"
-                        },
+                        text = presenceLabel(profile),
                         fontSize = 10.sp,
                         color = if (profile.onlineNow) BlinkOnlineGreen
                         else MaterialTheme.colorScheme.onSurfaceVariant

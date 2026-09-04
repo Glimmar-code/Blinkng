@@ -57,14 +57,45 @@ data class HousingRequestListing(
 data class GameChallenge(
     val id: String,
     val challengerId: String,
-    val challengedId: String,
+    val opponentId: String,
     val gameType: String,
     val status: String,
     val challengerScore: Int? = null,
-    val challengedScore: Int? = null,
+    val opponentScore: Int? = null,
     val winnerId: String? = null,
     val createdAt: String = ""
 )
+
+enum class ChallengeGameType(
+    val apiName: String,
+    val label: String,
+    val emoji: String,
+    val timedSeconds: Int? = null
+) {
+    BRAIN_MIX("brain_mix", "Brain Mix", "✨", 10),
+    MATH_SPRINT("math_sprint", "Math Sprint", "➗"),
+    LOGIC("logic", "Logic Lab", "🧩"),
+    MEMORY("memory", "Memory Flash", "🧠"),
+    WORD_POWER("word_power", "Word Power", "🔤"),
+    GENERAL_KNOWLEDGE("general_knowledge", "Quick Quiz", "🎓");
+
+    companion object {
+        fun fromApiName(value: String): ChallengeGameType = when (value.lowercase()) {
+            "trivia" -> GENERAL_KNOWLEDGE
+            "math" -> MATH_SPRINT
+            "speed" -> BRAIN_MIX
+            else -> entries.firstOrNull { it.apiName.equals(value, ignoreCase = true) }
+                ?: GENERAL_KNOWLEDGE
+        }
+    }
+}
+
+data class IdentityAvailability(
+    val usernameAvailable: Boolean,
+    val fullNameAvailable: Boolean
+) {
+    val isAvailable: Boolean get() = usernameAvailable && fullNameAvailable
+}
 
 data class GameProfileStats(
     val score: Int = 0,
@@ -111,10 +142,4 @@ data class ConnectHubSnapshot(
     val smartMatches: List<SmartMatchCandidate> = emptyList(),
     val requests: List<ConnectRequestItem> = emptyList(),
     val gameStats: GameProfileStats = GameProfileStats()
-)
-
-data class DailySpinReward(
-    val label: String,
-    val awardedScore: Int = 0,
-    val awardedCoins: Int = 0
 )
