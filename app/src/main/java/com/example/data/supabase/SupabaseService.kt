@@ -171,6 +171,51 @@ class SupabaseService {
     private val anonKey =
         SupabaseConfig.anonKey
 
+    /**
+     * Records today's authenticated app activity and returns the canonical public
+     * streak. The RPC is idempotent for the same UTC day and resets after a missed day.
+     */
+    suspend fun touchDailyStreak(): Int? = withContext(Dispatchers.IO) {
+        try {
+            val request = newRequestBuilder("/rest/v1/rpc/touch_daily_streak")
+                .post("{}".toRequestBody(jsonMediaType))
+                .build()
+
+            executeRequest(request).use { response ->
+                val body = response.body?.string().orEmpty().trim()
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "DAILY_STREAK failed status=${response.code} body=$body")
+                    return@withContext null
+                }
+                body.trim('\"').toIntOrNull()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "DAILY_STREAK exception", e)
+            null
+        }
+    }
+
+    /** Owner-only balance. RLS prevents another authenticated user from reading it. */
+    suspend fun fetchMyBlinkCoinBalance(): Long = withContext(Dispatchers.IO) {
+        try {
+            val request = newRequestBuilder("/rest/v1/rpc/get_my_blink_coin_balance")
+                .post("{}".toRequestBody(jsonMediaType))
+                .build()
+
+            executeRequest(request).use { response ->
+                val body = response.body?.string().orEmpty().trim()
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "BLINK_COIN_BALANCE failed status=${response.code} body=$body")
+                    return@withContext 0L
+                }
+                body.trim('\"').toBigDecimalOrNull()?.toLong() ?: 0L
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "BLINK_COIN_BALANCE exception", e)
+            0L
+        }
+    }
+
     // ============================================================
     // HTTP
     // ============================================================

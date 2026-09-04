@@ -118,6 +118,7 @@ class MainActivity : ComponentActivity() {
                         avatarUrl = uiState.myProfile.avatarUrl
                     )
                     BlinkFirebaseMessagingService.syncCurrentToken(this@MainActivity)
+                    viewModel.refreshProfileRewards()
                     if (
                         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                         ContextCompat.checkSelfPermission(
@@ -576,6 +577,9 @@ fun MainAppContent(
                     onProfileClick = { viewModel.openProfile(it) },
                     onMarketItemClick = { viewModel.openProductDetail(it) },
                     onOpenGetVerified = { viewModel.openGetVerified(true) },
+                    blinkCoinBalance = if (isMyProfile) uiState.blinkCoinBalance else 0L,
+                    onWatchAdForCoins = { viewModel.watchAdForBlinkCoins() },
+                    onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
                     isDark = uiState.isDarkMode
                 )
             }

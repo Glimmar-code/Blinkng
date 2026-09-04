@@ -97,6 +97,9 @@ fun ProfileScreen(
     onProfileClick: (String) -> Unit,
     onMarketItemClick: (MarketItem) -> Unit,
     onOpenGetVerified: () -> Unit = {},
+    blinkCoinBalance: Long = 0L,
+    onWatchAdForCoins: () -> Unit = {},
+    onBuyBlinkCoins: () -> Unit = {},
     isDark: Boolean,
     onFollowChanged: (Boolean) -> Unit = {},
     onRefreshProfile: () -> Unit = {}
@@ -106,6 +109,7 @@ fun ProfileScreen(
     var showShareSheet by rememberSaveable { mutableStateOf(false) }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
+    var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
 
     // Entrance choreography — content reveals itself once, on first composition.
@@ -279,18 +283,11 @@ fun ProfileScreen(
                                 testTag = "profile_back_btn"
                             )
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                CircleToolbarButton(
-                                    icon = Icons.Default.Share,
-                                    contentDescription = "Share profile",
-                                    onClick = { showShareSheet = true }
-                                )
-                                CircleToolbarButton(
-                                    icon = Icons.Default.MoreVert,
-                                    contentDescription = "More profile options",
-                                    onClick = { showMoreSheet = true }
-                                )
-                            }
+                            CircleToolbarButton(
+                                icon = Icons.Default.MoreVert,
+                                contentDescription = "More profile options",
+                                onClick = { showMoreSheet = true }
+                            )
                         }
 
                         AnimatedVisibility(
@@ -458,12 +455,29 @@ fun ProfileScreen(
                                     fontWeight = FontWeight.Black,
                                     color = textPrimary
                                 )
-                                Spacer(modifier = Modifier.width(7.dp))
-                                AnimatedVisibility(
-                                    visible = profile.verificationBadge != VerificationBadge.NONE,
-                                    enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn()
-                                ) {
+                                if (profile.verificationBadge != VerificationBadge.NONE) {
+                                    Spacer(modifier = Modifier.width(7.dp))
                                     VerifiedMark(badge = profile.verificationBadge, size = 20.dp)
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(100.dp),
+                                    color = BlinkPink.copy(alpha = 0.10f),
+                                    border = BorderStroke(1.dp, BlinkPink.copy(alpha = 0.28f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("🔥", fontSize = 12.sp)
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "${profile.dailyStreak}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = BlinkPink
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -530,60 +544,6 @@ fun ProfileScreen(
                         Spacer(modifier = Modifier.height(14.dp))
 
                         // ==========================================================
-                        // QUICK ACTIONS
-                        // ==========================================================
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            item {
-                                OutlinePill(
-                                    icon = Icons.Default.Link,
-                                    text = "Share profile",
-                                    onClick = { showShareSheet = true }
-                                )
-                            }
-
-                            item {
-                                OutlinePill(
-                                    icon = Icons.Default.ContentCopy,
-                                    text = "Copy username",
-                                    onClick = {
-                                        clipboard.setText(AnnotatedString("@${profile.username}"))
-                                        Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
-                                    }
-                                )
-                            }
-
-                            if (profile.links.website.isNotBlank()) {
-                                item {
-                                    OutlinePill(
-                                        icon = Icons.Default.Language,
-                                        text = "Website",
-                                        onClick = { openExternalUrl(context, profile.links.website) }
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // ==========================================================
-                        // COMPLETION CARD
-                        // ==========================================================
-                        AnimatedVisibility(
-                            visible = isMe && profileCompletion < 100,
-                            enter = fadeIn() + expandVertically(),
-                            exit = fadeOut() + shrinkVertically()
-                        ) {
-                            Column {
-                                ProfileCompletionCard(
-                                    completion = profileCompletion,
-                                    animate = contentVisible,
-                                    onClick = { onEditProfileClick() }
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                            }
-                        }
-
-                        // ==========================================================
                         // STATS & RANKS
                         // ==========================================================
                         Surface(
@@ -612,7 +572,7 @@ fun ProfileScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Daily Streak, World Rank & Campus Rank Showcase Card
+                        // Campus + world rank showcase. The daily streak is now public beside the name.
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(18.dp),
@@ -626,17 +586,6 @@ fun ProfileScreen(
                                 horizontalArrangement = Arrangement.SpaceEvenly,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("🔥", fontSize = 16.sp)
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("${profile.dailyStreak}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkPink)
-                                    }
-                                    Text("Daily Streak", fontSize = 9.5.sp, color = textSecondary)
-                                }
-
-                                DividerMetric()
-
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text("🏛️", fontSize = 15.sp)
@@ -655,6 +604,84 @@ fun ProfileScreen(
                                         Text("#${profile.worldRank}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkBlue)
                                     }
                                     Text("World Rank", fontSize = 9.5.sp, color = textSecondary)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Requested profile actions live directly below the Posts/Campus boxes.
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            item {
+                                OutlinePill(
+                                    icon = Icons.Default.Link,
+                                    text = "Share profile",
+                                    onClick = { showShareSheet = true }
+                                )
+                            }
+                            item {
+                                OutlinePill(
+                                    icon = Icons.Default.ContentCopy,
+                                    text = "Copy username",
+                                    onClick = {
+                                        clipboard.setText(AnnotatedString("@${profile.username}"))
+                                        Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
+                            if (isMe) {
+                                item {
+                                    OutlinePill(
+                                        icon = if (profileCompletion >= 100) Icons.Default.CheckCircle else Icons.Default.AutoAwesome,
+                                        text = if (profileCompletion >= 100) "Profile complete" else "Complete profile ${profileCompletion}%",
+                                        onClick = onEditProfileClick
+                                    )
+                                }
+                            }
+                            if (profile.links.website.isNotBlank()) {
+                                item {
+                                    OutlinePill(
+                                        icon = Icons.Default.Language,
+                                        text = "Website",
+                                        onClick = { openExternalUrl(context, profile.links.website) }
+                                    )
+                                }
+                            }
+                        }
+
+                        if (isMe) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(18.dp),
+                                color = cardBg,
+                                border = BorderStroke(1.dp, BlinkGold.copy(alpha = 0.42f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(shape = CircleShape, color = BlinkGold.copy(alpha = 0.14f)) {
+                                        Text("🪙", fontSize = 22.sp, modifier = Modifier.padding(9.dp))
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Blink Coin", fontSize = 13.sp, fontWeight = FontWeight.Black, color = textPrimary)
+                                        Text(
+                                            "$blinkCoinBalance coins • Private",
+                                            fontSize = 10.sp,
+                                            color = textSecondary
+                                        )
+                                    }
+                                    FilledTonalButton(
+                                        onClick = { showEarnCoinDialog = true },
+                                        shape = RoundedCornerShape(100.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)
+                                    ) {
+                                        Icon(Icons.Default.AddCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text("Earn coin", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -847,6 +874,68 @@ fun ProfileScreen(
                         .aspectRatio(1f)
                         .clip(CircleShape)
                 )
+            }
+        )
+    }
+
+    // ================================================================
+    // EARN BLINK COIN — private owner action
+    // ================================================================
+    if (showEarnCoinDialog && isMe) {
+        AlertDialog(
+            onDismissRequest = { showEarnCoinDialog = false },
+            title = { Text("Earn Blink Coin", fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showEarnCoinDialog = false
+                                onWatchAdForCoins()
+                            },
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(13.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.PlayCircle, contentDescription = null, tint = BlinkPink)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("Watch ad", fontWeight = FontWeight.Bold)
+                                Text("Watch a rewarded ad to earn coins", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showEarnCoinDialog = false
+                                onBuyBlinkCoins()
+                            },
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(13.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = BlinkGold)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("Buy", fontWeight = FontWeight.Bold)
+                                Text("Get Blink Coin with Google Play", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showEarnCoinDialog = false }) { Text("Close") }
             }
         )
     }

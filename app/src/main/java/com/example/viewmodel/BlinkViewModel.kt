@@ -87,6 +87,7 @@ data class BlinkUiState(
     val feedErrorMessage: String? = null,
     val isCreatingPost: Boolean = false,
     val pendingMessageCount: Int = 0,
+    val blinkCoinBalance: Long = 0L,
     val discoverProfiles: List<UserProfile> = emptyList(),
     val discoverPosts: List<FeedPost> = emptyList(),
     val isDiscoverSearching: Boolean = false,
@@ -505,6 +506,59 @@ private suspend fun restoreSupabaseSession() {
         // Local-only entries are pending/new chats and should stay visible at the top
         // until Supabase returns their real conversation id.
         return localOnly + server
+    }
+
+
+    fun refreshProfileRewards() {
+        val before = _uiState.value
+        if (!before.isOnline || before.myProfile.id.isBlank()) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val streak = runCatching { supabaseService.touchDailyStreak() }
+                .onFailure { Log.w(TAG, "Daily streak refresh failed", it) }
+                .getOrNull()
+            val balance = runCatching { supabaseService.fetchMyBlinkCoinBalance() }
+                .onFailure { Log.w(TAG, "Blink Coin balance refresh failed", it) }
+                .getOrDefault(before.blinkCoinBalance)
+
+            withContext(Dispatchers.Main) {
+                val latest = _uiState.value
+                val currentMe = latest.myProfile
+                if (currentMe.id.isBlank()) return@withContext
+
+                val updatedMe = streak?.let { currentMe.copy(dailyStreak = it) } ?: currentMe
+                val updatedProfiles = latest.profiles.map { candidate ->
+                    if (
+                        candidate.id == updatedMe.id ||
+                        candidate.username.equals(updatedMe.username, ignoreCase = true)
+                    ) updatedMe else candidate
+                }
+                val updatedViewing = latest.viewingProfile?.let { candidate ->
+                    if (
+                        candidate.id == updatedMe.id ||
+                        candidate.username.equals(updatedMe.username, ignoreCase = true)
+                    ) updatedMe else candidate
+                }
+
+                _uiState.value = latest.copy(
+                    myProfile = updatedMe,
+                    profiles = updatedProfiles,
+                    viewingProfile = updatedViewing,
+                    blinkCoinBalance = balance
+                )
+                saveLocalProfile(updatedMe)
+                persistProfile(updatedMe)
+                persistExtendedCache()
+            }
+        }
+    }
+
+    fun watchAdForBlinkCoins() {
+        showToast("Rewarded ads need an ad provider configured before coins can be granted.")
+    }
+
+    fun buyBlinkCoins() {
+        showToast("Blink Coin purchases need Google Play Billing products configured first.")
     }
 
     fun refreshIfStale(maxAgeMillis: Long = 60_000L) {
