@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -105,6 +106,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -147,6 +149,7 @@ import com.example.ui.theme.MessagePalette
 import com.example.ui.theme.MessageThemeMode
 import com.example.ui.theme.messagePalette
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 private const val MESSAGE_PREFERENCES = "blink_message_preferences"
@@ -223,7 +226,7 @@ fun PremiumMessagesScreen(
 
     BackHandler(enabled = activeCall != null) { activeCall = null }
     BackHandler(enabled = activeCall == null && activeConversation != null) {
-        if (isConversationFullScreen) onConversationFullScreenChange(false) else onCloseConversation()
+        onCloseConversation()
     }
 
     BlinkMessageTheme(messageTheme) { palette ->
@@ -245,25 +248,51 @@ fun PremiumMessagesScreen(
                     }
                 )
             } else if (activeConversation != null) {
-                PremiumMessagesMasterDetail(
-                    conversations = conversations,
-                    activeConversation = activeConversation,
-                    palette = palette,
-                    isFullScreen = isConversationFullScreen,
-                    onFullScreenChange = onConversationFullScreenChange,
-                    onOpenConversation = onOpenConversation,
-                    onCloseConversation = onCloseConversation,
-                    onSendMessage = onSendMessage,
-                    onSendVideo = onSendVideo,
-                    onRetryMessage = onRetryMessage,
-                    interactionActions = interactionActions,
-                    onProfileClick = onProfileClick,
-                    onStartCall = { conversation, kind ->
-                        activeCall = MessageCallState(conversation, kind)
-                        launchSecureCall(context, conversation, kind)
-                    },
-                    isConnected = isConnected
-                )
+                // PREMIUM_CHAT_DIRECT_RETURN_V2
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .blur(if (isConversationFullScreen) 5.dp else 10.dp)
+                            .graphicsLayer {
+                                alpha = if (isConversationFullScreen) .84f else .74f
+                            }
+                    ) {
+                        PremiumMessagesHome(
+                            conversations = conversations,
+                            stories = stories,
+                            myAvatar = myAvatar,
+                            myName = myName,
+                            palette = palette,
+                            onOpenConversation = onOpenConversation,
+                            onProfileClick = onProfileClick,
+                            onStoryClick = onStoryClick,
+                            onAddStoryClick = onAddStoryClick,
+                            onOpenAppearance = { showAppearanceSheet = true },
+                            isConnected = isConnected
+                        )
+                    }
+
+                    PremiumMessagesMasterDetail(
+                        conversations = conversations,
+                        activeConversation = activeConversation,
+                        palette = palette,
+                        isFullScreen = isConversationFullScreen,
+                        onFullScreenChange = onConversationFullScreenChange,
+                        onOpenConversation = onOpenConversation,
+                        onCloseConversation = onCloseConversation,
+                        onSendMessage = onSendMessage,
+                        onSendVideo = onSendVideo,
+                        onRetryMessage = onRetryMessage,
+                        interactionActions = interactionActions,
+                        onProfileClick = onProfileClick,
+                        onStartCall = { conversation, kind ->
+                            activeCall = MessageCallState(conversation, kind)
+                            launchSecureCall(context, conversation, kind)
+                        },
+                        isConnected = isConnected
+                    )
+                }
             } else {
                 PremiumMessagesHome(
                     conversations = conversations,
@@ -321,13 +350,18 @@ private fun PremiumMessagesMasterDetail(
 ) {
     val density = LocalDensity.current
     val swipeThresholdPx = remember(density) { with(density) { 72.dp.toPx() } }
+    val gestureScope = rememberCoroutineScope()
 
-    MessageBackground(palette) {
+    Box(modifier = Modifier.fillMaxSize()) {
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .semantics { contentDescription = "Chat drawer" }
         ) {
+            val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
+            val dragOffset = remember(activeConversation.partnerUsername, isFullScreen, widthPx) {
+                Animatable(0f)
+            }
             val railWidth = (maxWidth * .20f).coerceIn(68.dp, 92.dp)
             val targetPanelWidth = if (isFullScreen) maxWidth else maxWidth - railWidth
             val panelWidth by animateDpAsState(
@@ -368,16 +402,53 @@ private fun PremiumMessagesMasterDetail(
                     .align(Alignment.CenterEnd)
                     .width(panelWidth)
                     .fillMaxHeight()
-                    .pointerInput(isFullScreen, activeConversation.partnerUsername) {
+                    .graphicsLayer { translationX = dragOffset.value }
+                    .pointerInput(isFullScreen, activeConversation.partnerUsername, widthPx) {
                         var totalDrag = 0f
                         detectHorizontalDragGestures(
                             onDragStart = { totalDrag = 0f },
-                            onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
-                            onDragCancel = { totalDrag = 0f },
+                            onHorizontalDrag = { change, dragAmount ->
+                                totalDrag += dragAmount
+                                if (dragAmount > 0f || dragOffset.value > 0f) {
+                                    change.consume()
+                                    val next = (dragOffset.value + dragAmount).coerceIn(0f, widthPx)
+                                    gestureScope.launch { dragOffset.snapTo(next) }
+                                }
+                            },
+                            onDragCancel = {
+                                totalDrag = 0f
+                                gestureScope.launch {
+                                    dragOffset.animateTo(
+                                        0f,
+                                        spring(
+                                            dampingRatio = Spring.DampingRatioNoBouncy,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        )
+                                    )
+                                }
+                            },
                             onDragEnd = {
                                 when {
-                                    isFullScreen && totalDrag > swipeThresholdPx -> onFullScreenChange(false)
-                                    !isFullScreen && totalDrag < -swipeThresholdPx -> onFullScreenChange(true)
+                                    dragOffset.value >= swipeThresholdPx -> gestureScope.launch {
+                                        dragOffset.animateTo(
+                                            widthPx,
+                                            tween(190, easing = FastOutSlowInEasing)
+                                        )
+                                        onCloseConversation()
+                                    }
+                                    !isFullScreen && totalDrag < -swipeThresholdPx -> {
+                                        gestureScope.launch { dragOffset.snapTo(0f) }
+                                        onFullScreenChange(true)
+                                    }
+                                    else -> gestureScope.launch {
+                                        dragOffset.animateTo(
+                                            0f,
+                                            spring(
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            )
+                                        )
+                                    }
                                 }
                                 totalDrag = 0f
                             }
@@ -411,9 +482,7 @@ private fun PremiumMessagesMasterDetail(
                         conversation = displayedConversation,
                         allConversations = conversations,
                         palette = palette,
-                        onBack = {
-                            if (isFullScreen) onFullScreenChange(false) else onCloseConversation()
-                        },
+                        onBack = { onCloseConversation() },
                         onSend = { content, replyTo ->
                             onSendMessage(displayedConversation.partnerUsername, content, replyTo)
                         },
@@ -454,14 +523,24 @@ private fun ConversationSwitchRail(
     onOpenConversation: (String) -> Unit,
     onCloseConversation: () -> Unit
 ) {
-    val remaining = remember(conversations, selectedPartner) {
-        conversations.filterNot {
+    val railConversations = remember(conversations, selectedPartner) {
+        val selected = conversations.firstOrNull {
             it.partnerUsername.equals(selectedPartner, ignoreCase = true)
+        }
+        buildList {
+            selected?.let(::add)
+            addAll(
+                conversations.filterNot {
+                    it.partnerUsername.equals(selectedPartner, ignoreCase = true)
+                }
+            )
         }
     }
 
     Surface(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(role = Role.Button, onClick = onCloseConversation),
         color = palette.glass.copy(alpha = if (palette.isLight) .90f else .72f),
         border = BorderStroke(1.dp, palette.border)
     ) {
@@ -472,13 +551,6 @@ private fun ConversationSwitchRail(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.height(8.dp))
-            GlassIconButton(
-                icon = Icons.Default.ArrowBack,
-                contentDescription = "Back to chats",
-                palette = palette,
-                size = 40.dp,
-                onClick = onCloseConversation
-            )
             Text(
                 text = "Chats",
                 color = palette.textSecondary,
@@ -494,7 +566,7 @@ private fun ConversationSwitchRail(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(remaining, key = { "switch_${it.id}" }) { conversation ->
+                items(railConversations, key = { "switch_${it.id}" }) { conversation ->
                     Box(
                         modifier = Modifier
                             .size(54.dp)
@@ -503,13 +575,18 @@ private fun ConversationSwitchRail(
                             },
                         contentAlignment = Alignment.Center
                     ) {
+                        val selected = conversation.partnerUsername.equals(
+                            selectedPartner,
+                            ignoreCase = true
+                        )
                         RingAvatar(
                             url = conversation.partnerAvatar,
                             name = conversation.partnerName,
                             palette = palette,
                             size = 48.dp,
                             online = conversation.isOnline,
-                            emphasizeRing = conversation.unreadCount > 0
+                            emphasizeRing = selected || conversation.unreadCount > 0,
+                            modifier = if (selected) Modifier else Modifier.blur(1.8.dp)
                         )
                         if (conversation.unreadCount > 0) {
                             Badge(
@@ -1055,8 +1132,11 @@ private fun PremiumChatDetail(
         showEmojiRail = false
     }
 
-    LaunchedEffect(visibleMessages.size) {
-        if (visibleMessages.isNotEmpty()) listState.animateScrollToItem(visibleMessages.size)
+    val latestVisibleMessageId = visibleMessages.lastOrNull()?.id
+    LaunchedEffect(conversation.partnerUsername, latestVisibleMessageId) {
+        if (visibleMessages.isNotEmpty()) {
+            listState.animateScrollToItem(visibleMessages.lastIndex)
+        }
     }
 
     MessageBackground(palette) {
@@ -1147,7 +1227,6 @@ private fun PremiumChatDetail(
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(11.dp)
                 ) {
-                    item(key = "today_divider") { DayDivider("Today", palette) }
                     items(visibleMessages, key = { it.id }) { message ->
                         val replyTarget = message.replyToMessageId?.let { replyId ->
                             conversation.messages.firstOrNull { it.id == replyId }

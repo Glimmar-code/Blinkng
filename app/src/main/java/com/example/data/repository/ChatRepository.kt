@@ -268,9 +268,6 @@ class ChatRepository(
                 if (validReplyId != null) {
                     runCatching { setMessageReply(messageId, validReplyId) }
                 }
-                SupabaseService.accessToken()?.takeIf { it.isNotBlank() }?.let { currentToken ->
-                    runCatching { triggerMessagePush(messageId, currentToken) }
-                }
                 Result.success(
                     ChatMessage(
                         id = messageId,
@@ -289,6 +286,14 @@ class ChatRepository(
         } catch (e: Exception) {
             Result.failure(Exception(e.message ?: "Unable to send message.", e))
         }
+    }
+
+
+    suspend fun triggerMessagePushBestEffort(messageId: String) = withContext(Dispatchers.IO) {
+        if (messageId.isBlank()) return@withContext
+        val currentToken = SupabaseService.accessToken()?.takeIf { it.isNotBlank() }
+            ?: return@withContext
+        runCatching { triggerMessagePush(messageId, currentToken) }
     }
 
 
