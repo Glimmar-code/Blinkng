@@ -52,4 +52,5 @@ jobs:
             exit 0
           fi
           git commit -m "feat: add repost distribution and game-only ranking"
+          git pull --rebase origin main
           git push origin HEAD:main
