@@ -750,12 +750,7 @@ private fun GameHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(
-                start = 8.dp,
-                end = 8.dp,
-                top = 38.dp,
-                bottom = 8.dp
-            ),
+            .padding(start = 8.dp, end = 8.dp, top = 38.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
@@ -771,28 +766,6 @@ private fun GameHeader(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        Text(
-            text = "Game",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        IconButton(
-            onClick = onNotificationClick,
-            modifier = Modifier.size(44.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.NotificationsNone,
-                contentDescription = "Notifications",
-                modifier = Modifier.size(25.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(2.dp))
-
         Box(
             modifier = Modifier
                 .size(36.dp)
@@ -802,6 +775,7 @@ private fun GameHeader(
             AsyncImage(
                 model = userAvatar,
                 contentDescription = "Profile",
+                contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
         }

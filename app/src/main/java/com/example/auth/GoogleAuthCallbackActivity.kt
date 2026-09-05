@@ -9,13 +9,14 @@ import androidx.activity.ComponentActivity
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.lifecycle.lifecycleScope
 import com.example.MainActivity
 import com.example.R
 import com.example.data.repository.AuthRepository
 import com.example.data.supabase.SupabaseService
-import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.launch
 import java.security.MessageDigest
@@ -60,7 +61,9 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
         val rawNonce = generateSecureRandomNonce()
         val hashedNonce = sha256Hex(rawNonce)
 
-        val googleOption = GetSignInWithGoogleOption.Builder(webClientId)
+        val googleOption = GetGoogleIdOption.Builder()
+            .setFilterByAuthorizedAccounts(false)
+            .setServerClientId(webClientId)
             .setNonce(hashedNonce)
             .build()
 
@@ -116,11 +119,12 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
                 }
             )
             finish()
-        } catch (error: GetCredentialException) {
-            Log.i(TAG, "Google credential flow closed: ${error.type}")
-            // Cancellation is normal; return silently to Blink. For other credential
-            // errors the user can tap Continue with Google again.
+        } catch (error: GetCredentialCancellationException) {
+            Log.i(TAG, "Google credential flow cancelled by user")
             finish()
+        } catch (error: GetCredentialException) {
+            Log.e(TAG, "Google Credential Manager failed: ${error.type}", error)
+            failAndFinish("Google sign-in could not start. Check Google Play services and try again.")
         } catch (error: Exception) {
             Log.e(TAG, "Native Google sign-in failed", error)
             failAndFinish(error.message ?: "Unable to complete Google sign-in.")

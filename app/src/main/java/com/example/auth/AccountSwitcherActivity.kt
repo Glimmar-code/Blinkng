@@ -95,6 +95,28 @@ class AccountSwitcherActivity : ComponentActivity() {
                             }
                         }
                     }
+                    Button(
+                        onClick = {
+                            val recent = accounts.firstOrNull()
+                            AccountSessionStore.rememberIdentifier(
+                                this@AccountSwitcherActivity,
+                                recent?.email?.takeIf { it.isNotBlank() } ?: recent?.username.orEmpty()
+                            )
+                            AccountSessionStore.setSignInRequired(this@AccountSwitcherActivity, true)
+                            SupabaseService.clearSession()
+                            getSharedPreferences("blink_auth_prefs", MODE_PRIVATE).edit().clear().apply()
+                            getSharedPreferences("blink_user_session", MODE_PRIVATE)
+                                .edit()
+                                .putBoolean("is_logged_in", false)
+                                .apply()
+                            startActivity(Intent(this@AccountSwitcherActivity, MainActivity::class.java).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            })
+                            finish()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Add account") }
+
                     OutlinedButton(
                         onClick = {
                             AccountSessionStore.clear(this@AccountSwitcherActivity)

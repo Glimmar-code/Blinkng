@@ -18,6 +18,8 @@ import org.json.JSONObject
 object AccountSessionStore {
     private const val PREFS = "blink_recent_accounts"
     private const val KEY_ACCOUNTS = "accounts"
+    private const val KEY_LAST_IDENTIFIER = "last_identifier"
+    private const val KEY_REQUIRE_SIGN_IN = "require_sign_in"
     private const val KEYSTORE = "AndroidKeyStore"
     private const val KEY_ALIAS = "blink_recent_account_tokens_v1"
     private const val MAX_ACCOUNTS = 5
@@ -46,10 +48,37 @@ object AccountSessionStore {
 
     fun list(context: Context): List<Account> = load(context).sortedByDescending { it.lastUsedAt }
 
+    fun rememberIdentifier(context: Context, identifier: String) {
+        val clean = identifier.trim()
+        if (clean.isBlank()) return
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_LAST_IDENTIFIER, clean)
+            .apply()
+    }
+
+    fun lastIdentifier(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_LAST_IDENTIFIER, "")
+            .orEmpty()
+
+    fun setSignInRequired(context: Context, required: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_REQUIRE_SIGN_IN, required)
+            .apply()
+    }
+
+    fun isSignInRequired(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_REQUIRE_SIGN_IN, false)
+
     fun clear(context: Context) { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_ACCOUNTS).apply() }
 
     fun switchTo(context: Context, account: Account, accessToken: String, refreshToken: String) {
         SupabaseService.saveSession(accessToken, refreshToken)
+        rememberIdentifier(context, account.email.ifBlank { account.username })
+        setSignInRequired(context, false)
         val reordered = load(context).filterNot { it.userId == account.userId }.toMutableList().apply {
             add(0, account.copy(accessToken = accessToken, refreshToken = refreshToken, lastUsedAt = System.currentTimeMillis()))
         }

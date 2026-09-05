@@ -140,15 +140,6 @@ fun ConnectSection(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        ConnectHeader(
-            userAvatar = userAvatar,
-            onMenuClick = onOpenMenu,
-            onNotificationClick = onOpenActivity,
-            onProfileClick = { onProfileClick("you") }
-        )
-
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
         PullToRefreshBox(
             isRefreshing = isConnectHubLoading,
             onRefresh = connectHubActions.refresh,

@@ -158,7 +158,8 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
         // Local-first startup: a previously authenticated account remains usable with
         // airplane mode / mobile data off. Cloud session verification happens afterwards.
-        val hasLocalSession = hasLocalAuthenticatedProfile()
+        val explicitSignInRequired = AccountSessionStore.isSignInRequired(appContext)
+        val hasLocalSession = !explicitSignInRequired && hasLocalAuthenticatedProfile()
         if (hasLocalSession) restoreLocalSession()
 
         observeCachedContent()
@@ -278,8 +279,11 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                         fetchSupabaseData()
                     }
                     is AuthState.Unauthenticated -> {
-                        val recoverable = !SupabaseService.refreshToken().isNullOrBlank() || AccountSessionStore.list(appContext).isNotEmpty()
-                        if (_uiState.value.destination == AppDestination.MAIN && !recoverable) _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                        val recoverable = !AccountSessionStore.isSignInRequired(appContext) &&
+                            (!SupabaseService.refreshToken().isNullOrBlank() || AccountSessionStore.list(appContext).isNotEmpty())
+                        if (_uiState.value.destination == AppDestination.MAIN && !recoverable) {
+                            _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                        }
                     }
                     else -> Unit
                 }
@@ -289,6 +293,11 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
 private suspend fun restoreSupabaseSession() {
         try {
+            if (AccountSessionStore.isSignInRequired(appContext)) {
+                SupabaseService.clearSession()
+                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                return
+            }
             // Never make an offline cold start wait on Supabase. The last signed-in account
             // and its durable cache are the source of truth until connectivity returns.
             if (!_uiState.value.isOnline && hasLocalAuthenticatedProfile()) {

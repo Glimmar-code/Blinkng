@@ -248,16 +248,38 @@ class AuthRepository(private val context: Context, private val supabaseService: 
     }
 
     suspend fun signOut() {
-        try { supabaseService.revokeCurrentSupabaseSession() } catch (e: Exception) { Log.w("AuthRepository", "Supabase logout failed", e); SupabaseService.clearSession() }
+        val rememberedIdentifier = prefs.getString("email", "").orEmpty()
+            .ifBlank { prefs.getString("username", "").orEmpty() }
+        AccountSessionStore.rememberIdentifier(context.applicationContext, rememberedIdentifier)
+        AccountSessionStore.setSignInRequired(context.applicationContext, true)
+
+        try {
+            supabaseService.revokeCurrentSupabaseSession()
+        } catch (e: Exception) {
+            Log.w("AuthRepository", "Supabase logout failed", e)
+        } finally {
+            SupabaseService.clearSession()
+        }
+
         runCatching {
             CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest())
         }.onFailure { Log.w("AuthRepository", "Unable to clear Google credential state", it) }
+
         prefs.edit().clear().apply()
+        context.getSharedPreferences("blink_user_session", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("is_logged_in", false)
+            .apply()
         _authState.value = AuthState.Unauthenticated()
     }
 
     private fun persistSession(profile: UserProfile) {
         prefs.edit().apply { putBoolean("is_logged_in", true); putString("email", profile.email.value); putString("full_name", profile.fullName); putString("username", profile.username); putString("faculty", profile.faculty); putString("university", profile.university); putString("avatar_url", profile.avatarUrl); putString("cover_url", profile.coverPhotoUrl); apply() }
+        AccountSessionStore.rememberIdentifier(
+            context.applicationContext,
+            profile.email.value.ifBlank { profile.username }
+        )
+        AccountSessionStore.setSignInRequired(context.applicationContext, false)
         AccountSessionStore.recordCurrentSession(context.applicationContext, profile.id, profile.username, profile.fullName, profile.email.value, profile.avatarUrl)
         BlinkFirebaseMessagingService.syncCurrentToken(context.applicationContext)
     }

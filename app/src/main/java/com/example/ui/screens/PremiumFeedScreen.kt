@@ -716,7 +716,7 @@ private fun PremiumGameHost(
     val threshold = with(density) { 64.dp.toPx() }
     var horizontalDrag by remember { mutableStateOf(0f) }
 
-    Column(
+    Box(
         Modifier
             .fillMaxSize()
             .background(FeedBackground)
@@ -734,44 +734,22 @@ private fun PremiumGameHost(
                 )
             }
     ) {
-        FeedTopBar(
+        GameSection(
             userAvatar = userAvatar,
-            hasUnreadNotifications = hasUnreadNotifications,
-            onSearchClick = onSearchClick,
-            onNotificationClick = onOpenActivity,
-            onMenuClick = onOpenMenu,
-            onProfileClick = { onProfileClick(currentUsername) }
-        )
-        FeedTabs(
-            selectedIndex = 2,
-            onForYouClick = onForYou,
-            onFollowingClick = onFollowing,
-            onGameClick = {},
+            leaderboardUsers = leaderboardUsers,
+            connectHub = connectHub,
+            connectHubActions = connectHubActions,
+            isDark = isDark,
+            onOpenMenu = onOpenMenu,
+            onOpenActivity = onOpenActivity,
+            onProfileClick = onProfileClick,
+            selectedTopTab = 3,
+            onHomeClick = onForYou,
             onReelClick = onReel,
-            onFilterClick = {}
+            onConnectClick = {},
+            onGameClick = {},
+            modifier = Modifier.fillMaxSize()
         )
-        HorizontalDivider(color = FeedBorder.copy(alpha = 0.72f))
-
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            LegacyChromeCrop(topCrop = 118.dp) { modifier ->
-                GameSection(
-                    userAvatar = userAvatar,
-                    leaderboardUsers = leaderboardUsers,
-                    connectHub = connectHub,
-                    connectHubActions = connectHubActions,
-                    isDark = isDark,
-                    onOpenMenu = onOpenMenu,
-                    onOpenActivity = onOpenActivity,
-                    onProfileClick = onProfileClick,
-                    selectedTopTab = 3,
-                    onHomeClick = onForYou,
-                    onReelClick = onReel,
-                    onConnectClick = {},
-                    onGameClick = {},
-                    modifier = modifier
-                )
-            }
-        }
     }
 }
 
@@ -798,29 +776,25 @@ private fun PremiumConnectHost(
             .background(FeedBackground)
             .statusBarsPadding()
     ) {
-        // Crop the legacy Connect header + four-way top nav together. Connect now
-        // opens directly on its actual tools/content instead of duplicating feed nav.
-        LegacyChromeCrop(topCrop = 116.dp) { modifier ->
-            ConnectSection(
-                profiles = profiles,
-                currentUsername = currentUsername,
-                userAvatar = userAvatar,
-                isDark = isDark,
-                onOpenMenu = onOpenMenu,
-                onOpenActivity = onOpenActivity,
-                onProfileClick = onProfileClick,
-                onDirectMessage = onDirectMessage,
-                connectHub = connectHub,
-                connectHubActions = connectHubActions,
-                isConnectHubLoading = isConnectHubLoading,
-                selectedTopTab = 2,
-                onHomeClick = onHomeClick,
-                onReelClick = onReelClick,
-                onConnectClick = {},
-                onGameClick = onGameClick,
-                modifier = modifier
-            )
-        }
+        ConnectSection(
+            profiles = profiles,
+            currentUsername = currentUsername,
+            userAvatar = userAvatar,
+            isDark = isDark,
+            onOpenMenu = onOpenMenu,
+            onOpenActivity = onOpenActivity,
+            onProfileClick = onProfileClick,
+            onDirectMessage = onDirectMessage,
+            connectHub = connectHub,
+            connectHubActions = connectHubActions,
+            isConnectHubLoading = isConnectHubLoading,
+            selectedTopTab = 2,
+            onHomeClick = onHomeClick,
+            onReelClick = onReelClick,
+            onConnectClick = {},
+            onGameClick = onGameClick,
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 

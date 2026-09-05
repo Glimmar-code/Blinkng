@@ -235,9 +235,14 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 AppDestination.SIGN_IN -> {
-                                    val recent = remember { AccountSessionStore.list(this@MainActivity).firstOrNull() }
+                                    val initialIdentifier = remember {
+                                        AccountSessionStore.lastIdentifier(this@MainActivity).ifBlank {
+                                            val recent = AccountSessionStore.list(this@MainActivity).firstOrNull()
+                                            recent?.email?.takeIf { it.isNotBlank() } ?: recent?.username.orEmpty()
+                                        }
+                                    }
                                     SignInScreen(
-                                        initialIdentifier = recent?.email?.takeIf { it.isNotBlank() } ?: recent?.username.orEmpty(),
+                                        initialIdentifier = initialIdentifier,
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
                                         onSignInWithCredentials = { emailOrUser, password, onResult ->
                                             viewModel.signInWithCredentials(emailOrUser, password, onResult)
