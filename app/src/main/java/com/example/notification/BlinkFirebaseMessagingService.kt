@@ -32,13 +32,13 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
          */
         fun syncCurrentToken(context: Context) {
             val appContext = context.applicationContext
-            val firebaseApp = FirebaseApp.initializeApp(appContext)
+            FirebaseApp.initializeApp(appContext)
                 ?: run {
                     Log.i(TAG, "Firebase is not configured; add app/google-services.json to enable FCM.")
                     return
                 }
 
-            FirebaseMessaging.getInstance(firebaseApp).token
+            FirebaseMessaging.getInstance().token
                 .addOnSuccessListener { token ->
                     if (token.isBlank()) {
                         Log.w(TAG, "Firebase returned an empty FCM token.")
