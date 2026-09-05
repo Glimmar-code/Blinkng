@@ -252,6 +252,7 @@ class OfflineContentStore(context: Context) {
         val nextAttempt = item.attemptCount + 1
         val delayMs = (5_000L * (1L shl nextAttempt.coerceAtMost(6))).coerceAtMost(30L * 60L * 1000L)
         dao.markOutboxFailure(
+            ownerUsername = item.ownerUsername,
             localId = item.localId,
             attemptCount = nextAttempt,
             nextRetryAt = System.currentTimeMillis() + delayMs,
@@ -299,8 +300,15 @@ class OfflineContentStore(context: Context) {
         }.onFailure { Log.w(TAG, "Unable to save cached app snapshot", it) }
     }
 
-    suspend fun resetOutbox(localId: String) = dao.resetOutbox(localId)
-    suspend fun deleteOutbox(localId: String) = dao.deleteOutbox(localId)
+    suspend fun resetOutbox(localId: String) {
+        val owner = cachedOwnerUsername()
+        if (owner.isNotBlank()) dao.resetOutbox(owner, localId)
+    }
+
+    suspend fun deleteOutbox(localId: String) {
+        val owner = cachedOwnerUsername()
+        if (owner.isNotBlank()) dao.deleteOutbox(owner, localId)
+    }
     suspend fun deletePost(postId: String) = dao.deletePost(postId)
 
     suspend fun pruneOldCaches(maxAgeMs: Long = DEFAULT_CACHE_MAX_AGE_MS) {
