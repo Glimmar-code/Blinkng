@@ -1,0 +1,46 @@
+name: Apply feed cache and network banner fix
+
+on:
+  push:
+    paths:
+      - '.github/scripts/apply_feed_cache_network_banner_fix.py'
+      - '.github/workflows/apply-feed-cache-network-banner-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply source changes
+        run: python .github/scripts/apply_feed_cache_network_banner_fix.py
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit source fixes
+        run: |
+          if git diff --quiet; then
+            echo 'No source changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt app/src/main/java/com/example/ui/components/OfflineConnectionBanner.kt
+          git commit -m 'fix: prefer cached feed and compact network status banners'
+          git push origin HEAD:main
