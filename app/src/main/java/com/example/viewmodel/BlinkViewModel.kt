@@ -81,6 +81,8 @@ data class BlinkUiState(
     val connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     val isConnectHubLoading: Boolean = false,
     val comments: List<Comment> = emptyList(),
+    val isCommentsLoading: Boolean = false,
+    val isPostingComment: Boolean = false,
     val mutedUsers: Set<String> = emptySet(),
     val feedSubTab: Int = 0,
     val isOnline: Boolean = true,
@@ -1298,8 +1300,30 @@ private suspend fun restoreSupabaseSession() {
     fun openActivity(open: Boolean) { _uiState.value = _uiState.value.copy(isActivityOpen = open) }
 
     fun openCommentsForPost(postId: String?) {
-        _uiState.value = _uiState.value.copy(activeCommentsPostId = postId)
-        if (postId != null) viewModelScope.launch { _uiState.value = _uiState.value.copy(comments = postRepository.fetchComments(postId)) }
+        if (postId == null) {
+            _uiState.value = _uiState.value.copy(
+                activeCommentsPostId = null,
+                comments = emptyList(),
+                isCommentsLoading = false,
+                isPostingComment = false
+            )
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(
+            activeCommentsPostId = postId,
+            comments = emptyList(),
+            isCommentsLoading = true
+        )
+        viewModelScope.launch {
+            val result = runCatching { postRepository.fetchComments(postId) }
+            if (_uiState.value.activeCommentsPostId != postId) return@launch
+            _uiState.value = _uiState.value.copy(
+                comments = result.getOrDefault(emptyList()),
+                isCommentsLoading = false
+            )
+            if (result.isFailure) showToast("Couldn't load comments. Please try again.")
+        }
     }
     fun openPostOptions(post: FeedPost?) { _uiState.value = _uiState.value.copy(activePostOptionsPost = post) }
     fun openCreatePost(open: Boolean) { _uiState.value = _uiState.value.copy(isCreatePostOpen = open) }
@@ -1776,26 +1800,110 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun addComment(postId: String, text: String, replyToUser: String? = null) {
-        if (text.isBlank()) return
+    fun addComment(postId: String, text: String, parentCommentId: String? = null) {
+        val cleanText = text.trim()
+        if (cleanText.isBlank() || _uiState.value.isPostingComment) return
+        if (cleanText.length > 2_000) {
+            showToast("Comments can be up to 2,000 characters.")
+            return
+        }
+        _uiState.value = _uiState.value.copy(isPostingComment = true)
         viewModelScope.launch {
-            val newComment = postRepository.addComment(postId, text, replyToUser)
-            if (newComment != null) {
-                _uiState.value = _uiState.value.copy(comments = listOf(newComment) + _uiState.value.comments, posts = _uiState.value.posts.map { if (it.id == postId) it.copy(commentsCount = it.commentsCount + 1) else it }, reels = _uiState.value.reels.map { if (it.id == postId) it.copy(commentsCount = it.commentsCount + 1) else it })
-                val target = (_uiState.value.posts + _uiState.value.reels).find { it.id == postId }
-                if (target != null && target.author.isNotBlank()) supabaseService.recordActivity(target.author, if (replyToUser.isNullOrBlank()) "commented on your post" else "replied to comment", NotificationFilter.COMMENTS, postId, text, "POST")
-                showToast(if (replyToUser.isNullOrBlank()) "💬 Comment posted." else "↩️ Reply posted.")
-            } else showToast("Failed to post comment.")
+            val posted = postRepository.addComment(postId, cleanText, parentCommentId)
+            if (!posted) {
+                _uiState.value = _uiState.value.copy(isPostingComment = false)
+                showToast("Failed to post comment.")
+                return@launch
+            }
+
+            val refreshed = runCatching { postRepository.fetchComments(postId) }.getOrNull()
+            val state = _uiState.value
+            _uiState.value = state.copy(
+                comments = if (state.activeCommentsPostId == postId && refreshed != null) {
+                    refreshed
+                } else {
+                    state.comments
+                },
+                posts = state.posts.map {
+                    if (it.id == postId) it.copy(commentsCount = it.commentsCount + 1) else it
+                },
+                reels = state.reels.map {
+                    if (it.id == postId) it.copy(commentsCount = it.commentsCount + 1) else it
+                },
+                isPostingComment = false
+            )
+            showToast(if (parentCommentId == null) "💬 Comment posted." else "↩️ Reply posted.")
         }
     }
 
     fun toggleCommentLike(commentId: String) {
-        var next = false; var count = 0
-        _uiState.value = _uiState.value.copy(comments = _uiState.value.comments.map { if (it.id == commentId) { next = !it.isLiked; count = (it.likes + if (next) 1 else -1).coerceAtLeast(0); it.copy(isLiked = next, likes = count) } else it })
+        val before = _uiState.value.comments
+        var found = false
+        var next = false
+        var targetUsername = ""
+        var targetText = ""
+        var targetPostId = _uiState.value.activeCommentsPostId.orEmpty()
+
+        val updated = before.map { comment ->
+            if (comment.id == commentId) {
+                found = true
+                next = !comment.isLiked
+                targetUsername = comment.user
+                targetText = comment.text
+                targetPostId = comment.postId.ifBlank { targetPostId }
+                comment.copy(
+                    isLiked = next,
+                    likes = (comment.likes + if (next) 1 else -1).coerceAtLeast(0)
+                )
+            } else {
+                val updatedReplies = comment.replies.map { reply ->
+                    if (reply.id == commentId) {
+                        found = true
+                        next = !reply.isLiked
+                        targetUsername = reply.user
+                        targetText = reply.text
+                        targetPostId = reply.postId.ifBlank { comment.postId.ifBlank { targetPostId } }
+                        reply.copy(
+                            isLiked = next,
+                            likes = (reply.likes + if (next) 1 else -1).coerceAtLeast(0)
+                        )
+                    } else {
+                        reply
+                    }
+                }
+                if (updatedReplies != comment.replies) comment.copy(replies = updatedReplies) else comment
+            }
+        }
+        if (!found) return
+
+        _uiState.value = _uiState.value.copy(comments = updated)
         viewModelScope.launch {
-            if (runCatching { postRepository.toggleCommentLike(commentId, next, count) }.getOrDefault(false)) {
-                if (next) _uiState.value.comments.find { it.id == commentId }?.let { comment -> if (comment.user.isNotBlank()) supabaseService.recordActivity(comment.user, "liked your comment", NotificationFilter.LIKES, previewText = comment.text, targetType = "POST") }
-            } else { _uiState.value = _uiState.value.copy(comments = _uiState.value.comments.map { if (it.id == commentId) it.copy(isLiked = !next, likes = (it.likes + if (!next) 1 else -1).coerceAtLeast(0)) else it }); showToast("Failed to update comment like.") }
+            if (runCatching { postRepository.toggleCommentLike(commentId, next) }.getOrDefault(false)) {
+                if (next && targetUsername.isNotBlank() && !isMe(targetUsername)) {
+                    supabaseService.recordActivity(
+                        recipientUsername = targetUsername,
+                        action = "liked your comment",
+                        category = NotificationFilter.LIKES,
+                        targetPostId = targetPostId.takeIf { it.isNotBlank() },
+                        previewText = targetText,
+                        targetType = "POST"
+                    )
+                }
+            } else {
+                _uiState.value = _uiState.value.copy(comments = before)
+                showToast("Failed to update comment like.")
+            }
+        }
+    }
+
+    fun reportComment(commentId: String, reason: String) {
+        if (commentId.isBlank() || reason.isBlank()) return
+        viewModelScope.launch {
+            if (postRepository.reportComment(commentId, reason)) {
+                showToast("🚨 Comment reported for moderation.")
+            } else {
+                showToast("Couldn't submit the report. Please try again.")
+            }
         }
     }
 

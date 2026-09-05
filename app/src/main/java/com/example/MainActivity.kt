@@ -798,15 +798,24 @@ fun MainAppContent(
         if (uiState.activeCommentsPostId != null) {
             CommentSheet(
                 comments = uiState.comments,
+                isLoading = uiState.isCommentsLoading,
+                isPosting = uiState.isPostingComment,
+                currentUserId = uiState.myProfile.id,
+                mentionCandidates = (listOf(uiState.myProfile) + uiState.profiles)
+                    .filter { it.username.isNotBlank() }
+                    .distinctBy { it.username.trim().removePrefix("@").lowercase() },
                 isDark = uiState.isDarkMode,
                 onDismiss = { viewModel.openCommentsForPost(null) },
-                onSendComment = { text, replyToUser ->
+                onSendComment = { text, parentCommentId ->
                     uiState.activeCommentsPostId?.let { postId ->
-                        viewModel.addComment(postId, text, replyToUser)
+                        viewModel.addComment(postId, text, parentCommentId)
                     }
                 },
                 onToggleCommentLike = { commentId ->
                     viewModel.toggleCommentLike(commentId)
+                },
+                onReportComment = { commentId, reason ->
+                    viewModel.reportComment(commentId, reason)
                 },
                 onProfileClick = { username ->
                     viewModel.openCommentsForPost(null)

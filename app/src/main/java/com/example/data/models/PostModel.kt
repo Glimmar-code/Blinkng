@@ -180,7 +180,11 @@ data class CommentReply(
     val time: String = "Just now",
     var likes: Int = 0,
     var isLiked: Boolean = false,
-    val verificationBadge: VerificationBadge = VerificationBadge.NONE
+    val verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    val postId: String = "",
+    val parentCommentId: String = "",
+    val authorId: String = "",
+    val displayName: String = ""
 )
 
 data class Comment(
@@ -192,7 +196,10 @@ data class Comment(
     var likes: Int,
     var isLiked: Boolean = false,
     val replies: List<CommentReply> = emptyList(),
-    val verificationBadge: VerificationBadge = VerificationBadge.NONE
+    val verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    val postId: String = "",
+    val authorId: String = "",
+    val displayName: String = ""
 )
 
 enum class MessageStatus {

@@ -138,12 +138,16 @@ class PostRepository(
         supabaseService.fetchComments(postId)
     }
 
-    suspend fun addComment(postId: String, text: String, replyToUser: String?): Comment? = withContext(Dispatchers.IO) {
-        supabaseService.addComment(postId, text, replyToUser)
+    suspend fun addComment(postId: String, text: String, parentCommentId: String?): Boolean = withContext(Dispatchers.IO) {
+        supabaseService.addComment(postId, text, parentCommentId)
     }
 
-    suspend fun toggleCommentLike(commentId: String, liked: Boolean, newLikeCount: Int): Boolean = withContext(Dispatchers.IO) {
-        supabaseService.toggleCommentLike(commentId, liked, newLikeCount)
+    suspend fun toggleCommentLike(commentId: String, liked: Boolean): Boolean = withContext(Dispatchers.IO) {
+        supabaseService.toggleCommentLike(commentId, liked)
+    }
+
+    suspend fun reportComment(commentId: String, reason: String): Boolean = withContext(Dispatchers.IO) {
+        supabaseService.reportComment(commentId, reason)
     }
 suspend fun togglePostLike(
         postId: String,
