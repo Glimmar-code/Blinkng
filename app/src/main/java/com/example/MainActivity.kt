@@ -339,7 +339,6 @@ fun MainAppContent(
                     PremiumFeedScreen(
                         posts = uiState.posts,
                         reels = uiState.reels,
-                        stories = uiState.stories,
                         profiles = uiState.profiles,
                         leaderboardUsers = uiState.gameLeaderboardUsers,
                         connectHub = uiState.connectHub,
@@ -396,12 +395,9 @@ fun MainAppContent(
                         onOptionsClick = { viewModel.openPostOptions(it) },
                         onDeletePost = { viewModel.deletePost(it) },
                         onProfileClick = { viewModel.openProfile(it) },
-                        onAddStoryClick = { viewModel.openCreateStory(true) },
-                        onStoryClick = { story -> viewModel.openStory(story) },
                         onOpenCreatePost = { viewModel.openCreatePost(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
                         onOpenMenu = { viewModel.openMenu(true) },
-                        onToggleTheme = { viewModel.toggleDarkMode() },
                         isServerConnected = uiState.isLiveSupabaseConnected,
                         isLoading = uiState.isFeedLoading,
                         isRefreshing = uiState.isRefreshingContent,
@@ -414,9 +410,6 @@ fun MainAppContent(
                             viewModel.openChatWithUser(partner, partnerName, partnerAvatar)
                         },
                         onSearchClick = { viewModel.setTab(MainTab.SEARCH) },
-                        onLeaderboardClick = { viewModel.setTab(MainTab.LEADERBOARD) },
-                        onMarketClick = { viewModel.setTab(MainTab.MARKET) },
-                        onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
                         hasMorePosts = uiState.hasMorePosts,
                         hasMoreReels = uiState.hasMoreReels,
@@ -479,7 +472,6 @@ fun MainAppContent(
                 MainTab.MESSAGES -> {
                     PremiumMessagesScreen(
                         conversations = uiState.conversations,
-                        stories = uiState.stories,
                         activities = uiState.activities,
                         myAvatar = uiState.myProfile.avatarUrl,
                         myName = uiState.myProfile.fullName.ifBlank { uiState.myProfile.username },
@@ -493,8 +485,6 @@ fun MainAppContent(
                             viewModel.retrySendMessage(partner, message)
                         },
                         onProfileClick = { viewModel.openProfile(it) },
-                        onStoryClick = { story -> viewModel.openStory(story) },
-                        onAddStoryClick = { viewModel.openCreateStory(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline

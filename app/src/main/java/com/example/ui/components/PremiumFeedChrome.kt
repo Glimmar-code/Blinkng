@@ -288,7 +288,7 @@ private fun FeedHeaderActions(
         }
         Box(
             modifier = Modifier
-                .size(46.dp)
+                .size(48.dp)
                 .background(feedAccentBrush(), CircleShape)
                 .padding(2.dp)
                 .background(FeedBackground, CircleShape)
@@ -301,7 +301,7 @@ private fun FeedHeaderActions(
                 contentDescription = "Open profile",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(38.dp)
+                    .size(40.dp)
                     .background(FeedElevatedSurface, CircleShape)
                     .graphicsLayer { clip = true; shape = CircleShape }
             )

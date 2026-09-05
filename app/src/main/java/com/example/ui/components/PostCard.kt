@@ -264,7 +264,10 @@ fun PostCard(
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable { onProfileClick(post.author) }
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .clickable(role = Role.Button) { onProfileClick(post.author) }
+                                .semantics { contentDescription = "Open ${post.author} profile" }
                         )
                         if (post.isVerified || post.verificationBadge != VerificationBadge.NONE) {
                             Spacer(Modifier.width(5.dp))
@@ -321,7 +324,9 @@ fun PostCard(
                         style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier
                             .padding(start = 16.dp, top = 6.dp)
-                            .clickable { expandedText = !expandedText }
+                            .heightIn(min = 48.dp)
+                            .clickable(role = Role.Button) { expandedText = !expandedText }
+                            .semantics { contentDescription = if (expandedText) "Show less post text" else "Show more post text" }
                     )
                 }
             }
