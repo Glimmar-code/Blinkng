@@ -44,6 +44,7 @@ fun PostCard(
     onLike: () -> Unit,
     onComment: () -> Unit,
     onBookmark: () -> Unit,
+    onRepost: () -> Unit = {},
     onShare: () -> Unit,
     onOptionsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
@@ -104,6 +105,29 @@ fun PostCard(
                         post.adLabel ?: "Sponsored",
                         color = BlinkPink,
                         fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            post.repostedByUsername?.takeIf { it.isNotBlank() }?.let { reposter ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Repeat,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "@$reposter reposted",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold,
                         fontSize = 11.sp
                     )
                 }
@@ -291,6 +315,17 @@ fun PostCard(
                     )
                     Spacer(Modifier.width(3.dp))
                     Text("${post.commentsCount}", fontSize = 10.sp)
+                }
+
+                TextButton(onClick = onRepost) {
+                    Icon(
+                        Icons.Default.Repeat,
+                        contentDescription = "Repost",
+                        tint = if (post.isRepostedByMe) BlinkPurple else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Text("${post.repostsCount}", fontSize = 10.sp)
                 }
 
                 TextButton(onClick = onBookmark) {

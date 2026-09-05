@@ -73,6 +73,7 @@ data class BlinkUiState(
     val scheduledPosts: List<ScheduledPost> = emptyList(),
     val marketItems: List<MarketItem> = emptyList(),
     val leaderboardUsers: List<LeaderboardUser> = emptyList(),
+    val gameLeaderboardUsers: List<LeaderboardUser> = emptyList(),
     val conversations: List<ChatConversation> = emptyList(),
     val activities: List<ActivityItem> = emptyList(),
     val activitiesLoading: Boolean = false,
@@ -735,6 +736,10 @@ private suspend fun restoreSupabaseSession() {
                         runCatching { supabaseService.fetchLeaderboard() }
                             .onFailure { Log.e(TAG, "Leaderboard fetch failed", it) }
                     }
+                    val gameLeaderboardRequest = async {
+                        runCatching { supabaseService.fetchGameLeaderboard() }
+                            .onFailure { Log.e(TAG, "Game ranking fetch failed", it) }
+                    }
                     val connectHubRequest = async {
                         runCatching { connectHubRepository.fetchSnapshot() }
                             .onFailure { Log.e(TAG, "Connect Hub fetch failed", it) }
@@ -779,6 +784,8 @@ private suspend fun restoreSupabaseSession() {
 
                     val leaderboard = leaderboardRequest.await()
                         .getOrDefault(before.leaderboardUsers)
+                    val gameLeaderboard = gameLeaderboardRequest.await()
+                        .getOrDefault(before.gameLeaderboardUsers)
 
                     val connectHub = connectHubRequest.await()
                         .getOrDefault(before.connectHub)
@@ -812,6 +819,7 @@ private suspend fun restoreSupabaseSession() {
                         marketItems = market,
                         conversations = conversations,
                         leaderboardUsers = leaderboard,
+                        gameLeaderboardUsers = gameLeaderboard,
                         connectHub = connectHub,
                         isConnectHubLoading = false,
                         stories = mergedStories,
@@ -1109,7 +1117,13 @@ private suspend fun restoreSupabaseSession() {
 
     fun recordGameResult(gameType: String, score: Int) {
         runConnectAction("Game result synced.") {
-            connectHubRepository.recordGameSession(gameType, score)
+            val synced = connectHubRepository.recordGameSession(gameType, score)
+            if (synced) {
+                val live = runCatching { supabaseService.fetchGameLeaderboard() }
+                    .getOrDefault(_uiState.value.gameLeaderboardUsers)
+                _uiState.value = _uiState.value.copy(gameLeaderboardUsers = live)
+            }
+            synced
         }
     }
 
@@ -1547,6 +1561,28 @@ private suspend fun restoreSupabaseSession() {
                 persistCurrentFeed()
                 showToast("Failed to update like.")
             }
+        }
+    }
+
+    fun toggleRepost(postId: String) {
+        viewModelScope.launch {
+            val result = postRepository.togglePostRepost(postId)
+            if (result == null) {
+                showToast("Couldn't update repost.")
+                return@launch
+            }
+            val (reposted, count) = result
+            fun update(items: List<FeedPost>): List<FeedPost> = items.map { post ->
+                if (post.id == postId) post.copy(isRepostedByMe = reposted, repostsCount = count) else post
+            }
+            val state = _uiState.value
+            _uiState.value = state.copy(
+                posts = update(state.posts),
+                reels = update(state.reels),
+                discoverPosts = update(state.discoverPosts)
+            )
+            persistCurrentFeed()
+            showToast(if (reposted) "Reposted to your people." else "Repost removed.")
         }
     }
 
@@ -2263,9 +2299,9 @@ private suspend fun restoreSupabaseSession() {
     suspend fun recordTriviaResult(questionId: String, correct: Boolean): GameActionResult? {
         val result = supabaseService.recordTriviaResult(questionId, correct)
         if (result != null) {
-            val live = runCatching { supabaseService.fetchLeaderboard() }
-                .getOrDefault(_uiState.value.leaderboardUsers)
-            _uiState.value = _uiState.value.copy(leaderboardUsers = live)
+            val live = runCatching { supabaseService.fetchGameLeaderboard() }
+                .getOrDefault(_uiState.value.gameLeaderboardUsers)
+            _uiState.value = _uiState.value.copy(gameLeaderboardUsers = live)
         }
         return result
     }

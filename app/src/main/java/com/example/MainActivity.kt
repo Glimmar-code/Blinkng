@@ -335,7 +335,7 @@ fun MainAppContent(
                         reels = uiState.reels,
                         stories = uiState.stories,
                         profiles = uiState.profiles,
-                        leaderboardUsers = uiState.leaderboardUsers,
+                        leaderboardUsers = uiState.gameLeaderboardUsers,
                         connectHub = uiState.connectHub,
                         isConnectHubLoading = uiState.isConnectHubLoading,
                         connectHubActions = ConnectHubActions(
@@ -385,6 +385,7 @@ fun MainAppContent(
                         onLikePost = { viewModel.togglePostLike(it) },
                         onCommentPost = { viewModel.openCommentsForPost(it) },
                         onBookmarkPost = { viewModel.toggleBookmark(it) },
+                        onRepostPost = { viewModel.toggleRepost(it) },
                         onSharePost = { sharePostOrReel(it) },
                         onOptionsClick = { viewModel.openPostOptions(it) },
                         onDeletePost = { viewModel.deletePost(it) },

@@ -2268,6 +2268,30 @@ suspend fun uploadPostMedia(
      * and updates like_count in feed_posts table using authenticated JWT headers.
      */
     
+    suspend fun togglePostRepost(postId: String): Pair<Boolean, Int>? = withContext(Dispatchers.IO) {
+        try {
+            if (!isValidUuid(postId)) return@withContext null
+            val body = JSONObject().apply { put("p_post_id", postId) }
+            val raw = executeRequest(
+                newRequestBuilder("/rest/v1/rpc/toggle_post_repost", true)
+                    .addHeader("Content-Type", "application/json")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { resp ->
+                val responseBody = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(responseBody, "Repost update failed."))
+                }
+                responseBody
+            }
+            val obj = JSONObject(raw.ifBlank { "{}" })
+            obj.optBoolean("reposted", false) to obj.optInt("repostCount", 0)
+        } catch (e: Exception) {
+            Log.e(TAG, "togglePostRepost failed", e)
+            null
+        }
+    }
+
     suspend fun togglePostBookmark(postId: String, bookmarked: Boolean): Boolean = withContext(Dispatchers.IO) {
         val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
         val request=if(bookmarked) newRequestBuilder("/rest/v1/post_bookmarks",true).addHeader("Prefer","resolution=merge-duplicates").post(JSONObject().apply{put("post_id",postId);put("user_id",uid)}.toString().toRequestBody(jsonMediaType)).build()
@@ -2582,6 +2606,29 @@ suspend fun uploadPostMedia(
     // ============================================================
     // LEADERBOARD
     // ============================================================
+
+    suspend fun fetchGameLeaderboard(): List<LeaderboardUser> = withContext(Dispatchers.IO) {
+        try {
+            val raw = executeRequest(
+                newRequestBuilder("/rest/v1/game_rankings?select=*&order=score.desc,world_rank.asc&limit=50", true)
+                    .get()
+                    .build()
+            ).use { resp ->
+                val body = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) return@withContext emptyList()
+                body
+            }
+            val arr = JSONArray(if (raw.isBlank()) "[]" else raw)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    add(parseLeaderboardUser(arr.getJSONObject(i), i + 1))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Game ranking fetch failed", e)
+            emptyList()
+        }
+    }
 
     suspend fun fetchLeaderboard(): List<LeaderboardUser> = withContext(Dispatchers.IO) {
         try {
@@ -3008,6 +3055,11 @@ suspend fun uploadPostMedia(
             isLiked = obj.optBoolean("is_liked", false),
             commentsCount = obj.optInt("comments_count", obj.optInt("comment_count", 0)),
             sharesCount = obj.optInt("shares_count", obj.optInt("share_count", 0)),
+            repostsCount = obj.optInt("repost_count", obj.optInt("reposts_count", 0)),
+            isRepostedByMe = obj.optBoolean("is_reposted_by_me", false),
+            repostId = obj.cleanString("repost_id").takeIf { it.isNotBlank() },
+            repostedById = obj.cleanString("reposted_by_id").takeIf { it.isNotBlank() },
+            repostedByUsername = obj.cleanString("reposted_by_username").takeIf { it.isNotBlank() },
             viewsCount = obj.optInt("views_count", obj.optInt("view_count", 0)),
             isBookmarked = obj.optBoolean("is_bookmarked", false),
             isReel = parsedIsReel,

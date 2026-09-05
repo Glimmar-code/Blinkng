@@ -126,6 +126,10 @@ class PostRepository(
     }
 
     
+    suspend fun togglePostRepost(postId: String): Pair<Boolean, Int>? = withContext(Dispatchers.IO) {
+        supabaseService.togglePostRepost(postId)
+    }
+
     suspend fun togglePostBookmark(postId: String, bookmarked: Boolean): Boolean = withContext(Dispatchers.IO) {
         supabaseService.togglePostBookmark(postId, bookmarked)
     }
