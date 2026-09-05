@@ -62,7 +62,7 @@ class ChatRepository(
             beforeId = nextId
         }
 
-        merged.values.toList()
+        applyConversationState(merged.values.toList())
     }
 
     private suspend fun fetchConversationPage(beforeAt: String?, beforeId: String?): ConversationPage {
@@ -127,7 +127,7 @@ class ChatRepository(
         }
         val raw = postAuthenticatedRpc("get_conversation_messages_page", body)
         val array = org.json.JSONArray(if (raw.isBlank()) "[]" else raw)
-        buildList {
+        val baseMessages = buildList {
             for (i in array.length() - 1 downTo 0) {
                 val o = array.getJSONObject(i)
                 val mediaType = o.optString("message_type")
@@ -150,11 +150,18 @@ class ChatRepository(
                         },
                         isVoiceNote = mediaType.equals("voice", true) || mediaType.equals("audio", true),
                         attachedImageUrl = mediaUrl.takeIf { mediaType.equals("image", true) },
-                        attachedVideoUrl = mediaUrl.takeIf { mediaType.equals("video", true) }
+                        attachedVideoUrl = mediaUrl.takeIf { mediaType.equals("video", true) },
+                        replyToMessageId = o.optString("reply_to_message_id")
+                            .takeIf { it.isNotBlank() && !it.equals("null", true) },
+                        editedAt = o.optString("edited_at")
+                            .takeIf { it.isNotBlank() && !it.equals("null", true) },
+                        deletedForEveryone = o.optBoolean("deleted_for_everyone", false)
                     )
                 )
             }
         }
+        val visibleMessages = filterClearedMessages(conversationId, baseMessages)
+        enrichMessageActions(visibleMessages)
     }
 
     /**
@@ -204,7 +211,11 @@ class ChatRepository(
     }
 
     /** Sends through auth.uid() on the server; retries once after refreshing an expired JWT. */
-    suspend fun sendMessage(receiverUsername: String, text: String): Result<ChatMessage> = withContext(Dispatchers.IO) {
+    suspend fun sendMessage(
+        receiverUsername: String,
+        text: String,
+        replyToMessageId: String? = null
+    ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         val receiver = receiverUsername.trim()
         val cleanText = text.trim()
         if (receiver.isBlank() || cleanText.isBlank()) {
@@ -252,6 +263,11 @@ class ChatRepository(
                 if (messageId.isBlank() || messageId == "null") {
                     return@withContext Result.failure(Exception("Message was not created."))
                 }
+                val validReplyId = replyToMessageId
+                    ?.takeIf { id -> runCatching { java.util.UUID.fromString(id) }.isSuccess }
+                if (validReplyId != null) {
+                    runCatching { setMessageReply(messageId, validReplyId) }
+                }
                 SupabaseService.accessToken()?.takeIf { it.isNotBlank() }?.let { currentToken ->
                     runCatching { triggerMessagePush(messageId, currentToken) }
                 }
@@ -264,7 +280,9 @@ class ChatRepository(
                         timestamp = "Just now",
                         isFromMe = true,
                         isRead = false,
-                        status = MessageStatus.SENT
+                        status = MessageStatus.SENT,
+                        replyToMessageId = replyToMessageId
+                            ?.takeIf { id -> runCatching { java.util.UUID.fromString(id) }.isSuccess }
                     )
                 )
             }
@@ -273,6 +291,214 @@ class ChatRepository(
         }
     }
 
+
+    private data class MessageActionState(
+        val reactions: Map<String, Int> = emptyMap(),
+        val myReactions: Set<String> = emptySet(),
+        val isStarred: Boolean = false,
+        val isHidden: Boolean = false,
+        val isPinned: Boolean = false
+    )
+
+    private data class ConversationUserState(
+        val clearedAt: java.time.Instant? = null,
+        val isMuted: Boolean = false
+    )
+
+    private fun isServerUuid(value: String?): Boolean =
+        !value.isNullOrBlank() && runCatching { java.util.UUID.fromString(value) }.isSuccess
+
+    private suspend fun booleanRpc(name: String, body: JSONObject): Boolean =
+        runCatching {
+            postAuthenticatedRpc(name, body).trim().trim('"').equals("true", ignoreCase = true)
+        }.getOrDefault(false)
+
+    suspend fun setMessageReply(messageId: String, replyToMessageId: String?): Boolean {
+        if (!isServerUuid(messageId)) return false
+        if (replyToMessageId != null && !isServerUuid(replyToMessageId)) return false
+        return booleanRpc(
+            "set_message_reply",
+            JSONObject().apply {
+                put("p_message_id", messageId)
+                put("p_reply_to_message_id", replyToMessageId ?: JSONObject.NULL)
+            }
+        )
+    }
+
+    suspend fun editMessage(messageId: String, content: String): Boolean {
+        if (!isServerUuid(messageId) || content.isBlank()) return false
+        return booleanRpc(
+            "edit_message",
+            JSONObject().put("p_message_id", messageId).put("p_content", content.trim())
+        )
+    }
+
+    suspend fun deleteMessageForEveryone(messageId: String): Boolean {
+        if (!isServerUuid(messageId)) return false
+        return booleanRpc("delete_message_for_everyone", JSONObject().put("p_message_id", messageId))
+    }
+
+    suspend fun setMessageReaction(messageId: String, emoji: String, active: Boolean): Boolean {
+        if (!isServerUuid(messageId) || emoji.isBlank()) return false
+        return booleanRpc(
+            "set_message_reaction",
+            JSONObject().put("p_message_id", messageId).put("p_emoji", emoji).put("p_active", active)
+        )
+    }
+
+    suspend fun setMessageStarred(messageId: String, starred: Boolean): Boolean {
+        if (!isServerUuid(messageId)) return false
+        return booleanRpc(
+            "set_message_starred",
+            JSONObject().put("p_message_id", messageId).put("p_starred", starred)
+        )
+    }
+
+    suspend fun hideMessageForMe(messageId: String): Boolean {
+        if (!isServerUuid(messageId)) return false
+        return booleanRpc("hide_message_for_me", JSONObject().put("p_message_id", messageId))
+    }
+
+    suspend fun setMessagePinned(messageId: String, pinned: Boolean): Boolean {
+        if (!isServerUuid(messageId)) return false
+        return booleanRpc(
+            "set_message_pinned",
+            JSONObject().put("p_message_id", messageId).put("p_pinned", pinned)
+        )
+    }
+
+    suspend fun reportMessage(messageId: String, reason: String): Boolean {
+        if (!isServerUuid(messageId) || reason.isBlank()) return false
+        return booleanRpc(
+            "report_message",
+            JSONObject().put("p_message_id", messageId).put("p_reason", reason.take(500))
+        )
+    }
+
+    suspend fun clearConversationForMe(conversationId: String): Boolean {
+        if (!isServerUuid(conversationId)) return false
+        return booleanRpc(
+            "clear_conversation_for_me",
+            JSONObject().put("p_conversation_id", conversationId)
+        )
+    }
+
+    suspend fun setConversationMuted(conversationId: String, muted: Boolean): Boolean {
+        if (!isServerUuid(conversationId)) return false
+        return booleanRpc(
+            "set_conversation_muted",
+            JSONObject().put("p_conversation_id", conversationId).put("p_muted", muted)
+        )
+    }
+
+    suspend fun reportConversation(conversationId: String, reason: String): Boolean {
+        if (!isServerUuid(conversationId) || reason.isBlank()) return false
+        return booleanRpc(
+            "report_conversation",
+            JSONObject().put("p_conversation_id", conversationId).put("p_reason", reason.take(500))
+        )
+    }
+
+    private suspend fun enrichMessageActions(messages: List<ChatMessage>): List<ChatMessage> {
+        val serverIds = messages.map { it.id }.filter(::isServerUuid)
+        if (serverIds.isEmpty()) return messages
+        val raw = runCatching {
+            postAuthenticatedRpc(
+                "get_message_action_state",
+                JSONObject().put("p_message_ids", org.json.JSONArray(serverIds))
+            )
+        }.getOrNull() ?: return messages
+        val array = runCatching { org.json.JSONArray(if (raw.isBlank()) "[]" else raw) }.getOrNull()
+            ?: return messages
+        val states = mutableMapOf<String, MessageActionState>()
+        for (i in 0 until array.length()) {
+            val o = array.optJSONObject(i) ?: continue
+            val messageId = o.optString("message_id")
+            if (messageId.isBlank()) continue
+            val reactionObject = o.optJSONObject("reactions") ?: JSONObject()
+            val reactionCounts = buildMap<String, Int> {
+                val keys = reactionObject.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    put(key, reactionObject.optInt(key, 0))
+                }
+            }.filterValues { it > 0 }
+            val mineArray = o.optJSONArray("my_reactions")
+            val mine = buildSet {
+                if (mineArray != null) {
+                    for (j in 0 until mineArray.length()) {
+                        mineArray.optString(j).takeIf { it.isNotBlank() }?.let(::add)
+                    }
+                }
+            }
+            states[messageId] = MessageActionState(
+                reactions = reactionCounts,
+                myReactions = mine,
+                isStarred = o.optBoolean("is_starred", false),
+                isHidden = o.optBoolean("is_hidden", false),
+                isPinned = o.optBoolean("is_pinned", false)
+            )
+        }
+        return messages.mapNotNull { message ->
+            val state = states[message.id] ?: return@mapNotNull message
+            if (state.isHidden) null else message.copy(
+                reactionCounts = state.reactions,
+                myReactions = state.myReactions,
+                isStarred = state.isStarred,
+                isPinned = state.isPinned
+            )
+        }
+    }
+
+    private suspend fun fetchConversationStates(conversationIds: List<String>): Map<String, ConversationUserState> {
+        val ids = conversationIds.filter(::isServerUuid)
+        if (ids.isEmpty()) return emptyMap()
+        val raw = runCatching {
+            postAuthenticatedRpc(
+                "get_my_conversation_state",
+                JSONObject().put("p_conversation_ids", org.json.JSONArray(ids))
+            )
+        }.getOrNull() ?: return emptyMap()
+        val array = runCatching { org.json.JSONArray(if (raw.isBlank()) "[]" else raw) }.getOrNull()
+            ?: return emptyMap()
+        return buildMap {
+            for (i in 0 until array.length()) {
+                val o = array.optJSONObject(i) ?: continue
+                val id = o.optString("conversation_id")
+                if (id.isBlank()) continue
+                val cleared = o.optString("cleared_at")
+                    .takeIf { it.isNotBlank() && !it.equals("null", true) }
+                    ?.let { value ->
+                        runCatching { java.time.OffsetDateTime.parse(value).toInstant() }.getOrNull()
+                    }
+                put(id, ConversationUserState(clearedAt = cleared, isMuted = o.optBoolean("is_muted", false)))
+            }
+        }
+    }
+
+    private suspend fun applyConversationState(conversations: List<ChatConversation>): List<ChatConversation> {
+        val states = fetchConversationStates(conversations.map { it.id })
+        if (states.isEmpty()) return conversations
+        return conversations.mapNotNull { conversation ->
+            val state = states[conversation.id] ?: return@mapNotNull conversation
+            val cleared = state.clearedAt
+            val lastAt = conversation.lastMessageRawTime.takeIf { it.isNotBlank() }?.let { raw ->
+                runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }.getOrNull()
+            }
+            if (cleared != null && (lastAt == null || !lastAt.isAfter(cleared))) null
+            else conversation.copy(isMuted = state.isMuted)
+        }
+    }
+
+    private suspend fun filterClearedMessages(conversationId: String, messages: List<ChatMessage>): List<ChatMessage> {
+        val cleared = fetchConversationStates(listOf(conversationId))[conversationId]?.clearedAt ?: return messages
+        return messages.filter { message ->
+            val created = message.rawTimestamp.takeIf { it.isNotBlank() }?.let { raw ->
+                runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }.getOrNull()
+            }
+            created == null || created.isAfter(cleared)
+        }
+    }
 
     private fun triggerMessagePush(messageId: String, accessToken: String) {
         if (messageId.isBlank() || accessToken.isBlank()) return

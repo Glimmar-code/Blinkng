@@ -528,7 +528,21 @@ fun MainAppContent(
                             viewModel.openChatWithUser(partner)
                         },
                         onCloseConversation = { viewModel.closeConversation() },
-                        onSendMessage = { partner, text -> viewModel.sendMessage(partner, text) },
+                        onSendMessage = { partner, text, replyTo ->
+                            viewModel.sendMessage(partner, text, replyToMessageId = replyTo)
+                        },
+                        interactionActions = ChatInteractionActions(
+                            onReact = { partner, message, emoji -> viewModel.toggleMessageReaction(partner, message, emoji) },
+                            onEdit = { partner, message, content -> viewModel.editChatMessage(partner, message, content) },
+                            onDeleteForMe = { partner, message -> viewModel.deleteChatMessageForMe(partner, message) },
+                            onDeleteForEveryone = { partner, message -> viewModel.deleteChatMessageForEveryone(partner, message) },
+                            onToggleStar = { partner, message -> viewModel.toggleChatMessageStar(partner, message) },
+                            onTogglePin = { partner, message -> viewModel.toggleChatMessagePin(partner, message) },
+                            onReportMessage = { message, reason -> viewModel.reportChatMessage(message, reason) },
+                            onClearConversation = { conversation -> viewModel.clearConversationForMe(conversation) },
+                            onMuteConversation = { conversation, muted -> viewModel.setConversationMuted(conversation, muted) },
+                            onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
+                        ),
                         onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)

@@ -226,7 +226,14 @@ data class ChatMessage(
     val isVoiceNote: Boolean = false,
     val voiceDuration: String = "",
     val attachedImageUrl: String? = null,
-    val attachedVideoUrl: String? = null
+    val attachedVideoUrl: String? = null,
+    val replyToMessageId: String? = null,
+    val editedAt: String? = null,
+    val deletedForEveryone: Boolean = false,
+    val reactionCounts: Map<String, Int> = emptyMap(),
+    val myReactions: Set<String> = emptySet(),
+    val isStarred: Boolean = false,
+    val isPinned: Boolean = false
 )
 
 data class ChatConversation(
@@ -244,5 +251,6 @@ data class ChatConversation(
     val verificationBadge: VerificationBadge = VerificationBadge.NONE,
     val faculty: String = "SIMME",
     val lastSeen: String = "Last seen recently",
+    val isMuted: Boolean = false,
     val messages: MutableList<ChatMessage> = mutableListOf()
 )

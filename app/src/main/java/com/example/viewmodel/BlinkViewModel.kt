@@ -159,6 +159,8 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val syncMutex = Mutex()
     private val cacheWriteMutex = Mutex()
     private val messageOutboxMutex = Mutex()
+    private val activeOutboxIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
     private var syncJob: Job? = null
     private var lastSuccessfulSyncAt = 0L
     private var discoverSearchJob: Job? = null
@@ -2180,7 +2182,12 @@ private suspend fun restoreSupabaseSession() {
 
     fun closeConversation() { _uiState.value = _uiState.value.copy(activeConversationPartner = null, isConversationFullScreen = false) }
 
-    fun sendMessage(partnerUsername: String, text: String, isFromMe: Boolean = true) {
+    fun sendMessage(
+        partnerUsername: String,
+        text: String,
+        isFromMe: Boolean = true,
+        replyToMessageId: String? = null
+    ) {
         val cleanText = text.trim()
         val cleanPartner = partnerUsername.trim().removePrefix("@")
         if (cleanText.isBlank() || cleanPartner.isBlank()) return
@@ -2198,8 +2205,10 @@ private suspend fun restoreSupabaseSession() {
             rawTimestamp = java.time.Instant.now().toString(),
             isFromMe = true,
             isRead = false,
-            status = MessageStatus.SENDING
+            status = MessageStatus.SENDING,
+            replyToMessageId = replyToMessageId
         )
+        if (!replyToMessageId.isNullOrBlank()) pendingReplyTargets[tempId] = replyToMessageId
         appendMessageToState(cleanPartner, optimistic)
         persistConversations()
 
@@ -2235,6 +2244,7 @@ private suspend fun restoreSupabaseSession() {
         persistConversations()
         viewModelScope.launch(Dispatchers.IO) {
             val pending = offlineContentStore.pendingOutbox(100).firstOrNull { it.localId == failedMessage.id }
+            failedMessage.replyToMessageId?.takeIf { it.isNotBlank() }?.let { pendingReplyTargets[failedMessage.id] = it }
             if (pending == null) {
                 offlineContentStore.enqueueMessage(failedMessage.id, partnerUsername.trim(), failedMessage.text.trim())
             } else {
@@ -2244,75 +2254,269 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    private suspend fun drainMessageOutbox() = messageOutboxMutex.withLock {
-        if (supabaseService.getCurrentUserId().isNullOrBlank()) return@withLock
-        val pending = offlineContentStore.pendingOutbox(40)
-        if (pending.isEmpty()) return@withLock
+    private suspend fun drainMessageOutbox() {
+        if (supabaseService.getCurrentUserId().isNullOrBlank()) return
+        // Only protect the Room snapshot. Network requests run independently so a slow
+        // message can never block a rapid second/third send.
+        val pending = messageOutboxMutex.withLock { offlineContentStore.pendingOutbox(100) }
+        if (pending.isEmpty()) return
 
-        for (item in pending) {
-            chatRepository.sendMessage(item.receiverUsername, item.content).fold(
-                onSuccess = { serverMsg ->
-                    offlineContentStore.deleteOutbox(item.localId)
-                    withContext(Dispatchers.Main) {
-                        replaceMessageInState(
+        kotlinx.coroutines.coroutineScope {
+            pending.map { item ->
+                async(Dispatchers.IO) {
+                    if (!activeOutboxIds.add(item.localId)) return@async
+                    try {
+                        chatRepository.sendMessage(
                             item.receiverUsername,
-                            item.localId,
-                            serverMsg.copy(
-                                receiverUsername = item.receiverUsername,
-                                status = MessageStatus.SENT
-                            )
-                        )
-                        persistConversations()
-                    }
-                    runCatching {
-                        supabaseService.recordActivity(
-                            item.receiverUsername,
-                            "sent you a direct message",
-                            NotificationFilter.ALL,
-                            targetUsername = supabaseService.getCurrentUsername().orEmpty(),
-                            previewText = item.content,
-                            targetType = "CHAT"
-                        )
-                    }
-                    reconcileConversationSummary(item.receiverUsername)
-                },
-                onFailure = { error ->
-                    val detail = error.message.orEmpty()
-                    val lower = detail.lowercase()
-                    val retryable = lower.contains("timeout") ||
-                        lower.contains("timed out") ||
-                        lower.contains("network") ||
-                        lower.contains("failed to connect") ||
-                        lower.contains("unable to resolve host") ||
-                        lower.contains("no route to host") ||
-                        lower.contains("socket") ||
-                        !_uiState.value.isOnline
+                            item.content,
+                            pendingReplyTargets[item.localId]
+                        ).fold(
+                            onSuccess = { serverMsg ->
+                                offlineContentStore.deleteOutbox(item.localId)
+                                pendingReplyTargets.remove(item.localId)
+                                withContext(Dispatchers.Main) {
+                                    replaceMessageInState(
+                                        item.receiverUsername,
+                                        item.localId,
+                                        serverMsg.copy(
+                                            receiverUsername = item.receiverUsername,
+                                            status = MessageStatus.SENT
+                                        )
+                                    )
+                                    persistConversations()
+                                }
+                                runCatching {
+                                    supabaseService.recordActivity(
+                                        item.receiverUsername,
+                                        "sent you a direct message",
+                                        NotificationFilter.ALL,
+                                        targetUsername = supabaseService.getCurrentUsername().orEmpty(),
+                                        previewText = item.content,
+                                        targetType = "CHAT"
+                                    )
+                                }
+                                reconcileConversationSummary(item.receiverUsername)
+                            },
+                            onFailure = { error ->
+                                val detail = error.message.orEmpty()
+                                val lower = detail.lowercase()
+                                val retryable = lower.contains("timeout") ||
+                                    lower.contains("timed out") ||
+                                    lower.contains("network") ||
+                                    lower.contains("failed to connect") ||
+                                    lower.contains("unable to resolve host") ||
+                                    lower.contains("no route to host") ||
+                                    lower.contains("socket") ||
+                                    !_uiState.value.isOnline
 
-                    if (retryable) {
-                        // Keep it durable and immediately eligible for the network-restored drain.
-                        offlineContentStore.resetOutbox(item.localId)
-                        withContext(Dispatchers.Main) {
-                            updateMessageStatusInState(
-                                item.receiverUsername,
-                                item.localId,
-                                MessageStatus.SENDING,
-                                pendingLabel = "Queued"
-                            )
-                            persistConversations()
-                        }
-                    } else {
-                        offlineContentStore.markOutboxFailure(item, detail.ifBlank { "Message send failed" })
-                        withContext(Dispatchers.Main) {
-                            updateMessageStatusInState(item.receiverUsername, item.localId, MessageStatus.FAILED)
-                            persistConversations()
-                            showToast(detail.ifBlank { "Message failed. Please try again." })
-                        }
+                                if (retryable) {
+                                    offlineContentStore.resetOutbox(item.localId)
+                                    withContext(Dispatchers.Main) {
+                                        updateMessageStatusInState(
+                                            item.receiverUsername,
+                                            item.localId,
+                                            MessageStatus.SENDING,
+                                            pendingLabel = "Queued"
+                                        )
+                                        persistConversations()
+                                    }
+                                } else {
+                                    offlineContentStore.markOutboxFailure(item, detail.ifBlank { "Message send failed" })
+                                    withContext(Dispatchers.Main) {
+                                        updateMessageStatusInState(item.receiverUsername, item.localId, MessageStatus.FAILED)
+                                        persistConversations()
+                                        showToast(detail.ifBlank { "Message failed. Please try again." })
+                                    }
+                                }
+                            }
+                        )
+                    } finally {
+                        activeOutboxIds.remove(item.localId)
                     }
                 }
-            )
+            }.forEach { it.await() }
         }
     }
 
+    private fun mutateChatMessage(
+        partnerUsername: String,
+        messageId: String,
+        transform: (ChatMessage) -> ChatMessage
+    ) {
+        val state = _uiState.value
+        val conversations = state.conversations.map { conversation ->
+            if (!conversation.partnerUsername.equals(partnerUsername, true)) conversation
+            else conversation.copy(
+                messages = conversation.messages.map { message ->
+                    if (message.id == messageId) transform(message) else message
+                }.toMutableList()
+            )
+        }
+        _uiState.value = state.copy(conversations = conversations)
+        persistConversations()
+    }
+
+    fun toggleMessageReaction(partnerUsername: String, message: ChatMessage, emoji: String) {
+        if (emoji.isBlank() || message.id.startsWith("temp_")) return
+        val wasMine = emoji in message.myReactions
+        val active = !wasMine
+        val before = message
+        mutateChatMessage(partnerUsername, message.id) { current ->
+            val counts = current.reactionCounts.toMutableMap()
+            val next = (counts[emoji] ?: 0) + if (active) 1 else -1
+            if (next <= 0) counts.remove(emoji) else counts[emoji] = next
+            current.copy(
+                reactionCounts = counts,
+                myReactions = if (active) current.myReactions + emoji else current.myReactions - emoji
+            )
+        }
+        viewModelScope.launch {
+            if (!chatRepository.setMessageReaction(message.id, emoji, active)) {
+                mutateChatMessage(partnerUsername, message.id) { before }
+                showToast("Couldn't update reaction.")
+            }
+        }
+    }
+
+    fun editChatMessage(partnerUsername: String, message: ChatMessage, newText: String) {
+        val clean = newText.trim()
+        if (!message.isFromMe || message.id.startsWith("temp_") || clean.isBlank()) return
+        val before = message
+        mutateChatMessage(partnerUsername, message.id) {
+            it.copy(text = clean, editedAt = java.time.Instant.now().toString())
+        }
+        viewModelScope.launch {
+            if (!chatRepository.editMessage(message.id, clean)) {
+                mutateChatMessage(partnerUsername, message.id) { before }
+                showToast("Couldn't edit message.")
+            }
+        }
+    }
+
+    fun deleteChatMessageForMe(partnerUsername: String, message: ChatMessage) {
+        val state = _uiState.value
+        val before = state.conversations
+        val updated = before.map { conversation ->
+            if (!conversation.partnerUsername.equals(partnerUsername, true)) conversation
+            else conversation.copy(messages = conversation.messages.filterNot { it.id == message.id }.toMutableList())
+        }
+        _uiState.value = state.copy(conversations = updated)
+        persistConversations()
+        viewModelScope.launch(Dispatchers.IO) {
+            if (message.id.startsWith("temp_")) {
+                offlineContentStore.deleteOutbox(message.id)
+                pendingReplyTargets.remove(message.id)
+                return@launch
+            }
+            if (!chatRepository.hideMessageForMe(message.id)) {
+                withContext(Dispatchers.Main) {
+                    _uiState.value = _uiState.value.copy(conversations = before)
+                    persistConversations()
+                    showToast("Couldn't delete message for you.")
+                }
+            }
+        }
+    }
+
+    fun deleteChatMessageForEveryone(partnerUsername: String, message: ChatMessage) {
+        if (!message.isFromMe || message.id.startsWith("temp_")) return
+        val before = message
+        mutateChatMessage(partnerUsername, message.id) {
+            it.copy(
+                text = "",
+                attachedImageUrl = null,
+                attachedVideoUrl = null,
+                deletedForEveryone = true
+            )
+        }
+        viewModelScope.launch {
+            if (!chatRepository.deleteMessageForEveryone(message.id)) {
+                mutateChatMessage(partnerUsername, message.id) { before }
+                showToast("Couldn't delete message for everyone.")
+            }
+        }
+    }
+
+    fun toggleChatMessageStar(partnerUsername: String, message: ChatMessage) {
+        if (message.id.startsWith("temp_")) return
+        val before = message
+        val next = !message.isStarred
+        mutateChatMessage(partnerUsername, message.id) { it.copy(isStarred = next) }
+        viewModelScope.launch {
+            if (!chatRepository.setMessageStarred(message.id, next)) {
+                mutateChatMessage(partnerUsername, message.id) { before }
+                showToast("Couldn't update starred message.")
+            }
+        }
+    }
+
+    fun toggleChatMessagePin(partnerUsername: String, message: ChatMessage) {
+        if (message.id.startsWith("temp_")) return
+        val before = message
+        val next = !message.isPinned
+        mutateChatMessage(partnerUsername, message.id) { it.copy(isPinned = next) }
+        viewModelScope.launch {
+            if (!chatRepository.setMessagePinned(message.id, next)) {
+                mutateChatMessage(partnerUsername, message.id) { before }
+                showToast("Couldn't update pinned message.")
+            }
+        }
+    }
+
+    fun reportChatMessage(message: ChatMessage, reason: String) {
+        if (message.id.startsWith("temp_")) return
+        viewModelScope.launch {
+            if (chatRepository.reportMessage(message.id, reason)) showToast("Message reported.")
+            else showToast("Couldn't report message.")
+        }
+    }
+
+    fun clearConversationForMe(conversation: ChatConversation) {
+        val state = _uiState.value
+        val before = state.conversations
+        _uiState.value = state.copy(
+            conversations = before.filterNot { it.id == conversation.id },
+            activeConversationPartner = if (state.activeConversationPartner.equals(conversation.partnerUsername, true)) null else state.activeConversationPartner,
+            isConversationFullScreen = false
+        )
+        persistConversations()
+        if (conversation.id.startsWith("local_")) return
+        viewModelScope.launch {
+            if (!chatRepository.clearConversationForMe(conversation.id)) {
+                _uiState.value = _uiState.value.copy(conversations = before)
+                persistConversations()
+                showToast("Couldn't delete chat.")
+            }
+        }
+    }
+
+    fun setConversationMuted(conversation: ChatConversation, muted: Boolean) {
+        val before = conversation.isMuted
+        val state = _uiState.value
+        _uiState.value = state.copy(conversations = state.conversations.map {
+            if (it.id == conversation.id) it.copy(isMuted = muted) else it
+        })
+        persistConversations()
+        if (conversation.id.startsWith("local_")) return
+        viewModelScope.launch {
+            if (!chatRepository.setConversationMuted(conversation.id, muted)) {
+                val latest = _uiState.value
+                _uiState.value = latest.copy(conversations = latest.conversations.map {
+                    if (it.id == conversation.id) it.copy(isMuted = before) else it
+                })
+                persistConversations()
+                showToast("Couldn't update chat notifications.")
+            }
+        }
+    }
+
+    fun reportConversation(conversation: ChatConversation, reason: String) {
+        if (conversation.id.startsWith("local_")) return
+        viewModelScope.launch {
+            if (chatRepository.reportConversation(conversation.id, reason)) showToast("Conversation reported.")
+            else showToast("Couldn't report conversation.")
+        }
+    }
 
     private suspend fun reconcileConversationSummary(partnerUsername: String) {
         val server = runCatching { chatRepository.fetchConversations() }.getOrDefault(emptyList())

@@ -30,6 +30,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -70,10 +71,12 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircle
@@ -109,6 +112,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -185,13 +189,14 @@ fun PremiumMessagesScreen(
     onConversationFullScreenChange: (Boolean) -> Unit = {},
     onOpenConversation: (String) -> Unit,
     onCloseConversation: () -> Unit,
-    onSendMessage: (String, String) -> Unit,
+    onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
     onProfileClick: (String) -> Unit,
     onStoryClick: (Story) -> Unit,
     onAddStoryClick: () -> Unit,
     onOpenActivity: () -> Unit,
+    interactionActions: ChatInteractionActions = ChatInteractionActions(),
     isConnected: Boolean = true,
     isDark: Boolean = false
 ) {
@@ -251,6 +256,7 @@ fun PremiumMessagesScreen(
                     onSendMessage = onSendMessage,
                     onSendVideo = onSendVideo,
                     onRetryMessage = onRetryMessage,
+                    interactionActions = interactionActions,
                     onProfileClick = onProfileClick,
                     onStartCall = { conversation, kind ->
                         activeCall = MessageCallState(conversation, kind)
@@ -305,9 +311,10 @@ private fun PremiumMessagesMasterDetail(
     onFullScreenChange: (Boolean) -> Unit,
     onOpenConversation: (String) -> Unit,
     onCloseConversation: () -> Unit,
-    onSendMessage: (String, String) -> Unit,
+    onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
+    interactionActions: ChatInteractionActions,
     onProfileClick: (String) -> Unit,
     onStartCall: (ChatConversation, MessageCallKind) -> Unit,
     isConnected: Boolean
@@ -402,11 +409,22 @@ private fun PremiumMessagesMasterDetail(
 
                     PremiumChatDetail(
                         conversation = displayedConversation,
+                        allConversations = conversations,
                         palette = palette,
                         onBack = {
                             if (isFullScreen) onFullScreenChange(false) else onCloseConversation()
                         },
-                        onSend = { onSendMessage(displayedConversation.partnerUsername, it) },
+                        onSend = { content, replyTo ->
+                            onSendMessage(displayedConversation.partnerUsername, content, replyTo)
+                        },
+                        onForward = { target, message ->
+                            val forwarded = message.text.takeIf { it.isNotBlank() }
+                                ?: message.attachedVideoUrl
+                                ?: message.attachedImageUrl
+                                ?: "Forwarded message"
+                            onSendMessage(target, forwarded, null)
+                        },
+                        interactionActions = interactionActions,
                         onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
                         onRetry = { message ->
                             onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
@@ -979,9 +997,12 @@ private fun ConversationCard(
 @Composable
 private fun PremiumChatDetail(
     conversation: ChatConversation,
+    allConversations: List<ChatConversation>,
     palette: MessagePalette,
     onBack: () -> Unit,
-    onSend: (String) -> Unit,
+    onSend: (String, String?) -> Unit,
+    onForward: (String, ChatMessage) -> Unit,
+    interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
     onRetry: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
@@ -991,9 +1012,19 @@ private fun PremiumChatDetail(
     isFullScreen: Boolean,
     onToggleFullScreen: () -> Unit
 ) {
+    val context = LocalContext.current
     var text by rememberSaveable(conversation.partnerUsername) { mutableStateOf("") }
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
+    var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
+    var forwardingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
+    var replyingTo by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
+    var editingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
+    var showOverflow by remember(conversation.partnerUsername) { mutableStateOf(false) }
+    var searchVisible by remember(conversation.partnerUsername) { mutableStateOf(false) }
+    var searchQuery by rememberSaveable(conversation.partnerUsername) { mutableStateOf("") }
+    var pinnedOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
+    var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onSendVideo(uri)
@@ -1002,27 +1033,35 @@ private fun PremiumChatDetail(
         text = listOf(text.trim(), spoken.trim()).filter { it.isNotBlank() }.joinToString(" ")
     }
 
-    fun submitMessage(value: String = text) {
-        val clean = value.trim()
-        if (clean.isNotEmpty()) {
-            onSend(clean)
-            if (value == text) text = ""
-            showEmojiRail = false
-        }
+    val visibleMessages = conversation.messages.filter { message ->
+        val matchesSearch = searchQuery.isBlank() || message.text.contains(searchQuery, ignoreCase = true)
+        val matchesPinned = !pinnedOnly || message.isPinned
+        val matchesStarred = !starredOnly || message.isStarred
+        matchesSearch && matchesPinned && matchesStarred
     }
 
-    LaunchedEffect(conversation.messages.size) {
-        if (conversation.messages.isNotEmpty()) {
-            listState.animateScrollToItem(conversation.messages.size)
+    fun submitMessage(value: String = text) {
+        val clean = value.trim()
+        if (clean.isEmpty()) return
+        val edit = editingMessage
+        if (edit != null) {
+            interactionActions.onEdit(conversation.partnerUsername, edit, clean)
+            editingMessage = null
+        } else {
+            onSend(clean, replyingTo?.id)
+            replyingTo = null
         }
+        if (value == text) text = ""
+        showEmojiRail = false
+    }
+
+    LaunchedEffect(visibleMessages.size) {
+        if (visibleMessages.isNotEmpty()) listState.animateScrollToItem(visibleMessages.size)
     }
 
     MessageBackground(palette) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .imePadding()
+            modifier = Modifier.fillMaxSize().statusBarsPadding().imePadding()
         ) {
             ChatHeader(
                 conversation = conversation,
@@ -1031,6 +1070,7 @@ private fun PremiumChatDetail(
                 onProfileClick = onProfileClick,
                 onAudioCall = onAudioCall,
                 onVideoCall = onVideoCall,
+                onMore = { showOverflow = true },
                 isFullScreen = isFullScreen,
                 onToggleFullScreen = onToggleFullScreen
             )
@@ -1038,7 +1078,7 @@ private fun PremiumChatDetail(
             if (!isConnected) {
                 Surface(color = palette.danger.copy(alpha = .18f)) {
                     Text(
-                        "Offline — your message will stay queued and retry automatically.",
+                        "Offline — your messages stay in the outbox and send automatically when connection returns.",
                         color = palette.textSecondary,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
@@ -1047,7 +1087,54 @@ private fun PremiumChatDetail(
                 }
             }
 
-            if (conversation.messages.isEmpty()) {
+            if (searchVisible) {
+                TextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search this chat", color = palette.textMuted) },
+                    singleLine = true,
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = palette.textSecondary) },
+                    trailingIcon = {
+                        IconButton(onClick = { searchVisible = false; searchQuery = "" }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close search", tint = palette.textSecondary)
+                        }
+                    },
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = palette.glass,
+                        unfocusedContainerColor = palette.glass,
+                        focusedTextColor = palette.textPrimary,
+                        unfocusedTextColor = palette.textPrimary,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent
+                    ),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            }
+
+            if (pinnedOnly || starredOnly) {
+                Surface(color = palette.glassElevated, border = BorderStroke(1.dp, palette.border)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            if (pinnedOnly) "Pinned messages" else "Starred messages",
+                            color = palette.textSecondary,
+                            fontSize = 10.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            "Show all",
+                            color = palette.accent,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { pinnedOnly = false; starredOnly = false }
+                        )
+                    }
+                }
+            }
+
+            if (visibleMessages.isEmpty()) {
                 EmptyConversation(
                     conversation = conversation,
                     palette = palette,
@@ -1060,26 +1147,66 @@ private fun PremiumChatDetail(
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(11.dp)
                 ) {
-                    item(key = "today_divider") {
-                        DayDivider("Today", palette)
-                    }
-                    items(conversation.messages, key = { it.id }) { message ->
+                    item(key = "today_divider") { DayDivider("Today", palette) }
+                    items(visibleMessages, key = { it.id }) { message ->
+                        val replyTarget = message.replyToMessageId?.let { replyId ->
+                            conversation.messages.firstOrNull { it.id == replyId }
+                        }
                         MessageBubble(
                             message = message,
+                            replyTarget = replyTarget,
                             partnerAvatar = conversation.partnerAvatar,
                             partnerName = conversation.partnerName,
                             palette = palette,
+                            onReply = {
+                                replyingTo = message
+                                editingMessage = null
+                            },
+                            onActions = { selectedMessage = message },
                             onRetry = { onRetry(message) }
                         )
                     }
                 }
             }
 
+            if (replyingTo != null || editingMessage != null) {
+                val target = editingMessage ?: replyingTo
+                Surface(color = palette.glassElevated, border = BorderStroke(1.dp, palette.border)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (editingMessage != null) Icons.Default.Edit else Icons.Default.Reply,
+                            contentDescription = null,
+                            tint = palette.accent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(9.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                if (editingMessage != null) "Editing message" else "Replying to ${if (target?.isFromMe == true) "yourself" else conversation.partnerName}",
+                                color = palette.accent,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                target?.text?.ifBlank { "Media message" }.orEmpty(),
+                                color = palette.textSecondary,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(onClick = { replyingTo = null; editingMessage = null; if (text == target?.text) text = "" }) {
+                            Icon(Icons.Default.Close, contentDescription = "Cancel", tint = palette.textSecondary)
+                        }
+                    }
+                }
+            }
+
             AnimatedVisibility(visible = showEmojiRail) {
-                EmojiRail(
-                    palette = palette,
-                    onEmoji = { text += it }
-                )
+                EmojiRail(palette = palette, onEmoji = { text += it })
             }
 
             MessageComposer(
@@ -1093,6 +1220,96 @@ private fun PremiumChatDetail(
                 onQuickLike = { submitMessage("👍") }
             )
         }
+    }
+
+    selectedMessage?.let { message ->
+        MessageActionsSheet(
+            message = message,
+            palette = palette,
+            onReaction = { emoji ->
+                interactionActions.onReact(conversation.partnerUsername, message, emoji)
+                selectedMessage = null
+            },
+            onReply = {
+                replyingTo = message
+                editingMessage = null
+                selectedMessage = null
+            },
+            onForward = {
+                forwardingMessage = message
+                selectedMessage = null
+            },
+            onEdit = {
+                editingMessage = message
+                replyingTo = null
+                text = message.text
+                selectedMessage = null
+            },
+            onDeleteForMe = {
+                interactionActions.onDeleteForMe(conversation.partnerUsername, message)
+                selectedMessage = null
+            },
+            onDeleteForEveryone = {
+                interactionActions.onDeleteForEveryone(conversation.partnerUsername, message)
+                selectedMessage = null
+            },
+            onToggleStar = {
+                interactionActions.onToggleStar(conversation.partnerUsername, message)
+                selectedMessage = null
+            },
+            onShare = {
+                shareChatMessage(context, message)
+                selectedMessage = null
+            },
+            onTogglePin = {
+                interactionActions.onTogglePin(conversation.partnerUsername, message)
+                selectedMessage = null
+            },
+            onReport = {
+                interactionActions.onReportMessage(message, "Reported from message actions")
+                selectedMessage = null
+            },
+            onDismiss = { selectedMessage = null }
+        )
+    }
+
+    forwardingMessage?.let { message ->
+        ForwardMessageSheet(
+            sourcePartner = conversation.partnerUsername,
+            conversations = allConversations,
+            palette = palette,
+            onForward = { targets ->
+                targets.take(10).forEach { target -> onForward(target.partnerUsername, message) }
+                forwardingMessage = null
+            },
+            onDismiss = { forwardingMessage = null }
+        )
+    }
+
+    if (showOverflow) {
+        ChatOverflowSheet(
+            conversation = conversation,
+            palette = palette,
+            pinnedOnly = pinnedOnly,
+            starredOnly = starredOnly,
+            onProfile = { showOverflow = false; onProfileClick() },
+            onSearch = { showOverflow = false; searchVisible = true },
+            onPinned = { showOverflow = false; pinnedOnly = !pinnedOnly; starredOnly = false },
+            onStarred = { showOverflow = false; starredOnly = !starredOnly; pinnedOnly = false },
+            onMute = {
+                showOverflow = false
+                interactionActions.onMuteConversation(conversation, !conversation.isMuted)
+            },
+            onDelete = {
+                showOverflow = false
+                interactionActions.onClearConversation(conversation)
+            },
+            onReport = {
+                showOverflow = false
+                interactionActions.onReportConversation(conversation, "Reported from conversation menu")
+            },
+            onDismiss = { showOverflow = false }
+        )
     }
 
     if (showAttachmentSheet) {
@@ -1115,31 +1332,21 @@ private fun ChatHeader(
     onProfileClick: () -> Unit,
     onAudioCall: () -> Unit,
     onVideoCall: () -> Unit,
+    onMore: () -> Unit,
     isFullScreen: Boolean,
     onToggleFullScreen: () -> Unit
 ) {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(palette.headerBrush())
-            .border(1.dp, palette.border)
+        modifier = Modifier.fillMaxWidth().background(palette.headerBrush()).border(1.dp, palette.border)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            GlassIconButton(
-                icon = Icons.Default.ArrowBack,
-                contentDescription = "Back",
-                palette = palette,
-                size = 40.dp,
-                onClick = onBack
-            )
+            GlassIconButton(Icons.Default.ArrowBack, "Back", palette, 40.dp, onClick = onBack)
             Spacer(Modifier.width(7.dp))
             Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(onClick = onProfileClick),
+                modifier = Modifier.weight(1f).clickable(onClick = onProfileClick),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RingAvatar(
@@ -1176,25 +1383,15 @@ private fun ChatHeader(
                 icon = if (isFullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
                 contentDescription = if (isFullScreen) "Restore chat drawer" else "Expand chat fullscreen",
                 palette = palette,
-                size = 36.dp,
+                size = 34.dp,
                 onClick = onToggleFullScreen
             )
-            Spacer(Modifier.width(5.dp))
-            GlassIconButton(
-                icon = Icons.Default.Call,
-                contentDescription = "Audio call",
-                palette = palette,
-                size = 40.dp,
-                onClick = onAudioCall
-            )
-            Spacer(Modifier.width(7.dp))
-            GlassIconButton(
-                icon = Icons.Default.Videocam,
-                contentDescription = "Video call",
-                palette = palette,
-                size = 40.dp,
-                onClick = onVideoCall
-            )
+            Spacer(Modifier.width(4.dp))
+            GlassIconButton(Icons.Default.Call, "Audio call", palette, 36.dp, onClick = onAudioCall)
+            Spacer(Modifier.width(4.dp))
+            GlassIconButton(Icons.Default.Videocam, "Video call", palette, 36.dp, onClick = onVideoCall)
+            Spacer(Modifier.width(4.dp))
+            GlassIconButton(Icons.Default.MoreVert, "More chat options", palette, 36.dp, onClick = onMore)
         }
     }
 }
@@ -1258,69 +1455,149 @@ private fun DayDivider(label: String, palette: MessagePalette) {
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
+    replyTarget: ChatMessage?,
     partnerAvatar: String,
     partnerName: String,
     palette: MessagePalette,
+    onReply: () -> Unit,
+    onActions: () -> Unit,
     onRetry: () -> Unit
 ) {
     val isMine = message.isFromMe
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
-        verticalAlignment = Alignment.Bottom
-    ) {
-        if (!isMine) {
-            RingAvatar(
-                url = partnerAvatar,
-                name = partnerName,
-                palette = palette,
-                size = 31.dp
-            )
-            Spacer(Modifier.width(8.dp))
-        }
+    val density = LocalDensity.current
+    val threshold = with(density) { 64.dp.toPx() }
+    var dragOffset by remember(message.id) { mutableStateOf(0f) }
+    val displayOffset by animateFloatAsState(
+        targetValue = dragOffset,
+        animationSpec = tween(70),
+        label = "messageSwipeReply"
+    )
 
-        Column(horizontalAlignment = if (isMine) Alignment.End else Alignment.Start) {
-            val bubbleShape = RoundedCornerShape(17.dp)
-            Box(
-                modifier = Modifier
-                    .widthIn(max = 300.dp)
-                    .clip(bubbleShape)
-                    .background(
-                        brush = if (isMine) palette.outgoingBrush()
-                        else Brush.linearGradient(listOf(palette.incomingBubble, palette.incomingBubble)),
-                        shape = bubbleShape
+    Box(modifier = Modifier.fillMaxWidth()) {
+        if (displayOffset > 10f) {
+            Icon(
+                Icons.Default.Reply,
+                contentDescription = null,
+                tint = palette.accent.copy(alpha = (displayOffset / threshold).coerceIn(.25f, 1f)),
+                modifier = Modifier.align(if (isMine) Alignment.CenterEnd else Alignment.CenterStart).padding(horizontal = 6.dp).size(20.dp)
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer { translationX = displayOffset }
+                .pointerInput(message.id) {
+                    detectHorizontalDragGestures(
+                        onHorizontalDrag = { _, amount ->
+                            dragOffset = (dragOffset + amount).coerceIn(0f, threshold * 1.35f)
+                        },
+                        onDragEnd = {
+                            if (dragOffset >= threshold) onReply()
+                            dragOffset = 0f
+                        },
+                        onDragCancel = { dragOffset = 0f }
                     )
-                    .border(1.dp, palette.border.copy(alpha = .55f), bubbleShape)
-                    .clickable(enabled = message.status == MessageStatus.FAILED, onClick = onRetry)
-            ) {
-                MessageContent(message = message, isMine = isMine, palette = palette)
+                }
+                .pointerInput(message.id, message.status) {
+                    detectTapGestures(
+                        onDoubleTap = { onActions() },
+                        onLongPress = { onActions() },
+                        onTap = { if (message.status == MessageStatus.FAILED) onRetry() }
+                    )
+                },
+            horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            if (!isMine) {
+                RingAvatar(url = partnerAvatar, name = partnerName, palette = palette, size = 31.dp)
+                Spacer(Modifier.width(8.dp))
             }
-            Spacer(Modifier.height(3.dp))
-            val metadata = when (message.status) {
-                MessageStatus.SENDING -> "Sending…"
-                MessageStatus.FAILED -> "Failed • tap to retry"
-                MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ -> message.timestamp
-            }
-            val receipt = if (!isMine) "" else when (message.status) {
-                MessageStatus.SENT -> "✓"
-                MessageStatus.DELIVERED, MessageStatus.READ -> "✓✓"
-                else -> ""
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    metadata,
-                    color = if (message.status == MessageStatus.FAILED) palette.danger else palette.textSecondary,
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                if (receipt.isNotBlank()) {
-                    Spacer(Modifier.width(4.dp))
+
+            Column(horizontalAlignment = if (isMine) Alignment.End else Alignment.Start) {
+                val bubbleShape = RoundedCornerShape(17.dp)
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 300.dp)
+                        .clip(bubbleShape)
+                        .background(
+                            brush = if (isMine) palette.outgoingBrush() else Brush.linearGradient(listOf(palette.incomingBubble, palette.incomingBubble)),
+                            shape = bubbleShape
+                        )
+                        .border(1.dp, palette.border.copy(alpha = .55f), bubbleShape)
+                ) {
+                    if (message.replyToMessageId != null) {
+                        Surface(
+                            color = palette.glass.copy(alpha = .45f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, palette.border.copy(alpha = .55f)),
+                            modifier = Modifier.fillMaxWidth().padding(start = 5.dp, end = 5.dp, top = 5.dp)
+                        ) {
+                            Column(Modifier.padding(horizontal = 9.dp, vertical = 6.dp)) {
+                                Text(
+                                    if (replyTarget?.isFromMe == true) "You" else partnerName,
+                                    color = palette.accent,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    replyTarget?.text?.ifBlank { "Media message" } ?: "Original message unavailable",
+                                    color = palette.textSecondary,
+                                    fontSize = 9.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                    MessageContent(message = message, isMine = isMine, palette = palette)
+                }
+
+                if (message.reactionCounts.isNotEmpty()) {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(top = 3.dp).widthIn(max = 260.dp)
+                    ) {
+                        items(message.reactionCounts.entries.sortedByDescending { it.value }.take(8)) { entry ->
+                            Surface(
+                                color = if (entry.key in message.myReactions) palette.accent.copy(alpha = .18f) else palette.glassElevated,
+                                shape = RoundedCornerShape(100.dp),
+                                border = BorderStroke(1.dp, if (entry.key in message.myReactions) palette.accent.copy(alpha = .55f) else palette.border)
+                            ) {
+                                Text("${entry.key} ${entry.value}", fontSize = 9.sp, color = palette.textSecondary, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(3.dp))
+                val metadata = when (message.status) {
+                    MessageStatus.SENDING -> "Sending…"
+                    MessageStatus.FAILED -> "Failed • tap to retry"
+                    MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ -> message.timestamp + if (!message.editedAt.isNullOrBlank()) " • edited" else ""
+                }
+                val receipt = if (!isMine) "" else when (message.status) {
+                    MessageStatus.SENT -> "✓"
+                    MessageStatus.DELIVERED, MessageStatus.READ -> "✓✓"
+                    else -> ""
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (message.isPinned) Text("📌 ", fontSize = 8.sp)
+                    if (message.isStarred) Text("★ ", color = palette.accent, fontSize = 8.sp)
                     Text(
-                        receipt,
-                        color = if (message.status == MessageStatus.READ) Color(0xFF3B82F6) else palette.textSecondary,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
+                        metadata,
+                        color = if (message.status == MessageStatus.FAILED) palette.danger else palette.textSecondary,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Medium
                     )
+                    if (receipt.isNotBlank()) {
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            receipt,
+                            color = if (message.status == MessageStatus.READ) Color(0xFF3B82F6) else palette.textSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
@@ -1332,67 +1609,61 @@ private fun MessageContent(message: ChatMessage, isMine: Boolean, palette: Messa
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
     Column(modifier = Modifier.padding(5.dp)) {
-        if (!message.attachedImageUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = message.attachedImageUrl,
-                contentDescription = "Shared image",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .width(220.dp)
-                    .height(170.dp)
-                    .clip(RoundedCornerShape(13.dp))
+        if (message.deletedForEveryone) {
+            Text(
+                "This message was deleted",
+                color = contentColor.copy(alpha = .70f),
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp)
             )
-        }
-        if (!message.attachedVideoUrl.isNullOrBlank()) {
-            Surface(
-                color = Color.Black.copy(alpha = .20f),
-                contentColor = contentColor,
-                shape = RoundedCornerShape(13.dp),
-                modifier = Modifier
-                    .width(220.dp)
-                    .height(96.dp)
-                    .clickable {
+        } else {
+            if (!message.attachedImageUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = message.attachedImageUrl,
+                    contentDescription = "Shared image",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.width(220.dp).height(170.dp).clip(RoundedCornerShape(13.dp))
+                )
+            }
+            if (!message.attachedVideoUrl.isNullOrBlank()) {
+                Surface(
+                    color = Color.Black.copy(alpha = .20f),
+                    contentColor = contentColor,
+                    shape = RoundedCornerShape(13.dp),
+                    modifier = Modifier.width(220.dp).height(96.dp).clickable {
                         openExternalUri(context, Uri.parse(message.attachedVideoUrl))
                     }
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(Icons.Default.PlayCircle, contentDescription = "Play video", modifier = Modifier.size(34.dp))
-                    Text("Video message", fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Icon(Icons.Default.PlayCircle, contentDescription = "Play video", modifier = Modifier.size(34.dp))
+                        Text("Video message", fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
-        }
-        if (message.isVoiceNote) {
-            Row(
-                modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.Mic, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    Modifier
-                        .width(104.dp)
-                        .height(3.dp)
-                        .clip(CircleShape)
-                        .background(contentColor.copy(alpha = .55f))
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(message.voiceDuration.ifBlank { "0:00" }, color = contentColor, fontSize = 9.sp)
+            if (message.isVoiceNote) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Mic, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.width(104.dp).height(3.dp).clip(CircleShape).background(contentColor.copy(alpha = .55f)))
+                    Spacer(Modifier.width(8.dp))
+                    Text(message.voiceDuration.ifBlank { "0:00" }, color = contentColor, fontSize = 9.sp)
+                }
             }
-        }
-        val placeholderOnly =
-            (!message.attachedVideoUrl.isNullOrBlank() && message.text.equals("Video", true)) ||
-                (!message.attachedImageUrl.isNullOrBlank() && message.text.equals("Image", true))
-        if (message.text.isNotBlank() && !placeholderOnly && !message.isVoiceNote) {
-            Text(
-                message.text,
-                color = contentColor,
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-            )
+            val placeholderOnly =
+                (!message.attachedVideoUrl.isNullOrBlank() && message.text.equals("Video", true)) ||
+                    (!message.attachedImageUrl.isNullOrBlank() && message.text.equals("Image", true))
+            if (message.text.isNotBlank() && !placeholderOnly && !message.isVoiceNote) {
+                Text(
+                    message.text,
+                    color = contentColor,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                )
+            }
         }
     }
 }
