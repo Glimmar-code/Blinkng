@@ -336,7 +336,7 @@ fun MainAppContent(
         ) { tab ->
             when (tab) {
                 MainTab.HOME -> {
-                    FeedScreen(
+                    PremiumFeedScreen(
                         posts = uiState.posts,
                         reels = uiState.reels,
                         stories = uiState.stories,
@@ -413,6 +413,11 @@ fun MainAppContent(
                         onDirectMessage = { partner, partnerName, partnerAvatar ->
                             viewModel.openChatWithUser(partner, partnerName, partnerAvatar)
                         },
+                        onSearchClick = { viewModel.setTab(MainTab.SEARCH) },
+                        onLeaderboardClick = { viewModel.setTab(MainTab.LEADERBOARD) },
+                        onMarketClick = { viewModel.setTab(MainTab.MARKET) },
+                        onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
+                        hasUnreadNotifications = uiState.activities.any { it.isUnread },
                         hasMorePosts = uiState.hasMorePosts,
                         hasMoreReels = uiState.hasMoreReels,
                         isLoadingMorePosts = uiState.isLoadingMorePosts,
@@ -546,16 +551,34 @@ fun MainAppContent(
             ),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            FloatingBottomBar(
+            FeedBottomBar(
                 currentTab = uiState.selectedTab,
-                onTabSelected = { tab ->
+                feedSubTab = uiState.feedSubTab,
+                onHomeClick = {
                     isBottomBarVisibleByScroll = true
-                    if (tab == MainTab.HOME && uiState.selectedTab == MainTab.HOME) {
-                        viewModel.setFeedSubTab(0)
+                    if (uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0) {
                         homeReselectSignal++
                     } else {
-                        viewModel.setTab(tab)
+                        viewModel.setTab(MainTab.HOME)
+                        viewModel.setFeedSubTab(0)
                     }
+                },
+                onConnectClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(2)
+                },
+                onLeaderboardClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.setTab(MainTab.LEADERBOARD)
+                },
+                onMarketClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.setTab(MainTab.MARKET)
+                },
+                onMessageClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.setTab(MainTab.MESSAGES)
                 },
                 isDark = uiState.isDarkMode
             )
