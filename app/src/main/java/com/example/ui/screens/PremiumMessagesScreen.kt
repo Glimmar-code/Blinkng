@@ -13,9 +13,14 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
@@ -24,9 +29,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -60,6 +67,8 @@ import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Mic
@@ -107,8 +116,10 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -170,6 +181,8 @@ fun PremiumMessagesScreen(
     myAvatar: String,
     myName: String,
     activePartner: String?,
+    isConversationFullScreen: Boolean = false,
+    onConversationFullScreenChange: (Boolean) -> Unit = {},
     onOpenConversation: (String) -> Unit,
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String) -> Unit,
@@ -204,7 +217,9 @@ fun PremiumMessagesScreen(
     }
 
     BackHandler(enabled = activeCall != null) { activeCall = null }
-    BackHandler(enabled = activeCall == null && activeConversation != null) { onCloseConversation() }
+    BackHandler(enabled = activeCall == null && activeConversation != null) {
+        if (isConversationFullScreen) onConversationFullScreenChange(false) else onCloseConversation()
+    }
 
     BlinkMessageTheme(messageTheme) { palette ->
         AnimatedContent(
@@ -225,23 +240,21 @@ fun PremiumMessagesScreen(
                     }
                 )
             } else if (activeConversation != null) {
-                PremiumChatDetail(
-                    conversation = activeConversation,
+                PremiumMessagesMasterDetail(
+                    conversations = conversations,
+                    activeConversation = activeConversation,
                     palette = palette,
-                    onBack = onCloseConversation,
-                    onSend = { onSendMessage(activeConversation.partnerUsername, it) },
-                    onSendVideo = { onSendVideo(activeConversation.partnerUsername, it) },
-                    onRetry = { message ->
-                        onRetryMessage?.invoke(activeConversation.partnerUsername, message)
-                    },
-                    onProfileClick = { onProfileClick(activeConversation.partnerUsername) },
-                    onAudioCall = {
-                        activeCall = MessageCallState(activeConversation, MessageCallKind.AUDIO)
-                        launchSecureCall(context, activeConversation, MessageCallKind.AUDIO)
-                    },
-                    onVideoCall = {
-                        activeCall = MessageCallState(activeConversation, MessageCallKind.VIDEO)
-                        launchSecureCall(context, activeConversation, MessageCallKind.VIDEO)
+                    isFullScreen = isConversationFullScreen,
+                    onFullScreenChange = onConversationFullScreenChange,
+                    onOpenConversation = onOpenConversation,
+                    onCloseConversation = onCloseConversation,
+                    onSendMessage = onSendMessage,
+                    onSendVideo = onSendVideo,
+                    onRetryMessage = onRetryMessage,
+                    onProfileClick = onProfileClick,
+                    onStartCall = { conversation, kind ->
+                        activeCall = MessageCallState(conversation, kind)
+                        launchSecureCall(context, conversation, kind)
                     },
                     isConnected = isConnected
                 )
@@ -278,6 +291,223 @@ fun PremiumMessagesScreen(
                 },
                 onDismiss = { showAppearanceSheet = false }
             )
+        }
+    }
+}
+
+
+@Composable
+private fun PremiumMessagesMasterDetail(
+    conversations: List<ChatConversation>,
+    activeConversation: ChatConversation,
+    palette: MessagePalette,
+    isFullScreen: Boolean,
+    onFullScreenChange: (Boolean) -> Unit,
+    onOpenConversation: (String) -> Unit,
+    onCloseConversation: () -> Unit,
+    onSendMessage: (String, String) -> Unit,
+    onSendVideo: (String, Uri) -> Unit,
+    onRetryMessage: ((String, ChatMessage) -> Unit)?,
+    onProfileClick: (String) -> Unit,
+    onStartCall: (ChatConversation, MessageCallKind) -> Unit,
+    isConnected: Boolean
+) {
+    val density = LocalDensity.current
+    val swipeThresholdPx = remember(density) { with(density) { 72.dp.toPx() } }
+
+    MessageBackground(palette) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .semantics { contentDescription = "Chat drawer" }
+        ) {
+            val railWidth = (maxWidth * .20f).coerceIn(68.dp, 92.dp)
+            val targetPanelWidth = if (isFullScreen) maxWidth else maxWidth - railWidth
+            val panelWidth by animateDpAsState(
+                targetValue = targetPanelWidth,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                ),
+                label = "chatDrawerWidth"
+            )
+
+            AnimatedVisibility(
+                visible = !isFullScreen,
+                enter = fadeIn(tween(180)),
+                exit = fadeOut(tween(120)),
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .width(railWidth)
+                    .fillMaxHeight()
+            ) {
+                ConversationSwitchRail(
+                    conversations = conversations,
+                    selectedPartner = activeConversation.partnerUsername,
+                    palette = palette,
+                    onOpenConversation = onOpenConversation,
+                    onCloseConversation = onCloseConversation
+                )
+            }
+
+            val panelShape = if (isFullScreen) {
+                RoundedCornerShape(0.dp)
+            } else {
+                RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp)
+            }
+
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .width(panelWidth)
+                    .fillMaxHeight()
+                    .pointerInput(isFullScreen, activeConversation.partnerUsername) {
+                        var totalDrag = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { totalDrag = 0f },
+                            onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                            onDragCancel = { totalDrag = 0f },
+                            onDragEnd = {
+                                when {
+                                    isFullScreen && totalDrag > swipeThresholdPx -> onFullScreenChange(false)
+                                    !isFullScreen && totalDrag < -swipeThresholdPx -> onFullScreenChange(true)
+                                }
+                                totalDrag = 0f
+                            }
+                        )
+                    },
+                shape = panelShape,
+                color = Color.Transparent,
+                tonalElevation = 0.dp,
+                shadowElevation = if (isFullScreen) 0.dp else 14.dp,
+                border = if (isFullScreen) null else BorderStroke(1.dp, palette.border)
+            ) {
+                AnimatedContent(
+                    targetState = activeConversation.partnerUsername,
+                    transitionSpec = {
+                        (slideInHorizontally(
+                            initialOffsetX = { it / 6 },
+                            animationSpec = tween(240, easing = FastOutSlowInEasing)
+                        ) + fadeIn(tween(180))) togetherWith
+                            (slideOutHorizontally(
+                                targetOffsetX = { -it / 8 },
+                                animationSpec = tween(180, easing = FastOutSlowInEasing)
+                            ) + fadeOut(tween(120)))
+                    },
+                    label = "chatQuickSwitch"
+                ) { partner ->
+                    val displayedConversation = conversations.firstOrNull {
+                        it.partnerUsername.equals(partner, ignoreCase = true)
+                    } ?: activeConversation
+
+                    PremiumChatDetail(
+                        conversation = displayedConversation,
+                        palette = palette,
+                        onBack = {
+                            if (isFullScreen) onFullScreenChange(false) else onCloseConversation()
+                        },
+                        onSend = { onSendMessage(displayedConversation.partnerUsername, it) },
+                        onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
+                        onRetry = { message ->
+                            onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
+                        },
+                        onProfileClick = { onProfileClick(displayedConversation.partnerUsername) },
+                        onAudioCall = {
+                            onStartCall(displayedConversation, MessageCallKind.AUDIO)
+                        },
+                        onVideoCall = {
+                            onStartCall(displayedConversation, MessageCallKind.VIDEO)
+                        },
+                        isConnected = isConnected,
+                        isFullScreen = isFullScreen,
+                        onToggleFullScreen = { onFullScreenChange(!isFullScreen) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationSwitchRail(
+    conversations: List<ChatConversation>,
+    selectedPartner: String,
+    palette: MessagePalette,
+    onOpenConversation: (String) -> Unit,
+    onCloseConversation: () -> Unit
+) {
+    val remaining = remember(conversations, selectedPartner) {
+        conversations.filterNot {
+            it.partnerUsername.equals(selectedPartner, ignoreCase = true)
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = palette.glass.copy(alpha = if (palette.isLight) .90f else .72f),
+        border = BorderStroke(1.dp, palette.border)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(Modifier.height(8.dp))
+            GlassIconButton(
+                icon = Icons.Default.ArrowBack,
+                contentDescription = "Back to chats",
+                palette = palette,
+                size = 40.dp,
+                onClick = onCloseConversation
+            )
+            Text(
+                text = "Chats",
+                color = palette.textSecondary,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+            )
+            HorizontalDivider(color = palette.border.copy(alpha = .55f))
+
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(remaining, key = { "switch_${it.id}" }) { conversation ->
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp)
+                            .clickable(role = Role.Button) {
+                                onOpenConversation(conversation.partnerUsername)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        RingAvatar(
+                            url = conversation.partnerAvatar,
+                            name = conversation.partnerName,
+                            palette = palette,
+                            size = 48.dp,
+                            online = conversation.isOnline,
+                            emphasizeRing = conversation.unreadCount > 0
+                        )
+                        if (conversation.unreadCount > 0) {
+                            Badge(
+                                containerColor = palette.accent,
+                                contentColor = Color.White,
+                                modifier = Modifier.align(Alignment.TopEnd)
+                            ) {
+                                Text(
+                                    conversation.unreadCount.coerceAtMost(99).toString(),
+                                    fontSize = 8.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -757,7 +987,9 @@ private fun PremiumChatDetail(
     onProfileClick: () -> Unit,
     onAudioCall: () -> Unit,
     onVideoCall: () -> Unit,
-    isConnected: Boolean
+    isConnected: Boolean,
+    isFullScreen: Boolean,
+    onToggleFullScreen: () -> Unit
 ) {
     var text by rememberSaveable(conversation.partnerUsername) { mutableStateOf("") }
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
@@ -797,7 +1029,9 @@ private fun PremiumChatDetail(
                 onBack = onBack,
                 onProfileClick = onProfileClick,
                 onAudioCall = onAudioCall,
-                onVideoCall = onVideoCall
+                onVideoCall = onVideoCall,
+                isFullScreen = isFullScreen,
+                onToggleFullScreen = onToggleFullScreen
             )
 
             if (!isConnected) {
@@ -879,7 +1113,9 @@ private fun ChatHeader(
     onBack: () -> Unit,
     onProfileClick: () -> Unit,
     onAudioCall: () -> Unit,
-    onVideoCall: () -> Unit
+    onVideoCall: () -> Unit,
+    isFullScreen: Boolean,
+    onToggleFullScreen: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -935,6 +1171,14 @@ private fun ChatHeader(
                     )
                 }
             }
+            GlassIconButton(
+                icon = if (isFullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                contentDescription = if (isFullScreen) "Restore chat drawer" else "Expand chat fullscreen",
+                palette = palette,
+                size = 36.dp,
+                onClick = onToggleFullScreen
+            )
+            Spacer(Modifier.width(5.dp))
             GlassIconButton(
                 icon = Icons.Default.Call,
                 contentDescription = "Audio call",

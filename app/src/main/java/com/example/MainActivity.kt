@@ -528,6 +528,8 @@ fun MainAppContent(
                         myAvatar = uiState.myProfile.avatarUrl,
                         myName = uiState.myProfile.fullName.ifBlank { uiState.myProfile.username },
                         activePartner = uiState.activeConversationPartner,
+                        isConversationFullScreen = uiState.isConversationFullScreen,
+                        onConversationFullScreenChange = { viewModel.setConversationFullScreen(it) },
                         onOpenConversation = { partner ->
                             viewModel.openChatWithUser(partner)
                         },
@@ -537,7 +539,7 @@ fun MainAppContent(
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
                         },
-                        onProfileClick = { viewModel.openProfile(it) },
+                        onProfileClick = { viewModel.openProfileFromChat(it) },
                         onStoryClick = { story -> viewModel.openStory(story) },
                         onAddStoryClick = { viewModel.openCreateStory(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
@@ -561,7 +563,7 @@ fun MainAppContent(
                 !uiState.isPostItemOpen &&
                 !uiState.isBecomeSellerOpen &&
                 !uiState.isEditProfileOpen &&
-                !uiState.isConversationFullScreen &&
+                uiState.activeConversationPartner == null &&
                 !uiState.isActivityOpen &&
                 !uiState.isGetVerifiedOpen &&
                 !uiState.isCreatePostOpen &&

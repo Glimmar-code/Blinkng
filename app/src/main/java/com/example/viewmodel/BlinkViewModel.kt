@@ -1762,12 +1762,16 @@ private suspend fun restoreSupabaseSession() {
         val existing = state.conversations.find { it.partnerUsername.equals(clean, true) }
         if (existing != null) {
             _uiState.value = state.copy(
+                selectedTab = MainTab.MESSAGES,
+                viewingProfile = null,
+                viewingProduct = null,
                 conversations = state.conversations.map {
                     if (it.partnerUsername.equals(clean, true)) it.copy(unreadCount = 0) else it
                 },
                 activeConversationPartner = clean,
-                isConversationFullScreen = true
+                isConversationFullScreen = false
             )
+            persistUiPreferences()
             viewModelScope.launch {
                 chatRepository.markConversationRead(clean)
                 if (_uiState.value.isOnline && existing.id.isNotBlank() && !existing.id.startsWith("local_")) {
@@ -1777,9 +1781,24 @@ private suspend fun restoreSupabaseSession() {
             return
         }
 
+        _uiState.value = state.copy(
+            selectedTab = MainTab.MESSAGES,
+            viewingProfile = null,
+            viewingProduct = null,
+            activeConversationPartner = clean,
+            isConversationFullScreen = false
+        )
+        persistUiPreferences()
+
         viewModelScope.launch {
             val profile = supabaseService.fetchProfileByUsername(clean)
             if (profile == null) {
+                if (_uiState.value.activeConversationPartner.equals(clean, true)) {
+                    _uiState.value = _uiState.value.copy(
+                        activeConversationPartner = null,
+                        isConversationFullScreen = false
+                    )
+                }
                 showToast("User @$clean wasn't found.")
                 return@launch
             }
@@ -1795,10 +1814,16 @@ private suspend fun restoreSupabaseSession() {
                 messages = mutableListOf()
             )
             _uiState.value = latest.copy(
-                conversations = listOf(convo) + latest.conversations,
+                selectedTab = MainTab.MESSAGES,
+                viewingProfile = null,
+                viewingProduct = null,
+                conversations = listOf(convo) + latest.conversations.filterNot {
+                    it.partnerUsername.equals(profile.username, true)
+                },
                 activeConversationPartner = profile.username,
-                isConversationFullScreen = true
+                isConversationFullScreen = false
             )
+            persistUiPreferences()
         }
     }
     fun loadOlderMessages(partnerUsername: String) {
@@ -1849,6 +1874,12 @@ private suspend fun restoreSupabaseSession() {
             Log.w(TAG, "Message history page failed", e)
             _uiState.value = _uiState.value.copy(loadingOlderConversationId = null)
         }
+    }
+
+    fun setConversationFullScreen(fullScreen: Boolean) {
+        val state = _uiState.value
+        if (state.activeConversationPartner == null && fullScreen) return
+        _uiState.value = state.copy(isConversationFullScreen = fullScreen)
     }
 
     fun closeConversation() { _uiState.value = _uiState.value.copy(activeConversationPartner = null, isConversationFullScreen = false) }
