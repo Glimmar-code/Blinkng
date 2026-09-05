@@ -18,7 +18,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -179,8 +182,27 @@ fun HighlightedText(
     modifier: Modifier = Modifier,
     fontSize: androidx.compose.ui.unit.TextUnit = 13.5.sp
 ) {
+    val highlighted = remember(text, accentColor) {
+        buildAnnotatedString {
+            var cursor = 0
+            val tokenPattern = Regex("""(?<![\p{L}\p{N}_])[@#][\p{L}\p{N}_.-]+""")
+            tokenPattern.findAll(text).forEach { match ->
+                append(text.substring(cursor, match.range.first))
+                withStyle(
+                    SpanStyle(
+                        color = accentColor,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                ) {
+                    append(match.value)
+                }
+                cursor = match.range.last + 1
+            }
+            append(text.substring(cursor))
+        }
+    }
     Text(
-        text = text,
+        text = highlighted,
         color = textColor,
         fontSize = fontSize,
         modifier = modifier

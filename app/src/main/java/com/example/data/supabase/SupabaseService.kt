@@ -3490,33 +3490,192 @@ suspend fun uploadPostMedia(
     private fun formatTimeAgo(dateString: String): String =
         TimeFormatters.relativeOrDate(dateString)
 
+    private fun commentVerificationBadge(row: JSONObject): VerificationBadge {
+        return when (row.optString("verification_badge", "").uppercase(Locale.US)) {
+            "GOLD" -> VerificationBadge.GOLD
+            "BLUE" -> VerificationBadge.BLUE
+            else -> VerificationBadge.NONE
+        }
+    }
+
     // COMMENTS
     // ============================================================
     suspend fun fetchComments(postId: String): List<Comment> = withContext(Dispatchers.IO) {
-        val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
-        val raw=executeRequest(newRequestBuilder("/rest/v1/comments?post_id=eq.${encodeValue(postId)}&parent_comment_id=is.null&order=created_at.asc",true).get().build()).use { r ->
-            val b=r.body?.string().orEmpty(); if(!r.isSuccessful) throw IllegalStateException(parseSupabaseError(b,"Comments fetch failed.")); b
-        }
-        val arr=JSONArray(raw); val ids=(0 until arr.length()).mapNotNull{arr.getJSONObject(it).optString("id").takeIf{v->v.isNotBlank()}}
-        val liked=if(ids.isEmpty()) emptySet() else executeRequest(newRequestBuilder("/rest/v1/comment_likes?comment_id=in.(${ids.joinToString(",")})&user_id=eq.${encodeValue(uid)}",true).get().build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Comment like state fetch failed."));val a=JSONArray(b);buildSet{for(i in 0 until a.length())add(a.getJSONObject(i).optString("comment_id"))}}
-        buildList { for(i in 0 until arr.length()){ val o=arr.getJSONObject(i); add(Comment(id=o.optString("id"),user=o.optString("author_id"),avatar="",text=o.optString("content"),time=formatTimeAgo(o.optString("created_at")),likes=o.optInt("likes_count",0),isLiked=liked.contains(o.optString("id")))) } }
-    }
+        if (!isValidUuid(postId)) return@withContext emptyList()
+        getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
 
-    suspend fun addComment(postId: String, text: String, replyToUser: String?): Comment? = withContext(Dispatchers.IO) {
-        try {
-            val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
-            val body=JSONObject().apply{put("post_id",postId);put("author_id",uid);put("content",text.trim())}
-            executeRequest(newRequestBuilder("/rest/v1/comments",true).addHeader("Prefer","return=representation").post(body.toString().toRequestBody(jsonMediaType)).build()).use{resp->
-                val raw=resp.body?.string().orEmpty();if(!resp.isSuccessful||raw.isBlank()||raw=="[]")throw IllegalStateException(parseSupabaseError(raw,"Comment creation failed."));val o=JSONArray(raw).getJSONObject(0);Comment(id=o.optString("id"),user=uid,avatar="",text=o.optString("content"),time="Just now",likes=o.optInt("likes_count",0),isLiked=false)
+        val body = JSONObject().put("p_post_id", postId)
+        val raw = executeRequest(
+            newRequestBuilder("/rest/v1/rpc/get_post_comments", authenticated = true)
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+        ).use { response ->
+            val responseBody = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException(
+                    parseSupabaseError(responseBody, "Comments fetch failed.")
+                )
             }
-        }catch(e:Exception){Log.e(TAG,"addComment failed",e);null}
+            responseBody
+        }
+
+        data class CommentRow(
+            val id: String,
+            val postId: String,
+            val parentId: String?,
+            val authorId: String,
+            val username: String,
+            val displayName: String,
+            val avatar: String,
+            val content: String,
+            val time: String,
+            val likes: Int,
+            val isLiked: Boolean,
+            val badge: VerificationBadge
+        )
+
+        val array = JSONArray(if (raw.isBlank()) "[]" else raw)
+        val rows = buildList {
+            for (index in 0 until array.length()) {
+                val row = array.getJSONObject(index)
+                val username = row.optString("username", "")
+                    .removePrefix("@")
+                    .trim()
+                val displayName = row.optString("display_name", "")
+                    .trim()
+                    .ifBlank { username.ifBlank { "Blink user" } }
+                add(
+                    CommentRow(
+                        id = row.optString("id", ""),
+                        postId = row.optString("post_id", postId),
+                        parentId = if (row.isNull("parent_comment_id")) {
+                            null
+                        } else {
+                            row.optString("parent_comment_id", "").takeIf { it.isNotBlank() }
+                        },
+                        authorId = row.optString("author_id", ""),
+                        username = username,
+                        displayName = displayName,
+                        avatar = row.optString("avatar_url", ""),
+                        content = row.optString("content", ""),
+                        time = formatTimeAgo(row.optString("created_at", "")),
+                        likes = row.optInt("likes_count", 0),
+                        isLiked = row.optBoolean("is_liked", false),
+                        badge = commentVerificationBadge(row)
+                    )
+                )
+            }
+        }
+
+        val repliesByParent = rows
+            .filter { it.parentId != null }
+            .groupBy { it.parentId.orEmpty() }
+
+        rows.filter { it.parentId == null }.map { row ->
+            Comment(
+                id = row.id,
+                postId = row.postId,
+                authorId = row.authorId,
+                user = row.username,
+                displayName = row.displayName,
+                avatar = row.avatar,
+                text = row.content,
+                time = row.time,
+                likes = row.likes,
+                isLiked = row.isLiked,
+                verificationBadge = row.badge,
+                replies = repliesByParent[row.id].orEmpty().map { reply ->
+                    CommentReply(
+                        id = reply.id,
+                        postId = reply.postId,
+                        parentCommentId = row.id,
+                        authorId = reply.authorId,
+                        user = reply.username,
+                        displayName = reply.displayName,
+                        avatar = reply.avatar,
+                        text = reply.content,
+                        time = reply.time,
+                        likes = reply.likes,
+                        isLiked = reply.isLiked,
+                        verificationBadge = reply.badge
+                    )
+                }
+            )
+        }
     }
 
-    suspend fun toggleCommentLike(commentId: String, liked: Boolean, newLikeCount: Int): Boolean = withContext(Dispatchers.IO) {
+    suspend fun addComment(
+        postId: String,
+        text: String,
+        parentCommentId: String?
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (!isValidUuid(postId)) return@withContext false
+            if (parentCommentId != null && !isValidUuid(parentCommentId)) {
+                return@withContext false
+            }
+            getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            val cleanText = text.trim()
+            if (cleanText.isEmpty() || cleanText.length > 2_000) return@withContext false
+
+            val body = JSONObject().apply {
+                put("p_post_id", postId)
+                put("p_content", cleanText)
+                put("p_parent_comment_id", parentCommentId ?: JSONObject.NULL)
+            }
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/create_comment", authenticated = true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(
+                        parseSupabaseError(raw, "Comment creation failed.")
+                    )
+                }
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "addComment failed", e)
+            false
+        }
+    }
+
+    suspend fun toggleCommentLike(commentId: String, liked: Boolean): Boolean = withContext(Dispatchers.IO) {
         val uid=getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
         val request=if(liked)newRequestBuilder("/rest/v1/comment_likes",true).addHeader("Prefer","resolution=merge-duplicates").post(JSONObject().apply{put("comment_id",commentId);put("user_id",uid)}.toString().toRequestBody(jsonMediaType)).build()
         else newRequestBuilder("/rest/v1/comment_likes?comment_id=eq.${encodeValue(commentId)}&user_id=eq.${encodeValue(uid)}",true).delete().build()
         executeRequest(request).use{resp->val raw=resp.body?.string().orEmpty();if(!resp.isSuccessful)throw IllegalStateException(parseSupabaseError(raw,"Comment like update failed."))};true
+    }
+
+    suspend fun reportComment(commentId: String, reason: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (!isValidUuid(commentId)) return@withContext false
+            val cleanReason = reason.trim()
+            if (cleanReason.length !in 3..500) return@withContext false
+            getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            val body = JSONObject().apply {
+                put("p_comment_id", commentId)
+                put("p_reason", cleanReason)
+            }
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/report_comment", authenticated = true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(
+                        parseSupabaseError(raw, "Comment report failed.")
+                    )
+                }
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "reportComment failed", e)
+            false
+        }
     }
     suspend fun fetchActivities(): Result<List<ActivityItem>> = withContext(Dispatchers.IO) {
         try {
