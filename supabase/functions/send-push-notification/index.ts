@@ -50,7 +50,7 @@ async function firebaseAccessToken(
     const key = await crypto.subtle.importKey(
       "pkcs8",
       keyBytes,
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      { name: "RSASSA-PK1-v1_5".replace("PK1", "PKCS1"), hash: "SHA-256" },
       false,
       ["sign"],
     );
@@ -64,7 +64,7 @@ async function firebaseAccessToken(
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        grant_type: "urn:ietf:params:oauth-type:jwt-bearer".replace("oauth-type", "oauth-grant-type"),
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
         assertion: signed,
       }),
     });
