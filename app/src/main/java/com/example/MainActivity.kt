@@ -25,6 +25,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import com.example.ui.components.*
 import com.example.auth.AccountSessionStore
 import com.example.notification.BlinkNotificationHelper
@@ -37,11 +38,35 @@ import com.example.ui.theme.BlinkTheme
 import com.example.viewmodel.AppDestination
 import com.example.viewmodel.BlinkViewModel
 import com.example.viewmodel.MainTab
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: BlinkViewModel by viewModels()
+    private var presenceHeartbeatJob: Job? = null
+
+    private fun startPresenceHeartbeat() {
+        presenceHeartbeatJob?.cancel()
+        if (viewModel.uiState.value.destination != AppDestination.MAIN) return
+        presenceHeartbeatJob = lifecycleScope.launch {
+            while (isActive && viewModel.uiState.value.destination == AppDestination.MAIN) {
+                viewModel.updatePresence(true)
+                delay(60_000)
+            }
+        }
+    }
+
+    private fun stopPresenceHeartbeat(markOffline: Boolean) {
+        presenceHeartbeatJob?.cancel()
+        presenceHeartbeatJob = null
+        if (markOffline && viewModel.uiState.value.destination == AppDestination.MAIN) {
+            viewModel.updatePresence(false)
+        }
+    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -101,13 +126,12 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
             viewModel.refreshIfStale()
+            startPresenceHeartbeat()
         }
     }
 
     override fun onStop() {
-        if (viewModel.uiState.value.destination == AppDestination.MAIN) {
-            viewModel.updatePresence(false)
-        }
+        stopPresenceHeartbeat(markOffline = true)
         super.onStop()
     }
 
@@ -118,6 +142,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
+
+            LaunchedEffect(uiState.destination) {
+                if (uiState.destination == AppDestination.MAIN) {
+                    startPresenceHeartbeat()
+                } else {
+                    stopPresenceHeartbeat(markOffline = false)
+                }
+            }
             val notificationPermissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission()
             ) { }
