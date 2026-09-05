@@ -517,6 +517,7 @@ private fun LegacyFeedScreen(
                 onShare = onSharePost,
                 onDelete = onDeletePost,
                 onProfileClick = onProfileClick,
+                onViewed = onViewedPost,
                 onBackToPosts = { navigate(0) },
                 isLoading = isLoading,
                 isRefreshing = isRefreshing,
