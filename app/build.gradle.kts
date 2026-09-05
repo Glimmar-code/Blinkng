@@ -91,8 +91,9 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      // Debug builds can live beside production and can never replace/corrupt a release install.
-      applicationIdSuffix = ".debug"
+      // Firebase is registered for com.aistudio.blink.appvtwo. Keep the debug
+      // applicationId identical so processDebugGoogleServices can resolve this client.
+      // Register a second Firebase Android app before reintroducing a .debug suffix.
       versionNameSuffix = "-debug"
     }
   }
