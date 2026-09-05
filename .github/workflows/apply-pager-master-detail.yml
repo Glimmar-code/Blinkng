@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/apply-pager-master-detail.yml'
       - '.github/scripts/apply_pager_master_detail.py'
+      - '.github/scripts/fix_pager_master_detail_compile.py'
   workflow_dispatch:
 
 permissions:
@@ -22,6 +23,9 @@ jobs:
 
       - name: Apply source migration
         run: python3 .github/scripts/apply_pager_master_detail.py
+
+      - name: Apply compile corrections
+        run: python3 .github/scripts/fix_pager_master_detail_compile.py
 
       - name: Verify patch formatting
         run: git diff --check
