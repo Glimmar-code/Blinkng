@@ -16,7 +16,7 @@ import com.example.MainActivity
 import com.example.R
 import com.example.data.repository.AuthRepository
 import com.example.data.supabase.SupabaseService
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.launch
 import java.security.SecureRandom
@@ -24,13 +24,17 @@ import java.security.SecureRandom
 /**
  * Native Android Sign in with Google entry point.
  *
+ * This activity is opened only after the user explicitly taps Blink's
+ * "Continue with Google" button. Google recommends GetSignInWithGoogleOption
+ * for that explicit button flow; GetGoogleIdOption is intended for the
+ * Credential Manager bottom-sheet/automatic account discovery flow.
+ *
  * Google Credential Manager returns an ID token directly to Blink. Supabase Auth
  * validates that token and creates the normal Supabase access/refresh session used
  * by the rest of the app.
  *
  * Important: Google Credential Manager expects the nonce placed in the ID token to
- * be the same nonce that the relying party validates. Do not SHA-256 this nonce here
- * (that pattern applies to some other identity providers, not this Google flow).
+ * be the same nonce that the relying party validates. Do not SHA-256 this nonce here.
  */
 class GoogleAuthCallbackActivity : ComponentActivity() {
 
@@ -60,14 +64,16 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
             return
         }
 
-        // Generate one cryptographically random nonce and use that exact value on
-        // both sides of the exchange. Supabase will validate the nonce claim from
-        // Google's ID token against this original value.
+        // One cryptographically-random nonce is used for both the Google request and
+        // the Supabase ID-token exchange so replay protection remains intact.
         val rawNonce = generateSecureRandomNonce()
 
-        val googleOption = GetGoogleIdOption.Builder()
-            .setFilterByAuthorizedAccounts(false)
-            .setServerClientId(webClientId)
+        // This is an explicit Sign in with Google button, so use Google's dedicated
+        // button option. Using GetGoogleIdOption here can result in Credential Manager
+        // failing before the account chooser opens on some devices/emulators.
+        val googleOption = GetSignInWithGoogleOption.Builder(
+            serverClientId = webClientId
+        )
             .setNonce(rawNonce)
             .build()
 
@@ -127,8 +133,11 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
             Log.i(TAG, "Google credential flow cancelled by user")
             finish()
         } catch (error: GetCredentialException) {
+            // Keep the provider error type in Logcat. It is especially useful for
+            // distinguishing a device/Play-services problem from a package/SHA OAuth
+            // registration mismatch without exposing implementation details to users.
             Log.e(TAG, "Google Credential Manager failed: ${error.type}", error)
-            failAndFinish("Google sign-in could not start. Check Google Play services and try again.")
+            failAndFinish("Google sign-in could not start. Please update Google Play services and try again.")
         } catch (error: Exception) {
             Log.e(TAG, "Native Google sign-in failed", error)
             failAndFinish(error.message ?: "Unable to complete Google sign-in.")
