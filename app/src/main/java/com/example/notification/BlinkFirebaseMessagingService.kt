@@ -2,6 +2,7 @@ package com.example.notification
 
 import android.content.Context
 import android.util.Log
+import com.example.BuildConfig
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
 import com.google.firebase.FirebaseApp
@@ -21,20 +22,55 @@ import java.util.concurrent.TimeUnit
 class BlinkFirebaseMessagingService : FirebaseMessagingService() {
     companion object {
         private const val TAG = "BlinkFCM"
+        private const val PUSH_PREFS = "blink_push"
+        private const val TOKEN_KEY = "fcm_token"
 
-        /** Call after a real Supabase login so a token generated earlier is not lost. */
+        /**
+         * Fetches the current FCM token, prints it in debug Logcat for Firebase Console
+         * testing, stores it locally, and registers it with Supabase when a real user
+         * session is available.
+         */
         fun syncCurrentToken(context: Context) {
-            val firebaseApp = FirebaseApp.initializeApp(context.applicationContext)
+            val appContext = context.applicationContext
+            val firebaseApp = FirebaseApp.initializeApp(appContext)
                 ?: run {
-                    Log.i(TAG, "Firebase is not configured; skipping FCM token sync.")
+                    Log.i(TAG, "Firebase is not configured; add app/google-services.json to enable FCM.")
                     return
                 }
-            FirebaseMessaging.getInstance().token
+
+            FirebaseMessaging.getInstance(firebaseApp).token
                 .addOnSuccessListener { token ->
-                    context.getSharedPreferences("blink_push", Context.MODE_PRIVATE).edit().putString("fcm_token", token).apply()
-                    CoroutineScope(Dispatchers.IO).launch { syncTokenNow(context, token) }
+                    if (token.isBlank()) {
+                        Log.w(TAG, "Firebase returned an empty FCM token.")
+                        return@addOnSuccessListener
+                    }
+
+                    saveToken(appContext, token)
+                    logToken("Current FCM token", token)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        syncTokenNow(appContext, token)
+                    }
                 }
-                .addOnFailureListener { Log.w(TAG, "Unable to obtain FCM token", it) }
+                .addOnFailureListener { error ->
+                    Log.w(TAG, "Unable to obtain FCM token", error)
+                }
+        }
+
+        private fun saveToken(context: Context, token: String) {
+            context.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(TOKEN_KEY, token)
+                .apply()
+        }
+
+        private fun logToken(label: String, token: String) {
+            if (BuildConfig.DEBUG) {
+                // Full token is intentionally logged only in debug builds so it can be
+                // copied into Firebase Console -> Send test message.
+                Log.d(TAG, "$label: $token")
+            } else {
+                Log.i(TAG, "$label refreshed (${token.take(8)}…)")
+            }
         }
 
         private fun syncTokenNow(context: Context, token: String) {
@@ -55,36 +91,53 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                     .addHeader("apikey", SupabaseConfig.anonKey)
                     .addHeader("Authorization", "Bearer $accessToken")
                     .addHeader("Content-Type", "application/json")
-                    // PostgREST RPC endpoints are invoked with POST. PATCH silently prevented
-                    // device tokens from ever being registered, which disabled background push.
                     .post(body)
                     .build()
+
                 client.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
-                        Log.w(TAG, "FCM token sync failed: ${response.code} ${response.body?.string().orEmpty().take(240)}")
+                        Log.w(
+                            TAG,
+                            "FCM token sync failed: ${response.code} ${responseBody.take(240)}"
+                        )
+                    } else {
+                        Log.d(TAG, "FCM token registered with Supabase.")
                     }
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "FCM token sync error", e)
+            } catch (error: Exception) {
+                Log.w(TAG, "FCM token sync error", error)
             }
         }
     }
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        getSharedPreferences("blink_push", MODE_PRIVATE).edit().putString("fcm_token", token).apply()
-        CoroutineScope(Dispatchers.IO).launch { syncTokenNow(applicationContext, token) }
+        if (token.isBlank()) return
+
+        saveToken(applicationContext, token)
+        logToken("New FCM token", token)
+        CoroutineScope(Dispatchers.IO).launch {
+            syncTokenNow(applicationContext, token)
+        }
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
+
         val data = message.data
+        Log.d(
+            TAG,
+            "FCM message received from=${message.from} dataKeys=${data.keys.joinToString()} hasNotification=${message.notification != null}"
+        )
+
         val title = data["title"] ?: message.notification?.title ?: "Blink"
         val body = data["body"] ?: message.notification?.body ?: "You have a new notification."
         val type = data["type"] ?: "social"
         val sender = data["sender_username"].orEmpty()
         val senderName = data["sender_name"] ?: sender.ifBlank { "Blink" }
         val senderAvatar = data["sender_avatar"].orEmpty()
+
         when {
             type.equals("message", ignoreCase = true) && sender.isNotBlank() -> {
                 CoroutineScope(Dispatchers.IO).launch {
