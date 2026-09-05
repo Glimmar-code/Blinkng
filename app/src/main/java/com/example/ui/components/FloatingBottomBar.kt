@@ -46,10 +46,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -105,23 +105,30 @@ fun FeedBottomBar(
         else -> null
     }
     val shape = RoundedCornerShape(34.dp)
+    val navigationBackdrop = if (isDark) FeedBackground else MaterialTheme.colorScheme.background
+    val navigationSurface = if (isDark) FeedElevatedSurface else MaterialTheme.colorScheme.surface
+    val navigationBorder = if (isDark) FeedBorder else MaterialTheme.colorScheme.outlineVariant
 
     Box(
         modifier = modifier
             .fillMaxWidth()
+            // Edge-to-edge content used to remain visible through the navigation-bar inset,
+            // which mixed screen colors with the floating bar and looked like an overlap.
+            // Paint one stable backdrop first so every tab has a clean bottom edge.
+            .background(navigationBackdrop)
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .drawBehind {
                 drawRect(
                     brush = Brush.radialGradient(
-                        colors = listOf(FeedPurple.copy(alpha = 0.16f), Color.Transparent),
+                        colors = listOf(FeedPurple.copy(alpha = 0.10f), Color.Transparent),
                         center = Offset(size.width * 0.22f, size.height),
                         radius = size.width * 0.46f
                     )
                 )
                 drawRect(
                     brush = Brush.radialGradient(
-                        colors = listOf(FeedBlue.copy(alpha = 0.13f), Color.Transparent),
+                        colors = listOf(FeedBlue.copy(alpha = 0.08f), Color.Transparent),
                         center = Offset(size.width * 0.82f, size.height),
                         radius = size.width * 0.42f
                     )
@@ -132,10 +139,11 @@ fun FeedBottomBar(
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = shape,
-            color = if (isDark) FeedElevatedSurface.copy(alpha = 0.95f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+            // Keep the actual nav surface opaque so content beneath it cannot tint the bar.
+            color = navigationSurface,
             tonalElevation = 0.dp,
             shadowElevation = 12.dp,
-            border = BorderStroke(1.dp, if (isDark) FeedBorder else MaterialTheme.colorScheme.outlineVariant)
+            border = BorderStroke(1.dp, navigationBorder)
         ) {
             Row(
                 modifier = Modifier
