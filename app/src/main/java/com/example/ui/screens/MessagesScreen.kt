@@ -6,12 +6,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.heightIn
 import com.example.ui.theme.BlinkGold
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.Animatable
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -44,6 +46,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -118,6 +121,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -597,7 +601,7 @@ private fun StaggeredAppear(
 // ============================================================================
 
 // ============================================================================
-// RESPONSIVE MASTER-DETAIL MESSAGES
+// FULL-SCREEN MESSAGES -> CHAT TRANSITION
 // ============================================================================
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -626,114 +630,186 @@ fun MessagesScreen(
             it.partnerUsername.equals(selectedChat, ignoreCase = true)
         }
     }
-
-    // Android system back reverses the fold before leaving Messages.
-    BackHandler(enabled = paneOpen) {
-        onCloseConversation()
-    }
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
 
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .testTag("messages_master_detail")
+            .testTag("messages_fullscreen_chat")
     ) {
-        val masterWidth by animateDpAsState(
-            targetValue = if (paneOpen) 76.dp else maxWidth,
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMediumLow
-            ),
-            label = "messageMasterWidth"
-        )
+        val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
+        val swipeOffset = remember(selectedChat, widthPx) {
+            Animatable(if (paneOpen) widthPx else 0f)
+        }
 
-        Row(Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier
-                    .width(masterWidth)
-                    .fillMaxHeight()
-                    .clipToBounds()
-            ) {
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = !paneOpen,
-                    enter = fadeIn(tween(150)),
-                    exit = fadeOut(tween(90)),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    MessagesInboxContent(
-                        conversations = conversations,
-                        activePartner = activePartner,
-                        onOpenConversation = onOpenConversation,
-                        onCloseConversation = onCloseConversation,
-                        onSendMessage = onSendMessage,
-                        onProfileClick = onProfileClick,
-                        isDark = isDark,
-                        isConnected = isConnected,
-                        isLoading = isLoading
+        LaunchedEffect(selectedChat, widthPx) {
+            if (paneOpen) {
+                // A chat always arrives as a real full-screen page. It never first
+                // compresses the inbox into an avatar-only rail.
+                swipeOffset.snapTo(widthPx)
+                swipeOffset.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(
+                        durationMillis = 270,
+                        easing = FastOutSlowInEasing
                     )
-                }
-
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = paneOpen,
-                    enter = fadeIn(tween(durationMillis = 160, delayMillis = 60)),
-                    exit = fadeOut(tween(90)),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    ConversationAvatarRail(
-                        conversations = conversations,
-                        selectedPartner = selectedChat,
-                        onOpenConversation = onOpenConversation
-                    )
-                }
+                )
+            } else {
+                swipeOffset.snapTo(0f)
             }
+        }
+
+        val revealFraction = (swipeOffset.value / widthPx).coerceIn(0f, 1f)
+        val inboxBlur = if (paneOpen) ((1f - revealFraction) * 13f).dp else 0.dp
+
+        // Messages stays mounted underneath the conversation. Keeping it alive avoids
+        // a flash/reload and gives the right-swipe transition a real destination.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(inboxBlur)
+                .graphicsLayer {
+                    alpha = if (paneOpen) 0.78f + (0.22f * revealFraction) else 1f
+                    scaleX = if (paneOpen) 0.985f + (0.015f * revealFraction) else 1f
+                    scaleY = if (paneOpen) 0.985f + (0.015f * revealFraction) else 1f
+                }
+        ) {
+            MessagesInboxContent(
+                conversations = conversations,
+                activePartner = null,
+                onOpenConversation = onOpenConversation,
+                onCloseConversation = onCloseConversation,
+                onSendMessage = onSendMessage,
+                onProfileClick = onProfileClick,
+                isDark = isDark,
+                isConnected = isConnected,
+                isLoading = isLoading
+            )
+        }
+
+        fun closeChatAnimated() {
+            if (!paneOpen) return
+            scope.launch {
+                swipeOffset.animateTo(
+                    targetValue = widthPx,
+                    animationSpec = tween(
+                        durationMillis = 205,
+                        easing = FastOutSlowInEasing
+                    )
+                )
+                onCloseConversation()
+            }
+        }
+
+        BackHandler(enabled = paneOpen) {
+            closeChatAnimated()
+        }
+
+        if (paneOpen) {
+            // This scrim is deliberately above the inbox but below the chat. As the
+            // user drags the chat right, the exposed Messages area remains blurred and
+            // tapping that revealed area exits directly to Messages.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        MaterialTheme.colorScheme.scrim.copy(
+                            alpha = 0.20f * (1f - revealFraction)
+                        )
+                    )
+                    .clickable(onClick = { closeChatAnimated() })
+            )
 
             Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clipToBounds()
-            ) {
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = paneOpen,
-                    enter = slideInHorizontally(
-                        initialOffsetX = { it },
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMediumLow
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationX = swipeOffset.value
+                    }
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = (18f * revealFraction).dp,
+                            bottomStart = (18f * revealFraction).dp
                         )
-                    ) + fadeIn(tween(140)),
-                    exit = slideOutHorizontally(
-                        targetOffsetX = { it },
-                        animationSpec = tween(190, easing = FastOutSlowInEasing)
-                    ) + fadeOut(tween(120)),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    val convo = selectedConversation
-                    if (convo != null) {
-                        // key() intentionally swaps the active chat immediately while the
-                        // detail pane stays open, giving the avatar rail true quick-switch.
-                        androidx.compose.runtime.key(convo.id) {
-                            ChatConversationView(
-                                convo = convo,
-                                onBack = onCloseConversation,
-                                onSendMessage = { text ->
-                                    onSendMessage(convo.partnerUsername, text)
-                                },
-                                onSendVideo = { uri ->
-                                    onSendVideo(convo.partnerUsername, uri)
-                                },
-                                onProfileClick = onProfileClick,
-                                isDark = isDark,
-                                isConnected = isConnected,
-                                onRetryMessage = onRetryMessage?.let { retry ->
-                                    { message -> retry(convo.partnerUsername, message) }
-                                },
-                                hasMoreMessages = hasMoreMessages(convo.id),
-                                isLoadingOlder = isLoadingOlder(convo.id),
-                                onLoadOlder = { onLoadOlder(convo.partnerUsername) },
-                                isLoadingMessages = isLoadingMessages(convo.id)
-                            )
-                        }
-                    } else {
+                    )
+                    .pointerInput(selectedChat, widthPx) {
+                        detectHorizontalDragGestures(
+                            onHorizontalDrag = { change, dragAmount ->
+                                val next = (swipeOffset.value + dragAmount)
+                                    .coerceIn(0f, widthPx)
+                                if (dragAmount > 0f || swipeOffset.value > 0f) {
+                                    change.consume()
+                                    scope.launch {
+                                        swipeOffset.snapTo(next)
+                                    }
+                                }
+                            },
+                            onDragEnd = {
+                                scope.launch {
+                                    if (swipeOffset.value >= widthPx * 0.20f) {
+                                        swipeOffset.animateTo(
+                                            targetValue = widthPx,
+                                            animationSpec = tween(
+                                                durationMillis = 185,
+                                                easing = FastOutSlowInEasing
+                                            )
+                                        )
+                                        onCloseConversation()
+                                    } else {
+                                        swipeOffset.animateTo(
+                                            targetValue = 0f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            )
+                                        )
+                                    }
+                                }
+                            },
+                            onDragCancel = {
+                                scope.launch {
+                                    swipeOffset.animateTo(
+                                        targetValue = 0f,
+                                        animationSpec = spring(
+                                            dampingRatio = Spring.DampingRatioNoBouncy,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        )
+                                    )
+                                }
+                            }
+                        )
+                    }
+            ) {
+                val convo = selectedConversation
+                if (convo != null) {
+                    androidx.compose.runtime.key(convo.id) {
+                        ChatConversationView(
+                            convo = convo,
+                            onBack = { closeChatAnimated() },
+                            onSendMessage = { text ->
+                                onSendMessage(convo.partnerUsername, text)
+                            },
+                            onSendVideo = { uri ->
+                                onSendVideo(convo.partnerUsername, uri)
+                            },
+                            onProfileClick = onProfileClick,
+                            isDark = isDark,
+                            isConnected = isConnected,
+                            onRetryMessage = onRetryMessage?.let { retry ->
+                                { message -> retry(convo.partnerUsername, message) }
+                            },
+                            hasMoreMessages = hasMoreMessages(convo.id),
+                            isLoadingOlder = isLoadingOlder(convo.id),
+                            onLoadOlder = { onLoadOlder(convo.partnerUsername) },
+                            isLoadingMessages = isLoadingMessages(convo.id)
+                        )
+                    }
+                } else {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
@@ -3853,19 +3929,7 @@ private fun ChatTopBar(
                 }
             }
         },
-        navigationIcon = {
-
-            IconButton(
-                onClick = onBack
-            ) {
-
-                Icon(
-                    Icons.Default.ArrowBack,
-                    contentDescription =
-                        "Back"
-                )
-            }
-        },
+        navigationIcon = {},
         actions = {
 
             IconButton(
