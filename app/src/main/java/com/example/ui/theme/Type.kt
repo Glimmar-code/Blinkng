@@ -16,12 +16,20 @@ private val interProvider = GoogleFont.Provider(
 )
 
 private val inter = GoogleFont("Inter")
+private val poppins = GoogleFont("Poppins")
 
 val InterFontFamily = FontFamily(
     Font(googleFont = inter, fontProvider = interProvider, weight = FontWeight.Normal),
     Font(googleFont = inter, fontProvider = interProvider, weight = FontWeight.Medium),
     Font(googleFont = inter, fontProvider = interProvider, weight = FontWeight.SemiBold),
     Font(googleFont = inter, fontProvider = interProvider, weight = FontWeight.Bold)
+)
+
+val PoppinsFontFamily = FontFamily(
+    Font(googleFont = poppins, fontProvider = interProvider, weight = FontWeight.Normal),
+    Font(googleFont = poppins, fontProvider = interProvider, weight = FontWeight.Medium),
+    Font(googleFont = poppins, fontProvider = interProvider, weight = FontWeight.SemiBold),
+    Font(googleFont = poppins, fontProvider = interProvider, weight = FontWeight.Bold)
 )
 
 private val defaults = Typography()
@@ -84,4 +92,23 @@ val Typography = Typography(
         lineHeight = 16.sp,
         letterSpacing = 0.sp
     )
+)
+
+/** Rounded typography used only by the reference-inspired message surfaces. */
+val PoppinsTypography = Typography(
+    displayLarge = defaults.displayLarge.copy(fontFamily = PoppinsFontFamily),
+    displayMedium = defaults.displayMedium.copy(fontFamily = PoppinsFontFamily),
+    displaySmall = defaults.displaySmall.copy(fontFamily = PoppinsFontFamily),
+    headlineLarge = defaults.headlineLarge.copy(fontFamily = PoppinsFontFamily),
+    headlineMedium = defaults.headlineMedium.copy(fontFamily = PoppinsFontFamily),
+    headlineSmall = defaults.headlineSmall.copy(fontFamily = PoppinsFontFamily),
+    titleLarge = defaults.titleLarge.copy(fontFamily = PoppinsFontFamily),
+    titleMedium = defaults.titleMedium.copy(fontFamily = PoppinsFontFamily),
+    titleSmall = defaults.titleSmall.copy(fontFamily = PoppinsFontFamily),
+    bodyLarge = defaults.bodyLarge.copy(fontFamily = PoppinsFontFamily),
+    bodyMedium = defaults.bodyMedium.copy(fontFamily = PoppinsFontFamily),
+    bodySmall = defaults.bodySmall.copy(fontFamily = PoppinsFontFamily),
+    labelLarge = defaults.labelLarge.copy(fontFamily = PoppinsFontFamily),
+    labelMedium = defaults.labelMedium.copy(fontFamily = PoppinsFontFamily),
+    labelSmall = defaults.labelSmall.copy(fontFamily = PoppinsFontFamily)
 )
