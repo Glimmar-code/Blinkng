@@ -31,7 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 
 private enum class PublishIndicatorState {
@@ -44,7 +44,7 @@ private enum class PublishIndicatorState {
 @Composable
 fun BackgroundPostPublishIndicator(
     isCreatingPost: Boolean,
-    messages: SharedFlow<String>,
+    messages: Flow<String>,
     modifier: Modifier = Modifier
 ) {
     var state by remember { mutableStateOf(PublishIndicatorState.IDLE) }
