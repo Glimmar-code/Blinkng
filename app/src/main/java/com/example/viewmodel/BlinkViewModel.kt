@@ -2143,7 +2143,7 @@ private suspend fun restoreSupabaseSession() {
                 conversationId = conversationId,
                 beforeCreatedAt = if (older) oldest?.rawTimestamp?.takeIf { it.isNotBlank() } else null,
                 beforeId = if (older) oldest?.id?.takeIf { it.isNotBlank() } else null,
-                limit = 40
+                limit = 100
             )
             val latest = _uiState.value
             val updated = latest.conversations.map { conversation ->
@@ -2162,7 +2162,7 @@ private suspend fun restoreSupabaseSession() {
             }
             _uiState.value = latest.copy(
                 conversations = updated,
-                messageHistoryHasMore = latest.messageHistoryHasMore + (conversationId to (page.size >= 40)),
+                messageHistoryHasMore = latest.messageHistoryHasMore + (conversationId to (page.size >= 100)),
                 loadingOlderConversationId = null
             )
             persistConversations()

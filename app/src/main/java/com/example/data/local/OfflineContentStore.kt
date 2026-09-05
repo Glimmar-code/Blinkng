@@ -231,8 +231,8 @@ class OfflineContentStore(context: Context) {
         val before = System.currentTimeMillis() - maxAgeMs.coerceAtLeast(60_000L)
         dao.prunePosts(before)
         dao.pruneProfiles(before)
-        dao.pruneConversations(before)
-        dao.pruneMessages(before)
+        // Messages and conversation summaries intentionally have no age-based local TTL.
+        // Logout does not destroy history; if Android storage is cleared, Supabase rebuilds it.
     }
 }
 
