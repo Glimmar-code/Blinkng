@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/scripts/apply_exact_position_resume.py'
+      - '.github/scripts/fix_exact_resume_context.py'
       - '.github/workflows/apply-exact-position-resume.yml'
   workflow_dispatch:
 
@@ -31,7 +32,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Apply exact resume patch
-        run: python3 .github/scripts/apply_exact_position_resume.py
+        run: |
+          python3 .github/scripts/apply_exact_position_resume.py
+          python3 .github/scripts/fix_exact_resume_context.py
 
       - name: Compile Android app
         shell: bash
