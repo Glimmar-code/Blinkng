@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/scripts/apply_advanced_chat_interactions.py'
+      - '.github/scripts/fix_advanced_chat_interactions_compile.py'
       - '.github/workflows/apply-advanced-chat-interactions.yml'
   workflow_dispatch:
 
@@ -32,6 +33,9 @@ jobs:
 
       - name: Apply chat patch
         run: python3 .github/scripts/apply_advanced_chat_interactions.py
+
+      - name: Apply compile safety fixes
+        run: python3 .github/scripts/fix_advanced_chat_interactions_compile.py
 
       - name: Compile Kotlin
         run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
