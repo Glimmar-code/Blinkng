@@ -34,7 +34,19 @@ jobs:
         run: python3 .github/scripts/apply_exact_position_resume.py
 
       - name: Compile Android app
-        run: gradle :app:assembleDebug --stacktrace --no-daemon
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee /tmp/exact-resume-build.log
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exact-resume-build-log
+          path: /tmp/exact-resume-build.log
+          if-no-files-found: ignore
+          retention-days: 1
 
       - name: Commit and push generated source changes
         shell: bash
