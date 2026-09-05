@@ -28,7 +28,7 @@ jobs:
         run: |
           mkdir -p .ci
           set +e
-          ./gradlew :app:compileDebugKotlin --stacktrace --console=plain > /tmp/premium-feed-compile.log 2>&1
+          gradle :app:compileDebugKotlin --stacktrace --console=plain > /tmp/premium-feed-compile.log 2>&1
           status=$?
           set -e
           {
