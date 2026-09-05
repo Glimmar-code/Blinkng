@@ -50,6 +50,8 @@ import com.example.data.local.BlinkMediaCache
 import com.example.data.models.FeedPost
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.components.formatNumber
+import com.example.ui.components.rememberDelayedContentViewCount
+import com.example.ui.components.trackContentExposure
 import com.example.ui.components.shimmerBackground
 import com.example.ui.theme.BlinkPink
 import kotlin.math.abs
@@ -428,6 +430,7 @@ private fun ReelPage(
     onSwipeToProfile: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
+    val displayedViewsCount = rememberDelayedContentViewCount(reel.id, reel.viewsCount)
 
     var burstTrigger by remember(reel.id) { mutableStateOf(0) }
     var isMuted by remember(reel.id) { mutableStateOf(false) }
@@ -446,6 +449,7 @@ private fun ReelPage(
     Box(
         Modifier
             .fillMaxSize()
+            .trackContentExposure(reel.id, displayedViewsCount)
             .graphicsLayer {
                 val distance = abs(pageOffset.coerceIn(-1f, 1f))
                 scaleX = lerp(1f, 0.94f, distance)
@@ -556,7 +560,7 @@ private fun ReelPage(
             Spacer(Modifier.height(16.dp))
             ReelAction(
                 icon = Icons.Default.Visibility,
-                text = formatNumber(reel.viewsCount),
+                text = formatNumber(displayedViewsCount),
                 tint = Color.White.copy(alpha = .9f),
                 contentDescription = "Views"
             ) {}

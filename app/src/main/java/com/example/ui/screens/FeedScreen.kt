@@ -492,27 +492,8 @@ private fun LegacyFeedScreen(
         refreshFeed()
     }
 
-    LaunchedEffect(listState, postIds, selectedTopTab) {
-        if (selectedTopTab != 0 || postIds.isEmpty()) return@LaunchedEffect
-
-        val tracker = PostImpressionTracker()
-        snapshotFlow {
-            val layoutInfo = listState.layoutInfo
-            layoutInfo.visibleItemsInfo.mapNotNullTo(linkedSetOf()) { item ->
-                val postId = item.key as? String
-                postId?.takeIf {
-                    it in postIds && qualifiesForPostImpression(
-                        itemOffset = item.offset,
-                        itemSize = item.size,
-                        viewportStart = layoutInfo.viewportStartOffset,
-                        viewportEnd = layoutInfo.viewportEndOffset
-                    )
-                }
-            }
-        }.collect { qualifiedPostIds ->
-            tracker.update(qualifiedPostIds).forEach(recordVisiblePost)
-        }
-    }
+    // PostCard now owns the reusable 50%-viewport exposure detector. This intentionally
+    // replaces the old feed-only tracker so recomposition cannot emit duplicate callbacks.
 
     fun navigate(tab: Int) {
         if (currentSubTab != tab) onSubTabChanged(tab)

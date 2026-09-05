@@ -143,6 +143,7 @@ fun PostCard(
         post.authorUsername.trim().removePrefix("@").ifBlank { post.author.trim().removePrefix("@") }
     }
     val profileTarget = resolvedAuthorUsername.ifBlank { post.author }
+    val displayedViewsCount = rememberDelayedContentViewCount(post.id, post.viewsCount)
 
     val displayImages = remember(post.images) {
         post.images
@@ -178,6 +179,7 @@ fun PostCard(
 
     Card(
         modifier = modifier
+            .trackContentExposure(post.id, displayedViewsCount)
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp),
         shape = RoundedCornerShape(24.dp),
@@ -443,8 +445,8 @@ fun PostCard(
             ) {
                 ReadOnlyMetricAction(
                     icon = Icons.Default.Visibility,
-                    value = formatNumber(post.viewsCount),
-                    description = "${post.viewsCount} views"
+                    value = formatNumber(displayedViewsCount),
+                    description = "$displayedViewsCount views"
                 )
                 PremiumPostAction(
                     icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -616,12 +618,20 @@ private fun RowScope.ReadOnlyMetricAction(
                 modifier = Modifier.size(21.dp)
             )
             Spacer(Modifier.width(4.dp))
-            Text(
-                text = value,
-                color = FeedTextSecondary,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1
-            )
+            AnimatedContent(
+                targetState = value,
+                transitionSpec = {
+                    fadeIn(tween(160)) togetherWith fadeOut(tween(110))
+                },
+                label = "postMetricValue"
+            ) { animatedValue ->
+                Text(
+                    text = animatedValue,
+                    color = FeedTextSecondary,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1
+                )
+            }
         }
     }
 }

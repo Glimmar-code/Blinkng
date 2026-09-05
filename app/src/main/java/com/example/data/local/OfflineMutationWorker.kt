@@ -3,7 +3,9 @@ package com.example.data.local
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.example.data.supabase.ContentViewService
 import com.example.data.supabase.SupabaseService
+import com.example.data.views.ContentViewCoordinator
 import org.json.JSONObject
 
 class OfflineMutationWorker(
@@ -35,6 +37,20 @@ class OfflineMutationWorker(
                         bookmarked = payload.optBoolean("bookmarked")
                     )
                     OfflineMutationStore.OP_SHARE -> service.sharePost(item.entityId, "share")
+                    OfflineMutationStore.OP_CONTENT_VIEW -> {
+                        val eventId = payload.optString("event_id")
+                        val result = if (eventId.isBlank()) null else
+                            ContentViewService.record(item.entityId, eventId)
+                        if (result != null) {
+                            ContentViewCoordinator.scheduleAuthoritativeReveal(
+                                eventId = eventId,
+                                postId = item.entityId,
+                                authoritativeViewCount = result.viewCount,
+                                createdAt = item.createdAt
+                            )
+                            true
+                        } else false
+                    }
                     else -> true
                 }
             }.getOrDefault(false)

@@ -40,7 +40,7 @@ interface OfflineMutationDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(item: OfflineMutationEntity)
 
-    @Query("SELECT * FROM offline_mutations WHERE attempt_count < 5 AND next_retry_at <= :now ORDER BY created_at ASC LIMIT :limit")
+    @Query("SELECT * FROM offline_mutations WHERE (operation = 'content_view' OR attempt_count < 5) AND next_retry_at <= :now ORDER BY created_at ASC LIMIT :limit")
     suspend fun pending(now: Long, limit: Int): List<OfflineMutationEntity>
 
     @Query("DELETE FROM offline_mutations WHERE id = :id")
@@ -49,7 +49,7 @@ interface OfflineMutationDao {
     @Query("UPDATE offline_mutations SET attempt_count=:attemptCount,next_retry_at=:nextRetryAt,last_error=:error WHERE id=:id")
     suspend fun markFailure(id: String, attemptCount: Int, nextRetryAt: Long, error: String)
 
-    @Query("SELECT COUNT(*) FROM offline_mutations WHERE attempt_count < 5")
+    @Query("SELECT COUNT(*) FROM offline_mutations WHERE operation = 'content_view' OR attempt_count < 5")
     suspend fun pendingCount(): Int
 }
 
@@ -104,6 +104,20 @@ class OfflineMutationStore(private val context: Context) {
         schedule(context)
     }
 
+    suspend fun enqueueContentView(postId: String, eventId: String): Boolean {
+        if (postId.isBlank() || eventId.isBlank()) return false
+        dao.upsert(
+            OfflineMutationEntity(
+                id = "$OP_CONTENT_VIEW:$eventId",
+                operation = OP_CONTENT_VIEW,
+                entityId = postId,
+                payloadJson = JSONObject().put("event_id", eventId).toString()
+            )
+        )
+        schedule(context)
+        return true
+    }
+
     suspend fun pending(limit: Int = 50): List<OfflineMutationEntity> =
         dao.pending(System.currentTimeMillis(), limit.coerceIn(1, 100))
 
@@ -139,6 +153,7 @@ class OfflineMutationStore(private val context: Context) {
         const val OP_POST_LIKE = "post_like"
         const val OP_BOOKMARK = "post_bookmark"
         const val OP_SHARE = "post_share"
+        const val OP_CONTENT_VIEW = "content_view"
         private const val UNIQUE_WORK = "blink_offline_mutation_sync"
 
         fun schedule(context: Context) {
