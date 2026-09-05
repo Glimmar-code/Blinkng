@@ -89,6 +89,7 @@ fun ProfileScreen(
     profile: UserProfile,
     isMe: Boolean,
     userPosts: List<FeedPost>,
+    userReels: List<FeedPost>,
     likedPosts: List<FeedPost>,
     savedPosts: List<FeedPost>,
     userMarketItems: List<MarketItem>,
@@ -101,6 +102,7 @@ fun ProfileScreen(
     onBookmarkPost: (String) -> Unit,
     onSharePost: (String) -> Unit,
     onOptionsClick: (FeedPost) -> Unit,
+    onOpenReel: (FeedPost) -> Unit = {},
     onDeletePost: (String) -> Unit = {},
     onProfileClick: (String) -> Unit,
     onMarketItemClick: (MarketItem) -> Unit,
@@ -138,9 +140,9 @@ fun ProfileScreen(
 
     val tabs = remember(isMe) {
         if (isMe) {
-            listOf("Posts", "Growth", "Liked", "Saved", "Market", "Skills", "About")
+            listOf("Posts", "Reels", "Growth", "Liked", "Saved", "Market", "Skills", "About")
         } else {
-            listOf("Posts", "Growth", "Liked", "Market", "Skills", "About")
+            listOf("Posts", "Reels", "Growth", "Liked", "Market", "Skills", "About")
         }
     }
 
@@ -799,7 +801,14 @@ fun ProfileScreen(
                         onProfileClick = onProfileClick
                     )
 
-                    1 -> item(key = "growth") {
+                    1 -> profileReelItems(
+                        reels = userReels,
+                        textPrimary = textPrimary,
+                        textSecondary = textSecondary,
+                        onOpenReel = onOpenReel
+                    )
+
+                    2 -> item(key = "growth") {
                         FollowerGrowthChart(
                             profile = profile,
                             isDark = isDark,
@@ -808,7 +817,7 @@ fun ProfileScreen(
                         )
                     }
 
-                    2 -> profilePostItems(
+                    3 -> profilePostItems(
                         keyPrefix = "liked",
                         posts = likedPosts,
                         profile = profile,
@@ -827,7 +836,7 @@ fun ProfileScreen(
                         onProfileClick = onProfileClick
                     )
 
-                    3 -> if (isMe) {
+                    5 -> if (isMe) {
                         profilePostItems(
                             keyPrefix = "saved",
                             posts = savedPosts,
@@ -871,7 +880,7 @@ fun ProfileScreen(
                         )
                     }
 
-                    5 -> item(key = if (isMe) "skills" else "about") {
+                    6 -> item(key = if (isMe) "skills" else "about") {
                         if (isMe) {
                             SkillsAndBadgesSection(
                                 profile, isMe, cardBg, borderColor, textPrimary, textSecondary,
@@ -882,7 +891,7 @@ fun ProfileScreen(
                         }
                     }
 
-                    6 -> item(key = "about") {
+                    7 -> item(key = "about") {
                         AboutSection(profile, cardBg, borderColor, textPrimary, textSecondary)
                     }
                 }
@@ -1163,6 +1172,135 @@ private fun AnimatedTabRow(
                 index = (selectedTab - 1).coerceAtLeast(0)
             )
         }
+    }
+}
+
+// =====================================================================
+// PROFILE REELS
+// =====================================================================
+
+private fun LazyListScope.profileReelItems(
+    reels: List<FeedPost>,
+    textPrimary: Color,
+    textSecondary: Color,
+    onOpenReel: (FeedPost) -> Unit
+) {
+    if (reels.isEmpty()) {
+        item(key = "reels_empty", contentType = "profile_empty") {
+            EmptyProfileState(
+                title = "No reels uploaded yet 🎬",
+                subtitle = "Uploaded reels will appear here separately from posts.",
+                textPrimary = textPrimary,
+                textSecondary = textSecondary
+            )
+        }
+        return
+    }
+
+    items(
+        items = reels,
+        key = { reel -> "profile_reel_${reel.id}" },
+        contentType = { "profile_reel" }
+    ) { reel ->
+        ProfileReelCard(
+            reel = reel,
+            textPrimary = textPrimary,
+            textSecondary = textSecondary,
+            onOpen = { onOpenReel(reel) }
+        )
+    }
+}
+
+@Composable
+private fun ProfileReelCard(
+    reel: FeedPost,
+    textPrimary: Color,
+    textSecondary: Color,
+    onOpen: () -> Unit
+) {
+    val preview = reel.images.firstOrNull { it.isNotBlank() && !it.equals("null", true) }
+        ?: reel.authorAvatar.takeIf { it.isNotBlank() }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clickable(onClick = onOpen),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .width(112.dp)
+                    .height(154.dp)
+                    .clip(RoundedCornerShape(15.dp))
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!preview.isNullOrBlank()) {
+                    AsyncImage(
+                        model = preview,
+                        contentDescription = "Reel preview",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.18f))
+                )
+                Icon(
+                    Icons.Default.PlayCircleFilled,
+                    contentDescription = "Open reel",
+                    tint = Color.White,
+                    modifier = Modifier.size(42.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Reel", color = BlinkPink, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                if (reel.text.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(5.dp))
+                    Text(
+                        reel.text,
+                        color = textPrimary,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ProfileReelMetric(Icons.Default.Visibility, reel.viewsCount, textSecondary)
+                    ProfileReelMetric(Icons.Default.FavoriteBorder, reel.likes, textSecondary)
+                    ProfileReelMetric(Icons.Default.ChatBubbleOutline, reel.commentsCount, textSecondary)
+                }
+                if (reel.timeAgo.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(reel.timeAgo, color = textSecondary, fontSize = 9.5.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProfileReelMetric(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    value: Int,
+    tint: Color
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(value.toString(), color = tint, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 

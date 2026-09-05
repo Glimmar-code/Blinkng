@@ -2209,11 +2209,16 @@ suspend fun uploadPostMedia(
                             "p_viewer_username",
                             viewerUsername
                         )
+
+                        put(
+                            "p_viewed_for_seconds",
+                            60
+                        )
                     }
 
                 val request =
                     newRequestBuilder(
-                        "/rest/v1/rpc/record_post_view",
+                        "/rest/v1/rpc/record_qualified_post_view",
                         authenticated = true
                     )
                         .post(

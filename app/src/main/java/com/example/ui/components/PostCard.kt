@@ -439,13 +439,15 @@ fun PostCard(
                     description = "Comment",
                     onClick = onComment
                 )
-                PremiumPostAction(
-                    icon = Icons.Default.Repeat,
-                    value = formatNumber(post.repostsCount),
-                    tint = repostTint,
-                    description = if (post.isRepostedByMe) "Undo repost" else "Repost",
-                    onClick = onRepost
-                )
+                if (!isAuthor) {
+                    PremiumPostAction(
+                        icon = Icons.Default.Repeat,
+                        value = formatNumber(post.repostsCount),
+                        tint = repostTint,
+                        description = if (post.isRepostedByMe) "Undo repost" else "Repost",
+                        onClick = onRepost
+                    )
+                }
                 PremiumPostAction(
                     icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                     value = "Save",

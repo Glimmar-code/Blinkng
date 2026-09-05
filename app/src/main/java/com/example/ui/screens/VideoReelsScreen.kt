@@ -92,6 +92,7 @@ fun VideoReelsScreen(
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
     onLoadMore: () -> Unit = {},
+    onViewed: (String) -> Unit = {},
     onHomeClick: () -> Unit = onBackToPosts,
     onConnectClick: () -> Unit = {},
     onGameClick: () -> Unit = {}
@@ -138,7 +139,8 @@ fun VideoReelsScreen(
                     onBackToPosts = onBackToPosts,
                     hasMore = hasMore,
                     isLoadingMore = isLoadingMore,
-                    onLoadMore = onLoadMore
+                    onLoadMore = onLoadMore,
+                    onViewed = onViewed
                 )
             }
         }
@@ -161,10 +163,18 @@ private fun ReelsContent(
     onBackToPosts: () -> Unit,
     hasMore: Boolean,
     isLoadingMore: Boolean,
-    onLoadMore: () -> Unit
+    onLoadMore: () -> Unit,
+    onViewed: (String) -> Unit
 ) {
     val pager = rememberPagerState(pageCount = { reels.size })
     var selectedTab by remember { mutableStateOf("For You") }
+
+    val activeReelId = reels.getOrNull(pager.currentPage)?.id
+    QualifiedViewEffect(
+        contentId = activeReelId,
+        isVisible = !pager.isScrollInProgress && abs(pager.currentPageOffsetFraction) < 0.01f,
+        onQualified = onViewed
+    )
 
     LaunchedEffect(pager.currentPage, reels.size, hasMore, isLoadingMore) {
         if (hasMore && !isLoadingMore && pager.currentPage >= (reels.size - 3).coerceAtLeast(0)) {

@@ -1575,6 +1575,11 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun toggleRepost(postId: String) {
+        val target = (_uiState.value.posts + _uiState.value.reels).firstOrNull { it.id == postId }
+        if (target != null && isMe(target.author)) {
+            showToast("You cannot repost your own content.")
+            return
+        }
         viewModelScope.launch {
             val result = postRepository.togglePostRepost(postId)
             if (result == null) {

@@ -208,55 +208,24 @@ fun PremiumFeedScreen(
             onReelClick = { onSubTabChanged(1) }
         )
 
-        1 -> FeedScreen(
-            posts = posts,
+        1 -> VideoReelsScreen(
             reels = reels,
-            stories = stories,
-            profiles = profiles,
-            leaderboardUsers = leaderboardUsers,
-            connectHub = connectHub,
-            connectHubActions = connectHubActions,
-            isConnectHubLoading = isConnectHubLoading,
             currentUsername = currentUsername,
-            userAvatar = userAvatar,
-            currentSubTab = 1,
-            onSubTabChanged = onSubTabChanged,
             isDark = isDark,
-            onLikePost = onLikePost,
-            onCommentPost = onCommentPost,
-            onBookmarkPost = onBookmarkPost,
-            onRepostPost = onRepostPost,
-            onSharePost = onSharePost,
-            onOptionsClick = onOptionsClick,
-            onDeletePost = onDeletePost,
+            onLike = onLikePost,
+            onComment = onCommentPost,
+            onBookmark = onBookmarkPost,
+            onShare = onSharePost,
+            onDelete = onDeletePost,
             onProfileClick = onProfileClick,
-            onAddStoryClick = onAddStoryClick,
-            onStoryClick = onStoryClick,
-            onOpenCreatePost = onOpenCreatePost,
-            onOpenActivity = onOpenActivity,
-            onOpenMenu = onOpenMenu,
-            onToggleTheme = onToggleTheme,
-            isServerConnected = isServerConnected,
+            onBackToPosts = { onSubTabChanged(0) },
             isLoading = isLoading,
             isRefreshing = isRefreshing,
-            errorMessage = errorMessage,
             onRefresh = onRefresh,
-            onRetry = onRetry,
-            onViewedPost = onViewedPost,
-            onVotePoll = onVotePoll,
-            onDirectMessage = onDirectMessage,
-            onSearchClick = onSearchClick,
-            onLeaderboardClick = onLeaderboardClick,
-            onMarketClick = onMarketClick,
-            onMessageClick = onMessageClick,
-            hasMorePosts = hasMorePosts,
-            hasMoreReels = hasMoreReels,
-            isLoadingMorePosts = isLoadingMorePosts,
-            isLoadingMoreReels = isLoadingMoreReels,
-            onLoadMorePosts = onLoadMorePosts,
-            onLoadMoreReels = onLoadMoreReels,
-            homeReselectSignal = homeReselectSignal,
-            onBottomBarVisibilityChange = onBottomBarVisibilityChange
+            hasMore = hasMoreReels,
+            isLoadingMore = isLoadingMoreReels,
+            onLoadMore = onLoadMoreReels,
+            onViewed = onViewedPost
         )
 
         2 -> PremiumConnectHost(
@@ -348,7 +317,7 @@ private fun PremiumHomeFeed(
     val pullState = rememberPullToRefreshState()
     val density = LocalDensity.current
     val latestViewed by rememberUpdatedState(onViewedPost)
-    val impressionTracker = remember { PostImpressionTracker() }
+    var qualifiedVisiblePostIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var filter by remember { mutableStateOf(PremiumFeedFilter.ALL) }
     var filterMenuVisible by remember { mutableStateOf(false) }
     var fabExpanded by remember { mutableStateOf(true) }
@@ -446,7 +415,7 @@ private fun PremiumHomeFeed(
                         )
                     ) key.removePrefix("post:") else null
                 }.toSet()
-                impressionTracker.update(ids).forEach(latestViewed)
+                qualifiedVisiblePostIds = ids
             }
     }
 
@@ -576,6 +545,11 @@ private fun PremiumHomeFeed(
                                     contentType = { index -> premiumPostContentType(filteredPosts[index]) }
                                 ) { index ->
                                     val post = filteredPosts[index]
+                                    QualifiedViewEffect(
+                                        contentId = post.id,
+                                        isVisible = post.id in qualifiedVisiblePostIds,
+                                        onQualified = latestViewed
+                                    )
                                     PremiumPostEntrance(index = index) {
                                         PostCard(
                                             post = post,

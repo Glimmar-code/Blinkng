@@ -698,12 +698,22 @@ fun MainAppContent(
                     }
                 }
 
-                val profilePosts = if (isMyProfile) {
-                    (uiState.posts + uiState.reels).distinctBy { it.id }.filter { viewModel.isMe(it.author) }
-                } else {
-                    (uiState.posts + uiState.reels).distinctBy { it.id }.filter { it.author.equals(profile.username, ignoreCase = true) || it.author.equals(profile.fullName, ignoreCase = true) }
+                val profileContent = (uiState.posts + uiState.reels).distinctBy { it.id }
+                val belongsToProfile: (com.example.data.models.FeedPost) -> Boolean = { item ->
+                    if (isMyProfile) {
+                        viewModel.isMe(item.author)
+                    } else {
+                        item.author.equals(profile.username, ignoreCase = true) ||
+                            item.author.equals(profile.fullName, ignoreCase = true)
+                    }
                 }
-                val profileLikedPosts = (uiState.posts + uiState.reels).filter { it.isLiked }
+                val profilePosts = profileContent.filter { item ->
+                    belongsToProfile(item) && !item.isReel && item.videoUrl.isNullOrBlank()
+                }
+                val profileReels = profileContent.filter { item ->
+                    belongsToProfile(item) && (item.isReel || !item.videoUrl.isNullOrBlank())
+                }
+                val profileLikedPosts = profileContent.filter { it.isLiked }
                 val profileSavedPosts = (uiState.posts + uiState.reels).filter { it.isBookmarked }
 
                 val userMarketItems = if (isMyProfile) {
@@ -718,6 +728,7 @@ fun MainAppContent(
                     profile = currentProfileToDisplay,
                     isMe = isMyProfile,
                     userPosts = profilePosts,
+                    userReels = profileReels,
                     likedPosts = profileLikedPosts,
                     savedPosts = profileSavedPosts,
                     userMarketItems = userMarketItems,
@@ -730,6 +741,14 @@ fun MainAppContent(
                     onBookmarkPost = { viewModel.toggleBookmark(it) },
                     onSharePost = { sharePostOrReel(it) },
                     onOptionsClick = { viewModel.openPostOptions(it) },
+                    onOpenReel = { reel ->
+                        viewModel.handleDeepLink(
+                            com.example.sharing.AppDeepLink(
+                                type = ShareContentType.REEL,
+                                id = reel.id
+                            )
+                        )
+                    },
                     onDeletePost = { viewModel.deletePost(it) },
                     onProfileClick = { viewModel.openProfile(it) },
                     onMarketItemClick = { viewModel.openProductDetail(it) },
