@@ -12,7 +12,20 @@
           "package_name": "com.aistudio.blink.appvtwo"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "460304040582-talpfs97jnal7h0tn1orntd9b35ea9ts.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.blink.appvtwo",
+            "certificate_hash": "4ccbdf456644dffbd2f40fc2df92c659e380f6f2"
+          }
+        },
+        {
+          "client_id": "460304040582-kdetcm8u2rhk7j51fuh7f87q00njofmk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCA2j8G_KGBxwpCwDIMKHcS8ksCljN1vNo"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "460304040582-kdetcm8u2rhk7j51fuh7f87q00njofmk.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
