@@ -75,7 +75,12 @@ class MainActivity : ComponentActivity() {
                 viewModel.setTab(MainTab.HOME)
                 viewModel.setFeedSubTab(0)
                 if (!postId.isNullOrBlank()) {
-                    viewModel.openCommentsForPost(postId)
+                    viewModel.handleDeepLink(
+                        com.example.sharing.AppDeepLink(
+                            type = ShareContentType.POST,
+                            id = postId
+                        )
+                    )
                 }
             }
 
@@ -545,6 +550,15 @@ fun MainAppContent(
             )
         }
 
+        BackgroundPostPublishIndicator(
+            isCreatingPost = uiState.isCreatingPost,
+            messages = viewModel.snackBarMessages,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = if (shouldShowBottomBar) 92.dp else 18.dp)
+                .zIndex(50f)
+        )
+
         AnimatedVisibility(
             visible = uiState.deepLinkedPost != null,
             enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
@@ -596,6 +610,14 @@ fun MainAppContent(
             uiState.viewingProfile?.let { profile ->
                 val isMyProfile = viewModel.isMe(profile.username)
                 val currentProfileToDisplay = if (isMyProfile) uiState.myProfile else profile
+
+                LaunchedEffect(currentProfileToDisplay.id, currentProfileToDisplay.username, isMyProfile) {
+                    if (!isMyProfile && currentProfileToDisplay.username.isNotBlank()) {
+                        com.example.notification.ProfileViewActivityTracker.recordViewedProfile(
+                            currentProfileToDisplay.username
+                        )
+                    }
+                }
 
                 val profilePosts = if (isMyProfile) {
                     (uiState.posts + uiState.reels).distinctBy { it.id }.filter { viewModel.isMe(it.author) }
@@ -767,6 +789,16 @@ fun MainAppContent(
                 },
                 onNotificationClick = { activity ->
                     viewModel.handleNotificationClick(activity)
+                    activity.targetPostId?.let { postId ->
+                        val type = if (uiState.reels.any { it.id == postId }) {
+                            ShareContentType.REEL
+                        } else {
+                            ShareContentType.POST
+                        }
+                        viewModel.handleDeepLink(
+                            com.example.sharing.AppDeepLink(type = type, id = postId)
+                        )
+                    }
                 },
                 isDark = uiState.isDarkMode,
                 isConnected = uiState.isLiveSupabaseConnected,
@@ -812,6 +844,8 @@ fun MainAppContent(
                 scheduledPosts = uiState.scheduledPosts,
                 onDismiss = { viewModel.openCreatePost(false) },
                 onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText ->
+                    // Dismiss immediately; publishing stays in the ViewModel/background flow.
+                    viewModel.openCreatePost(false)
                     viewModel.addPost(
                         text = text,
                         faculty = faculty,
