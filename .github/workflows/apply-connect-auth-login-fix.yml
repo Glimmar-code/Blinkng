@@ -53,4 +53,5 @@ jobs:
             app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt \
             app/src/main/java/com/example/viewmodel/BlinkViewModel.kt
           git commit -m "fix: clean connect game chrome and repair auth flows"
+          git pull --rebase origin main
           git push origin HEAD:main
