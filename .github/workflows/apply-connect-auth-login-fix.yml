@@ -1,0 +1,56 @@
+name: Apply Connect and auth login fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-connect-auth-login-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply targeted Kotlin fixes
+        run: python3 .github/scripts/apply_connect_auth_login_fix.py
+
+      - name: Compile debug Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit fixes to main
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/src/main/java/com/example/MainActivity.kt \
+            app/src/main/java/com/example/auth/AccountSessionStore.kt \
+            app/src/main/java/com/example/auth/AccountSwitcherActivity.kt \
+            app/src/main/java/com/example/auth/GoogleAuthCallbackActivity.kt \
+            app/src/main/java/com/example/data/repository/AuthRepository.kt \
+            app/src/main/java/com/example/ui/screens/ConnectSection.kt \
+            app/src/main/java/com/example/ui/screens/GameSection.kt \
+            app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt \
+            app/src/main/java/com/example/viewmodel/BlinkViewModel.kt
+          git commit -m "fix: clean connect game chrome and repair auth flows"
+          git push origin HEAD:main
