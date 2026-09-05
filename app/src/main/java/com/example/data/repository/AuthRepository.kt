@@ -2,9 +2,11 @@ package com.example.data.repository
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.util.Log
+import androidx.credentials.ClearCredentialStateRequest
+import androidx.credentials.CredentialManager
 import com.example.auth.AccountSessionStore
+import com.example.auth.GoogleAuthCallbackActivity
 import com.example.data.models.ContactField
 import com.example.data.models.UserProfile
 import com.example.data.supabase.SupabaseConfig
@@ -20,7 +22,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 sealed class AuthState { object Initial : AuthState(); object Loading : AuthState(); data class Authenticated(val userProfile: UserProfile, val token: String? = null) : AuthState(); data class Unauthenticated(val message: String? = null) : AuthState() }
@@ -37,7 +38,6 @@ class AuthRepository(private val context: Context, private val supabaseService: 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
     private val baseUrl = SupabaseConfig.url.trimEnd('/')
     private val anonKey = SupabaseConfig.anonKey
-    private val googleRedirect = "blink://auth/callback"
 
     suspend fun signUpWithEmail(email: String, password: String, username: String, fullName: String? = null, faculty: String = "SIMME"): AuthResult = withContext(Dispatchers.IO) {
         val cleanEmail = email.trim().lowercase(); val cleanUsername = username.trim().lowercase().removePrefix("@"); val cleanName = fullName?.trim()?.ifBlank { null } ?: cleanUsername.replace(".", " ")
@@ -133,15 +133,108 @@ class AuthRepository(private val context: Context, private val supabaseService: 
         }
     }
 
-    suspend fun signInWithGoogle(email: String): AuthResult = withContext(Dispatchers.IO) {
+    /**
+     * Opens Blink's native Android Google account chooser. The actual Google ID token
+     * is handled by GoogleAuthCallbackActivity and exchanged server-side by Supabase Auth.
+     * This deliberately replaces the old browser/redirect based OAuth flow.
+     */
+    suspend fun signInWithGoogle(email: String): AuthResult = withContext(Dispatchers.Main) {
         try {
-            val redirect = URLEncoder.encode(googleRedirect, "UTF-8")
-            val url = "$baseUrl/auth/v1/authorize?provider=google&redirect_to=$redirect&flow_type=implicit"
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            context.startActivity(
+                Intent(context, GoogleAuthCallbackActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
             AuthResult.failure("GOOGLE_OAUTH_STARTED")
         } catch (e: Exception) {
-            Log.e("AuthRepository", "Unable to launch Google OAuth", e)
-            AuthResult.failure("Unable to open Google sign-in. Check that a browser is installed.")
+            Log.e("AuthRepository", "Unable to launch native Google sign-in", e)
+            AuthResult.failure("Unable to open Google sign-in on this device.")
+        }
+    }
+
+    /**
+     * Verifies the Google ID token with Supabase Auth and converts it into the same
+     * Supabase access/refresh session used by email/username login and all existing RLS.
+     */
+    suspend fun signInWithGoogleIdToken(idToken: String, nonce: String? = null): AuthResult = withContext(Dispatchers.IO) {
+        if (idToken.isBlank()) return@withContext AuthResult.failure("Google did not return a valid ID token.")
+
+        try {
+            val body = JSONObject().apply {
+                put("provider", "google")
+                put("id_token", idToken)
+                nonce?.takeIf { it.isNotBlank() }?.let { put("nonce", it) }
+            }
+
+            val request = Request.Builder()
+                .url("$baseUrl/auth/v1/token?grant_type=id_token")
+                .addHeader("apikey", anonKey)
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    val message = runCatching {
+                        JSONObject(raw).let { error ->
+                            error.optString("error_description")
+                                .ifBlank { error.optString("msg") }
+                                .ifBlank { error.optString("message") }
+                                .ifBlank { error.optString("error") }
+                        }
+                    }.getOrNull().orEmpty()
+                    Log.e("AuthRepository", "Google ID-token exchange failed status=${response.code} body=${raw.take(400)}")
+                    return@withContext AuthResult.failure(
+                        message.ifBlank { "Google authentication could not be verified by Supabase." }
+                    )
+                }
+
+                val auth = JSONObject(raw)
+                val accessToken = auth.optString("access_token", "")
+                val refreshToken = auth.optString("refresh_token", "")
+                val user = auth.optJSONObject("user")
+                if (accessToken.isBlank() || user == null) {
+                    return@withContext AuthResult.failure("Supabase did not return a valid Google session.")
+                }
+
+                val userId = user.optString("id", "")
+                val userEmail = user.optString("email", "").trim().lowercase()
+                if (userId.isBlank() || userEmail.isBlank()) {
+                    return@withContext AuthResult.failure("Google account information was incomplete.")
+                }
+
+                SupabaseService.saveSession(
+                    accessToken = accessToken,
+                    refreshToken = refreshToken.ifBlank { null }
+                )
+
+                val metadata = user.optJSONObject("user_metadata")
+                val displayName = metadata?.optString("full_name", "")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: metadata?.optString("name", "")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: userEmail.substringBefore('@')
+                val avatarUrl = metadata?.optString("avatar_url", "")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: metadata?.optString("picture", "")?.trim()?.takeIf { it.isNotBlank() }
+
+                val profile = try {
+                    supabaseService.getOrCreateGoogleProfile(
+                        userId = userId,
+                        email = userEmail,
+                        displayName = displayName,
+                        avatarUrl = avatarUrl
+                    )
+                } catch (profileError: Exception) {
+                    SupabaseService.clearSession()
+                    throw profileError
+                }
+
+                persistSession(profile)
+                _authState.value = AuthState.Authenticated(profile, accessToken)
+                AuthResult.success(profile)
+            }
+        } catch (e: Exception) {
+            Log.e("AuthRepository", "Native Google sign-in error", e)
+            AuthResult.failure(e.message ?: "Google authentication failed.")
         }
     }
 
@@ -156,6 +249,9 @@ class AuthRepository(private val context: Context, private val supabaseService: 
 
     suspend fun signOut() {
         try { supabaseService.revokeCurrentSupabaseSession() } catch (e: Exception) { Log.w("AuthRepository", "Supabase logout failed", e); SupabaseService.clearSession() }
+        runCatching {
+            CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest())
+        }.onFailure { Log.w("AuthRepository", "Unable to clear Google credential state", it) }
         prefs.edit().clear().apply()
         _authState.value = AuthState.Unauthenticated()
     }
