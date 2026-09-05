@@ -55,4 +55,12 @@ jobs:
             exit 0
           fi
           git commit -m "feat: concurrent chat sends and rich message actions"
-          git push origin main
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase origin main && git push origin HEAD:main; then
+              exit 0
+            fi
+            git rebase --abort 2>/dev/null || true
+            sleep 2
+          done
+          echo "Could not push verified chat source after retries"
+          exit 1
