@@ -19,16 +19,18 @@ import com.example.data.supabase.SupabaseService
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.launch
-import java.security.MessageDigest
 import java.security.SecureRandom
 
 /**
  * Native Android Sign in with Google entry point.
  *
- * The old implementation received a browser redirect at blink://auth/callback.
- * Blink now uses Android Credential Manager instead: Google returns an ID token
- * directly to the app, and Supabase Auth validates that token and creates the
- * normal Supabase access/refresh session used everywhere else in Blink.
+ * Google Credential Manager returns an ID token directly to Blink. Supabase Auth
+ * validates that token and creates the normal Supabase access/refresh session used
+ * by the rest of the app.
+ *
+ * Important: Google Credential Manager expects the nonce placed in the ID token to
+ * be the same nonce that the relying party validates. Do not SHA-256 this nonce here
+ * (that pattern applies to some other identity providers, not this Google flow).
  */
 class GoogleAuthCallbackActivity : ComponentActivity() {
 
@@ -58,13 +60,15 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
             return
         }
 
+        // Generate one cryptographically random nonce and use that exact value on
+        // both sides of the exchange. Supabase will validate the nonce claim from
+        // Google's ID token against this original value.
         val rawNonce = generateSecureRandomNonce()
-        val hashedNonce = sha256Hex(rawNonce)
 
         val googleOption = GetGoogleIdOption.Builder()
             .setFilterByAuthorizedAccounts(false)
             .setServerClientId(webClientId)
-            .setNonce(hashedNonce)
+            .setNonce(rawNonce)
             .build()
 
         val request = GetCredentialRequest.Builder()
@@ -144,11 +148,4 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
             Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING
         )
     }
-
-    private fun sha256Hex(value: String): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(value.toByteArray(Charsets.UTF_8))
-            .joinToString(separator = "") { byte ->
-                "%02x".format(byte.toInt() and 0xff)
-            }
 }
