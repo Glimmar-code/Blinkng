@@ -64,7 +64,6 @@ import androidx.compose.ui.unit.dp
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
 import com.example.data.models.LeaderboardUser
-import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.ui.components.CreatePostFab
 import com.example.ui.components.FeedTabs
@@ -95,7 +94,6 @@ private enum class PremiumFeedFilter { ALL, PHOTOS, POLLS }
 fun PremiumFeedScreen(
     posts: List<FeedPost>,
     reels: List<FeedPost>,
-    stories: List<Story>,
     profiles: List<UserProfile>,
     leaderboardUsers: List<LeaderboardUser>,
     connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
@@ -114,12 +112,9 @@ fun PremiumFeedScreen(
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit = {},
     onProfileClick: (String) -> Unit,
-    onAddStoryClick: () -> Unit,
-    onStoryClick: (Story) -> Unit,
     onOpenCreatePost: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenMenu: () -> Unit,
-    onToggleTheme: () -> Unit,
     isServerConnected: Boolean = true,
     isLoading: Boolean = false,
     isRefreshing: Boolean = false,
@@ -130,9 +125,6 @@ fun PremiumFeedScreen(
     onVotePoll: (postId: String, optionId: String) -> Unit = { _, _ -> },
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit = { _, _, _ -> },
     onSearchClick: () -> Unit = {},
-    onLeaderboardClick: () -> Unit = {},
-    onMarketClick: () -> Unit = {},
-    onMessageClick: () -> Unit = {},
     hasMorePosts: Boolean = false,
     hasMoreReels: Boolean = false,
     isLoadingMorePosts: Boolean = false,
@@ -143,59 +135,74 @@ fun PremiumFeedScreen(
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
     hasUnreadNotifications: Boolean = false
 ) {
-    // Preserve all existing interactive families exactly as they already work.
-    if (currentSubTab != 0) {
-        FeedScreen(
-            posts = posts,
-            reels = reels,
-            stories = stories,
-            profiles = profiles,
-            leaderboardUsers = leaderboardUsers,
-            connectHub = connectHub,
-            connectHubActions = connectHubActions,
-            isConnectHubLoading = isConnectHubLoading,
-            currentUsername = currentUsername,
-            userAvatar = userAvatar,
-            currentSubTab = currentSubTab,
-            onSubTabChanged = onSubTabChanged,
-            isDark = isDark,
-            onLikePost = onLikePost,
-            onCommentPost = onCommentPost,
-            onBookmarkPost = onBookmarkPost,
-            onRepostPost = onRepostPost,
-            onSharePost = onSharePost,
-            onOptionsClick = onOptionsClick,
-            onDeletePost = onDeletePost,
-            onProfileClick = onProfileClick,
-            onAddStoryClick = onAddStoryClick,
-            onStoryClick = onStoryClick,
-            onOpenCreatePost = onOpenCreatePost,
-            onOpenActivity = onOpenActivity,
-            onOpenMenu = onOpenMenu,
-            onToggleTheme = onToggleTheme,
-            isServerConnected = isServerConnected,
-            isLoading = isLoading,
-            isRefreshing = isRefreshing,
-            errorMessage = errorMessage,
-            onRefresh = onRefresh,
-            onRetry = onRetry,
-            onViewedPost = onViewedPost,
-            onVotePoll = onVotePoll,
-            onDirectMessage = onDirectMessage,
-            onSearchClick = onSearchClick,
-            onLeaderboardClick = onLeaderboardClick,
-            onMarketClick = onMarketClick,
-            onMessageClick = onMessageClick,
-            hasMorePosts = hasMorePosts,
-            hasMoreReels = hasMoreReels,
-            isLoadingMorePosts = isLoadingMorePosts,
-            isLoadingMoreReels = isLoadingMoreReels,
-            onLoadMorePosts = onLoadMorePosts,
-            onLoadMoreReels = onLoadMoreReels,
-            homeReselectSignal = homeReselectSignal,
-            onBottomBarVisibilityChange = onBottomBarVisibilityChange
-        )
-        return
+    fun navigate(tab: Int) {
+        if (currentSubTab != tab) onSubTabChanged(tab)
+    }
+
+    when (currentSubTab) {
+        1 -> {
+            VideoReelsScreen(
+                reels = reels,
+                currentUsername = currentUsername,
+                isDark = isDark,
+                onLike = onLikePost,
+                onComment = onCommentPost,
+                onBookmark = onBookmarkPost,
+                onShare = onSharePost,
+                onDelete = onDeletePost,
+                onProfileClick = onProfileClick,
+                onBackToPosts = { navigate(0) },
+                isLoading = isLoading,
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
+                hasMore = hasMoreReels,
+                isLoadingMore = isLoadingMoreReels,
+                onLoadMore = onLoadMoreReels,
+                onHomeClick = { navigate(0) },
+                onConnectClick = { navigate(2) },
+                onGameClick = { navigate(3) }
+            )
+            return
+        }
+        2 -> {
+            ConnectSection(
+                profiles = profiles,
+                currentUsername = currentUsername,
+                userAvatar = userAvatar,
+                isDark = isDark,
+                onOpenMenu = onOpenMenu,
+                onOpenActivity = onOpenActivity,
+                onProfileClick = onProfileClick,
+                onDirectMessage = onDirectMessage,
+                connectHub = connectHub,
+                connectHubActions = connectHubActions,
+                isConnectHubLoading = isConnectHubLoading,
+                selectedTopTab = 2,
+                onHomeClick = { navigate(0) },
+                onReelClick = { navigate(1) },
+                onConnectClick = { navigate(2) },
+                onGameClick = { navigate(3) }
+            )
+            return
+        }
+        3 -> {
+            GameSection(
+                userAvatar = userAvatar,
+                leaderboardUsers = leaderboardUsers,
+                connectHub = connectHub,
+                connectHubActions = connectHubActions,
+                isDark = isDark,
+                onOpenMenu = onOpenMenu,
+                onOpenActivity = onOpenActivity,
+                onProfileClick = onProfileClick,
+                selectedTopTab = 3,
+                onHomeClick = { navigate(0) },
+                onReelClick = { navigate(1) },
+                onConnectClick = { navigate(2) },
+                onGameClick = { navigate(3) }
+            )
+            return
+        }
     }
 
     PremiumHomeFeed(
