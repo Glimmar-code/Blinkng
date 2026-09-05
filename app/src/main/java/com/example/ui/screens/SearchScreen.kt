@@ -1,8 +1,6 @@
 package com.example.ui.screens
 
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
@@ -67,7 +65,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModelProvider
 import coil.compose.AsyncImage
 import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
@@ -79,8 +76,6 @@ import com.example.ui.theme.FeedBackground
 import com.example.ui.theme.FeedBorder
 import com.example.ui.theme.FeedCardSurface
 import com.example.ui.theme.FeedTextPrimary
-import com.example.viewmodel.BlinkViewModel
-import com.example.viewmodel.MainTab
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -102,22 +97,19 @@ fun SearchScreen(
     onSharePost: (String) -> Unit = {},
     onOptionsClick: (FeedPost) -> Unit = {},
     onDeletePost: (String) -> Unit = {},
+    onBackToHome: () -> Unit = {},
     isDark: Boolean
 ) {
     @Suppress("UNUSED_VARIABLE")
     val legacyPostOpenCallback = onPostClick // Whole-card taps are intentionally disabled in Discover.
 
-    val activity = LocalActivity.current as? ComponentActivity
-    val rootViewModel = remember(activity) {
-        activity?.let { ViewModelProvider(it)[BlinkViewModel::class.java] }
-    }
     val density = LocalDensity.current
     val dragOffset = remember { Animatable(0f) }
     val gestureScope = rememberCoroutineScope()
     val dismissThresholdPx = with(density) { 96.dp.toPx() }
 
     fun goHome() {
-        rootViewModel?.setTab(MainTab.HOME)
+        onBackToHome()
     }
 
     BackHandler { goHome() }

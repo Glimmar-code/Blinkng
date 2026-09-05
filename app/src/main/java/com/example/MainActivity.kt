@@ -287,6 +287,14 @@ fun MainAppContent(
         isBottomBarVisibleByScroll = true
     }
 
+    // Old builds persisted Home/Reel/Connect/Game as feedSubTab values.
+    // Always enter the redesigned Home shell on a fresh MainAppContent session.
+    LaunchedEffect(Unit) {
+        if (uiState.selectedTab == MainTab.HOME && uiState.feedSubTab != 0) {
+            viewModel.setFeedSubTab(0)
+        }
+    }
+
     // Handle back button presses for sub-views
     BackHandler(
         enabled = uiState.viewingProduct != null ||
@@ -448,6 +456,10 @@ fun MainAppContent(
                         onSharePost = { sharePostOrReel(it) },
                         onOptionsClick = { viewModel.openPostOptions(it) },
                         onDeletePost = { viewModel.deletePost(it) },
+                        onBackToHome = {
+                            viewModel.setTab(MainTab.HOME)
+                            viewModel.setFeedSubTab(0)
+                        },
                         isDark = uiState.isDarkMode
                     )
                 }
