@@ -176,17 +176,6 @@ fun GameSection(
             )
         }
 
-        // Top navigation tabs
-        item {
-            TopNavigationRow(
-                selected = selectedTopTab,
-                onHome = onHomeClick,
-                onReel = onReelClick,
-                onConnect = onConnectClick,
-                onGame = onGameClick
-            )
-        }
-
         item { Spacer(modifier = Modifier.height(10.dp)) }
 
         // Stats Banner (Score, Streak, Coins)

@@ -147,14 +147,6 @@ fun ConnectSection(
             onProfileClick = { onProfileClick("you") }
         )
 
-        ConnectTopNavigation(
-            selected = selectedTopTab,
-            onHome = onHomeClick,
-            onReel = onReelClick,
-            onConnect = onConnectClick,
-            onGame = onGameClick
-        )
-
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
         PullToRefreshBox(
