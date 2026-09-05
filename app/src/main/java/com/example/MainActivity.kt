@@ -131,6 +131,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        // Save the exact navigation surface before Android backgrounds or kills the task.
+        viewModel.persistResumePoint()
         stopPresenceHeartbeat(markOffline = true)
         super.onStop()
     }
@@ -217,12 +219,7 @@ class MainActivity : ComponentActivity() {
                             when (destination) {
                                 AppDestination.SPLASH -> {
                                     SplashScreen(
-                                        onTimeout = {
-                                            if (com.example.data.supabase.SupabaseService.accessToken().isNullOrBlank() &&
-                                                com.example.data.supabase.SupabaseService.refreshToken().isNullOrBlank()) {
-                                                viewModel.setDestination(AppDestination.ONBOARDING)
-                                            }
-                                        }
+                                        onTimeout = { viewModel.completeSplash() }
                                     )
                                 }
 
@@ -322,14 +319,6 @@ fun MainAppContent(
 
     LaunchedEffect(uiState.selectedTab) {
         isBottomBarVisibleByScroll = true
-    }
-
-    // Old builds persisted Home/Reel/Connect/Game as feedSubTab values.
-    // Always enter the redesigned Home shell on a fresh MainAppContent session.
-    LaunchedEffect(Unit) {
-        if (uiState.selectedTab == MainTab.HOME && uiState.feedSubTab != 0) {
-            viewModel.setFeedSubTab(0)
-        }
     }
 
     // Handle back button presses for sub-views

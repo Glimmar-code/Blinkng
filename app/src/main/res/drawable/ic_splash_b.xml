@@ -5,16 +5,16 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Simple Blink "B" mark used only by the Android system startup splash. -->
+    <!-- Compact Blink B kept inside Android 12+'s system splash safe area. -->
     <path
         android:fillColor="@color/blink_splash_mark"
-        android:pathData="M30,18 L58,18 C74,18 84,27 84,41 C84,49 80,56 72,60 C81,63 86,71 86,81 C86,96 75,104 58,104 L30,104 Z" />
+        android:pathData="M39,32 L58,32 C69,32 75,38 75,48 C75,54 72,58 67,60 C73,62 77,68 77,75 C77,85 70,90 58,90 L39,90 Z" />
 
     <path
         android:fillColor="@color/blink_splash_background"
-        android:pathData="M46,32 L58,32 C65,32 69,36 69,42 C69,48 65,52 58,52 L46,52 Z" />
+        android:pathData="M50,42 L58,42 C63,42 66,45 66,49 C66,53 63,56 58,56 L50,56 Z" />
 
     <path
         android:fillColor="@color/blink_splash_background"
-        android:pathData="M46,68 L59,68 C67,68 71,72 71,79 C71,86 67,90 59,90 L46,90 Z" />
+        android:pathData="M50,65 L59,65 C64,65 67,68 67,73 C67,78 64,81 59,81 L50,81 Z" />
 </vector>

@@ -56,9 +56,9 @@ fun SplashScreen(
     var started by remember { mutableStateOf(false) }
 
     val bScale by animateFloatAsState(
-        targetValue = if (started) 1f else 0.78f,
+        targetValue = if (started) 1f else 0.92f,
         animationSpec = tween(
-            durationMillis = 260,
+            durationMillis = 90,
             easing = FastOutSlowInEasing
         ),
         label = "splash_b_scale"
@@ -67,7 +67,7 @@ fun SplashScreen(
     val bAlpha by animateFloatAsState(
         targetValue = if (started) 1f else 0f,
         animationSpec = tween(
-            durationMillis = 180,
+            durationMillis = 70,
             easing = FastOutSlowInEasing
         ),
         label = "splash_b_alpha"
@@ -75,7 +75,9 @@ fun SplashScreen(
 
     LaunchedEffect(Unit) {
         started = true
-        delay(300)
+        // Android already shows the system launch mark. Keep the Compose hand-off tiny
+        // so startup never waits on branding or network/session work.
+        delay(120)
         onTimeout()
     }
 
@@ -88,9 +90,9 @@ fun SplashScreen(
         Text(
             text = "B",
             color = BlinkCream,
-            fontSize = 74.sp,
+            fontSize = 52.sp,
             fontWeight = FontWeight.Black,
-            letterSpacing = (-2).sp,
+            letterSpacing = (-1).sp,
             modifier = Modifier
                 .alpha(bAlpha)
                 .scale(bScale)

@@ -123,6 +123,23 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_DARK_MODE = "ui_dark_mode"
         private const val KEY_SELECTED_TAB = "ui_selected_tab"
         private const val KEY_FEED_SUB_TAB = "ui_feed_sub_tab"
+        private const val KEY_RESUME_PROFILE_USERNAME = "ui_resume_profile_username"
+        private const val KEY_RESUME_PRODUCT_ID = "ui_resume_product_id"
+        private const val KEY_RESUME_COMMENTS_POST_ID = "ui_resume_comments_post_id"
+        private const val KEY_RESUME_POST_OPTIONS_ID = "ui_resume_post_options_id"
+        private const val KEY_RESUME_DEEP_LINK_POST_ID = "ui_resume_deep_link_post_id"
+        private const val KEY_RESUME_CONVERSATION = "ui_resume_conversation"
+        private const val KEY_RESUME_STORY_ID = "ui_resume_story_id"
+        private const val KEY_RESUME_POST_ITEM = "ui_resume_post_item"
+        private const val KEY_RESUME_BECOME_SELLER = "ui_resume_become_seller"
+        private const val KEY_RESUME_SELLER_CONGRATS = "ui_resume_seller_congrats"
+        private const val KEY_RESUME_EDIT_PROFILE = "ui_resume_edit_profile"
+        private const val KEY_RESUME_ACTIVITY = "ui_resume_activity"
+        private const val KEY_RESUME_MENU = "ui_resume_menu"
+        private const val KEY_RESUME_VERIFIED = "ui_resume_verified"
+        private const val KEY_RESUME_CREATE_POST = "ui_resume_create_post"
+        private const val KEY_RESUME_CREATE_STORY = "ui_resume_create_story"
+        private const val KEY_RESUME_CONVERSATION_FULLSCREEN = "ui_resume_conversation_fullscreen"
     }
 
     private val application = application
@@ -165,6 +182,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         observeCachedContent()
         viewModelScope.launch {
             restoreCachedAppSnapshot()
+            restoreResumableRouteFromCurrentState()
             if (hasLocalSession && !_uiState.value.isOnline) {
                 _uiState.value = _uiState.value.copy(
                     destination = AppDestination.MAIN,
@@ -193,6 +211,33 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+    }
+
+    fun completeSplash() {
+        if (_uiState.value.destination != AppDestination.SPLASH) return
+
+        when {
+            hasLocalAuthenticatedProfile() -> {
+                restoreLocalSession()
+                viewModelScope.launch {
+                    restoreCachedAppSnapshot()
+                    restoreResumableRouteFromCurrentState()
+                }
+            }
+            !SupabaseService.accessToken().isNullOrBlank() ||
+                !SupabaseService.refreshToken().isNullOrBlank() -> {
+                // A remote session restore is already running. Show a usable auth surface
+                // instead of blocking startup on network latency.
+                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+            }
+            else -> _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
+        }
+    }
+
+    fun persistResumePoint() {
+        if (_uiState.value.destination != AppDestination.MAIN) return
+        persistUiPreferences()
+        persistResumableRoute(_uiState.value)
     }
 
     fun handleDeepLink(link: AppDeepLink) {
@@ -442,9 +487,7 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = _uiState.value.copy(
             isDarkMode = prefs.getBoolean(KEY_DARK_MODE, true),
             selectedTab = selected,
-            // Do not restore the retired Home/Reel/Connect/Game sub-tab state.
-            // Home now always starts on the premium For You lane.
-            feedSubTab = 0
+            feedSubTab = prefs.getInt(KEY_FEED_SUB_TAB, 0).coerceIn(0, 3)
         )
     }
 
@@ -455,6 +498,95 @@ private suspend fun restoreSupabaseSession() {
             .putString(KEY_SELECTED_TAB, state.selectedTab.name)
             .putInt(KEY_FEED_SUB_TAB, state.feedSubTab)
             .apply()
+    }
+
+    private fun persistResumableRoute(state: BlinkUiState) {
+        val editor = prefs.edit()
+
+        fun putOrRemove(key: String, value: String?) {
+            if (value.isNullOrBlank()) editor.remove(key) else editor.putString(key, value)
+        }
+
+        putOrRemove(KEY_RESUME_PROFILE_USERNAME, state.viewingProfile?.username)
+        putOrRemove(KEY_RESUME_PRODUCT_ID, state.viewingProduct?.id)
+        putOrRemove(KEY_RESUME_COMMENTS_POST_ID, state.activeCommentsPostId)
+        putOrRemove(KEY_RESUME_POST_OPTIONS_ID, state.activePostOptionsPost?.id)
+        putOrRemove(KEY_RESUME_DEEP_LINK_POST_ID, state.deepLinkedPost?.id)
+        putOrRemove(KEY_RESUME_CONVERSATION, state.activeConversationPartner)
+        putOrRemove(KEY_RESUME_STORY_ID, state.activeViewingStory?.id)
+
+        editor
+            .putBoolean(KEY_RESUME_POST_ITEM, state.isPostItemOpen)
+            .putBoolean(KEY_RESUME_BECOME_SELLER, state.isBecomeSellerOpen)
+            .putBoolean(KEY_RESUME_SELLER_CONGRATS, state.showSellerCongratulationsDialog)
+            .putBoolean(KEY_RESUME_EDIT_PROFILE, state.isEditProfileOpen)
+            .putBoolean(KEY_RESUME_ACTIVITY, state.isActivityOpen)
+            .putBoolean(KEY_RESUME_MENU, state.isMenuOpen)
+            .putBoolean(KEY_RESUME_VERIFIED, state.isGetVerifiedOpen)
+            .putBoolean(KEY_RESUME_CREATE_POST, state.isCreatePostOpen)
+            .putBoolean(KEY_RESUME_CREATE_STORY, state.isCreateStoryOpen)
+            .putBoolean(KEY_RESUME_CONVERSATION_FULLSCREEN, state.isConversationFullScreen)
+            .apply()
+    }
+
+    private fun restoreResumableRouteFromCurrentState() {
+        if (!hasLocalAuthenticatedProfile() || _uiState.value.destination != AppDestination.MAIN) return
+
+        val state = _uiState.value
+        val profileUsername = prefs.getString(KEY_RESUME_PROFILE_USERNAME, null)
+            ?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+        val productId = prefs.getString(KEY_RESUME_PRODUCT_ID, null)?.takeIf { it.isNotBlank() }
+        val commentsPostId = prefs.getString(KEY_RESUME_COMMENTS_POST_ID, null)?.takeIf { it.isNotBlank() }
+        val postOptionsId = prefs.getString(KEY_RESUME_POST_OPTIONS_ID, null)?.takeIf { it.isNotBlank() }
+        val deepLinkPostId = prefs.getString(KEY_RESUME_DEEP_LINK_POST_ID, null)?.takeIf { it.isNotBlank() }
+        val conversation = prefs.getString(KEY_RESUME_CONVERSATION, null)
+            ?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+        val storyId = prefs.getString(KEY_RESUME_STORY_ID, null)?.takeIf { it.isNotBlank() }
+
+        val knownProfiles = listOf(state.myProfile) + state.profiles
+        val knownPosts = state.posts + state.reels
+
+        val restoredProfile = profileUsername?.let { username ->
+            knownProfiles.firstOrNull { it.username.equals(username, ignoreCase = true) }
+        }
+        val restoredProduct = productId?.let { id -> state.marketItems.firstOrNull { it.id == id } }
+        val restoredPostOptions = postOptionsId?.let { id -> knownPosts.firstOrNull { it.id == id } }
+        val restoredDeepLink = deepLinkPostId?.let { id -> knownPosts.firstOrNull { it.id == id } }
+        val restoredStory = storyId?.let { id -> state.stories.firstOrNull { it.id == id } }
+
+        _uiState.value = state.copy(
+            viewingProfile = restoredProfile,
+            viewingProduct = restoredProduct,
+            activePostOptionsPost = restoredPostOptions,
+            deepLinkedPost = restoredDeepLink,
+            activeConversationPartner = conversation,
+            activeViewingStory = restoredStory,
+            isConversationFullScreen = conversation != null &&
+                prefs.getBoolean(KEY_RESUME_CONVERSATION_FULLSCREEN, false),
+            isPostItemOpen = prefs.getBoolean(KEY_RESUME_POST_ITEM, false),
+            isBecomeSellerOpen = prefs.getBoolean(KEY_RESUME_BECOME_SELLER, false),
+            showSellerCongratulationsDialog = prefs.getBoolean(KEY_RESUME_SELLER_CONGRATS, false),
+            isEditProfileOpen = prefs.getBoolean(KEY_RESUME_EDIT_PROFILE, false),
+            isActivityOpen = prefs.getBoolean(KEY_RESUME_ACTIVITY, false),
+            isMenuOpen = prefs.getBoolean(KEY_RESUME_MENU, false),
+            isGetVerifiedOpen = prefs.getBoolean(KEY_RESUME_VERIFIED, false),
+            isCreatePostOpen = prefs.getBoolean(KEY_RESUME_CREATE_POST, false),
+            isCreateStoryOpen = prefs.getBoolean(KEY_RESUME_CREATE_STORY, false),
+            activeCommentsPostId = commentsPostId,
+            isCommentsLoading = commentsPostId != null
+        )
+
+        if (commentsPostId != null) {
+            viewModelScope.launch {
+                val result = runCatching { postRepository.fetchComments(commentsPostId) }
+                if (_uiState.value.activeCommentsPostId != commentsPostId) return@launch
+                _uiState.value = _uiState.value.copy(
+                    comments = result.getOrDefault(emptyList()),
+                    isCommentsLoading = false
+                )
+                result.exceptionOrNull()?.let { Log.w(TAG, "Resume comment hydration failed", it) }
+            }
+        }
     }
 
     private suspend fun restoreCachedAppSnapshot() {
