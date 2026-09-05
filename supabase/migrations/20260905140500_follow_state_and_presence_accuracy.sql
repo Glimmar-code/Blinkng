@@ -1,5 +1,6 @@
 begin;
 
+-- Shared backend state for the profile follow button and Following feed.
 -- Authenticated users can already read follows through RLS. Keep this helper
 -- SECURITY INVOKER so it never bypasses the table policies.
 create or replace function public.get_my_following_ids()
