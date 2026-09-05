@@ -8,6 +8,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -45,11 +47,14 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -59,13 +64,17 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
 import com.example.data.models.LeaderboardUser
 import com.example.data.models.Story
 import com.example.data.models.UserProfile
+import com.example.data.repository.FollowStateStore
 import com.example.ui.components.CreatePostFab
 import com.example.ui.components.FeedTabs
 import com.example.ui.components.FeedTopBar
@@ -82,13 +91,14 @@ import com.example.ui.theme.FeedTextSecondary
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 
-private enum class PremiumFeedLane { FOR_YOU, FOLLOWING }
 private enum class PremiumFeedFilter { ALL, PHOTOS, POLLS }
 
 /**
- * Reference-driven home feed shell. Non-home feed families delegate to the established
- * FeedScreen so Reels, Connect and Game retain their existing ViewModels, repositories,
- * navigation and backend behavior while the home feed gets the new premium chrome.
+ * Premium feed shell.
+ *
+ * For You -> Following -> Game is one horizontal gesture family. Reels remains
+ * an explicit independent action, while Connect keeps its own destination and
+ * no longer shows the old four-way top navigation.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -143,9 +153,61 @@ fun PremiumFeedScreen(
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
     hasUnreadNotifications: Boolean = false
 ) {
-    // Preserve all existing interactive families exactly as they already work.
-    if (currentSubTab != 0) {
-        FeedScreen(
+    var feedLane by rememberSaveable(currentUsername) { mutableIntStateOf(0) }
+    val followingIds by FollowStateStore.followingIds.collectAsState()
+
+    LaunchedEffect(currentUsername) {
+        if (currentUsername.isNotBlank()) FollowStateStore.refresh()
+    }
+
+    val followedAuthorKeys = remember(profiles, followingIds) {
+        profiles.asSequence()
+            .filter { it.id in followingIds }
+            .flatMap { sequenceOf(it.username, it.fullName) }
+            .map { it.trim().removePrefix("@").lowercase() }
+            .filter { it.isNotBlank() }
+            .toSet()
+    }
+
+    when (currentSubTab) {
+        0 -> PremiumHomeFeed(
+            posts = posts,
+            currentUsername = currentUsername,
+            userAvatar = userAvatar,
+            laneIndex = feedLane,
+            followedAuthorKeys = followedAuthorKeys,
+            isLoading = isLoading,
+            isRefreshing = isRefreshing,
+            isServerConnected = isServerConnected,
+            errorMessage = errorMessage,
+            hasMorePosts = hasMorePosts,
+            isLoadingMorePosts = isLoadingMorePosts,
+            homeReselectSignal = homeReselectSignal,
+            hasUnreadNotifications = hasUnreadNotifications,
+            onLaneChanged = { feedLane = it.coerceIn(0, 1) },
+            onLikePost = onLikePost,
+            onCommentPost = onCommentPost,
+            onBookmarkPost = onBookmarkPost,
+            onRepostPost = onRepostPost,
+            onSharePost = onSharePost,
+            onOptionsClick = onOptionsClick,
+            onDeletePost = onDeletePost,
+            onProfileClick = onProfileClick,
+            onOpenCreatePost = onOpenCreatePost,
+            onOpenActivity = onOpenActivity,
+            onOpenMenu = onOpenMenu,
+            onSearchClick = onSearchClick,
+            onRefresh = onRefresh,
+            onRetry = onRetry,
+            onViewedPost = onViewedPost,
+            onVotePoll = onVotePoll,
+            onLoadMorePosts = onLoadMorePosts,
+            onBottomBarVisibilityChange = onBottomBarVisibilityChange,
+            onGameClick = { onSubTabChanged(3) },
+            onReelClick = { onSubTabChanged(1) }
+        )
+
+        1 -> FeedScreen(
             posts = posts,
             reels = reels,
             stories = stories,
@@ -156,7 +218,7 @@ fun PremiumFeedScreen(
             isConnectHubLoading = isConnectHubLoading,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
-            currentSubTab = currentSubTab,
+            currentSubTab = 1,
             onSubTabChanged = onSubTabChanged,
             isDark = isDark,
             onLikePost = onLikePost,
@@ -195,42 +257,52 @@ fun PremiumFeedScreen(
             homeReselectSignal = homeReselectSignal,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange
         )
-        return
-    }
 
-    PremiumHomeFeed(
-        posts = posts,
-        currentUsername = currentUsername,
-        userAvatar = userAvatar,
-        isLoading = isLoading,
-        isRefreshing = isRefreshing,
-        isServerConnected = isServerConnected,
-        errorMessage = errorMessage,
-        hasMorePosts = hasMorePosts,
-        isLoadingMorePosts = isLoadingMorePosts,
-        homeReselectSignal = homeReselectSignal,
-        hasUnreadNotifications = hasUnreadNotifications,
-        onLikePost = onLikePost,
-        onCommentPost = onCommentPost,
-        onBookmarkPost = onBookmarkPost,
-        onRepostPost = onRepostPost,
-        onSharePost = onSharePost,
-        onOptionsClick = onOptionsClick,
-        onDeletePost = onDeletePost,
-        onProfileClick = onProfileClick,
-        onOpenCreatePost = onOpenCreatePost,
-        onOpenActivity = onOpenActivity,
-        onOpenMenu = onOpenMenu,
-        onSearchClick = onSearchClick,
-        onRefresh = onRefresh,
-        onRetry = onRetry,
-        onViewedPost = onViewedPost,
-        onVotePoll = onVotePoll,
-        onLoadMorePosts = onLoadMorePosts,
-        onBottomBarVisibilityChange = onBottomBarVisibilityChange,
-        onGameClick = { onSubTabChanged(3) },
-        onReelClick = { onSubTabChanged(1) }
-    )
+        2 -> PremiumConnectHost(
+            profiles = profiles,
+            currentUsername = currentUsername,
+            userAvatar = userAvatar,
+            isDark = isDark,
+            onOpenMenu = onOpenMenu,
+            onOpenActivity = onOpenActivity,
+            onProfileClick = onProfileClick,
+            onDirectMessage = onDirectMessage,
+            connectHub = connectHub,
+            connectHubActions = connectHubActions,
+            isConnectHubLoading = isConnectHubLoading,
+            onHomeClick = {
+                feedLane = 0
+                onSubTabChanged(0)
+            },
+            onReelClick = { onSubTabChanged(1) },
+            onGameClick = { onSubTabChanged(3) }
+        )
+
+        3 -> PremiumGameHost(
+            userAvatar = userAvatar,
+            currentUsername = currentUsername,
+            leaderboardUsers = leaderboardUsers,
+            connectHub = connectHub,
+            connectHubActions = connectHubActions,
+            isDark = isDark,
+            hasUnreadNotifications = hasUnreadNotifications,
+            onOpenMenu = onOpenMenu,
+            onOpenActivity = onOpenActivity,
+            onProfileClick = onProfileClick,
+            onSearchClick = onSearchClick,
+            onForYou = {
+                feedLane = 0
+                onSubTabChanged(0)
+            },
+            onFollowing = {
+                feedLane = 1
+                onSubTabChanged(0)
+            },
+            onReel = { onSubTabChanged(1) }
+        )
+
+        else -> onSubTabChanged(0)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -239,6 +311,8 @@ private fun PremiumHomeFeed(
     posts: List<FeedPost>,
     currentUsername: String,
     userAvatar: String,
+    laneIndex: Int,
+    followedAuthorKeys: Set<String>,
     isLoading: Boolean,
     isRefreshing: Boolean,
     isServerConnected: Boolean,
@@ -247,6 +321,7 @@ private fun PremiumHomeFeed(
     isLoadingMorePosts: Boolean,
     homeReselectSignal: Int,
     hasUnreadNotifications: Boolean,
+    onLaneChanged: (Int) -> Unit,
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
@@ -273,14 +348,25 @@ private fun PremiumHomeFeed(
     val density = LocalDensity.current
     val latestViewed by rememberUpdatedState(onViewedPost)
     val impressionTracker = remember { PostImpressionTracker() }
-    var lane by remember { mutableStateOf(PremiumFeedLane.FOR_YOU) }
     var filter by remember { mutableStateOf(PremiumFeedFilter.ALL) }
     var filterMenuVisible by remember { mutableStateOf(false) }
     var fabExpanded by remember { mutableStateOf(true) }
     var screenVisible by remember { mutableStateOf(false) }
+    var horizontalDrag by remember { mutableStateOf(0f) }
+    val swipeThreshold = with(density) { 64.dp.toPx() }
 
-    val filteredPosts = remember(posts, filter) {
-        posts.filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }.filter { post ->
+    val filteredPosts = remember(posts, filter, laneIndex, followedAuthorKeys) {
+        val rankedNormalPosts = posts.filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
+        val lanePosts = if (laneIndex == 1) {
+            // Preserve the exact ranking/order delivered by the normal feed algorithm;
+            // Following is only an author-membership filter over that ranked list.
+            rankedNormalPosts.filter { post ->
+                post.author.trim().removePrefix("@").lowercase() in followedAuthorKeys
+            }
+        } else {
+            rankedNormalPosts
+        }
+        lanePosts.filter { post ->
             when (filter) {
                 PremiumFeedFilter.ALL -> true
                 PremiumFeedFilter.PHOTOS -> post.images.any { it.isNotBlank() && !it.equals("null", true) }
@@ -316,9 +402,17 @@ private fun PremiumHomeFeed(
 
     LaunchedEffect(Unit) { screenVisible = true }
 
+    LaunchedEffect(laneIndex) {
+        if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
+            listState.scrollToItem(0)
+        }
+        fabExpanded = true
+        onBottomBarVisibilityChange(true)
+    }
+
     LaunchedEffect(homeReselectSignal) {
         if (homeReselectSignal > 0) {
-            lane = PremiumFeedLane.FOR_YOU
+            onLaneChanged(0)
             filter = PremiumFeedFilter.ALL
             if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
                 listState.animateScrollToItem(0)
@@ -330,7 +424,9 @@ private fun PremiumHomeFeed(
         }
     }
 
-    LaunchedEffect(nearEnd, hasMorePosts, isLoadingMorePosts) {
+    LaunchedEffect(nearEnd, hasMorePosts, isLoadingMorePosts, laneIndex) {
+        // Pagination remains the normal ranked feed pagination. Filtering happens after
+        // each page arrives, preserving the server algorithm for followed authors.
         if (nearEnd && hasMorePosts && !isLoadingMorePosts) onLoadMorePosts()
     }
 
@@ -366,6 +462,23 @@ private fun PremiumHomeFeed(
                 .fillMaxSize()
                 .background(FeedBackground)
                 .nestedScroll(scrollConnection)
+                .pointerInput(laneIndex) {
+                    detectHorizontalDragGestures(
+                        onHorizontalDrag = { change, amount ->
+                            change.consume()
+                            horizontalDrag += amount
+                        },
+                        onDragEnd = {
+                            when {
+                                horizontalDrag <= -swipeThreshold && laneIndex == 0 -> onLaneChanged(1)
+                                horizontalDrag <= -swipeThreshold && laneIndex == 1 -> onGameClick()
+                                horizontalDrag >= swipeThreshold && laneIndex == 1 -> onLaneChanged(0)
+                            }
+                            horizontalDrag = 0f
+                        },
+                        onDragCancel = { horizontalDrag = 0f }
+                    )
+                }
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 FeedTopBar(
@@ -379,9 +492,9 @@ private fun PremiumHomeFeed(
 
                 Box {
                     FeedTabs(
-                        selectedIndex = if (lane == PremiumFeedLane.FOR_YOU) 0 else 1,
-                        onForYouClick = { lane = PremiumFeedLane.FOR_YOU },
-                        onFollowingClick = { lane = PremiumFeedLane.FOLLOWING },
+                        selectedIndex = laneIndex,
+                        onForYouClick = { onLaneChanged(0) },
+                        onFollowingClick = { onLaneChanged(1) },
                         onGameClick = onGameClick,
                         onReelClick = onReelClick,
                         onFilterClick = { filterMenuVisible = true }
@@ -426,7 +539,7 @@ private fun PremiumHomeFeed(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(top = 6.dp, bottom = 170.dp)
                     ) {
-                        if (!isServerConnected) {
+                        if (!isServerConnected && posts.isNotEmpty()) {
                             item(key = "connection_notice") {
                                 PremiumFeedConnectionNotice(onRetry)
                             }
@@ -443,15 +556,18 @@ private fun PremiumHomeFeed(
                                     PremiumFeedSkeleton()
                                 }
                             }
+
                             filteredPosts.isEmpty() -> {
                                 item(key = "empty_feed") {
                                     PremiumEmptyFeed(
                                         isFiltered = filter != PremiumFeedFilter.ALL,
+                                        isFollowingLane = laneIndex == 1,
                                         onCreatePost = onOpenCreatePost,
                                         onClearFilter = { filter = PremiumFeedFilter.ALL }
                                     )
                                 }
                             }
+
                             else -> {
                                 items(
                                     count = filteredPosts.size,
@@ -506,6 +622,162 @@ private fun PremiumHomeFeed(
                     .navigationBarsPadding()
                     .padding(end = 18.dp, bottom = 94.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun PremiumGameHost(
+    userAvatar: String,
+    currentUsername: String,
+    leaderboardUsers: List<LeaderboardUser>,
+    connectHub: ConnectHubSnapshot,
+    connectHubActions: ConnectHubActions,
+    isDark: Boolean,
+    hasUnreadNotifications: Boolean,
+    onOpenMenu: () -> Unit,
+    onOpenActivity: () -> Unit,
+    onProfileClick: (String) -> Unit,
+    onSearchClick: () -> Unit,
+    onForYou: () -> Unit,
+    onFollowing: () -> Unit,
+    onReel: () -> Unit
+) {
+    val density = LocalDensity.current
+    val threshold = with(density) { 64.dp.toPx() }
+    var horizontalDrag by remember { mutableStateOf(0f) }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(FeedBackground)
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { change, amount ->
+                        change.consume()
+                        horizontalDrag += amount
+                    },
+                    onDragEnd = {
+                        if (horizontalDrag >= threshold) onFollowing()
+                        horizontalDrag = 0f
+                    },
+                    onDragCancel = { horizontalDrag = 0f }
+                )
+            }
+    ) {
+        FeedTopBar(
+            userAvatar = userAvatar,
+            hasUnreadNotifications = hasUnreadNotifications,
+            onSearchClick = onSearchClick,
+            onNotificationClick = onOpenActivity,
+            onMenuClick = onOpenMenu,
+            onProfileClick = { onProfileClick(currentUsername) }
+        )
+        FeedTabs(
+            selectedIndex = 2,
+            onForYouClick = onForYou,
+            onFollowingClick = onFollowing,
+            onGameClick = {},
+            onReelClick = onReel,
+            onFilterClick = {}
+        )
+        HorizontalDivider(color = FeedBorder.copy(alpha = 0.72f))
+
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            LegacyChromeCrop(topCrop = 118.dp) { modifier ->
+                GameSection(
+                    userAvatar = userAvatar,
+                    leaderboardUsers = leaderboardUsers,
+                    connectHub = connectHub,
+                    connectHubActions = connectHubActions,
+                    isDark = isDark,
+                    onOpenMenu = onOpenMenu,
+                    onOpenActivity = onOpenActivity,
+                    onProfileClick = onProfileClick,
+                    selectedTopTab = 3,
+                    onHomeClick = onForYou,
+                    onReelClick = onReel,
+                    onConnectClick = {},
+                    onGameClick = {},
+                    modifier = modifier
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PremiumConnectHost(
+    profiles: List<UserProfile>,
+    currentUsername: String,
+    userAvatar: String,
+    isDark: Boolean,
+    onOpenMenu: () -> Unit,
+    onOpenActivity: () -> Unit,
+    onProfileClick: (String) -> Unit,
+    onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit,
+    connectHub: ConnectHubSnapshot,
+    connectHubActions: ConnectHubActions,
+    isConnectHubLoading: Boolean,
+    onHomeClick: () -> Unit,
+    onReelClick: () -> Unit,
+    onGameClick: () -> Unit
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(FeedBackground)
+            .statusBarsPadding()
+    ) {
+        // Crop the legacy Connect header + four-way top nav together. Connect now
+        // opens directly on its actual tools/content instead of duplicating feed nav.
+        LegacyChromeCrop(topCrop = 116.dp) { modifier ->
+            ConnectSection(
+                profiles = profiles,
+                currentUsername = currentUsername,
+                userAvatar = userAvatar,
+                isDark = isDark,
+                onOpenMenu = onOpenMenu,
+                onOpenActivity = onOpenActivity,
+                onProfileClick = onProfileClick,
+                onDirectMessage = onDirectMessage,
+                connectHub = connectHub,
+                connectHubActions = connectHubActions,
+                isConnectHubLoading = isConnectHubLoading,
+                selectedTopTab = 2,
+                onHomeClick = onHomeClick,
+                onReelClick = onReelClick,
+                onConnectClick = {},
+                onGameClick = onGameClick,
+                modifier = modifier
+            )
+        }
+    }
+}
+
+/**
+ * Lays the legacy section slightly taller than the viewport and places its old
+ * header above the visible bounds. This keeps all existing Game/Connect logic
+ * intact while removing duplicate navigation chrome.
+ */
+@Composable
+private fun LegacyChromeCrop(
+    topCrop: Dp,
+    content: @Composable (Modifier) -> Unit
+) {
+    val cropPx = with(LocalDensity.current) { topCrop.roundToPx() }
+    Layout(
+        modifier = Modifier.fillMaxSize(),
+        content = { content(Modifier.fillMaxSize()) }
+    ) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val childHeight = (height + cropPx).coerceAtLeast(height)
+        val child = measurables.first().measure(
+            constraints.copy(minHeight = childHeight, maxHeight = childHeight)
+        )
+        layout(width, height) {
+            child.placeRelative(0, -cropPx)
         }
     }
 }
@@ -679,6 +951,7 @@ private fun PremiumFeedRefreshNotice(message: String, onRetry: () -> Unit) {
 @Composable
 private fun PremiumEmptyFeed(
     isFiltered: Boolean,
+    isFollowingLane: Boolean,
     onCreatePost: () -> Unit,
     onClearFilter: () -> Unit
 ) {
@@ -698,19 +971,29 @@ private fun PremiumEmptyFeed(
         }
         Spacer(Modifier.height(14.dp))
         Text(
-            text = if (isFiltered) "No posts match this filter" else "Your feed is ready for something new",
+            text = when {
+                isFiltered -> "No posts match this filter"
+                isFollowingLane -> "No posts from people you follow yet"
+                else -> "Your feed is ready for something new"
+            },
             color = FeedTextPrimary,
             style = MaterialTheme.typography.titleMedium
         )
         Spacer(Modifier.height(5.dp))
         Text(
-            text = if (isFiltered) "Choose another feed filter to keep browsing." else "Share an update, photo or poll with your campus.",
+            text = when {
+                isFiltered -> "Choose another feed filter to keep browsing."
+                isFollowingLane -> "Follow people from Discover or profiles; their ranked posts will appear here."
+                else -> "Share an update, photo or poll with your campus."
+            },
             color = FeedTextSecondary,
             style = MaterialTheme.typography.bodyMedium
         )
         Spacer(Modifier.height(14.dp))
-        TextButton(onClick = if (isFiltered) onClearFilter else onCreatePost) {
-            Text(if (isFiltered) "Show all posts" else "Create Post", color = FeedPurple)
+        if (!isFollowingLane || isFiltered) {
+            TextButton(onClick = if (isFiltered) onClearFilter else onCreatePost) {
+                Text(if (isFiltered) "Show all posts" else "Create Post", color = FeedPurple)
+            }
         }
     }
 }
