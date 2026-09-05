@@ -15,6 +15,52 @@ if (file("google-services.json").exists()) {
   apply(plugin = "com.google.firebase.crashlytics")
 }
 
+// Release versioning is deterministic in CI and still safe for local release builds.
+// GitHub's signed-release workflow supplies VERSION_CODE/VERSION_NAME. When they are
+// absent locally, the Git commit count is used so versionCode no longer stays at 1.
+val gitCommitCount = providers.exec {
+  workingDir(rootDir)
+  commandLine("git", "rev-list", "--count", "HEAD")
+  isIgnoreExitValue = true
+}.standardOutput.asText.get().trim().toIntOrNull()
+
+val resolvedVersionCode = (
+  providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull()
+    ?: gitCommitCount
+    ?: 2
+).coerceAtLeast(2)
+
+require(resolvedVersionCode <= 2_100_000_000) {
+  "VERSION_CODE must be <= 2100000000, got $resolvedVersionCode"
+}
+
+val resolvedVersionName = providers.environmentVariable("VERSION_NAME").orNull
+  ?.trim()
+  ?.takeIf { it.isNotEmpty() }
+  ?: "1.0.$resolvedVersionCode"
+
+val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
+val releaseStorePassword = System.getenv("STORE_PASSWORD")
+val releaseKeyAlias = System.getenv("KEY_ALIAS")
+val releaseKeyPassword = System.getenv("KEY_PASSWORD")
+val releaseTaskRequested = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+
+// Never silently build a production APK/AAB with a missing or accidental signing key.
+if (releaseTaskRequested) {
+  val missing = buildList {
+    if (releaseKeystorePath.isNullOrBlank()) add("KEYSTORE_PATH")
+    if (releaseStorePassword.isNullOrBlank()) add("STORE_PASSWORD")
+    if (releaseKeyAlias.isNullOrBlank()) add("KEY_ALIAS")
+    if (releaseKeyPassword.isNullOrBlank()) add("KEY_PASSWORD")
+  }
+  if (missing.isNotEmpty()) {
+    throw GradleException(
+      "Release signing is not configured. Missing: ${missing.joinToString()}. " +
+        "Use the signed-release GitHub workflow or provide the permanent release key variables."
+    )
+  }
+}
+
 android {
   namespace = "com.example"
   compileSdk { version = release(37) }
@@ -22,22 +68,33 @@ android {
     applicationId = "com.aistudio.blink.appvtwo"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = resolvedVersionCode
+    versionName = resolvedVersionName
     manifestPlaceholders["shareHost"] = "my-app.com"
     buildConfigField("String", "SHARE_BASE_URL", "\"https://my-app.com\"")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath); storePassword = System.getenv("STORE_PASSWORD"); keyAlias = "upload"; keyPassword = System.getenv("KEY_PASSWORD")
+      if (!releaseKeystorePath.isNullOrBlank()) storeFile = file(releaseKeystorePath)
+      storePassword = releaseStorePassword
+      keyAlias = releaseKeyAlias
+      keyPassword = releaseKeyPassword
     }
-    create("debugConfig") { storeFile = file("${rootDir}/debug.keystore"); storePassword = "android"; keyAlias = "androiddebugkey"; keyPassword = "android" }
   }
   buildTypes {
-    release { isCrunchPngs = false; isMinifyEnabled = true; isShrinkResources = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"); signingConfig = signingConfigs.getByName("release") }
-    debug { }
+    release {
+      isCrunchPngs = false
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      signingConfig = signingConfigs.getByName("release")
+    }
+    debug {
+      // Debug builds can live beside production and can never replace/corrupt a release install.
+      applicationIdSuffix = ".debug"
+      versionNameSuffix = "-debug"
+    }
   }
   compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
   buildFeatures { compose = true; buildConfig = true }
