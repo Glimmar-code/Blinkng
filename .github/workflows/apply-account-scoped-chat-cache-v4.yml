@@ -56,3 +56,5 @@ jobs:
           git commit -m 'Make chat cache fully account scoped'
           git pull --rebase origin main
           git push origin HEAD:main
+
+# This workflow intentionally compiles and tests the cache migration before pushing it.
