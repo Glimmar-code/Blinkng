@@ -3,126 +3,95 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // ============================================================
-// PREMIUM BLACK + CREAM BRAND PALETTE
+// BLINK PREMIUM FUTURISTIC PALETTE
 // ============================================================
 
-// Primary brand colors
-val BlinkBlack = Color(0xFF050505)
-val BlinkBlackSoft = Color(0xFF0D0D0D)
-val BlinkBlackElevated = Color(0xFF151515)
+val FeedBackground = Color(0xFF05060B)
+val FeedCardSurface = Color(0xFF10131A)
+val FeedElevatedSurface = Color(0xFF141824)
+val FeedBorder = Color(0xFF272C3A)
+val FeedBorderSoft = Color(0xFF1C2130)
 
-val BlinkCream = Color(0xFFF5EBDD)
-val BlinkCreamSoft = Color(0xFFEDE0CF)
-val BlinkCreamBright = Color(0xFFFFF8EE)
+val FeedTextPrimary = Color(0xFFF7F5FF)
+val FeedTextSecondary = Color(0xFFAAA9BD)
+val FeedTextMuted = Color(0xFF777A91)
 
-val BlinkGold = Color(0xFFC9A86A)
-val BlinkGoldSoft = Color(0xFFE2C994)
+val FeedPurple = Color(0xFF8B5CF6)
+val FeedDeepPurple = Color(0xFF6D28D9)
+val FeedBlue = Color(0xFF3B82F6)
+val FeedGradientStart = Color(0xFFA855F7)
+val FeedGradientMiddle = Color(0xFF7C3AED)
+val FeedGradientEnd = Color(0xFF2F80ED)
 
-// Functional colors
-val BlinkRed = Color(0xFFE5484D)
-val BlinkBlue = Color(0xFF4A90E2)
-val BlinkCyan = Color(0xFF5FB8C9)
+// Existing brand names stay available so the rest of the app keeps compiling.
+// Their values now align with the premium purple/cobalt visual system.
+val BlinkBlack = FeedBackground
+val BlinkBlackSoft = FeedCardSurface
+val BlinkBlackElevated = FeedElevatedSurface
+val BlinkCream = FeedTextPrimary
+val BlinkCreamSoft = FeedTextSecondary
+val BlinkCreamBright = Color(0xFFFFFFFF)
+val BlinkGold = Color(0xFFF5C451)
+val BlinkGoldSoft = Color(0xFFFFD978)
+
+val BlinkRed = Color(0xFFFF5D73)
+val BlinkBlue = FeedBlue
+val BlinkCyan = Color(0xFF35C7E8)
 val BlinkOnlineGreen = Color(0xFF22C55E)
-
-// Keep these aliases so existing screens using the old names
-// continue compiling without needing immediate changes.
-val BlinkPink = BlinkCream
-val BlinkPinkDeep = BlinkCreamSoft
-val BlinkPurple = BlinkGold
-val BlinkLavender = BlinkCreamBright
-val BlinkAccentSoft = Color(0xFFF7ECDD)
-
+val BlinkPink = FeedPurple
+val BlinkPinkDeep = FeedDeepPurple
+val BlinkPurple = FeedPurple
+val BlinkLavender = Color(0xFFC4B5FD)
+val BlinkAccentSoft = Color(0xFFDDD6FE)
 
 // ============================================================
 // DARK THEME
 // ============================================================
 
-val DarkBackground = Color(0xFF050505)
-
-val DarkSurface = Color(0xFF0D0D0D)
-
-val DarkSurfaceElevated = Color(0xFF151515)
-
-val DarkSurfaceHighest = Color(0xFF1C1A18)
-
-val DarkBorder = Color(0xFF2B2722)
-
-val DarkBorderSoft = Color(0xFF211E1A)
-
-val DarkTextPrimary = Color(0xFFF8EFE3)
-
-val DarkTextSecondary = Color(0xFFB9AEA1)
-
-val DarkTextMuted = Color(0xFF7F766C)
-
+val DarkBackground = FeedBackground
+val DarkSurface = FeedCardSurface
+val DarkSurfaceElevated = FeedElevatedSurface
+val DarkSurfaceHighest = Color(0xFF191E2C)
+val DarkBorder = FeedBorder
+val DarkBorderSoft = FeedBorderSoft
+val DarkTextPrimary = FeedTextPrimary
+val DarkTextSecondary = FeedTextSecondary
+val DarkTextMuted = FeedTextMuted
 
 // ============================================================
 // LIGHT THEME
 // ============================================================
 
-val LightBackground = Color(0xFFF4EEE5)
-
-val LightSurface = Color(0xFFFFFBF5)
-
+val LightBackground = Color(0xFFF7F6FB)
+val LightSurface = Color(0xFFFFFFFF)
 val LightSurfaceElevated = Color(0xFFFFFFFF)
-
-val LightSurfaceCream = Color(0xFFF8F1E8)
-
-val LightBorder = Color(0xFFE0D5C6)
-
-val LightBorderSoft = Color(0xFFEBE2D7)
-
-val LightTextPrimary = Color(0xFF11100E)
-
-val LightTextSecondary = Color(0xFF655E55)
-
-val LightTextMuted = Color(0xFF938A7F)
-
+val LightSurfaceCream = Color(0xFFF1EFF8)
+val LightBorder = Color(0xFFE0DDEA)
+val LightBorderSoft = Color(0xFFECE9F3)
+val LightTextPrimary = Color(0xFF16141D)
+val LightTextSecondary = Color(0xFF625F70)
+val LightTextMuted = Color(0xFF8A8795)
 
 // ============================================================
 // SPECIAL COLORS
 // ============================================================
 
 val PureWhite = Color(0xFFFFFFFF)
-
 val PureBlack = Color(0xFF000000)
-
 val Transparent = Color.Transparent
-
 
 // ============================================================
 // FACULTY COLORS
 // ============================================================
 
-fun getFacultyColor(tag: String?): Color {
-
-    return when (tag?.uppercase()) {
-
-        "SIMME" ->
-            BlinkGold
-
-        "SBMS" ->
-            Color(0xFF5FB8C9)
-
-        "LAW" ->
-            Color(0xFFB8860B)
-
-        "ARTS" ->
-            Color(0xFFC97A5A)
-
-        "ENGINEERING" ->
-            Color(0xFF4CAF50)
-
-        "SCIENCE" ->
-            Color(0xFF269EAA)
-
-        "MEDICINE" ->
-            Color(0xFFC96B6B)
-
-        "SOCIAL SCIENCES" ->
-            Color(0xFFB28A57)
-
-        else ->
-            BlinkGold
-    }
+fun getFacultyColor(tag: String?): Color = when (tag?.uppercase()) {
+    "SIMME" -> FeedPurple
+    "SBMS" -> Color(0xFF5FB8C9)
+    "LAW" -> Color(0xFFE5B94B)
+    "ARTS" -> Color(0xFFE98B6A)
+    "ENGINEERING" -> Color(0xFF4CAF50)
+    "SCIENCE" -> Color(0xFF35B8C4)
+    "MEDICINE" -> Color(0xFFE47786)
+    "SOCIAL SCIENCES" -> Color(0xFFC59B64)
+    else -> FeedPurple
 }
