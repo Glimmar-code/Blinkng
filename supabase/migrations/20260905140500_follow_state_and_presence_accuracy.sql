@@ -1,11 +1,12 @@
 begin;
 
--- Give the app one RLS-safe source of truth for the signed-in user's follows.
+-- Authenticated users can already read follows through RLS. Keep this helper
+-- SECURITY INVOKER so it never bypasses the table policies.
 create or replace function public.get_my_following_ids()
 returns setof uuid
 language sql
 stable
-security definer
+security invoker
 set search_path = public
 as $$
   select f.following_id
@@ -17,32 +18,28 @@ $$;
 revoke all on function public.get_my_following_ids() from public, anon;
 grant execute on function public.get_my_following_ids() to authenticated;
 
--- Presence is a heartbeat, not a permanent boolean. Always stamp last_seen_at
--- when the app changes state so a killed process cannot leave someone active forever.
+-- Preserve the existing void RPC contract used by the Android client while
+-- updating both legacy and current presence columns on every heartbeat.
 create or replace function public.set_my_presence(p_online boolean)
-returns boolean
-language plpgsql
-security definer
+returns void
+language sql
+security invoker
 set search_path = public
 as $$
-begin
-  if auth.uid() is null then
-    raise exception 'AUTHENTICATION_REQUIRED';
-  end if;
-
   update public.profiles
-  set online_now = p_online,
+  set online_now = coalesce(p_online, false),
+      is_online = coalesce(p_online, false),
       last_seen_at = now(),
+      last_seen = now(),
       updated_at = now()
   where id = auth.uid();
-
-  return p_online;
-end;
 $$;
 
 revoke all on function public.set_my_presence(boolean) from public, anon;
 grant execute on function public.set_my_presence(boolean) to authenticated;
 
+-- A process can be killed without sending an offline event, so online state is
+-- treated as a short heartbeat lease instead of a permanent boolean.
 create or replace function public.expire_stale_presence()
 returns integer
 language plpgsql
@@ -54,9 +51,10 @@ declare
 begin
   update public.profiles
   set online_now = false,
+      is_online = false,
       updated_at = now()
-  where online_now = true
-    and coalesce(last_seen_at, updated_at, created_at) < now() - interval '2 minutes';
+  where (online_now = true or is_online = true)
+    and coalesce(last_seen_at, last_seen, updated_at, created_at) < now() - interval '2 minutes';
 
   get diagnostics v_count = row_count;
   return v_count;
@@ -82,7 +80,7 @@ begin
 end;
 $$;
 
--- Immediately clear stale rows left by older clients.
+-- Clear rows left stale by older clients immediately after deployment.
 select public.expire_stale_presence();
 
 commit;
