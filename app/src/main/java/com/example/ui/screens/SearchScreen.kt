@@ -1,7 +1,7 @@
 package com.example.ui.screens
 
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
@@ -60,7 +60,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -107,7 +106,7 @@ fun SearchScreen(
     @Suppress("UNUSED_VARIABLE")
     val legacyPostOpenCallback = onPostClick // Whole-card taps are intentionally disabled in Discover.
 
-    val activity = LocalContext.current as? ComponentActivity
+    val activity = LocalActivity.current
     val rootViewModel = remember(activity) {
         activity?.let { ViewModelProvider(it)[BlinkViewModel::class.java] }
     }
@@ -161,8 +160,6 @@ fun SearchScreen(
             .fillMaxSize()
             .background(FeedBackground)
     ) {
-        // Preserve the visual context of Home behind the 95% Discover sheet.
-        // It is deliberately non-interactive and softly blurred while Search owns focus.
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -294,8 +291,7 @@ fun SearchScreen(
                         ) {
                             items(people, key = { it.id.ifBlank { it.username } }) { person ->
                                 Surface(
-                                    modifier = Modifier
-                                        .width(150.dp),
+                                    modifier = Modifier.width(150.dp),
                                     shape = RoundedCornerShape(20.dp),
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                     color = MaterialTheme.colorScheme.surface,
@@ -422,8 +418,6 @@ fun SearchScreen(
                             visible = visible,
                             enter = fadeIn() + slideInVertically(initialOffsetY = { it / 12 })
                         ) {
-                            // Deliberately no whole-card clickable modifier. Comments only
-                            // open from the explicit comment action inside PostCard.
                             PostCard(
                                 post = post,
                                 isDark = isDark,
