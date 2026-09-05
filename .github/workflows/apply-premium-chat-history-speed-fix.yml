@@ -1,0 +1,54 @@
+name: Apply premium chat direct return and history
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/apply_premium_chat_history_speed_fix.py'
+      - '.github/workflows/apply-premium-chat-history-speed-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply premium chat fixes
+        run: python3 .github/scripts/apply_premium_chat_history_speed_fix.py
+
+      - name: Verify patch formatting
+        run: git diff --check
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit validated source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/screens/PremiumMessagesScreen.kt \
+                  app/src/main/java/com/example/viewmodel/BlinkViewModel.kt \
+                  app/src/main/java/com/example/data/repository/ChatRepository.kt
+          if git diff --cached --quiet; then
+            echo "Premium chat sources already up to date."
+            exit 0
+          fi
+          git commit -m "fix: direct chat return, full history and faster sending"
+          git pull --rebase origin main
+          git push origin HEAD:main
