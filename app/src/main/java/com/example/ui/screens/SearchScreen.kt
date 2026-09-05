@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
@@ -106,7 +107,7 @@ fun SearchScreen(
     @Suppress("UNUSED_VARIABLE")
     val legacyPostOpenCallback = onPostClick // Whole-card taps are intentionally disabled in Discover.
 
-    val activity = LocalActivity.current
+    val activity = LocalActivity.current as? ComponentActivity
     val rootViewModel = remember(activity) {
         activity?.let { ViewModelProvider(it)[BlinkViewModel::class.java] }
     }
