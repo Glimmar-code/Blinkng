@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/scripts/apply_repost_game_ranking.py'
+      - '.github/scripts/apply_repost_game_ranking_v2.py'
       - '.github/workflows/apply-repost-game-ranking.yml'
   workflow_dispatch:
 
@@ -28,7 +28,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Apply source patch
-        run: python3 .github/scripts/apply_repost_game_ranking.py
+        run: python3 .github/scripts/apply_repost_game_ranking_v2.py
 
       - name: Compile Kotlin
         run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
