@@ -1,124 +1,150 @@
 package com.example.auth
 
-import android.app.Activity
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.lifecycle.lifecycleScope
 import com.example.MainActivity
+import com.example.R
+import com.example.data.repository.AuthRepository
 import com.example.data.supabase.SupabaseService
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.launch
+import java.security.MessageDigest
+import java.security.SecureRandom
 
 /**
- * Receives the Supabase OAuth redirect:
- * blink://auth/callback
+ * Native Android Sign in with Google entry point.
  *
- * Supabase can return OAuth values in the URI fragment (implicit flow),
- * while some configurations return values in the query string. Handle both
- * so the Google flow does not appear to stop after returning to the app.
+ * The old implementation received a browser redirect at blink://auth/callback.
+ * Blink now uses Android Credential Manager instead: Google returns an ID token
+ * directly to the app, and Supabase Auth validates that token and creates the
+ * normal Supabase access/refresh session used everywhere else in Blink.
  */
-class GoogleAuthCallbackActivity : Activity() {
+class GoogleAuthCallbackActivity : ComponentActivity() {
 
     companion object {
-        private const val TAG = "GoogleAuthCallback"
-        private const val ACCESS_TOKEN = "access_token"
-        private const val REFRESH_TOKEN = "refresh_token"
-        private const val ERROR = "error"
-        private const val ERROR_DESCRIPTION = "error_description"
+        private const val TAG = "BlinkGoogleAuth"
     }
+
+    private val credentialManager by lazy { CredentialManager.create(this) }
+    private val authRepository by lazy { AuthRepository(applicationContext, SupabaseService()) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SupabaseService.initialize(applicationContext)
-        handle(intent)
+
+        if (savedInstanceState == null) {
+            lifecycleScope.launch { startNativeGoogleSignIn() }
+        }
     }
 
-    override fun onNewIntent(intent: Intent?) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        handle(intent)
-    }
+    private suspend fun startNativeGoogleSignIn() {
+        val webClientId = runCatching { getString(R.string.default_web_client_id) }
+            .getOrDefault("")
+            .trim()
 
-    private fun handle(intent: Intent?) {
-        val uri = intent?.data
-        if (uri == null) {
-            Log.e(TAG, "OAuth callback received without a URI")
-            returnToMain()
+        if (webClientId.isBlank()) {
+            failAndFinish("Google Sign-In is not configured for this build.")
             return
         }
 
-        Log.d(TAG, "OAuth callback received: scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}")
+        val rawNonce = generateSecureRandomNonce()
+        val hashedNonce = sha256Hex(rawNonce)
 
-        val values = mutableMapOf<String, String>()
+        val googleOption = GetSignInWithGoogleOption.Builder(webClientId)
+            .setNonce(hashedNonce)
+            .build()
 
-        // Implicit OAuth flow: Supabase returns tokens in the fragment.
-        parsePairs(uri.fragment).forEach { (key, value) -> values[key] = value }
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(googleOption)
+            .build()
 
-        // Be defensive: also accept query parameters if the provider/auth flow
-        // returns them there instead of in the fragment.
-        uri.queryParameterNames.forEach { key ->
-            uri.getQueryParameter(key)?.let { values[key] = it }
-        }
+        try {
+            val response = credentialManager.getCredential(
+                context = this,
+                request = request
+            )
 
-        val error = values[ERROR]
-        val errorDescription = values[ERROR_DESCRIPTION]
-        if (!error.isNullOrBlank() || !errorDescription.isNullOrBlank()) {
-            Log.e(TAG, "Google OAuth failed: ${errorDescription ?: error}")
-            returnToMain()
-            return
-        }
+            val customCredential = response.credential as? CustomCredential
+            if (
+                customCredential == null ||
+                customCredential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+            ) {
+                failAndFinish("Google returned an unsupported credential.")
+                return
+            }
 
-        val accessToken = values[ACCESS_TOKEN].orEmpty()
-        val refreshToken = values[REFRESH_TOKEN].orEmpty()
+            val googleCredential = try {
+                GoogleIdTokenCredential.createFrom(customCredential.data)
+            } catch (error: Exception) {
+                Log.e(TAG, "Unable to parse Google ID token", error)
+                failAndFinish("Google returned an invalid sign-in response.")
+                return
+            }
 
-        if (accessToken.isBlank()) {
-            Log.e(TAG, "Google OAuth callback contained no access token")
-            returnToMain()
-            return
-        }
+            val idToken = googleCredential.idToken
+            if (idToken.isBlank()) {
+                failAndFinish("Google did not return an ID token.")
+                return
+            }
 
-        // Store the real Supabase Auth session. Never replace this with the
-        // project's anon/publishable key.
-        SupabaseService.saveSession(
-            accessToken = accessToken,
-            refreshToken = refreshToken.ifBlank { null }
-        )
+            val result = authRepository.signInWithGoogleIdToken(
+                idToken = idToken,
+                nonce = rawNonce
+            )
 
-        Log.d(TAG, "Google OAuth session saved successfully")
+            if (!result.isSuccess) {
+                failAndFinish(result.errorMessage ?: "Google authentication failed.")
+                return
+            }
 
-        startActivity(
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+            Log.d(TAG, "Native Google authentication completed successfully")
+            startActivity(
+                Intent(this, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_CLEAR_TASK or
                         Intent.FLAG_ACTIVITY_SINGLE_TOP
-            }
-        )
+                }
+            )
+            finish()
+        } catch (error: GetCredentialException) {
+            Log.i(TAG, "Google credential flow closed: ${error.type}")
+            // Cancellation is normal; return silently to Blink. For other credential
+            // errors the user can tap Continue with Google again.
+            finish()
+        } catch (error: Exception) {
+            Log.e(TAG, "Native Google sign-in failed", error)
+            failAndFinish(error.message ?: "Unable to complete Google sign-in.")
+        }
+    }
+
+    private fun failAndFinish(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
         finish()
     }
 
-    private fun parsePairs(fragment: String?): Map<String, String> {
-        if (fragment.isNullOrBlank()) return emptyMap()
-
-        return fragment
-            .removePrefix("#")
-            .split('&')
-            .mapNotNull { pair ->
-                if (pair.isBlank()) return@mapNotNull null
-                val parts = pair.split('=', limit = 2)
-                if (parts.size != 2) return@mapNotNull null
-
-                val key = Uri.decode(parts[0])
-                val value = Uri.decode(parts[1])
-                if (key.isBlank()) null else key to value
-            }
-            .toMap()
-    }
-
-    private fun returnToMain() {
-        startActivity(
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            }
+    private fun generateSecureRandomNonce(byteLength: Int = 32): String {
+        val bytes = ByteArray(byteLength)
+        SecureRandom().nextBytes(bytes)
+        return Base64.encodeToString(
+            bytes,
+            Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING
         )
-        finish()
     }
+
+    private fun sha256Hex(value: String): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray(Charsets.UTF_8))
+            .joinToString(separator = "") { byte ->
+                "%02x".format(byte.toInt() and 0xff)
+            }
 }
