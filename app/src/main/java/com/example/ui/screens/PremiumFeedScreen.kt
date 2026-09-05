@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Poll
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -659,11 +658,6 @@ private fun PremiumHomeFeed(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(top = 6.dp, bottom = 170.dp)
                     ) {
-                        if (!isServerConnected && posts.isNotEmpty()) {
-                            item(key = "connection_notice") {
-                                PremiumFeedConnectionNotice(onRetry)
-                            }
-                        }
                         if (!errorMessage.isNullOrBlank() && posts.isNotEmpty()) {
                             item(key = "refresh_error") {
                                 PremiumFeedRefreshNotice(errorMessage, onRetry)
@@ -1009,40 +1003,6 @@ private fun PremiumFeedSkeleton() {
                     .height(210.dp)
                     .shimmerBackground(RoundedCornerShape(18.dp), base, highlight)
             )
-        }
-    }
-}
-
-@Composable
-private fun PremiumFeedConnectionNotice(onRetry: () -> Unit) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        shape = RoundedCornerShape(18.dp),
-        color = FeedElevatedSurface,
-        border = BorderStroke(1.dp, FeedBorder)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.WifiOff,
-                contentDescription = null,
-                tint = FeedTextSecondary,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Connection interrupted", color = FeedTextPrimary, style = MaterialTheme.typography.labelMedium)
-                Text(
-                    "Showing available cached posts while Blink reconnects.",
-                    color = FeedTextSecondary,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-            TextButton(onClick = onRetry) { Text("Retry", color = FeedPurple) }
         }
     }
 }
