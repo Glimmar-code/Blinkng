@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
@@ -20,6 +21,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -45,6 +47,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -114,6 +117,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -592,9 +596,210 @@ private fun StaggeredAppear(
 // MESSAGES HOME
 // ============================================================================
 
+// ============================================================================
+// RESPONSIVE MASTER-DETAIL MESSAGES
+// ============================================================================
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessagesScreen(
+    conversations: List<ChatConversation>,
+    activePartner: String?,
+    onOpenConversation: (String) -> Unit,
+    onCloseConversation: () -> Unit,
+    onSendMessage: (String, String) -> Unit,
+    onSendVideo: (String, Uri) -> Unit = { _, _ -> },
+    onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
+    hasMoreMessages: (String) -> Boolean = { false },
+    isLoadingOlder: (String) -> Boolean = { false },
+    onLoadOlder: (String) -> Unit = {},
+    isLoadingMessages: (String) -> Boolean = { false },
+    onProfileClick: (String) -> Unit,
+    isDark: Boolean,
+    isConnected: Boolean = true,
+    isLoading: Boolean = false
+) {
+    val selectedChat = activePartner?.takeIf { it.isNotBlank() }
+    val paneOpen = selectedChat != null
+    val selectedConversation = remember(conversations, selectedChat) {
+        conversations.firstOrNull {
+            it.partnerUsername.equals(selectedChat, ignoreCase = true)
+        }
+    }
+
+    // Android system back reverses the fold before leaving Messages.
+    BackHandler(enabled = paneOpen) {
+        onCloseConversation()
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("messages_master_detail")
+    ) {
+        val masterWidth by animateDpAsState(
+            targetValue = if (paneOpen) 76.dp else maxWidth,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            ),
+            label = "messageMasterWidth"
+        )
+
+        Row(Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .width(masterWidth)
+                    .fillMaxHeight()
+                    .clipToBounds()
+            ) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = !paneOpen,
+                    enter = fadeIn(tween(150)),
+                    exit = fadeOut(tween(90)),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    MessagesInboxContent(
+                        conversations = conversations,
+                        activePartner = activePartner,
+                        onOpenConversation = onOpenConversation,
+                        onCloseConversation = onCloseConversation,
+                        onSendMessage = onSendMessage,
+                        onProfileClick = onProfileClick,
+                        isDark = isDark,
+                        isConnected = isConnected,
+                        isLoading = isLoading
+                    )
+                }
+
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = paneOpen,
+                    enter = fadeIn(tween(durationMillis = 160, delayMillis = 60)),
+                    exit = fadeOut(tween(90)),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    ConversationAvatarRail(
+                        conversations = conversations,
+                        selectedPartner = selectedChat,
+                        onOpenConversation = onOpenConversation
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clipToBounds()
+            ) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = paneOpen,
+                    enter = slideInHorizontally(
+                        initialOffsetX = { it },
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ) + fadeIn(tween(140)),
+                    exit = slideOutHorizontally(
+                        targetOffsetX = { it },
+                        animationSpec = tween(190, easing = FastOutSlowInEasing)
+                    ) + fadeOut(tween(120)),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    val convo = selectedConversation
+                    if (convo != null) {
+                        // key() intentionally swaps the active chat immediately while the
+                        // detail pane stays open, giving the avatar rail true quick-switch.
+                        androidx.compose.runtime.key(convo.id) {
+                            ChatConversationView(
+                                convo = convo,
+                                onBack = onCloseConversation,
+                                onSendMessage = { text ->
+                                    onSendMessage(convo.partnerUsername, text)
+                                },
+                                onSendVideo = { uri ->
+                                    onSendVideo(convo.partnerUsername, uri)
+                                },
+                                onProfileClick = onProfileClick,
+                                isDark = isDark,
+                                isConnected = isConnected,
+                                onRetryMessage = onRetryMessage?.let { retry ->
+                                    { message -> retry(convo.partnerUsername, message) }
+                                },
+                                hasMoreMessages = hasMoreMessages(convo.id),
+                                isLoadingOlder = isLoadingOlder(convo.id),
+                                onLoadOlder = { onLoadOlder(convo.partnerUsername) },
+                                isLoadingMessages = isLoadingMessages(convo.id)
+                            )
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationAvatarRail(
+    conversations: List<ChatConversation>,
+    selectedPartner: String?,
+    onOpenConversation: (String) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 2.dp
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = 52.dp, bottom = 96.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(
+                items = conversations,
+                key = { "avatar_rail_${it.id}" }
+            ) { conversation ->
+                val selected = conversation.partnerUsername.equals(
+                    selectedPartner,
+                    ignoreCase = true
+                )
+                AsyncImage(
+                    model = conversation.partnerAvatar,
+                    contentDescription = "Open ${conversation.partnerName}",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(CircleShape)
+                        .border(
+                            width = if (selected) 2.dp else 1.dp,
+                            color = if (selected) {
+                                BlinkPink
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                            },
+                            shape = CircleShape
+                        )
+                        .clickable(role = Role.Button) {
+                            onOpenConversation(conversation.partnerUsername)
+                        }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MessagesInboxContent(
     conversations: List<ChatConversation>,
     activePartner: String?,
     onOpenConversation: (String) -> Unit,

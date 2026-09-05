@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.*
@@ -479,6 +480,17 @@ fun MainAppContent(
                         },
                         onCloseConversation = { viewModel.closeConversation() },
                         onSendMessage = { partner, text -> viewModel.sendMessage(partner, text) },
+                        onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
+                        onRetryMessage = { partner, message ->
+                            viewModel.retrySendMessage(partner, message)
+                        },
+                        hasMoreMessages = { conversationId ->
+                            uiState.messageHistoryHasMore[conversationId] ?: true
+                        },
+                        isLoadingOlder = { conversationId ->
+                            uiState.loadingOlderConversationId == conversationId
+                        },
+                        onLoadOlder = { partner -> viewModel.loadOlderMessages(partner) },
                         onProfileClick = { viewModel.openProfile(it) },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline
@@ -748,7 +760,7 @@ fun MainAppContent(
 
         // Sub-screen Overlays: Chat Conversation
         AnimatedVisibility(
-            visible = uiState.isConversationFullScreen && uiState.activeConversationPartner != null,
+            visible = uiState.isConversationFullScreen && uiState.activeConversationPartner != null && uiState.selectedTab != MainTab.MESSAGES,
             enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
             exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
         ) {

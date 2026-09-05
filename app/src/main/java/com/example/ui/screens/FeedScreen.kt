@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -89,12 +91,236 @@ import com.example.ui.theme.BlinkPink
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 
+// ============================================================================
+// GESTURE-DRIVEN PAGE FAMILIES
+// ============================================================================
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun FeedScreen(
+    posts: List<FeedPost>,
+    reels: List<FeedPost>,
+    stories: List<Story>,
+    profiles: List<UserProfile>,
+    leaderboardUsers: List<LeaderboardUser>,
+    connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
+    connectHubActions: ConnectHubActions = ConnectHubActions(),
+    isConnectHubLoading: Boolean = false,
+    currentUsername: String,
+    userAvatar: String,
+    currentSubTab: Int,
+    onSubTabChanged: (Int) -> Unit,
+    isDark: Boolean,
+    onLikePost: (String) -> Unit,
+    onCommentPost: (String) -> Unit,
+    onBookmarkPost: (String) -> Unit,
+    onRepostPost: (String) -> Unit,
+    onSharePost: (String) -> Unit,
+    onOptionsClick: (FeedPost) -> Unit,
+    onDeletePost: (String) -> Unit = {},
+    onProfileClick: (String) -> Unit,
+    onAddStoryClick: () -> Unit,
+    onStoryClick: (Story) -> Unit,
+    onOpenCreatePost: () -> Unit,
+    onOpenActivity: () -> Unit,
+    onOpenMenu: () -> Unit,
+    onToggleTheme: () -> Unit,
+    isServerConnected: Boolean = true,
+    isLoading: Boolean = false,
+    isRefreshing: Boolean = false,
+    errorMessage: String? = null,
+    onRefresh: () -> Unit = {},
+    onRetry: () -> Unit = {},
+    onViewedPost: (String) -> Unit = {},
+    onVotePoll: (postId: String, optionId: String) -> Unit = { _, _ -> },
+    onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit = { _, _, _ -> },
+    onSearchClick: () -> Unit = {},
+    onLeaderboardClick: () -> Unit = {},
+    onMarketClick: () -> Unit = {},
+    onMessageClick: () -> Unit = {},
+    hasMorePosts: Boolean = false,
+    hasMoreReels: Boolean = false,
+    isLoadingMorePosts: Boolean = false,
+    isLoadingMoreReels: Boolean = false,
+    onLoadMorePosts: () -> Unit = {},
+    onLoadMoreReels: () -> Unit = {},
+    homeReselectSignal: Int = 0,
+    onBottomBarVisibilityChange: (Boolean) -> Unit = {}
+) {
+    val latestSubTab by rememberUpdatedState(currentSubTab)
+    val latestSubTabChanged by rememberUpdatedState(onSubTabChanged)
+
+    // Family 1: Feed <-> Reel. Foundation HorizontalPager supplies native
+    // touch slop, velocity handling, fling decay and page snapping.
+    val contentPagerState = rememberPagerState(
+        initialPage = currentSubTab.coerceIn(0, 1),
+        pageCount = { 2 }
+    )
+
+    // Family 2: Game <-> Connect. Page 0 is Game and page 1 is Connect so
+    // a horizontal gesture switches only within the interactive family.
+    val interactivePagerState = rememberPagerState(
+        initialPage = if (currentSubTab == 3) 0 else 1,
+        pageCount = { 2 }
+    )
+
+    LaunchedEffect(currentSubTab) {
+        when (currentSubTab) {
+            0, 1 -> if (contentPagerState.currentPage != currentSubTab) {
+                contentPagerState.animateScrollToPage(currentSubTab)
+            }
+            3 -> if (interactivePagerState.currentPage != 0) {
+                interactivePagerState.animateScrollToPage(0)
+            }
+            2 -> if (interactivePagerState.currentPage != 1) {
+                interactivePagerState.animateScrollToPage(1)
+            }
+        }
+    }
+
+    val inContentFamily = currentSubTab in 0..1
+    LaunchedEffect(contentPagerState, inContentFamily) {
+        if (!inContentFamily) return@LaunchedEffect
+        snapshotFlow { contentPagerState.settledPage }.collectLatest { page ->
+            if (latestSubTab in 0..1 && latestSubTab != page) {
+                latestSubTabChanged(page)
+            }
+        }
+    }
+
+    val inInteractiveFamily = currentSubTab == 2 || currentSubTab == 3
+    LaunchedEffect(interactivePagerState, inInteractiveFamily) {
+        if (!inInteractiveFamily) return@LaunchedEffect
+        snapshotFlow { interactivePagerState.settledPage }.collectLatest { page ->
+            val tab = if (page == 0) 3 else 2
+            if ((latestSubTab == 2 || latestSubTab == 3) && latestSubTab != tab) {
+                latestSubTabChanged(tab)
+            }
+        }
+    }
+
+    if (inContentFamily) {
+        HorizontalPager(
+            state = contentPagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            LegacyFeedScreen(
+                posts = posts,
+                reels = reels,
+                stories = stories,
+                profiles = profiles,
+                leaderboardUsers = leaderboardUsers,
+                connectHub = connectHub,
+                connectHubActions = connectHubActions,
+                isConnectHubLoading = isConnectHubLoading,
+                currentUsername = currentUsername,
+                userAvatar = userAvatar,
+                currentSubTab = page,
+                onSubTabChanged = onSubTabChanged,
+                isDark = isDark,
+                onLikePost = onLikePost,
+                onCommentPost = onCommentPost,
+                onBookmarkPost = onBookmarkPost,
+                onRepostPost = onRepostPost,
+                onSharePost = onSharePost,
+                onOptionsClick = onOptionsClick,
+                onDeletePost = onDeletePost,
+                onProfileClick = onProfileClick,
+                onAddStoryClick = onAddStoryClick,
+                onStoryClick = onStoryClick,
+                onOpenCreatePost = onOpenCreatePost,
+                onOpenActivity = onOpenActivity,
+                onOpenMenu = onOpenMenu,
+                onToggleTheme = onToggleTheme,
+                isServerConnected = isServerConnected,
+                isLoading = isLoading,
+                isRefreshing = isRefreshing,
+                errorMessage = errorMessage,
+                onRefresh = onRefresh,
+                onRetry = onRetry,
+                onViewedPost = onViewedPost,
+                onVotePoll = onVotePoll,
+                onDirectMessage = onDirectMessage,
+                onSearchClick = onSearchClick,
+                onLeaderboardClick = onLeaderboardClick,
+                onMarketClick = onMarketClick,
+                onMessageClick = onMessageClick,
+                hasMorePosts = hasMorePosts,
+                hasMoreReels = hasMoreReels,
+                isLoadingMorePosts = isLoadingMorePosts,
+                isLoadingMoreReels = isLoadingMoreReels,
+                onLoadMorePosts = onLoadMorePosts,
+                onLoadMoreReels = onLoadMoreReels,
+                homeReselectSignal = homeReselectSignal,
+                onBottomBarVisibilityChange = onBottomBarVisibilityChange
+            )
+        }
+    } else {
+        HorizontalPager(
+            state = interactivePagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            val mappedTab = if (page == 0) 3 else 2
+            LegacyFeedScreen(
+                posts = posts,
+                reels = reels,
+                stories = stories,
+                profiles = profiles,
+                leaderboardUsers = leaderboardUsers,
+                connectHub = connectHub,
+                connectHubActions = connectHubActions,
+                isConnectHubLoading = isConnectHubLoading,
+                currentUsername = currentUsername,
+                userAvatar = userAvatar,
+                currentSubTab = mappedTab,
+                onSubTabChanged = onSubTabChanged,
+                isDark = isDark,
+                onLikePost = onLikePost,
+                onCommentPost = onCommentPost,
+                onBookmarkPost = onBookmarkPost,
+                onRepostPost = onRepostPost,
+                onSharePost = onSharePost,
+                onOptionsClick = onOptionsClick,
+                onDeletePost = onDeletePost,
+                onProfileClick = onProfileClick,
+                onAddStoryClick = onAddStoryClick,
+                onStoryClick = onStoryClick,
+                onOpenCreatePost = onOpenCreatePost,
+                onOpenActivity = onOpenActivity,
+                onOpenMenu = onOpenMenu,
+                onToggleTheme = onToggleTheme,
+                isServerConnected = isServerConnected,
+                isLoading = isLoading,
+                isRefreshing = isRefreshing,
+                errorMessage = errorMessage,
+                onRefresh = onRefresh,
+                onRetry = onRetry,
+                onViewedPost = onViewedPost,
+                onVotePoll = onVotePoll,
+                onDirectMessage = onDirectMessage,
+                onSearchClick = onSearchClick,
+                onLeaderboardClick = onLeaderboardClick,
+                onMarketClick = onMarketClick,
+                onMessageClick = onMessageClick,
+                hasMorePosts = hasMorePosts,
+                hasMoreReels = hasMoreReels,
+                isLoadingMorePosts = isLoadingMorePosts,
+                isLoadingMoreReels = isLoadingMoreReels,
+                onLoadMorePosts = onLoadMorePosts,
+                onLoadMoreReels = onLoadMoreReels,
+                homeReselectSignal = homeReselectSignal,
+                onBottomBarVisibilityChange = onBottomBarVisibilityChange
+            )
+        }
+    }
+}
+
 @OptIn(
     androidx.compose.foundation.ExperimentalFoundationApi::class,
     ExperimentalMaterial3Api::class
 )
 @Composable
-fun FeedScreen(
+private fun LegacyFeedScreen(
     posts: List<FeedPost>,
     reels: List<FeedPost>,
     stories: List<Story>,
@@ -357,23 +583,7 @@ fun FeedScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .nestedScroll(nestedScrollConnection)
-                            .pointerInput(selectedTopTab) {
-                                var horizontalDrag = 0f
-                                val openMenuThreshold = 76.dp.toPx()
-                                detectHorizontalDragGestures(
-                                    onDragStart = { horizontalDrag = 0f },
-                                    onHorizontalDrag = { _, dragAmount ->
-                                        horizontalDrag += dragAmount
-                                    },
-                                    onDragEnd = {
-                                        if (horizontalDrag >= openMenuThreshold) {
-                                            onOpenMenu()
-                                        }
-                                        horizontalDrag = 0f
-                                    },
-                                    onDragCancel = { horizontalDrag = 0f }
-                                )
-                            },
+                            ,
                         contentPadding = PaddingValues(bottom = 92.dp)
                     ) {
                         stickyHeader(key = "home_feed_chrome") {
