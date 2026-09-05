@@ -46,4 +46,6 @@ jobs:
           git rm .github/scripts/remove_connect_game_duplicate_nav.py \
                  .github/workflows/remove-connect-game-duplicate-nav.yml
           git commit -m "fix: remove duplicate nav from Connect and Game"
+          git fetch origin main
+          git rebase origin/main
           git push origin main
