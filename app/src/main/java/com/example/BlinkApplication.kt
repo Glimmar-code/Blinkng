@@ -11,6 +11,7 @@ import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import com.example.auth.AccountSessionStore
 import com.example.data.supabase.SupabaseService
+import com.example.notification.BlinkFirebaseMessagingService
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.NotificationSyncWorker
 import com.example.performance.HighRefreshRateController
@@ -25,6 +26,10 @@ class BlinkApplication : Application(), ImageLoaderFactory {
 
         SupabaseService.initialize(this)
         BlinkNotificationHelper.createNotificationChannels(this)
+
+        // Fetch/log the current token on every cold start. If a Supabase session already
+        // exists it is also registered immediately; otherwise MainActivity re-syncs after login.
+        BlinkFirebaseMessagingService.syncCurrentToken(this)
 
         // Capture whichever authenticated profile/session the ViewModel persists.
         // This gives Switch Account a true recent-login list without passwords.
