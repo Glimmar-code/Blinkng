@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: message-persistence-hardening-main
+  cancel-in-progress: true
+
 jobs:
   patch-and-verify:
     runs-on: ubuntu-latest
@@ -53,4 +57,5 @@ jobs:
                   app/src/main/java/com/example/data/local/CachedContent.kt \
                   app/src/main/java/com/example/data/local/OfflineContentStore.kt
           git commit -m 'Fix disappearing chats and message persistence'
+          git pull --rebase origin main
           git push origin HEAD:main
