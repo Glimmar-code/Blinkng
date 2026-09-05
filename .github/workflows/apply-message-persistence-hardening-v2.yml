@@ -1,0 +1,55 @@
+name: Apply message persistence hardening v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/apply_message_persistence_hardening_v2.py'
+      - '.github/workflows/apply-message-persistence-hardening-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Apply persistence patch
+        run: python3 .github/scripts/apply_message_persistence_hardening_v2.py
+
+      - name: Verify Kotlin compilation
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:compileDebugKotlin --no-daemon
+
+      - name: Run unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
+
+      - name: Commit verified fixes
+        run: |
+          if git diff --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git config user.name 'blink-ci'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app/src/main/java/com/example/viewmodel/BlinkViewModel.kt \
+                  app/src/main/java/com/example/ui/screens/PremiumMessagesScreen.kt \
+                  app/src/main/java/com/example/data/supabase/SupabaseRealtimeManager.kt \
+                  app/src/main/java/com/example/data/local/CachedContent.kt \
+                  app/src/main/java/com/example/data/local/OfflineContentStore.kt
+          git commit -m 'Fix disappearing chats and message persistence'
+          git push origin HEAD:main
