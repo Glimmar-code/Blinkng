@@ -214,8 +214,18 @@ fun PremiumMessagesScreen(
     var showAppearanceSheet by rememberSaveable { mutableStateOf(false) }
     var activeCall by remember { mutableStateOf<MessageCallState?>(null) }
 
-    val activeConversation = activePartner?.let { partner ->
+    val liveActiveConversation = activePartner?.let { partner ->
         conversations.firstOrNull { it.partnerUsername.equals(partner, ignoreCase = true) }
+    }
+    var retainedActiveConversation by remember(activePartner) {
+        mutableStateOf<ChatConversation?>(liveActiveConversation)
+    }
+    LaunchedEffect(liveActiveConversation) {
+        if (liveActiveConversation != null) retainedActiveConversation = liveActiveConversation
+    }
+    val activeConversation = activePartner?.let { partner ->
+        liveActiveConversation
+            ?: retainedActiveConversation
             ?: ChatConversation(
                 id = "local_$partner",
                 partnerUsername = partner,
@@ -621,7 +631,7 @@ private fun PremiumMessagesHome(
     onOpenAppearance: () -> Unit,
     isConnected: Boolean
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
+    var query by remember { mutableStateOf("") }
     val filteredConversations = remember(conversations, query) {
         if (query.isBlank()) conversations
         else conversations.filter {
@@ -1098,8 +1108,9 @@ private fun PremiumChatDetail(
     var replyingTo by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var editingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var showOverflow by remember(conversation.partnerUsername) { mutableStateOf(false) }
+    var confirmClearChat by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var searchVisible by remember(conversation.partnerUsername) { mutableStateOf(false) }
-    var searchQuery by rememberSaveable(conversation.partnerUsername) { mutableStateOf("") }
+    var searchQuery by remember(conversation.partnerUsername) { mutableStateOf("") }
     var pinnedOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -1381,13 +1392,39 @@ private fun PremiumChatDetail(
             },
             onDelete = {
                 showOverflow = false
-                interactionActions.onClearConversation(conversation)
+                confirmClearChat = true
             },
             onReport = {
                 showOverflow = false
                 interactionActions.onReportConversation(conversation, "Reported from conversation menu")
             },
             onDismiss = { showOverflow = false }
+        )
+    }
+
+    if (confirmClearChat) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmClearChat = false },
+            title = { Text("Clear this chat?", color = palette.textPrimary) },
+            text = {
+                Text(
+                    "This hides the current history only for your account. New messages will make the conversation appear again.",
+                    color = palette.textSecondary
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        confirmClearChat = false
+                        interactionActions.onClearConversation(conversation)
+                    }
+                ) { Text("Clear chat", color = palette.danger) }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmClearChat = false }) {
+                    Text("Cancel", color = palette.textSecondary)
+                }
+            }
         )
     }
 

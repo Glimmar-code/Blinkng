@@ -43,10 +43,14 @@ data class CachedProfileEntity(
 
 @Entity(
     tableName = "cached_conversations",
-    indices = [Index(value = ["partner_username"]), Index(value = ["display_order"])]
+    indices = [
+        Index(value = ["owner_username", "partner_username"]),
+        Index(value = ["owner_username", "display_order"])
+    ]
 )
 data class CachedConversationEntity(
     @PrimaryKey val id: String,
+    @ColumnInfo(name = "owner_username") val ownerUsername: String,
     @ColumnInfo(name = "partner_username") val partnerUsername: String,
     @ColumnInfo(name = "display_order") val displayOrder: Int,
     @ColumnInfo(name = "payload_json") val payloadJson: String,
@@ -55,10 +59,14 @@ data class CachedConversationEntity(
 
 @Entity(
     tableName = "cached_messages",
-    indices = [Index(value = ["conversation_id", "display_order"]), Index(value = ["raw_timestamp"])]
+    indices = [
+        Index(value = ["owner_username", "conversation_id", "display_order"]),
+        Index(value = ["owner_username", "raw_timestamp"])
+    ]
 )
 data class CachedMessageEntity(
     @PrimaryKey val id: String,
+    @ColumnInfo(name = "owner_username") val ownerUsername: String,
     @ColumnInfo(name = "conversation_id") val conversationId: String,
     @ColumnInfo(name = "display_order") val displayOrder: Int,
     @ColumnInfo(name = "raw_timestamp") val rawTimestamp: String,
@@ -68,10 +76,14 @@ data class CachedMessageEntity(
 
 @Entity(
     tableName = "message_outbox",
-    indices = [Index(value = ["next_retry_at"]), Index(value = ["receiver_username"])]
+    indices = [
+        Index(value = ["owner_username", "next_retry_at"]),
+        Index(value = ["owner_username", "receiver_username"])
+    ]
 )
 data class MessageOutboxEntity(
     @PrimaryKey @ColumnInfo(name = "local_id") val localId: String,
+    @ColumnInfo(name = "owner_username") val ownerUsername: String,
     @ColumnInfo(name = "receiver_username") val receiverUsername: String,
     val content: String,
     @ColumnInfo(name = "created_at") val createdAt: Long,
@@ -91,17 +103,34 @@ interface CachedContentDao {
     @Query("SELECT * FROM cached_profiles ORDER BY display_order ASC, username ASC")
     fun observeProfiles(): Flow<List<CachedProfileEntity>>
 
-    @Query("SELECT * FROM cached_conversations ORDER BY display_order ASC")
-    fun observeConversations(): Flow<List<CachedConversationEntity>>
+    @Query("SELECT * FROM cached_conversations WHERE owner_username = :ownerUsername ORDER BY display_order ASC")
+    fun observeConversations(ownerUsername: String): Flow<List<CachedConversationEntity>>
 
-    @Query("SELECT * FROM cached_messages ORDER BY conversation_id ASC, display_order ASC")
-    fun observeMessages(): Flow<List<CachedMessageEntity>>
+    @Query("SELECT * FROM cached_messages WHERE owner_username = :ownerUsername ORDER BY conversation_id ASC, display_order ASC")
+    fun observeMessages(ownerUsername: String): Flow<List<CachedMessageEntity>>
 
-    @Query("SELECT COUNT(*) FROM message_outbox WHERE attempt_count < 5")
-    fun observePendingOutboxCount(): Flow<Int>
+    @Query("SELECT COUNT(*) FROM message_outbox WHERE owner_username = :ownerUsername AND attempt_count < 5")
+    fun observePendingOutboxCount(ownerUsername: String): Flow<Int>
 
-    @Query("SELECT * FROM message_outbox WHERE attempt_count < 5 AND next_retry_at <= :now ORDER BY created_at ASC LIMIT :limit")
-    suspend fun pendingOutbox(now: Long, limit: Int): List<MessageOutboxEntity>
+    @Query("SELECT * FROM message_outbox WHERE owner_username = :ownerUsername AND attempt_count < 5 AND next_retry_at <= :now ORDER BY created_at ASC LIMIT :limit")
+    suspend fun pendingOutbox(ownerUsername: String, now: Long, limit: Int): List<MessageOutboxEntity>
+
+    @Query("UPDATE cached_conversations SET owner_username = :ownerUsername WHERE owner_username = ''")
+    suspend fun claimLegacyConversations(ownerUsername: String)
+
+    @Query("UPDATE cached_messages SET owner_username = :ownerUsername WHERE owner_username = ''")
+    suspend fun claimLegacyMessages(ownerUsername: String)
+
+    @Query("UPDATE message_outbox SET owner_username = :ownerUsername WHERE owner_username = ''")
+    suspend fun claimLegacyOutbox(ownerUsername: String)
+
+    @Transaction
+    suspend fun claimLegacyChatRows(ownerUsername: String) {
+        if (ownerUsername.isBlank()) return
+        claimLegacyConversations(ownerUsername)
+        claimLegacyMessages(ownerUsername)
+        claimLegacyOutbox(ownerUsername)
+    }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPosts(posts: List<CachedPostEntity>)
@@ -187,7 +216,7 @@ interface CachedContentDao {
         CachedMessageEntity::class,
         MessageOutboxEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class BlinkDatabase : RoomDatabase() {
@@ -210,6 +239,28 @@ abstract class BlinkDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE cached_conversations ADD COLUMN owner_username TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE cached_messages ADD COLUMN owner_username TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE message_outbox ADD COLUMN owner_username TEXT NOT NULL DEFAULT ''")
+
+                db.execSQL("DROP INDEX IF EXISTS index_cached_conversations_partner_username")
+                db.execSQL("DROP INDEX IF EXISTS index_cached_conversations_display_order")
+                db.execSQL("DROP INDEX IF EXISTS index_cached_messages_conversation_id_display_order")
+                db.execSQL("DROP INDEX IF EXISTS index_cached_messages_raw_timestamp")
+                db.execSQL("DROP INDEX IF EXISTS index_message_outbox_next_retry_at")
+                db.execSQL("DROP INDEX IF EXISTS index_message_outbox_receiver_username")
+
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_cached_conversations_owner_username_partner_username ON cached_conversations(owner_username, partner_username)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_cached_conversations_owner_username_display_order ON cached_conversations(owner_username, display_order)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_cached_messages_owner_username_conversation_id_display_order ON cached_messages(owner_username, conversation_id, display_order)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_cached_messages_owner_username_raw_timestamp ON cached_messages(owner_username, raw_timestamp)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_message_outbox_owner_username_next_retry_at ON message_outbox(owner_username, next_retry_at)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_message_outbox_owner_username_receiver_username ON message_outbox(owner_username, receiver_username)")
+            }
+        }
+
         fun getInstance(context: Context): BlinkDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -217,7 +268,7 @@ abstract class BlinkDatabase : RoomDatabase() {
                     BlinkDatabase::class.java,
                     "blink_offline_cache.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                     .build()
                     .also { instance = it }

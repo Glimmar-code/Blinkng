@@ -15,12 +15,18 @@ import com.squareup.moshi.JsonAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class CachedAppSnapshot(
@@ -49,13 +55,43 @@ class OfflineContentStore(context: Context) {
 
     private val dao = BlinkDatabase.getInstance(context).cachedContentDao()
     private val codec = OfflineContentCodec()
-    private val snapshotFile = File(context.noBackupFilesDir, "blink_main_snapshot.json")
+    private val snapshotDirectory = context.noBackupFilesDir
+    private val legacySnapshotFile = File(snapshotDirectory, "blink_main_snapshot.json")
     private val metadataPrefs = context.getSharedPreferences("blink_offline_cache_meta", Context.MODE_PRIVATE)
+    private val ownerState = MutableStateFlow(
+        metadataPrefs.getString("owner_username", "").orEmpty().trim().lowercase()
+    )
+    private val maintenanceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    fun cachedOwnerUsername(): String = metadataPrefs.getString("owner_username", "").orEmpty()
+    init {
+        val legacyOwner = ownerState.value
+        if (legacyOwner.isNotBlank()) {
+            maintenanceScope.launch { dao.claimLegacyChatRows(legacyOwner) }
+        }
+    }
 
-    private fun rememberOwner(username: String) {
-        if (username.isNotBlank()) metadataPrefs.edit().putString("owner_username", username.lowercase()).apply()
+    fun cachedOwnerUsername(): String = ownerState.value.ifBlank {
+        metadataPrefs.getString("owner_username", "").orEmpty().trim().lowercase()
+    }
+
+    fun setActiveOwner(username: String) {
+        val normalized = username.trim().removePrefix("@").lowercase()
+        if (normalized.isBlank()) return
+        val previous = ownerState.value
+        metadataPrefs.edit().putString("owner_username", normalized).apply()
+        ownerState.value = normalized
+        // Only the first known owner adopts pre-v3 unscoped rows. Switching accounts never
+        // reassigns another account's cache.
+        if (previous.isBlank() || previous == normalized) {
+            maintenanceScope.launch { dao.claimLegacyChatRows(normalized) }
+        }
+    }
+
+    private fun rememberOwner(username: String) = setActiveOwner(username)
+
+    private fun snapshotFileFor(ownerUsername: String): File {
+        val safe = ownerUsername.lowercase().replace(Regex("[^a-z0-9._-]"), "_")
+        return File(snapshotDirectory, "blink_main_snapshot_$safe.json")
     }
 
     val posts: Flow<List<FeedPost>> = dao.observePosts()
@@ -73,21 +109,32 @@ class OfflineContentStore(context: Context) {
         .distinctUntilChanged()
         .flowOn(Dispatchers.Default)
 
-    val conversations: Flow<List<ChatConversation>> =
-        combine(dao.observeConversations(), dao.observeMessages()) { conversations, messages ->
-            val grouped = messages.groupBy { it.conversationId }
-            conversations.mapNotNull { row ->
-                val base = codec.decodeConversation(row.payloadJson) ?: return@mapNotNull null
-                val hydratedMessages = grouped[row.id]
-                    .orEmpty()
-                    .sortedBy { it.displayOrder }
-                    .mapNotNull { codec.decodeMessage(it.payloadJson) }
-                    .toMutableList()
-                base.copy(messages = hydratedMessages)
+    val conversations: Flow<List<ChatConversation>> = ownerState
+        .flatMapLatest { owner ->
+            if (owner.isBlank()) {
+                flowOf(emptyList())
+            } else {
+                combine(dao.observeConversations(owner), dao.observeMessages(owner)) { conversations, messages ->
+                    val grouped = messages.groupBy { it.conversationId }
+                    conversations.mapNotNull { row ->
+                        val base = codec.decodeConversation(row.payloadJson) ?: return@mapNotNull null
+                        val hydratedMessages = grouped[row.id]
+                            .orEmpty()
+                            .sortedBy { it.displayOrder }
+                            .mapNotNull { codec.decodeMessage(it.payloadJson) }
+                            .toMutableList()
+                        base.copy(messages = hydratedMessages)
+                    }
+                }
             }
-        }.distinctUntilChanged().flowOn(Dispatchers.Default)
+        }
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.Default)
 
-    val pendingOutboxCount: Flow<Int> = dao.observePendingOutboxCount()
+    val pendingOutboxCount: Flow<Int> = ownerState
+        .flatMapLatest { owner ->
+            if (owner.isBlank()) flowOf(0) else dao.observePendingOutboxCount(owner)
+        }
         .distinctUntilChanged()
         .flowOn(Dispatchers.IO)
 
@@ -130,12 +177,15 @@ class OfflineContentStore(context: Context) {
     }
 
     suspend fun replaceConversations(conversations: List<ChatConversation>, ownerUsername: String = "") {
-        rememberOwner(ownerUsername)
+        val owner = ownerUsername.trim().removePrefix("@").lowercase().ifBlank { cachedOwnerUsername() }
+        if (owner.isBlank()) return
+        rememberOwner(owner)
         val cachedAt = System.currentTimeMillis()
         val conversationRows = conversations.distinctBy { it.id }.mapIndexedNotNull { index, conversation ->
             codec.encodeConversation(conversation.copy(messages = mutableListOf()))?.let { json ->
                 CachedConversationEntity(
                     id = conversation.id,
+                    ownerUsername = owner,
                     partnerUsername = conversation.partnerUsername.lowercase(),
                     displayOrder = index,
                     payloadJson = json,
@@ -149,6 +199,7 @@ class OfflineContentStore(context: Context) {
                 codec.encodeMessage(message)?.let { json ->
                     CachedMessageEntity(
                         id = stableId,
+                        ownerUsername = owner,
                         conversationId = conversation.id,
                         displayOrder = index,
                         rawTimestamp = message.rawTimestamp,
@@ -178,9 +229,12 @@ class OfflineContentStore(context: Context) {
     }
 
     suspend fun enqueueMessage(localId: String, receiverUsername: String, content: String) {
+        val owner = cachedOwnerUsername()
+        if (owner.isBlank()) return
         dao.upsertOutbox(
             MessageOutboxEntity(
                 localId = localId,
+                ownerUsername = owner,
                 receiverUsername = receiverUsername.trim(),
                 content = content,
                 createdAt = System.currentTimeMillis()
@@ -188,8 +242,11 @@ class OfflineContentStore(context: Context) {
         )
     }
 
-    suspend fun pendingOutbox(limit: Int = 30): List<MessageOutboxEntity> =
-        dao.pendingOutbox(System.currentTimeMillis(), limit.coerceIn(1, 100))
+    suspend fun pendingOutbox(limit: Int = 30): List<MessageOutboxEntity> {
+        val owner = cachedOwnerUsername()
+        if (owner.isBlank()) return emptyList()
+        return dao.pendingOutbox(owner, System.currentTimeMillis(), limit.coerceIn(1, 100))
+    }
 
     suspend fun markOutboxFailure(item: MessageOutboxEntity, error: String) {
         val nextAttempt = item.attemptCount + 1
@@ -203,16 +260,35 @@ class OfflineContentStore(context: Context) {
     }
 
     suspend fun loadAppSnapshot(): CachedAppSnapshot? = withContext(Dispatchers.IO) {
-        if (!snapshotFile.exists()) return@withContext null
-        runCatching { codec.decodeAppSnapshot(snapshotFile.readText()) }
+        val owner = cachedOwnerUsername()
+        if (owner.isBlank()) return@withContext null
+        val accountFile = snapshotFileFor(owner)
+        val source = when {
+            accountFile.exists() -> accountFile
+            legacySnapshotFile.exists() -> legacySnapshotFile
+            else -> return@withContext null
+        }
+        val decoded = runCatching { codec.decodeAppSnapshot(source.readText()) }
             .onFailure { Log.w(TAG, "Unable to read cached app snapshot", it) }
             .getOrNull()
+            ?: return@withContext null
+        if (decoded.ownerUsername.isNotBlank() && !decoded.ownerUsername.equals(owner, true)) {
+            return@withContext null
+        }
+        // One-time migration of the old single-account snapshot into the owner's file.
+        if (source == legacySnapshotFile && !accountFile.exists()) {
+            runCatching { accountFile.writeText(source.readText()) }
+        }
+        decoded
     }
 
     suspend fun saveAppSnapshot(snapshot: CachedAppSnapshot) = withContext(Dispatchers.IO) {
-        val normalized = snapshot.copy(cachedAt = System.currentTimeMillis())
+        val owner = snapshot.ownerUsername.trim().removePrefix("@").lowercase().ifBlank { cachedOwnerUsername() }
+        if (owner.isBlank()) return@withContext
+        val normalized = snapshot.copy(ownerUsername = owner, cachedAt = System.currentTimeMillis())
         val json = codec.encodeAppSnapshot(normalized) ?: return@withContext
-        rememberOwner(normalized.ownerUsername)
+        rememberOwner(owner)
+        val snapshotFile = snapshotFileFor(owner)
         val temp = File(snapshotFile.parentFile, "${snapshotFile.name}.tmp")
         runCatching {
             temp.writeText(json)

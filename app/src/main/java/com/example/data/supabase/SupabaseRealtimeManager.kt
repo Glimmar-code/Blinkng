@@ -6,6 +6,7 @@ import com.example.data.models.MessageStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -52,8 +53,23 @@ class SupabaseRealtimeManager private constructor() {
     private var activeUsername = ""
     var activeUserId: String = ""
         private set
-    private val _events = MutableSharedFlow<RealtimeEvent>(extraBufferCapacity = 64)
+    private val _events = MutableSharedFlow<RealtimeEvent>(extraBufferCapacity = 128)
+    private val eventQueue = Channel<RealtimeEvent>(Channel.UNLIMITED)
     val events: SharedFlow<RealtimeEvent> = _events.asSharedFlow()
+
+    init {
+        // WebSocket callbacks must never lose a chat event just because collectors are busy.
+        // A single queue consumer also preserves server event ordering.
+        scope.launch {
+            for (event in eventQueue) _events.emit(event)
+        }
+    }
+
+    private fun publishEvent(event: RealtimeEvent) {
+        if (eventQueue.trySend(event).isFailure) {
+            Log.w(TAG, "Realtime event queue rejected ${event::class.simpleName}")
+        }
+    }
 
     fun connect(username: String, userId: String) {
         if (username.isBlank() && userId.isBlank()) return
@@ -100,18 +116,18 @@ class SupabaseRealtimeManager private constructor() {
             val json = JSONObject(text); val event = json.optString("event"); val payload = json.optJSONObject("payload") ?: return; if (event != "postgres_changes") return
             val data = payload.optJSONObject("data") ?: return; val type = data.optString("type"); val table = data.optString("table"); val record = data.optJSONObject("record") ?: data.optJSONObject("old_record") ?: JSONObject()
             when (table) {
-                "messages" -> { val senderId = record.optString("sender_id"); val senderUsername = record.optString("sender_username"); val createdAt = record.optString("created_at"); _events.tryEmit(RealtimeEvent.MessageEvent(type, ChatMessage(id = record.optString("id"), conversationId = record.optString("conversation_id"), senderId = senderId.ifBlank { senderUsername }, senderUsername = senderUsername, receiverId = record.optString("receiver_id").ifBlank { record.optString("receiver_username") }, receiverUsername = record.optString("receiver_username"), text = record.optString("content", record.optString("text")), rawTimestamp = createdAt, timestamp = formatTimestamp(createdAt), isFromMe = senderId == activeUserId || senderUsername.equals(activeUsername, true), isRead = record.optBoolean("is_read", false), status = when {
+                "messages" -> { val senderId = record.optString("sender_id"); val senderUsername = record.optString("sender_username"); val createdAt = record.optString("created_at"); publishEvent(RealtimeEvent.MessageEvent(type, ChatMessage(id = record.optString("id"), conversationId = record.optString("conversation_id"), senderId = senderId.ifBlank { senderUsername }, senderUsername = senderUsername, receiverId = record.optString("receiver_id").ifBlank { record.optString("receiver_username") }, receiverUsername = record.optString("receiver_username"), text = record.optString("content", record.optString("text")), rawTimestamp = createdAt, timestamp = formatTimestamp(createdAt), isFromMe = senderId == activeUserId || senderUsername.equals(activeUsername, true), isRead = record.optBoolean("is_read", false), status = when {
                     record.optBoolean("is_read", false) || record.optString("read_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.READ
                     record.optString("delivered_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.DELIVERED
                     else -> MessageStatus.SENT
                 }))) }
-                "conversations" -> _events.tryEmit(RealtimeEvent.ConversationEvent(type, record.optString("id"), record.optString("last_message"), record.optString("updated_at", record.optString("last_message_at"))))
-                "notifications" -> _events.tryEmit(RealtimeEvent.NotificationEvent(type, record.optString("id"), record.optString("user_id"), record.optString("username"), record.optString("type"), record.optString("title"), record.optString("content")))
-                "feed_posts" -> _events.tryEmit(RealtimeEvent.FeedPostEvent(type, record.optString("id")))
+                "conversations" -> publishEvent(RealtimeEvent.ConversationEvent(type, record.optString("id"), record.optString("last_message"), record.optString("updated_at", record.optString("last_message_at"))))
+                "notifications" -> publishEvent(RealtimeEvent.NotificationEvent(type, record.optString("id"), record.optString("user_id"), record.optString("username"), record.optString("type"), record.optString("title"), record.optString("content")))
+                "feed_posts" -> publishEvent(RealtimeEvent.FeedPostEvent(type, record.optString("id")))
                 "roommate_profiles", "roommate_applications", "mentor_profiles", "mentor_requests",
                 "reading_mate_profiles", "reading_mate_requests", "housing_agent_profiles",
                 "housing_requests", "housing_request_applications", "game_challenges", "study_circles", "study_circle_members" ->
-                    _events.tryEmit(RealtimeEvent.ConnectHubEvent(type, table))
+                    publishEvent(RealtimeEvent.ConnectHubEvent(type, table))
             }
         } catch (e: Exception) { Log.e(TAG, "Error parsing realtime message", e) }
     }

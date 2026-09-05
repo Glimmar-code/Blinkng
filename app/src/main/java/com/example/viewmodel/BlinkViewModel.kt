@@ -450,6 +450,9 @@ private suspend fun restoreSupabaseSession() {
             "BLUE" -> VerificationBadge.BLUE
             else -> VerificationBadge.NONE
         }
+        val previousUsername = _uiState.value.myProfile.username
+        val accountChanged = previousUsername.isNotBlank() && !previousUsername.equals(savedUsername, true)
+        offlineContentStore.setActiveOwner(savedUsername)
         _uiState.value = _uiState.value.copy(
             myProfile = UserProfile(
                 fullName = savedName,
@@ -462,11 +465,15 @@ private suspend fun restoreSupabaseSession() {
                 verificationBadge = badge,
                 isSellerActive = prefs.getBoolean(KEY_SELLER_ACTIVE, false)
             ),
+            // Never carry account A's in-memory chats into account B. The account-scoped
+            // Room/snapshot cache below restores B's own conversations immediately.
+            conversations = if (accountChanged) emptyList() else _uiState.value.conversations,
             destination = AppDestination.MAIN
         )
     }
 
     private fun saveLocalProfile(profile: UserProfile) {
+        offlineContentStore.setActiveOwner(profile.username)
         prefs.edit()
             .putBoolean(KEY_IS_LOGGED_IN, true)
             .putString(KEY_EMAIL, profile.email.value)
@@ -2526,8 +2533,7 @@ private suspend fun restoreSupabaseSession() {
 
     fun deleteChatMessageForMe(partnerUsername: String, message: ChatMessage) {
         val state = _uiState.value
-        val before = state.conversations
-        val updated = before.map { conversation ->
+        val updated = state.conversations.map { conversation ->
             if (!conversation.partnerUsername.equals(partnerUsername, true)) conversation
             else conversation.copy(messages = conversation.messages.filterNot { it.id == message.id }.toMutableList())
         }
@@ -2541,7 +2547,23 @@ private suspend fun restoreSupabaseSession() {
             }
             if (!chatRepository.hideMessageForMe(message.id)) {
                 withContext(Dispatchers.Main) {
-                    _uiState.value = _uiState.value.copy(conversations = before)
+                    // Restore only the affected message into the newest state. Never restore
+                    // an old whole-list snapshot because messages may have arrived meanwhile.
+                    val latest = _uiState.value
+                    val restored = latest.conversations.map { conversation ->
+                        if (!conversation.partnerUsername.equals(partnerUsername, true) ||
+                            conversation.messages.any { it.id == message.id }
+                        ) {
+                            conversation
+                        } else {
+                            val messages = (conversation.messages + message)
+                                .distinctBy { it.id }
+                                .sortedBy { it.rawTimestamp.ifBlank { it.timestamp } }
+                                .toMutableList()
+                            conversation.copy(messages = messages)
+                        }
+                    }
+                    _uiState.value = latest.copy(conversations = restored)
                     persistConversations()
                     showToast("Couldn't delete message for you.")
                 }
@@ -2604,9 +2626,9 @@ private suspend fun restoreSupabaseSession() {
 
     fun clearConversationForMe(conversation: ChatConversation) {
         val state = _uiState.value
-        val before = state.conversations
+        val originalIndex = state.conversations.indexOfFirst { it.id == conversation.id }
         _uiState.value = state.copy(
-            conversations = before.filterNot { it.id == conversation.id },
+            conversations = state.conversations.filterNot { it.id == conversation.id },
             activeConversationPartner = if (state.activeConversationPartner.equals(conversation.partnerUsername, true)) null else state.activeConversationPartner,
             isConversationFullScreen = false
         )
@@ -2614,9 +2636,16 @@ private suspend fun restoreSupabaseSession() {
         if (conversation.id.startsWith("local_")) return
         viewModelScope.launch {
             if (!chatRepository.clearConversationForMe(conversation.id)) {
-                _uiState.value = _uiState.value.copy(conversations = before)
-                persistConversations()
-                showToast("Couldn't delete chat.")
+                // Roll back only this conversation into the newest state. This preserves any
+                // conversations/messages that appeared while the server request was running.
+                val latest = _uiState.value
+                if (latest.conversations.none { it.id == conversation.id }) {
+                    val restored = latest.conversations.toMutableList()
+                    restored.add(originalIndex.coerceIn(0, restored.size), conversation)
+                    _uiState.value = latest.copy(conversations = restored)
+                    persistConversations()
+                }
+                showToast("Couldn't clear chat.")
             }
         }
     }
@@ -2674,9 +2703,12 @@ private suspend fun restoreSupabaseSession() {
         when (event) {
             is RealtimeEvent.MessageEvent -> handleIncomingRealtimeMessage(event.message)
             is RealtimeEvent.ConversationEvent -> viewModelScope.launch {
-                val latest = _uiState.value
                 runCatching { chatRepository.fetchConversations() }
                     .onSuccess { summaries ->
+                        // Read state after the network call completes. A message may have been
+                        // sent/received while this request was in flight, so a pre-request
+                        // snapshot must never be written back over newer chat state.
+                        val latest = _uiState.value
                         _uiState.value = latest.copy(
                             conversations = mergeConversationSummaries(
                                 summaries = summaries,
