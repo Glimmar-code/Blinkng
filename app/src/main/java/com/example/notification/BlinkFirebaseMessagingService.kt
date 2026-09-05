@@ -40,18 +40,30 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         private fun syncTokenNow(context: Context, token: String) {
             try {
                 SupabaseService.initialize(context.applicationContext)
-                val uid = SupabaseService().getCurrentUserId() ?: return
+                SupabaseService().getCurrentUserId() ?: return
                 val accessToken = SupabaseService.accessToken() ?: return
-                val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
-                val body = JSONObject().put("p_token", token).toString().toRequestBody("application/json".toMediaType())
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(15, TimeUnit.SECONDS)
+                    .readTimeout(15, TimeUnit.SECONDS)
+                    .build()
+                val body = JSONObject()
+                    .put("p_token", token)
+                    .toString()
+                    .toRequestBody("application/json".toMediaType())
                 val request = Request.Builder()
                     .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/register_my_fcm_token")
                     .addHeader("apikey", SupabaseConfig.anonKey)
                     .addHeader("Authorization", "Bearer $accessToken")
                     .addHeader("Content-Type", "application/json")
-                    .patch(body)
+                    // PostgREST RPC endpoints are invoked with POST. PATCH silently prevented
+                    // device tokens from ever being registered, which disabled background push.
+                    .post(body)
                     .build()
-                client.newCall(request).execute().use { response -> if (!response.isSuccessful) Log.w(TAG, "FCM token sync failed: ${response.code}") }
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Log.w(TAG, "FCM token sync failed: ${response.code} ${response.body?.string().orEmpty().take(240)}")
+                    }
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "FCM token sync error", e)
             }
