@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -43,7 +42,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -58,6 +56,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -73,7 +72,6 @@ import coil.compose.AsyncImage
 import com.example.ui.theme.FeedBackground
 import com.example.ui.theme.FeedBlue
 import com.example.ui.theme.FeedBorder
-import com.example.ui.theme.FeedCardSurface
 import com.example.ui.theme.FeedElevatedSurface
 import com.example.ui.theme.FeedPurple
 import com.example.ui.theme.FeedTextPrimary
@@ -112,57 +110,32 @@ fun FeedTopBar(
             }
             .statusBarsPadding()
     ) {
-        val wide = maxWidth >= 600.dp
-        if (wide) {
-            Row(
+        val horizontalPadding = if (maxWidth >= 600.dp) 20.dp else 14.dp
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = horizontalPadding,
+                    end = horizontalPadding,
+                    top = 8.dp,
+                    bottom = 6.dp
+                ),
+            verticalAlignment = Alignment.Top
+        ) {
+            FeedBrandBlock(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                FeedBrandBlock()
-                FeedSearchField(
-                    onClick = onSearchClick,
-                    modifier = Modifier.weight(1f).widthIn(max = 520.dp)
-                )
-                FeedHeaderActions(
-                    userAvatar = userAvatar,
-                    hasUnreadNotifications = hasUnreadNotifications,
-                    onNotificationClick = onNotificationClick,
-                    onMenuClick = onMenuClick,
-                    onProfileClick = onProfileClick
-                )
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 10.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FeedBrandBlock(modifier = Modifier.weight(1f))
-                    FeedHeaderActions(
-                        userAvatar = userAvatar,
-                        hasUnreadNotifications = hasUnreadNotifications,
-                        onNotificationClick = onNotificationClick,
-                        onMenuClick = onMenuClick,
-                        onProfileClick = onProfileClick
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                FeedSearchField(
-                    onClick = onSearchClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                )
-            }
+                    .weight(1f)
+                    .padding(top = 10.dp, end = 4.dp)
+            )
+            FeedHeaderActions(
+                userAvatar = userAvatar,
+                hasUnreadNotifications = hasUnreadNotifications,
+                onSearchClick = onSearchClick,
+                onNotificationClick = onNotificationClick,
+                onMenuClick = onMenuClick,
+                onProfileClick = onProfileClick
+            )
         }
     }
 }
@@ -205,99 +178,135 @@ private fun FeedBrandBlock(modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-private fun FeedSearchField(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier
-            .heightIn(min = 48.dp)
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = "Search people and posts" },
-        shape = RoundedCornerShape(28.dp),
-        color = FeedCardSurface.copy(alpha = 0.86f),
-        border = BorderStroke(1.dp, FeedBorder)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = null,
-                tint = FeedTextSecondary,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = "Search people, posts…",
-                color = FeedTextSecondary,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
+/**
+ * The profile avatar anchors a 90-degree utility arc. The three action centres
+ * sit on an approximately 60dp invisible radius: Search at 9 o'clock,
+ * Notifications at about 7:30, and More at 6 o'clock.
+ */
 @Composable
 private fun FeedHeaderActions(
     userAvatar: String,
     hasUnreadNotifications: Boolean,
+    onSearchClick: () -> Unit,
     onNotificationClick: () -> Unit,
     onMenuClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box {
-            IconButton(onClick = onNotificationClick, modifier = Modifier.size(48.dp)) {
-                Icon(
-                    imageVector = Icons.Default.NotificationsNone,
-                    contentDescription = "Notifications",
-                    tint = FeedTextPrimary,
-                    modifier = Modifier.size(27.dp)
-                )
-            }
+    Box(
+        modifier = Modifier
+            .width(128.dp)
+            .height(106.dp)
+    ) {
+        FeedRadialHeaderAction(
+            imageVector = Icons.Default.Search,
+            contentDescription = "Search people and posts",
+            onClick = onSearchClick,
+            modifier = Modifier
+                .offset(x = 18.dp, y = 2.dp)
+                .testTag("feed_search_action")
+        )
+
+        Box(
+            modifier = Modifier
+                .offset(x = 40.dp, y = 44.dp)
+                .size(44.dp)
+        ) {
+            FeedRadialHeaderAction(
+                imageVector = Icons.Default.NotificationsNone,
+                contentDescription = "Notifications",
+                onClick = onNotificationClick,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .testTag("feed_notification_action")
+            )
             if (hasUnreadNotifications) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = (-7).dp, y = 7.dp)
+                        .offset(x = (-1).dp, y = 1.dp)
                         .size(9.dp)
                         .background(feedAccentBrush(), CircleShape)
                         .border(1.dp, FeedBackground, CircleShape)
                 )
             }
         }
-        IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)) {
-            Icon(
-                imageVector = Icons.Default.MoreVert,
-                contentDescription = "More options",
-                tint = FeedTextPrimary,
-                modifier = Modifier.size(26.dp)
-            )
-        }
+
+        FeedRadialHeaderAction(
+            imageVector = Icons.Default.MoreVert,
+            contentDescription = "More options",
+            onClick = onMenuClick,
+            modifier = Modifier
+                .offset(x = 81.dp, y = 62.dp)
+                .testTag("feed_more_action")
+        )
+
         Box(
             modifier = Modifier
-                .size(46.dp)
+                .align(Alignment.TopEnd)
+                .size(50.dp)
                 .background(feedAccentBrush(), CircleShape)
                 .padding(2.dp)
                 .background(FeedBackground, CircleShape)
                 .padding(2.dp)
-                .clickable(role = Role.Button, onClick = onProfileClick),
+                .clickable(role = Role.Button, onClick = onProfileClick)
+                .semantics { contentDescription = "Open profile" }
+                .testTag("feed_profile_action"),
             contentAlignment = Alignment.Center
         ) {
             AsyncImage(
                 model = userAvatar,
-                contentDescription = "Open profile",
+                contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(38.dp)
+                    .size(42.dp)
                     .background(FeedElevatedSurface, CircleShape)
                     .graphicsLayer { clip = true; shape = CircleShape }
             )
         }
+    }
+}
+
+@Composable
+private fun FeedRadialHeaderAction(
+    imageVector: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = tween(90),
+        label = "feedHeaderActionScale"
+    )
+
+    Box(
+        modifier = modifier
+            .size(44.dp)
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
+            .background(
+                color = if (pressed) FeedPurple.copy(alpha = 0.16f) else Color.Transparent,
+                shape = CircleShape
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick
+            )
+            .semantics { this.contentDescription = contentDescription },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = imageVector,
+            contentDescription = null,
+            tint = FeedTextPrimary,
+            modifier = Modifier.size(25.dp)
+        )
     }
 }
 
