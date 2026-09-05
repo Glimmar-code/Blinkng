@@ -489,6 +489,7 @@ fun MainAppContent(
                         },
                         onCloseConversation = { viewModel.closeConversation() },
                         onSendMessage = { partner, text -> viewModel.sendMessage(partner, text) },
+                        onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
                         },
