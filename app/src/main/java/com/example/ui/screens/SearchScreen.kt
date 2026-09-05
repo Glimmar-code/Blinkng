@@ -49,6 +49,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -112,6 +113,7 @@ fun SearchScreen(
     }
     val density = LocalDensity.current
     val dragOffset = remember { Animatable(0f) }
+    val gestureScope = rememberCoroutineScope()
     val dismissThresholdPx = with(density) { 96.dp.toPx() }
 
     fun goHome() {
@@ -194,12 +196,12 @@ fun SearchScreen(
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
-                            launch {
+                            gestureScope.launch {
                                 dragOffset.snapTo((dragOffset.value + dragAmount).coerceAtLeast(0f))
                             }
                         },
                         onDragEnd = {
-                            launch {
+                            gestureScope.launch {
                                 if (dragOffset.value >= dismissThresholdPx) {
                                     goHome()
                                 } else {
@@ -214,7 +216,7 @@ fun SearchScreen(
                             }
                         },
                         onDragCancel = {
-                            launch {
+                            gestureScope.launch {
                                 dragOffset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
                             }
                         }

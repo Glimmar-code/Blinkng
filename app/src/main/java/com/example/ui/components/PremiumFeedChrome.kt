@@ -322,8 +322,9 @@ fun FeedTabs(
             .background(FeedBackground)
             .height(54.dp)
     ) {
-        val actionsWidth = if (maxWidth < 360.dp) 88.dp else 106.dp
-        val tabWidth = (maxWidth - actionsWidth) / 3
+        val availableWidth = maxWidth
+        val actionsWidth = if (availableWidth < 360.dp) 88.dp else 106.dp
+        val tabWidth = (availableWidth - actionsWidth) / 3
         val indicatorWidth = (tabWidth - 18.dp).coerceAtLeast(22.dp)
         val selected = selectedIndex.coerceIn(0, 2)
         val indicatorOffset by animateDpAsState(
@@ -342,7 +343,7 @@ fun FeedTabs(
 
             Surface(
                 modifier = Modifier
-                    .width(if (maxWidth < 360.dp) 44.dp else 58.dp)
+                    .width(if (availableWidth < 360.dp) 44.dp else 58.dp)
                     .height(38.dp)
                     .clickable(role = Role.Button, onClick = onReelClick)
                     .semantics { contentDescription = "Open Reels" },
@@ -361,7 +362,7 @@ fun FeedTabs(
                         tint = FeedTextPrimary,
                         modifier = Modifier.size(20.dp)
                     )
-                    if (maxWidth >= 390.dp) {
+                    if (availableWidth >= 390.dp) {
                         Spacer(Modifier.width(2.dp))
                         Text(
                             "Reels",
@@ -376,7 +377,7 @@ fun FeedTabs(
 
             Box(
                 modifier = Modifier
-                    .width(if (maxWidth < 360.dp) 44.dp else 48.dp)
+                    .width(if (availableWidth < 360.dp) 44.dp else 48.dp)
                     .height(52.dp)
                     .clickable(role = Role.Button, onClick = onFilterClick)
                     .semantics { contentDescription = "Filter feed" },
