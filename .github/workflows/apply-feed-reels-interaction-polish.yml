@@ -1,0 +1,49 @@
+name: Apply feed and reels interaction polish
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-feed-reels-interaction-polish.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply feed and reels fixes
+        run: python .github/scripts/apply_feed_reels_interaction_polish.py
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit source fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/src/main/java/com/example/MainActivity.kt \
+            app/src/main/java/com/example/ui/components/PostCard.kt \
+            app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt \
+            app/src/main/java/com/example/ui/screens/VideoReelsScreen.kt
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+          else
+            git commit -m "fix: polish feed text and reel interactions"
+            git push origin HEAD:main
+          fi
