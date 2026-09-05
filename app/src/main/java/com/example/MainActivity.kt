@@ -472,26 +472,25 @@ fun MainAppContent(
                 }
 
                 MainTab.MESSAGES -> {
-                    MessagesScreen(
+                    PremiumMessagesScreen(
                         conversations = uiState.conversations,
+                        stories = uiState.stories,
+                        activities = uiState.activities,
+                        myAvatar = uiState.myProfile.avatarUrl,
+                        myName = uiState.myProfile.fullName.ifBlank { uiState.myProfile.username },
                         activePartner = uiState.activeConversationPartner,
                         onOpenConversation = { partner ->
                             viewModel.openChatWithUser(partner)
                         },
                         onCloseConversation = { viewModel.closeConversation() },
                         onSendMessage = { partner, text -> viewModel.sendMessage(partner, text) },
-                        onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
                         },
-                        hasMoreMessages = { conversationId ->
-                            uiState.messageHistoryHasMore[conversationId] ?: true
-                        },
-                        isLoadingOlder = { conversationId ->
-                            uiState.loadingOlderConversationId == conversationId
-                        },
-                        onLoadOlder = { partner -> viewModel.loadOlderMessages(partner) },
                         onProfileClick = { viewModel.openProfile(it) },
+                        onStoryClick = { story -> viewModel.openStory(story) },
+                        onAddStoryClick = { viewModel.openCreateStory(true) },
+                        onOpenActivity = { viewModel.openActivity(true) },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline
                     )

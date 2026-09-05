@@ -139,6 +139,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val networkMonitor = NetworkMonitor(appContext)
     private val syncMutex = Mutex()
     private val cacheWriteMutex = Mutex()
+    private val messageOutboxMutex = Mutex()
     private var syncJob: Job? = null
     private var lastSuccessfulSyncAt = 0L
     private var discoverSearchJob: Job? = null
@@ -1857,7 +1858,7 @@ private suspend fun restoreSupabaseSession() {
             senderUsername = currentUsername,
             receiverUsername = cleanPartner,
             text = cleanText,
-            timestamp = if (_uiState.value.isOnline) "Sending..." else "Queued",
+            timestamp = "Sending...",
             rawTimestamp = java.time.Instant.now().toString(),
             isFromMe = true,
             isRead = false,
@@ -1866,15 +1867,12 @@ private suspend fun restoreSupabaseSession() {
         appendMessageToState(cleanPartner, optimistic)
         persistConversations()
 
+        // Always attempt delivery immediately. The old path trusted a cached connectivity
+        // boolean before touching Supabase, which could leave a perfectly online device stuck
+        // on "Sending..." forever. The durable outbox still protects offline sends.
         viewModelScope.launch(Dispatchers.IO) {
             offlineContentStore.enqueueMessage(tempId, cleanPartner, cleanText)
-            if (_uiState.value.isOnline) {
-                drainMessageOutbox()
-            } else {
-                withContext(Dispatchers.Main) {
-                    showToast("Message queued. Blink will send it when you're back online.")
-                }
-            }
+            drainMessageOutbox()
         }
     }
 
@@ -1906,14 +1904,14 @@ private suspend fun restoreSupabaseSession() {
             } else {
                 offlineContentStore.resetOutbox(failedMessage.id)
             }
-            if (_uiState.value.isOnline) drainMessageOutbox()
+            drainMessageOutbox()
         }
     }
 
-    private suspend fun drainMessageOutbox() {
-        if (!_uiState.value.isOnline || supabaseService.getCurrentUserId().isNullOrBlank()) return
+    private suspend fun drainMessageOutbox() = messageOutboxMutex.withLock {
+        if (supabaseService.getCurrentUserId().isNullOrBlank()) return@withLock
         val pending = offlineContentStore.pendingOutbox(40)
-        if (pending.isEmpty()) return
+        if (pending.isEmpty()) return@withLock
 
         for (item in pending) {
             chatRepository.sendMessage(item.receiverUsername, item.content).fold(
@@ -1943,11 +1941,36 @@ private suspend fun restoreSupabaseSession() {
                     reconcileConversationSummary(item.receiverUsername)
                 },
                 onFailure = { error ->
-                    offlineContentStore.markOutboxFailure(item, error.message ?: "Message send failed")
-                    withContext(Dispatchers.Main) {
-                        updateMessageStatusInState(item.receiverUsername, item.localId, MessageStatus.FAILED)
-                        persistConversations()
-                        showToast(error.message ?: "Message failed. Please try again.")
+                    val detail = error.message.orEmpty()
+                    val lower = detail.lowercase()
+                    val retryable = lower.contains("timeout") ||
+                        lower.contains("timed out") ||
+                        lower.contains("network") ||
+                        lower.contains("failed to connect") ||
+                        lower.contains("unable to resolve host") ||
+                        lower.contains("no route to host") ||
+                        lower.contains("socket") ||
+                        !_uiState.value.isOnline
+
+                    if (retryable) {
+                        // Keep it durable and immediately eligible for the network-restored drain.
+                        offlineContentStore.resetOutbox(item.localId)
+                        withContext(Dispatchers.Main) {
+                            updateMessageStatusInState(
+                                item.receiverUsername,
+                                item.localId,
+                                MessageStatus.SENDING,
+                                pendingLabel = "Queued"
+                            )
+                            persistConversations()
+                        }
+                    } else {
+                        offlineContentStore.markOutboxFailure(item, detail.ifBlank { "Message send failed" })
+                        withContext(Dispatchers.Main) {
+                            updateMessageStatusInState(item.receiverUsername, item.localId, MessageStatus.FAILED)
+                            persistConversations()
+                            showToast(detail.ifBlank { "Message failed. Please try again." })
+                        }
                     }
                 }
             )
@@ -2132,7 +2155,30 @@ private suspend fun restoreSupabaseSession() {
         persistConversations()
     }
     private fun replaceMessageInState(partnerUsername: String, oldId: String, newMsg: ChatMessage) { val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }; if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(lastMessage = newMsg.text, lastMessageTime = newMsg.timestamp, lastMessageRawTime = newMsg.rawTimestamp, messages = old.messages.map { if (it.id == oldId) newMsg else it }.toMutableList()); _uiState.value = _uiState.value.copy(conversations = conversations); persistConversations() } }
-    private fun updateMessageStatusInState(partnerUsername: String, messageId: String, status: MessageStatus) { val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }; if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(messages = old.messages.map { if (it.id == messageId) it.copy(status = status, timestamp = if (status == MessageStatus.SENDING) "Sending..." else it.timestamp) else it }.toMutableList()); _uiState.value = _uiState.value.copy(conversations = conversations); persistConversations() } }
+    private fun updateMessageStatusInState(
+        partnerUsername: String,
+        messageId: String,
+        status: MessageStatus,
+        pendingLabel: String = "Sending..."
+    ) {
+        val conversations = _uiState.value.conversations.toMutableList()
+        val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }
+        if (index >= 0) {
+            val old = conversations[index]
+            conversations[index] = old.copy(
+                messages = old.messages.map {
+                    if (it.id == messageId) {
+                        it.copy(
+                            status = status,
+                            timestamp = if (status == MessageStatus.SENDING) pendingLabel else it.timestamp
+                        )
+                    } else it
+                }.toMutableList()
+            )
+            _uiState.value = _uiState.value.copy(conversations = conversations)
+            persistConversations()
+        }
+    }
 
     fun addMarketListing(item: MarketItem) {
         if (_uiState.value.isPostItemOpen.not()) return
