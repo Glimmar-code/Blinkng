@@ -8,36 +8,36 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 private val DarkColorScheme = darkColorScheme(
-    primary = BlinkCream,
-    onPrimary = BlinkBlack,
-    primaryContainer = BlinkGold,
-    onPrimaryContainer = BlinkBlack,
-    secondary = BlinkGold,
-    onSecondary = BlinkBlack,
-    secondaryContainer = DarkSurfaceElevated,
-    onSecondaryContainer = BlinkCreamBright,
+    primary = FeedPurple,
+    onPrimary = Color.White,
+    primaryContainer = FeedDeepPurple,
+    onPrimaryContainer = Color.White,
+    secondary = FeedBlue,
+    onSecondary = Color.White,
+    secondaryContainer = FeedElevatedSurface,
+    onSecondaryContainer = FeedTextPrimary,
     tertiary = BlinkCyan,
-    background = DarkBackground,
-    onBackground = DarkTextPrimary,
-    surface = DarkSurface,
-    onSurface = DarkTextPrimary,
-    surfaceVariant = DarkSurfaceElevated,
-    onSurfaceVariant = DarkTextSecondary,
-    outline = DarkBorder,
-    outlineVariant = DarkBorderSoft,
+    background = FeedBackground,
+    onBackground = FeedTextPrimary,
+    surface = FeedCardSurface,
+    onSurface = FeedTextPrimary,
+    surfaceVariant = FeedElevatedSurface,
+    onSurfaceVariant = FeedTextSecondary,
+    outline = FeedBorder,
+    outlineVariant = FeedBorderSoft,
     error = BlinkRed,
     onError = Color.White
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = BlinkBlack,
-    onPrimary = BlinkCream,
-    primaryContainer = BlinkCreamSoft,
-    onPrimaryContainer = BlinkBlack,
-    secondary = BlinkGold,
-    onSecondary = BlinkBlack,
+    primary = FeedDeepPurple,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFE8DFFF),
+    onPrimaryContainer = Color(0xFF241047),
+    secondary = FeedBlue,
+    onSecondary = Color.White,
     secondaryContainer = LightSurfaceCream,
-    onSecondaryContainer = BlinkBlack,
+    onSecondaryContainer = LightTextPrimary,
     tertiary = BlinkCyan,
     background = LightBackground,
     onBackground = LightTextPrimary,
@@ -51,26 +51,28 @@ private val LightColorScheme = lightColorScheme(
     onError = Color.White
 )
 
-fun blinkBackgroundBrush(isDark: Boolean): Brush {
-    return if (isDark) {
-        Brush.radialGradient(
-            colors = listOf(
-                Color(0xFF1A1714),
-                Color(0xFF0F0E0C),
-                DarkBackground
-            ),
-            radius = 1200f
-        )
-    } else {
-        Brush.radialGradient(
-            colors = listOf(
-                Color(0xFFFFF9F0),
-                Color(0xFFF6EDE2),
-                LightBackground
-            ),
-            radius = 1200f
-        )
-    }
+fun feedAccentBrush(): Brush = Brush.linearGradient(
+    colors = listOf(FeedGradientStart, FeedGradientMiddle, FeedGradientEnd)
+)
+
+fun blinkBackgroundBrush(isDark: Boolean): Brush = if (isDark) {
+    Brush.radialGradient(
+        colors = listOf(
+            FeedElevatedSurface.copy(alpha = 0.72f),
+            FeedBackground,
+            FeedBackground
+        ),
+        radius = 1200f
+    )
+} else {
+    Brush.radialGradient(
+        colors = listOf(
+            Color(0xFFF0EBFF),
+            Color(0xFFF7F6FB),
+            LightBackground
+        ),
+        radius = 1200f
+    )
 }
 
 @Composable
@@ -78,10 +80,8 @@ fun BlinkTheme(
     darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
-
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
         typography = Typography,
         content = content
     )
