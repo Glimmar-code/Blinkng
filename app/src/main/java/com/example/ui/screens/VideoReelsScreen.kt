@@ -46,6 +46,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import com.example.data.local.BlinkMediaCache
 import com.example.data.models.FeedPost
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.components.formatNumber
@@ -895,7 +896,9 @@ private fun ReelVideo(
             .setReadTimeoutMs(30000)
 
         ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(httpDataSource))
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(BlinkMediaCache.dataSourceFactory(context, httpDataSource))
+            )
             .build()
             .apply {
                 repeatMode = Player.REPEAT_MODE_ONE

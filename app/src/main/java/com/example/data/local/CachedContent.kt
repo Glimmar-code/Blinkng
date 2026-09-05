@@ -156,13 +156,14 @@ interface CachedContentDao {
 
     @Transaction
     suspend fun replaceFeed(posts: List<CachedPostEntity>) {
-        deleteAllPosts()
+        // Cache-first/native behavior: a network refresh must never erase older
+        // locally available feed pages. REPLACE only updates matching IDs.
         if (posts.isNotEmpty()) insertPosts(posts)
     }
 
     @Transaction
     suspend fun replaceProfiles(profiles: List<CachedProfileEntity>) {
-        deleteAllProfiles()
+        // Preserve previously seen profiles so avatars/names remain usable offline.
         if (profiles.isNotEmpty()) insertProfiles(profiles)
     }
 
@@ -171,8 +172,8 @@ interface CachedContentDao {
         conversations: List<CachedConversationEntity>,
         messages: List<CachedMessageEntity>
     ) {
-        deleteAllMessages()
-        deleteAllConversations()
+        // Never blank chat history while a smaller/partial Supabase page refreshes.
+        // Existing rows remain until the long-term prune policy removes old content.
         if (conversations.isNotEmpty()) insertConversations(conversations)
         if (messages.isNotEmpty()) insertMessages(messages)
     }

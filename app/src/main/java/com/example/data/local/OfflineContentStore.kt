@@ -44,7 +44,7 @@ data class CachedAppSnapshot(
 class OfflineContentStore(context: Context) {
     companion object {
         private const val TAG = "OfflineContentStore"
-        private const val DEFAULT_CACHE_MAX_AGE_MS = 180L * 24L * 60L * 60L * 1000L
+        private const val DEFAULT_CACHE_MAX_AGE_MS = 365L * 24L * 60L * 60L * 1000L
     }
 
     private val dao = BlinkDatabase.getInstance(context).cachedContentDao()

@@ -83,8 +83,8 @@ class BlinkApplication : Application(), ImageLoaderFactory {
             }
             .diskCache {
                 DiskCache.Builder()
-                    .directory(cacheDir.resolve("image_cache"))
-                    .maxSizeBytes(100L * 1024L * 1024L)
+                    .directory(filesDir.resolve("blink_media/images").apply { mkdirs() })
+                    .maxSizeBytes(256L * 1024L * 1024L)
                     .build()
             }
             .memoryCachePolicy(CachePolicy.ENABLED)
