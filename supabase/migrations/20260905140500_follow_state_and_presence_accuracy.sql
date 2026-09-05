@@ -40,7 +40,7 @@ grant execute on function public.set_my_presence(boolean) to authenticated;
 
 -- A process can be killed without sending an offline event, so online state is
 -- treated as a short heartbeat lease instead of a permanent boolean.
-create or replace function public.expire_stale_presence()
+create or replace function public.reconcile_presence_lease()
 returns integer
 language plpgsql
 security definer
@@ -61,7 +61,7 @@ begin
 end;
 $$;
 
-revoke all on function public.expire_stale_presence() from public, anon, authenticated;
+revoke all on function public.reconcile_presence_lease() from public, anon, authenticated;
 
 -- Keep the cleanup idempotent across repeated deployments.
 do $$
@@ -69,18 +69,18 @@ begin
   if exists (select 1 from pg_extension where extname = 'pg_cron') then
     perform cron.unschedule(jobid)
       from cron.job
-      where jobname = 'blink-expire-stale-presence';
+      where jobname = 'blink-presence-lease-reconcile';
 
     perform cron.schedule(
-      'blink-expire-stale-presence',
+      'blink-presence-lease-reconcile',
       '* * * * *',
-      'select public.expire_stale_presence();'
+      'select public.reconcile_presence_lease();'
     );
   end if;
 end;
 $$;
 
 -- Clear rows left stale by older clients immediately after deployment.
-select public.expire_stale_presence();
+select public.reconcile_presence_lease();
 
 commit;
