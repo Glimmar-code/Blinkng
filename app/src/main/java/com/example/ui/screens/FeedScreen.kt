@@ -81,6 +81,7 @@ import com.example.data.models.FeedPost
 import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.models.LeaderboardUser
+import com.example.data.models.VerificationBadge
 import com.example.ui.components.PostCard
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.components.StoryBar
@@ -377,6 +378,22 @@ private fun LegacyFeedScreen(
     val recordVisiblePost by rememberUpdatedState(onViewedPost)
     val refreshFeed by rememberUpdatedState(onRefresh)
     val postIds = remember(posts) { posts.mapTo(linkedSetOf()) { it.id } }
+    val profilesByUsername = remember(profiles) {
+        profiles.asSequence()
+            .filter { it.username.isNotBlank() }
+            .associateBy { it.username.trim().removePrefix("@").lowercase() }
+    }
+    val profilesByName = remember(profiles) {
+        profiles.asSequence()
+            .filter { it.fullName.isNotBlank() }
+            .associateBy { it.fullName.trim().lowercase() }
+    }
+    val activeStoryUsernames = remember(stories) {
+        stories.asSequence()
+            .filterNot { it.id == "story_me" || it.username.isBlank() }
+            .map { it.username.trim().removePrefix("@").lowercase() }
+            .toSet()
+    }
     // 0 = full header + tabs, 1 = compact utility header, 2 = hidden while scrolling.
     var chromeStage by remember { mutableIntStateOf(0) }
     var fabVisible by remember { mutableStateOf(true) }
@@ -675,6 +692,27 @@ private fun LegacyFeedScreen(
                                 key = { it.id },
                                 contentType = { feedPostContentType(it) }
                             ) { post ->
+                                val storedUsername = post.authorUsername.trim().removePrefix("@")
+                                val authorKey = storedUsername.ifBlank { post.author.trim().removePrefix("@") }.lowercase()
+                                val authorProfile = profilesByUsername[authorKey]
+                                    ?: profilesByName[post.author.trim().lowercase()]
+                                val resolvedUsername = authorProfile?.username
+                                    ?.trim()
+                                    ?.removePrefix("@")
+                                    ?.takeIf(String::isNotBlank)
+                                    ?: storedUsername.takeIf(String::isNotBlank)
+                                    ?: post.author.trim().removePrefix("@")
+                                val resolvedName = authorProfile?.fullName
+                                    ?.trim()
+                                    ?.takeIf(String::isNotBlank)
+                                    ?: post.author.trim().ifBlank { resolvedUsername }
+                                val resolvedBadge = authorProfile?.verificationBadge ?: when {
+                                    post.verificationBadge != VerificationBadge.NONE -> post.verificationBadge
+                                    post.isVerified -> VerificationBadge.BLUE
+                                    else -> VerificationBadge.NONE
+                                }
+                                val hasActiveStory = resolvedUsername.lowercase() in activeStoryUsernames
+
                                 Column {
                                     PostCard(
                                         post = post,
@@ -686,9 +724,13 @@ private fun LegacyFeedScreen(
                                         onShare = { onSharePost(post.id) },
                                         onOptionsClick = { onOptionsClick(post) },
                                         onProfileClick = onProfileClick,
-                                        isAuthor = post.author.equals(currentUsername, true),
+                                        isAuthor = resolvedUsername.equals(currentUsername.removePrefix("@"), true),
                                         onDelete = { onDeletePost(post.id) },
-                                        onVotePoll = onVotePoll
+                                        onVotePoll = onVotePoll,
+                                        authorName = resolvedName,
+                                        authorUsername = resolvedUsername,
+                                        authorVerificationBadge = resolvedBadge,
+                                        hasActiveStory = hasActiveStory
                                     )
                                     Spacer(Modifier.height(8.dp))
                                 }

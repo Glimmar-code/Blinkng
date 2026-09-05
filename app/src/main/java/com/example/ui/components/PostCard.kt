@@ -127,8 +127,22 @@ fun PostCard(
     onVotePoll: (postId: String, optionId: String) -> Unit = { _, _ -> },
     isAuthor: Boolean = false,
     onDelete: () -> Unit = {},
+    authorName: String = post.author,
+    authorUsername: String = post.authorUsername.ifBlank { post.author },
+    authorVerificationBadge: VerificationBadge = when {
+        post.verificationBadge != VerificationBadge.NONE -> post.verificationBadge
+        post.isVerified -> VerificationBadge.BLUE
+        else -> VerificationBadge.NONE
+    },
+    hasActiveStory: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val resolvedAuthorName = authorName.trim().ifBlank { post.author.trim() }
+    val resolvedAuthorUsername = authorUsername.trim().removePrefix("@").ifBlank {
+        post.authorUsername.trim().removePrefix("@").ifBlank { post.author.trim().removePrefix("@") }
+    }
+    val profileTarget = resolvedAuthorUsername.ifBlank { post.author }
+
     val displayImages = remember(post.images) {
         post.images
             .map(String::trim)
@@ -232,8 +246,8 @@ fun PostCard(
                     .padding(start = 16.dp, top = 16.dp, end = 8.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
+                val avatarFrameModifier = if (hasActiveStory) {
+                    Modifier
                         .size(50.dp)
                         .background(
                             Brush.linearGradient(
@@ -244,11 +258,18 @@ fun PostCard(
                         .padding(2.dp)
                         .background(FeedCardSurface, CircleShape)
                         .padding(2.dp)
-                        .clickable(role = Role.Button) { onProfileClick(post.author) }
+                } else {
+                    Modifier.size(50.dp)
+                }
+
+                Box(
+                    modifier = avatarFrameModifier
+                        .clip(CircleShape)
+                        .clickable(role = Role.Button) { onProfileClick(profileTarget) }
                 ) {
                     AsyncImage(
                         model = post.authorAvatar,
-                        contentDescription = "${post.author} profile picture",
+                        contentDescription = "$resolvedAuthorName profile picture",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .fillMaxSize()
@@ -259,27 +280,37 @@ fun PostCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = post.author,
+                            text = resolvedAuthorName,
                             color = FeedTextPrimary,
                             style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable { onProfileClick(post.author) }
+                            modifier = Modifier.clickable { onProfileClick(profileTarget) }
                         )
-                        if (post.isVerified || post.verificationBadge != VerificationBadge.NONE) {
+                        if (authorVerificationBadge != VerificationBadge.NONE) {
                             Spacer(Modifier.width(5.dp))
                             Icon(
                                 imageVector = Icons.Default.Verified,
-                                contentDescription = "Verified",
-                                tint = when (post.verificationBadge) {
+                                contentDescription = when (authorVerificationBadge) {
+                                    VerificationBadge.GOLD -> "Gold verified"
+                                    VerificationBadge.BLUE -> "Blue verified"
+                                    VerificationBadge.NONE -> null
+                                },
+                                tint = when (authorVerificationBadge) {
                                     VerificationBadge.GOLD -> BlinkGold
-                                    else -> FeedBlue
+                                    VerificationBadge.BLUE -> FeedBlue
+                                    VerificationBadge.NONE -> FeedBlue
                                 },
                                 modifier = Modifier.size(17.dp)
                             )
                         }
                     }
-                    val meta = listOf(post.timeAgo, post.facultyTag)
+                    val meta = listOf(
+                        resolvedAuthorUsername.takeIf(String::isNotBlank)?.let { "@$it" }.orEmpty(),
+                        post.timeAgo,
+                        post.facultyTag
+                    )
                         .filter(String::isNotBlank)
                         .joinToString("  •  ")
                     if (meta.isNotBlank()) {
@@ -288,7 +319,8 @@ fun PostCard(
                             color = FeedTextSecondary,
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable { onProfileClick(profileTarget) }
                         )
                     }
                 }

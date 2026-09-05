@@ -61,7 +61,8 @@ data class FeedPost(
     val isSponsored: Boolean = false,
     val adLabel: String? = null,
     val adCta: String? = null,
-    val createdAt: String = ""
+    val createdAt: String = "",
+    val authorUsername: String = ""
 )
 
 data class PostDraft(

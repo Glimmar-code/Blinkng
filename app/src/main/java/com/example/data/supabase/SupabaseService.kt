@@ -2957,7 +2957,15 @@ suspend fun uploadPostMedia(
     }
 
     private fun parseFeedPost(obj: JSONObject): FeedPost {
-        val author = obj.cleanString("author").ifBlank { obj.cleanString("username") }
+        val authorUsername = obj.cleanString("username")
+            .ifBlank { obj.cleanString("author_username") }
+            .ifBlank { obj.cleanString("author_handle") }
+            .removePrefix("@")
+            .trim()
+        val author = obj.cleanString("author_name")
+            .ifBlank { obj.cleanString("full_name") }
+            .ifBlank { obj.cleanString("author") }
+            .ifBlank { authorUsername }
 
         val imagesList = mutableListOf<String>()
         obj.optJSONArray("images")?.let { array ->
@@ -3039,6 +3047,7 @@ suspend fun uploadPostMedia(
         return FeedPost(
             id = obj.cleanString("id"),
             author = author,
+            authorUsername = authorUsername.ifBlank { obj.cleanString("author").removePrefix("@").trim() },
             authorAvatar = obj.cleanString("author_avatar").ifBlank { obj.cleanString("avatar_url") },
             facultyTag = obj.cleanString("faculty_tag").ifBlank { obj.cleanString("faculty") },
             isVerified = isVerified,
