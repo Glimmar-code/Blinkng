@@ -13,11 +13,16 @@ import com.example.auth.AccountSessionStore
 import com.example.data.supabase.SupabaseService
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.NotificationSyncWorker
+import com.example.performance.HighRefreshRateController
 import java.util.concurrent.TimeUnit
 
 class BlinkApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
+
+        // Apply Blink's 120 Hz-class preference to every Activity before its UI is created.
+        HighRefreshRateController.install(this)
+
         SupabaseService.initialize(this)
         BlinkNotificationHelper.createNotificationChannels(this)
 
