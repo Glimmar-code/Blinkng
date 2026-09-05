@@ -26,19 +26,25 @@ import kotlinx.coroutines.withContext
 data class CachedAppSnapshot(
     val ownerUsername: String = "",
     val myProfile: UserProfile = UserProfile(),
+    val posts: List<FeedPost> = emptyList(),
+    val reels: List<FeedPost> = emptyList(),
+    val profiles: List<UserProfile> = emptyList(),
+    val conversations: List<ChatConversation> = emptyList(),
     val stories: List<Story> = emptyList(),
     val marketItems: List<MarketItem> = emptyList(),
     val leaderboardUsers: List<LeaderboardUser> = emptyList(),
+    val gameLeaderboardUsers: List<LeaderboardUser> = emptyList(),
     val activities: List<ActivityItem> = emptyList(),
     val connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     val mutedUsers: Set<String> = emptySet(),
+    val blinkCoinBalance: Long = 0L,
     val cachedAt: Long = 0L
 )
 
 class OfflineContentStore(context: Context) {
     companion object {
         private const val TAG = "OfflineContentStore"
-        private const val DEFAULT_CACHE_MAX_AGE_MS = 30L * 24L * 60L * 60L * 1000L
+        private const val DEFAULT_CACHE_MAX_AGE_MS = 180L * 24L * 60L * 60L * 1000L
     }
 
     private val dao = BlinkDatabase.getInstance(context).cachedContentDao()

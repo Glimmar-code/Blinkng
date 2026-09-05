@@ -59,4 +59,48 @@ class OfflineContentCodecTest {
         assertNotNull(restored)
         assertEquals(profile, restored)
     }
+
+    @Test
+    fun appSnapshotRoundTripPreservesFeedAndMessages() {
+        val post = FeedPost(
+            id = "cached-post",
+            author = "glimmar",
+            authorAvatar = "",
+            timeAgo = "Now",
+            text = "Still here offline",
+            likes = 1,
+            commentsCount = 2,
+            sharesCount = 3
+        )
+        val message = com.example.data.models.ChatMessage(
+            id = "message-1",
+            text = "Cached message",
+            isFromMe = true,
+            senderUsername = "glimmar"
+        )
+        val conversation = com.example.data.models.ChatConversation(
+            id = "conversation-1",
+            partnerUsername = "friend",
+            partnerName = "Friend",
+            partnerAvatar = "",
+            messages = mutableListOf(message)
+        )
+        val snapshot = CachedAppSnapshot(
+            ownerUsername = "glimmar",
+            myProfile = UserProfile(fullName = "Gideon", username = "glimmar"),
+            posts = listOf(post),
+            reels = listOf(post.copy(id = "cached-reel", isReel = true, videoUrl = "https://example.com/reel.mp4")),
+            conversations = listOf(conversation),
+            blinkCoinBalance = 42L
+        )
+
+        val restored = codec.decodeAppSnapshot(requireNotNull(codec.encodeAppSnapshot(snapshot)))
+
+        assertNotNull(restored)
+        assertEquals("cached-post", restored?.posts?.single()?.id)
+        assertEquals("cached-reel", restored?.reels?.single()?.id)
+        assertEquals("Cached message", restored?.conversations?.single()?.messages?.single()?.text)
+        assertEquals(42L, restored?.blinkCoinBalance)
+    }
+
 }

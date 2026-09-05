@@ -154,17 +154,24 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         restoreUiPreferences()
         _uiState.value = _uiState.value.copy(isOnline = networkMonitor.isCurrentlyOnline())
 
-        // Render the last authenticated account immediately. Supabase verification and
-        // refresh continue in the background instead of blocking the first usable frame.
-        val recoverableLocalSession = hasLocalAuthenticatedProfile() && (
-            !SupabaseService.accessToken().isNullOrBlank() ||
-                !SupabaseService.refreshToken().isNullOrBlank() ||
-                AccountSessionStore.list(appContext).isNotEmpty()
-            )
-        if (recoverableLocalSession) restoreLocalSession()
+        // Local-first startup: a previously authenticated account remains usable with
+        // airplane mode / mobile data off. Cloud session verification happens afterwards.
+        val hasLocalSession = hasLocalAuthenticatedProfile()
+        if (hasLocalSession) restoreLocalSession()
 
         observeCachedContent()
-        viewModelScope.launch { restoreCachedAppSnapshot() }
+        viewModelScope.launch {
+            restoreCachedAppSnapshot()
+            if (hasLocalSession && !_uiState.value.isOnline) {
+                _uiState.value = _uiState.value.copy(
+                    destination = AppDestination.MAIN,
+                    isFeedLoading = false,
+                    isRefreshingContent = false,
+                    isSyncingContent = false,
+                    isLiveSupabaseConnected = false
+                )
+            }
+        }
         observeNetworkStatus()
         observeAuthState()
         viewModelScope.launch { restoreSupabaseSession() }
@@ -280,6 +287,21 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
 private suspend fun restoreSupabaseSession() {
         try {
+            // Never make an offline cold start wait on Supabase. The last signed-in account
+            // and its durable cache are the source of truth until connectivity returns.
+            if (!_uiState.value.isOnline && hasLocalAuthenticatedProfile()) {
+                restoreLocalSession()
+                restoreCachedAppSnapshot()
+                _uiState.value = _uiState.value.copy(
+                    destination = AppDestination.MAIN,
+                    isFeedLoading = false,
+                    isRefreshingContent = false,
+                    isSyncingContent = false,
+                    isLiveSupabaseConnected = false
+                )
+                return
+            }
+
             // Local state is already usable when available; this call only validates and
             // refreshes the cloud session. Never blank the cached UI while it runs.
             if (_uiState.value.destination != AppDestination.MAIN && hasLocalAuthenticatedProfile()) {
@@ -334,11 +356,18 @@ private suspend fun restoreSupabaseSession() {
             }
         } catch (e: Exception) {
             Log.w(TAG, "restoreSupabaseSession notice: ${e.message}")
-            if (hasLocalAuthenticatedProfile() &&
-                (SupabaseService.accessToken() != null || AccountSessionStore.list(appContext).isNotEmpty())) {
+            if (hasLocalAuthenticatedProfile()) {
                 restoreLocalSession()
-                _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN)
-                fetchSupabaseData()
+                restoreCachedAppSnapshot()
+                _uiState.value = _uiState.value.copy(
+                    destination = AppDestination.MAIN,
+                    isFeedLoading = false,
+                    isRefreshingContent = false,
+                    isSyncingContent = false,
+                    isLiveSupabaseConnected = false
+                )
+                // A temporary network/Supabase failure must not erase the offline app.
+                // Reconnect handling will retry the cloud sync automatically.
             } else {
                 _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
             }
@@ -420,20 +449,31 @@ private suspend fun restoreSupabaseSession() {
     private suspend fun restoreCachedAppSnapshot() {
         val cached = offlineContentStore.loadAppSnapshot() ?: return
         val current = _uiState.value
-        val activeUsername = current.myProfile.username
+        val activeUsername = current.myProfile.username.ifBlank { offlineContentStore.cachedOwnerUsername() }
         if (activeUsername.isBlank() || !cached.ownerUsername.equals(activeUsername, true)) return
 
+        val cachedProfile = cached.myProfile.takeIf { it.username.equals(activeUsername, true) }
+        val restoredPosts = current.posts.ifEmpty { cached.posts }
+        val restoredReels = current.reels.ifEmpty { cached.reels }
+        val hasCachedFeed = restoredPosts.isNotEmpty() || restoredReels.isNotEmpty()
+
         _uiState.value = current.copy(
-            myProfile = cached.myProfile.takeIf { it.username.equals(activeUsername, true) } ?: current.myProfile,
+            myProfile = cachedProfile ?: current.myProfile,
+            posts = restoredPosts,
+            reels = restoredReels,
+            profiles = current.profiles.ifEmpty { cached.profiles },
+            conversations = current.conversations.ifEmpty { cached.conversations },
             stories = cached.stories.ifEmpty { current.stories },
-            marketItems = cached.marketItems,
-            leaderboardUsers = cached.leaderboardUsers,
-            activities = cached.activities,
-            connectHub = cached.connectHub,
-            mutedUsers = cached.mutedUsers,
+            marketItems = current.marketItems.ifEmpty { cached.marketItems },
+            leaderboardUsers = current.leaderboardUsers.ifEmpty { cached.leaderboardUsers },
+            gameLeaderboardUsers = current.gameLeaderboardUsers.ifEmpty { cached.gameLeaderboardUsers },
+            activities = current.activities.ifEmpty { cached.activities },
+            connectHub = if (current.connectHub == ConnectHubSnapshot()) cached.connectHub else current.connectHub,
+            mutedUsers = if (current.mutedUsers.isEmpty()) cached.mutedUsers else current.mutedUsers,
+            blinkCoinBalance = if (current.blinkCoinBalance == 0L) cached.blinkCoinBalance else current.blinkCoinBalance,
             isConnectHubLoading = false,
             activitiesLoading = false,
-            isFeedLoading = false
+            isFeedLoading = if (!current.isOnline || hasCachedFeed) false else current.isFeedLoading
         )
     }
 
@@ -447,12 +487,18 @@ private suspend fun restoreSupabaseSession() {
                         CachedAppSnapshot(
                             ownerUsername = snapshot.myProfile.username,
                             myProfile = snapshot.myProfile,
+                            posts = snapshot.posts,
+                            reels = snapshot.reels,
+                            profiles = snapshot.profiles,
+                            conversations = snapshot.conversations,
                             stories = snapshot.stories,
                             marketItems = snapshot.marketItems,
                             leaderboardUsers = snapshot.leaderboardUsers,
+                            gameLeaderboardUsers = snapshot.gameLeaderboardUsers,
                             activities = snapshot.activities,
                             connectHub = snapshot.connectHub,
-                            mutedUsers = snapshot.mutedUsers
+                            mutedUsers = snapshot.mutedUsers,
+                            blinkCoinBalance = snapshot.blinkCoinBalance
                         )
                     )
                 }.onFailure { Log.w(TAG, "Unable to persist extended app cache", it) }
@@ -985,6 +1031,7 @@ private suspend fun restoreSupabaseSession() {
                         connectHub = snapshot,
                         isConnectHubLoading = false
                     )
+                    persistExtendedCache()
                 }
                 .onFailure {
                     Log.e(TAG, "Connect Hub refresh failed", it)

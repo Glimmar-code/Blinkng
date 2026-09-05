@@ -355,6 +355,9 @@ private fun PremiumHomeFeed(
     var screenVisible by remember { mutableStateOf(false) }
     var horizontalDrag by remember { mutableStateOf(0f) }
     val swipeThreshold = with(density) { 64.dp.toPx() }
+    val chromeScrollThreshold = with(density) { 20.dp.toPx() }
+    val scrollAccumulator = remember { floatArrayOf(0f) }
+    var bottomChromeVisible by remember { mutableStateOf(true) }
 
     val filteredPosts = remember(posts, filter, laneIndex, followedAuthorKeys) {
         val rankedNormalPosts = posts.filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
@@ -383,18 +386,28 @@ private fun PremiumHomeFeed(
         }
     }
 
-    val scrollConnection = remember(onBottomBarVisibilityChange) {
+    val scrollConnection = remember(onBottomBarVisibilityChange, chromeScrollThreshold) {
         object : NestedScrollConnection {
             override fun onPreScroll(
                 available: androidx.compose.ui.geometry.Offset,
                 source: NestedScrollSource
             ): androidx.compose.ui.geometry.Offset {
-                if (available.y < -2f) {
-                    fabExpanded = false
-                    onBottomBarVisibilityChange(false)
-                } else if (available.y > 2f) {
-                    fabExpanded = true
-                    onBottomBarVisibilityChange(true)
+                scrollAccumulator[0] = (scrollAccumulator[0] + available.y)
+                    .coerceIn(-chromeScrollThreshold * 2f, chromeScrollThreshold * 2f)
+
+                when {
+                    scrollAccumulator[0] <= -chromeScrollThreshold && bottomChromeVisible -> {
+                        bottomChromeVisible = false
+                        fabExpanded = false
+                        scrollAccumulator[0] = 0f
+                        onBottomBarVisibilityChange(false)
+                    }
+                    scrollAccumulator[0] >= chromeScrollThreshold && !bottomChromeVisible -> {
+                        bottomChromeVisible = true
+                        fabExpanded = true
+                        scrollAccumulator[0] = 0f
+                        onBottomBarVisibilityChange(true)
+                    }
                 }
                 return androidx.compose.ui.geometry.Offset.Zero
             }
@@ -407,6 +420,8 @@ private fun PremiumHomeFeed(
         if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
             listState.scrollToItem(0)
         }
+        scrollAccumulator[0] = 0f
+        bottomChromeVisible = true
         fabExpanded = true
         onBottomBarVisibilityChange(true)
     }
@@ -416,10 +431,15 @@ private fun PremiumHomeFeed(
             onLaneChanged(0)
             filter = PremiumFeedFilter.ALL
             if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
+                // Avoid animating through hundreds of composed rows when the user is deep
+                // in the feed. Jump near the top, then animate only the final short distance.
+                if (listState.firstVisibleItemIndex > 8) listState.scrollToItem(8)
                 listState.animateScrollToItem(0)
             } else {
                 onRefresh()
             }
+            scrollAccumulator[0] = 0f
+            bottomChromeVisible = true
             fabExpanded = true
             onBottomBarVisibilityChange(true)
         }
@@ -450,12 +470,10 @@ private fun PremiumHomeFeed(
             }
     }
 
-    val enterOffsetPx = with(density) { 8.dp.roundToPx() }
-
     AnimatedVisibility(
         visible = screenVisible,
-        enter = fadeIn(tween(220)) + slideInVertically(tween(220)) { enterOffsetPx },
-        exit = fadeOut(tween(160)) + slideOutVertically(tween(160)) { enterOffsetPx },
+        enter = fadeIn(tween(140)),
+        exit = fadeOut(tween(100)),
         modifier = Modifier.fillMaxSize()
     ) {
         Box(
@@ -785,15 +803,19 @@ private fun LegacyChromeCrop(
 
 @Composable
 private fun PremiumPostEntrance(index: Int, content: @Composable () -> Unit) {
-    var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        delay((index.coerceAtMost(10) * 35L))
-        visible = true
+    // Only the first few rows get a very small initial fade. Rows composed during normal
+    // scrolling render immediately, avoiding the delayed website-like card animation.
+    if (index > 2) {
+        content()
+        return
     }
+
+    var visible by remember(index) { mutableStateOf(false) }
+    LaunchedEffect(index) { visible = true }
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(220)) + slideInVertically(tween(220)) { 24 },
-        exit = fadeOut(tween(120)),
+        enter = fadeIn(tween(90)),
+        exit = fadeOut(tween(70)),
         modifier = Modifier.fillMaxWidth()
     ) {
         content()
