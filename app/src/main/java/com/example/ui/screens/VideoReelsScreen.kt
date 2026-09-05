@@ -55,6 +55,7 @@ import com.example.ui.theme.BlinkPink
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /**
@@ -164,8 +165,36 @@ private fun ReelsContent(
     isLoadingMore: Boolean,
     onLoadMore: () -> Unit
 ) {
-    val pager = rememberPagerState(pageCount = { reels.size })
+    val context = LocalContext.current
+    val resumePrefs = remember(context) {
+        context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
+    }
+    val resumeUserKey = remember(currentUsername) {
+        currentUsername.trim().removePrefix("@").lowercase().ifBlank { "anonymous" }
+    }
+    val initialPage = remember(reels, resumeUserKey) {
+        val savedId = resumePrefs.getString("reel_id:$resumeUserKey", null)
+        val byId = savedId?.let { id -> reels.indexOfFirst { it.id == id } }
+            ?.takeIf { it >= 0 }
+        val byIndex = resumePrefs.getInt("reel_index:$resumeUserKey", 0)
+        (byId ?: byIndex).coerceIn(0, reels.lastIndex.coerceAtLeast(0))
+    }
+    val pager = rememberPagerState(
+        initialPage = initialPage,
+        pageCount = { reels.size }
+    )
     var selectedTab by remember { mutableStateOf("For You") }
+
+    LaunchedEffect(pager, reels, resumeUserKey) {
+        snapshotFlow { pager.currentPage }.collectLatest { page ->
+            reels.getOrNull(page)?.let { reel ->
+                resumePrefs.edit()
+                    .putInt("reel_index:$resumeUserKey", page)
+                    .putString("reel_id:$resumeUserKey", reel.id)
+                    .apply()
+            }
+        }
+    }
 
     LaunchedEffect(pager.currentPage, reels.size, hasMore, isLoadingMore) {
         if (hasMore && !isLoadingMore && pager.currentPage >= (reels.size - 3).coerceAtLeast(0)) {

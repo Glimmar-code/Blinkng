@@ -156,7 +156,23 @@ fun PremiumFeedScreen(
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
     hasUnreadNotifications: Boolean = false
 ) {
-    var feedLane by rememberSaveable(currentUsername) { mutableIntStateOf(0) }
+    val context = LocalContext.current
+    val resumePrefs = remember(context) {
+        context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
+    }
+    val resumeUserKey = remember(currentUsername) {
+        currentUsername.trim().removePrefix("@").lowercase().ifBlank { "anonymous" }
+    }
+    var feedLane by rememberSaveable(resumeUserKey) {
+        mutableIntStateOf(
+            resumePrefs.getInt("home_lane:$resumeUserKey", 0).coerceIn(0, 1)
+        )
+    }
+    LaunchedEffect(feedLane, resumeUserKey) {
+        resumePrefs.edit()
+            .putInt("home_lane:$resumeUserKey", feedLane.coerceIn(0, 1))
+            .apply()
+    }
     val followingIds by FollowStateStore.followingIds.collectAsState()
 
     LaunchedEffect(currentUsername) {
@@ -177,6 +193,7 @@ fun PremiumFeedScreen(
             posts = posts,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
+            resumeUserKey = resumeUserKey,
             laneIndex = feedLane,
             followedAuthorKeys = followedAuthorKeys,
             isLoading = isLoading,
@@ -314,6 +331,7 @@ private fun PremiumHomeFeed(
     posts: List<FeedPost>,
     currentUsername: String,
     userAvatar: String,
+    resumeUserKey: String,
     laneIndex: Int,
     followedAuthorKeys: Set<String>,
     isLoading: Boolean,
@@ -346,12 +364,35 @@ private fun PremiumHomeFeed(
     onGameClick: () -> Unit,
     onReelClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val resumePrefs = remember(context) {
+        context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
+    }
+    val laneResumeKey = "$resumeUserKey:$laneIndex"
     val listState = rememberLazyListState()
+    var restoredLaneResumeKey by remember { mutableStateOf<String?>(null) }
+    var restoringScroll by remember { mutableStateOf(false) }
     val pullState = rememberPullToRefreshState()
     val density = LocalDensity.current
     val latestViewed by rememberUpdatedState(onViewedPost)
     val impressionTracker = remember { PostImpressionTracker() }
-    var filter by remember { mutableStateOf(PremiumFeedFilter.ALL) }
+    var filter by remember(laneResumeKey) {
+        mutableStateOf(
+            runCatching {
+                PremiumFeedFilter.valueOf(
+                    resumePrefs.getString(
+                        "home_filter:$laneResumeKey",
+                        PremiumFeedFilter.ALL.name
+                    ) ?: PremiumFeedFilter.ALL.name
+                )
+            }.getOrDefault(PremiumFeedFilter.ALL)
+        )
+    }
+    LaunchedEffect(filter, laneResumeKey) {
+        resumePrefs.edit()
+            .putString("home_filter:$laneResumeKey", filter.name)
+            .apply()
+    }
     var filterMenuVisible by remember { mutableStateOf(false) }
     var fabExpanded by remember { mutableStateOf(true) }
     var screenVisible by remember { mutableStateOf(false) }
@@ -361,7 +402,6 @@ private fun PremiumHomeFeed(
     val scrollAccumulator = remember { floatArrayOf(0f) }
     var bottomChromeVisible by remember { mutableStateOf(true) }
 
-    val context = LocalContext.current
     val networkMonitor = remember(context) { NetworkMonitor(context) }
     val isOnline by networkMonitor.isOnline.collectAsState(
         initial = networkMonitor.isCurrentlyOnline()
@@ -442,14 +482,49 @@ private fun PremiumHomeFeed(
 
     LaunchedEffect(Unit) { screenVisible = true }
 
-    LaunchedEffect(laneIndex) {
-        if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
-            listState.scrollToItem(0)
+    LaunchedEffect(laneResumeKey, filteredPosts.isNotEmpty()) {
+        if (restoredLaneResumeKey != laneResumeKey) {
+            val savedIndex = resumePrefs
+                .getInt("home_scroll_index:$laneResumeKey", 0)
+                .coerceAtLeast(0)
+            val savedOffset = resumePrefs
+                .getInt("home_scroll_offset:$laneResumeKey", 0)
+                .coerceAtLeast(0)
+
+            // Wait until the cached/ranked rows have had one frame to enter the LazyColumn.
+            // A saved non-zero position is only restored once content exists.
+            if (savedIndex == 0 || filteredPosts.isNotEmpty()) {
+                restoringScroll = true
+                delay(16)
+                val maxIndex = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
+                runCatching {
+                    listState.scrollToItem(
+                        savedIndex.coerceAtMost(maxIndex),
+                        savedOffset
+                    )
+                }
+                restoredLaneResumeKey = laneResumeKey
+                restoringScroll = false
+            }
         }
+
         scrollAccumulator[0] = 0f
         bottomChromeVisible = true
         fabExpanded = true
         onBottomBarVisibilityChange(true)
+    }
+
+    LaunchedEffect(listState, laneResumeKey) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collectLatest { (index, offset) ->
+            if (!restoringScroll && restoredLaneResumeKey == laneResumeKey) {
+                resumePrefs.edit()
+                    .putInt("home_scroll_index:$laneResumeKey", index)
+                    .putInt("home_scroll_offset:$laneResumeKey", offset)
+                    .apply()
+            }
+        }
     }
 
     LaunchedEffect(homeReselectSignal) {
