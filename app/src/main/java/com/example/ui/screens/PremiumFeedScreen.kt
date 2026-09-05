@@ -67,6 +67,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -75,6 +76,7 @@ import com.example.data.models.FeedPost
 import com.example.data.models.LeaderboardUser
 import com.example.data.models.Story
 import com.example.data.models.UserProfile
+import com.example.data.network.NetworkMonitor
 import com.example.data.repository.FollowStateStore
 import com.example.ui.components.CreatePostFab
 import com.example.ui.components.FeedTabs
@@ -359,6 +361,13 @@ private fun PremiumHomeFeed(
     val scrollAccumulator = remember { floatArrayOf(0f) }
     var bottomChromeVisible by remember { mutableStateOf(true) }
 
+    val context = LocalContext.current
+    val networkMonitor = remember(context) { NetworkMonitor(context) }
+    val isOnline by networkMonitor.isOnline.collectAsState(
+        initial = networkMonitor.isCurrentlyOnline()
+    )
+    var offlineEmptyConfirmed by remember { mutableStateOf(false) }
+
     val filteredPosts = remember(posts, filter, laneIndex, followedAuthorKeys) {
         val rankedNormalPosts = posts.filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
         val lanePosts = if (laneIndex == 1) {
@@ -376,6 +385,23 @@ private fun PremiumHomeFeed(
                 PremiumFeedFilter.PHOTOS -> post.images.any { it.isNotBlank() && !it.equals("null", true) }
                 PremiumFeedFilter.POLLS -> post.poll != null
             }
+        }
+    }
+
+    LaunchedEffect(isOnline, isLoading, posts.isEmpty(), filteredPosts.isEmpty(), filter, laneIndex) {
+        offlineEmptyConfirmed = false
+        if (
+            !isOnline &&
+            !isLoading &&
+            posts.isEmpty() &&
+            filteredPosts.isEmpty() &&
+            filter == PremiumFeedFilter.ALL &&
+            laneIndex == 0
+        ) {
+            // Give the durable local cache a moment to hydrate before declaring it empty.
+            // If cached posts arrive, this effect is cancelled and the empty card never flashes.
+            delay(500)
+            offlineEmptyConfirmed = true
         }
     }
 
@@ -577,13 +603,37 @@ private fun PremiumHomeFeed(
                             }
 
                             filteredPosts.isEmpty() -> {
-                                item(key = "empty_feed") {
-                                    PremiumEmptyFeed(
-                                        isFiltered = filter != PremiumFeedFilter.ALL,
-                                        isFollowingLane = laneIndex == 1,
-                                        onCreatePost = onOpenCreatePost,
-                                        onClearFilter = { filter = PremiumFeedFilter.ALL }
-                                    )
+                                when {
+                                    filter != PremiumFeedFilter.ALL || laneIndex == 1 -> {
+                                        item(key = "empty_feed") {
+                                            PremiumEmptyFeed(
+                                                isFiltered = filter != PremiumFeedFilter.ALL,
+                                                isFollowingLane = laneIndex == 1,
+                                                offlineNoCache = false,
+                                                onCreatePost = onOpenCreatePost,
+                                                onClearFilter = { filter = PremiumFeedFilter.ALL }
+                                            )
+                                        }
+                                    }
+
+                                    !isOnline && posts.isEmpty() && !offlineEmptyConfirmed -> {
+                                        // Never flash an empty-feed message while disk cache may still hydrate.
+                                        items(2, key = { "cache_wait:$it" }) {
+                                            PremiumFeedSkeleton()
+                                        }
+                                    }
+
+                                    else -> {
+                                        item(key = "empty_feed") {
+                                            PremiumEmptyFeed(
+                                                isFiltered = false,
+                                                isFollowingLane = false,
+                                                offlineNoCache = !isOnline && posts.isEmpty() && offlineEmptyConfirmed,
+                                                onCreatePost = onOpenCreatePost,
+                                                onClearFilter = { filter = PremiumFeedFilter.ALL }
+                                            )
+                                        }
+                                    }
                                 }
                             }
 
@@ -975,6 +1025,7 @@ private fun PremiumFeedRefreshNotice(message: String, onRetry: () -> Unit) {
 private fun PremiumEmptyFeed(
     isFiltered: Boolean,
     isFollowingLane: Boolean,
+    offlineNoCache: Boolean = false,
     onCreatePost: () -> Unit,
     onClearFilter: () -> Unit
 ) {
@@ -997,7 +1048,7 @@ private fun PremiumEmptyFeed(
             text = when {
                 isFiltered -> "No posts match this filter"
                 isFollowingLane -> "No posts from people you follow yet"
-                else -> "Your feed is ready for something new"
+                else -> if (offlineNoCache) "Your feed is ready for something new" else "No posts to show right now"
             },
             color = FeedTextPrimary,
             style = MaterialTheme.typography.titleMedium
@@ -1007,7 +1058,7 @@ private fun PremiumEmptyFeed(
             text = when {
                 isFiltered -> "Choose another feed filter to keep browsing."
                 isFollowingLane -> "Follow people from Discover or profiles; their ranked posts will appear here."
-                else -> "Share an update, photo or poll with your campus."
+                else -> if (offlineNoCache) "You're offline and there are no saved posts on this device." else "Pull to refresh for the latest posts."
             },
             color = FeedTextSecondary,
             style = MaterialTheme.typography.bodyMedium
