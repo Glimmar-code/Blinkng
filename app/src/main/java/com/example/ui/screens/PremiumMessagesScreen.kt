@@ -1022,6 +1022,7 @@ private fun PremiumChatDetail(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
+                .imePadding()
         ) {
             ChatHeader(
                 conversation = conversation,
@@ -1439,7 +1440,6 @@ private fun MessageComposer(
         shadowElevation = 8.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .imePadding()
             .navigationBarsPadding()
     ) {
         Row(
