@@ -293,15 +293,7 @@ fun SearchScreen(
                             items(people, key = { it.id.ifBlank { it.username } }) { person ->
                                 Surface(
                                     modifier = Modifier
-                                        .width(150.dp)
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(FeedCardSurface)
-                                        .pointerInput(person.username) {
-                                            detectHorizontalDragGestures { _, _ -> }
-                                        }
-                                        .then(
-                                            Modifier
-                                        ),
+                                        .width(150.dp),
                                     shape = RoundedCornerShape(20.dp),
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                     color = MaterialTheme.colorScheme.surface,

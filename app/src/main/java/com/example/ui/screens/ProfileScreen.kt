@@ -9,6 +9,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -26,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -36,12 +38,14 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -49,6 +53,7 @@ import com.example.data.models.FeedPost
 import com.example.data.models.MarketItem
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
+import com.example.data.repository.FollowStateStore
 import com.example.ui.components.FacultyBadge
 import com.example.ui.components.FollowerGrowthChart
 import com.example.ui.components.PostCard
@@ -57,6 +62,7 @@ import com.example.ui.theme.*
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /* ============================================================================
@@ -107,12 +113,21 @@ fun ProfileScreen(
     onRefreshProfile: () -> Unit = {}
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-    var isFollowing by rememberSaveable { mutableStateOf(false) }
+    val followingIds by FollowStateStore.followingIds.collectAsState()
+    val isFollowing = !isMe && profile.id.isNotBlank() && profile.id in followingIds
+    var followBusy by remember(profile.id) { mutableStateOf(false) }
+    val overlayOffset = remember(profile.id) { Animatable(0f) }
+    val overlayScope = rememberCoroutineScope()
+    val overlayThresholdPx = with(LocalDensity.current) { 88.dp.toPx() }
     var showShareSheet by rememberSaveable { mutableStateOf(false) }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(profile.id, isMe) {
+        if (!isMe && profile.id.isNotBlank()) FollowStateStore.refresh()
+    }
 
     // Entrance choreography — content reveals itself once, on first composition.
     var contentVisible by remember { mutableStateOf(false) }
@@ -204,11 +219,49 @@ fun ProfileScreen(
         }
     }
 
-    Surface(
-        modifier = Modifier.fillMaxSize().testTag("profile_screen"),
-        color = bgColor
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Surface(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight()
+                .offset { IntOffset(overlayOffset.value.roundToInt(), 0) }
+                .shadow(24.dp, RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp), clip = false)
+                .pointerInput(profile.id) {
+                    detectHorizontalDragGestures(
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            overlayScope.launch {
+                                overlayOffset.snapTo((overlayOffset.value + dragAmount).coerceAtLeast(0f))
+                            }
+                        },
+                        onDragEnd = {
+                            overlayScope.launch {
+                                if (overlayOffset.value >= overlayThresholdPx) {
+                                    onBack()
+                                } else {
+                                    overlayOffset.animateTo(
+                                        0f,
+                                        spring(
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        )
+                                    )
+                                }
+                            }
+                        },
+                        onDragCancel = {
+                            overlayScope.launch {
+                                overlayOffset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                            }
+                        }
+                    )
+                }
+                .testTag("profile_screen"),
+            shape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),
+            color = bgColor
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
 
             LazyColumn(
                 state = scrollState,
@@ -428,7 +481,7 @@ fun ProfileScreen(
 
                                         SmallActionButton(
                                             icon = if (isFollowing) Icons.Default.Check else Icons.Default.PersonAdd,
-                                            title = if (isFollowing) "Following" else "Follow",
+                                            title = if (followBusy) "Updating" else if (isFollowing) "Following" else "Follow",
                                             tint = if (isFollowing) textPrimary else if (isDark) BlinkBlack else BlinkCream,
                                             background = if (isFollowing) {
                                                 MaterialTheme.colorScheme.surfaceVariant
@@ -436,8 +489,15 @@ fun ProfileScreen(
                                                 if (isDark) BlinkCream else BlinkBlack
                                             },
                                             onClick = {
-                                                isFollowing = !isFollowing
-                                                onFollowChanged(isFollowing)
+                                                if (!followBusy && profile.id.isNotBlank()) {
+                                                    val desired = !isFollowing
+                                                    followBusy = true
+                                                    overlayScope.launch {
+                                                        val saved = FollowStateStore.setFollowing(profile.id, desired)
+                                                        followBusy = false
+                                                        if (saved) onFollowChanged(desired)
+                                                    }
+                                                }
                                             },
                                             modifier = Modifier.scale(animatedFollowScale),
                                             testTag = "profile_follow_btn"
@@ -563,7 +623,7 @@ fun ProfileScreen(
                                 ProfileMetric(value = userPosts.size, label = "Posts", animateCount = true)
                                 DividerMetric()
                                 ProfileMetric(
-                                    value = profile.followerCount + if (isFollowing) 1 else 0,
+                                    value = profile.followerCount,
                                     label = "Followers",
                                     animateCount = true
                                 )
@@ -857,6 +917,7 @@ fun ProfileScreen(
                 }
             }
         }
+    }
     }
 
     // ================================================================
