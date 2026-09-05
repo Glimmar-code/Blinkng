@@ -402,7 +402,9 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = _uiState.value.copy(
             isDarkMode = prefs.getBoolean(KEY_DARK_MODE, true),
             selectedTab = selected,
-            feedSubTab = prefs.getInt(KEY_FEED_SUB_TAB, 0).coerceIn(0, 3)
+            // Do not restore the retired Home/Reel/Connect/Game sub-tab state.
+            // Home now always starts on the premium For You lane.
+            feedSubTab = 0
         )
     }
 
@@ -1226,7 +1228,14 @@ private suspend fun restoreSupabaseSession() {
     fun setDestination(destination: AppDestination) { _uiState.value = _uiState.value.copy(destination = destination) }
     fun navigateTo(destination: AppDestination) = setDestination(destination)
     fun selectTab(tab: MainTab) {
-        _uiState.value = _uiState.value.copy(selectedTab = tab, viewingProfile = null, viewingProduct = null, isConversationFullScreen = false)
+        val nextFeedSubTab = if (tab == MainTab.HOME) 0 else _uiState.value.feedSubTab
+        _uiState.value = _uiState.value.copy(
+            selectedTab = tab,
+            feedSubTab = nextFeedSubTab,
+            viewingProfile = null,
+            viewingProduct = null,
+            isConversationFullScreen = false
+        )
         persistUiPreferences()
     }
     fun setTab(tab: MainTab) = selectTab(tab)

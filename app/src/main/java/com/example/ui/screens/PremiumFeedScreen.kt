@@ -76,7 +76,6 @@ import com.example.data.models.LeaderboardUser
 import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.repository.FollowStateStore
-import com.example.data.supabase.SupabaseService
 import com.example.ui.components.CreatePostFab
 import com.example.ui.components.FeedTabs
 import com.example.ui.components.FeedTopBar
@@ -92,7 +91,6 @@ import com.example.ui.theme.FeedTextPrimary
 import com.example.ui.theme.FeedTextSecondary
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.isActive
 
 private enum class PremiumFeedFilter { ALL, PHOTOS, POLLS }
 
@@ -158,14 +156,9 @@ fun PremiumFeedScreen(
 ) {
     var feedLane by rememberSaveable(currentUsername) { mutableIntStateOf(0) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
-    val presenceService = remember { SupabaseService() }
 
     LaunchedEffect(currentUsername) {
         if (currentUsername.isNotBlank()) FollowStateStore.refresh()
-        while (isActive && currentUsername.isNotBlank()) {
-            runCatching { presenceService.setMyPresence(true) }
-            delay(60_000)
-        }
     }
 
     val followedAuthorKeys = remember(profiles, followingIds) {
