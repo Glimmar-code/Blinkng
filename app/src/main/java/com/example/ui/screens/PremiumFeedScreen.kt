@@ -725,7 +725,8 @@ private fun PremiumHomeFeed(
                                             onOptionsClick = { onOptionsClick(post) },
                                             onProfileClick = onProfileClick,
                                             onVotePoll = onVotePoll,
-                                            isAuthor = post.author.equals(currentUsername, ignoreCase = true),
+                                            isAuthor = post.author.equals(currentUsername.removePrefix("@"), ignoreCase = true) ||
+                                                    post.authorUsername.removePrefix("@").equals(currentUsername.removePrefix("@"), ignoreCase = true),
                                             onDelete = { onDeletePost(post.id) }
                                         )
                                     }

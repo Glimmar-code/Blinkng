@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -338,14 +339,16 @@ fun PostCard(
             }
 
             if (post.text.isNotBlank()) {
-                Text(
-                    text = post.text,
-                    color = FeedTextPrimary,
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    maxLines = if (expandedText) Int.MAX_VALUE else 7,
-                    overflow = TextOverflow.Ellipsis
-                )
+                SelectionContainer {
+                    Text(
+                        text = post.text,
+                        color = FeedTextPrimary,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        maxLines = if (expandedText) Int.MAX_VALUE else 7,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 if (post.text.length > 320) {
                     Text(
                         text = if (expandedText) "Show less" else "See more",
@@ -471,13 +474,15 @@ fun PostCard(
                     description = "Comment",
                     onClick = onComment
                 )
-                PremiumPostAction(
-                    icon = Icons.Default.Repeat,
-                    value = formatNumber(post.repostsCount),
-                    tint = repostTint,
-                    description = if (post.isRepostedByMe) "Undo repost" else "Repost",
-                    onClick = onRepost
-                )
+                if (!isAuthor) {
+                    PremiumPostAction(
+                        icon = Icons.Default.Repeat,
+                        value = formatNumber(post.repostsCount),
+                        tint = repostTint,
+                        description = if (post.isRepostedByMe) "Undo repost" else "Repost",
+                        onClick = onRepost
+                    )
+                }
                 PremiumPostAction(
                     icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                     value = "Save",

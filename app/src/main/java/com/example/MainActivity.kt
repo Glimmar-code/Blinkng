@@ -568,6 +568,7 @@ fun MainAppContent(
                 uiState.activeCommentsPostId == null &&
                 uiState.deepLinkedPost == null &&
                 !uiState.isMenuOpen &&
+                !(uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1) &&
                 isBottomBarVisibleByScroll
 
         androidx.compose.animation.AnimatedVisibility(

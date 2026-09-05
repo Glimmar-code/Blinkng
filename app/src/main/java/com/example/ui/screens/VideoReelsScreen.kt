@@ -352,8 +352,9 @@ private fun ReelsLoadingSkeleton() {
         // Action rail skeleton
         Column(
             modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = 14.dp, bottom = 46.dp),
+                .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
+                .padding(end = 12.dp, bottom = 34.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(Modifier.size(52.dp).shimmerBackground(CircleShape, base, highlight))
@@ -537,9 +538,9 @@ private fun ReelPage(
 
         Column(
             Modifier
-                .align(Alignment.CenterEnd)
+                .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
-                .padding(end = 8.dp, bottom = 64.dp)
+                .padding(end = 10.dp, bottom = 34.dp)
                 .entranceEffect(delayMillis = 60),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
