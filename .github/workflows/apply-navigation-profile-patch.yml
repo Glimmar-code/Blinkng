@@ -1,0 +1,147 @@
+name: Apply navigation profile patch
+
+on:
+  push:
+    branches:
+      - fix/feed-discover-follow-navigation
+    paths:
+      - .github/workflows/apply-navigation-profile-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/feed-discover-follow-navigation
+          fetch-depth: 0
+
+      - name: Patch Compose navigation and profile state
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if new in text:
+                  return text
+              if old not in text:
+                  raise SystemExit(f"Missing patch anchor: {label}")
+              return text.replace(old, new, 1)
+
+          # ---- Profile: 95% overlay, premium swipe-back, persisted follow state ----
+          p = Path("app/src/main/java/com/example/ui/screens/ProfileScreen.kt")
+          s = p.read_text()
+          s = replace_once(s,
+              "import androidx.compose.foundation.clickable\n",
+              "import androidx.compose.foundation.clickable\nimport androidx.compose.foundation.gestures.detectHorizontalDragGestures\n",
+              "profile gesture import")
+          s = replace_once(s,
+              "import androidx.compose.ui.draw.scale\n",
+              "import androidx.compose.ui.draw.scale\nimport androidx.compose.ui.draw.shadow\n",
+              "profile shadow import")
+          s = replace_once(s,
+              "import androidx.compose.ui.platform.LocalDensity\n",
+              "import androidx.compose.ui.platform.LocalDensity\nimport androidx.compose.ui.input.pointer.pointerInput\n",
+              "profile pointer import")
+          s = replace_once(s,
+              "import androidx.compose.ui.unit.Dp\n",
+              "import androidx.compose.ui.unit.Dp\nimport androidx.compose.ui.unit.IntOffset\n",
+              "profile IntOffset import")
+          s = replace_once(s,
+              "import com.example.data.models.VerificationBadge\n",
+              "import com.example.data.models.VerificationBadge\nimport com.example.data.repository.FollowStateStore\n",
+              "follow store import")
+          s = replace_once(s,
+              "import kotlinx.coroutines.delay\n",
+              "import kotlinx.coroutines.delay\nimport kotlinx.coroutines.launch\n",
+              "profile launch import")
+
+          s = replace_once(s,
+              "    var selectedTab by rememberSaveable { mutableIntStateOf(0) }\n    var isFollowing by rememberSaveable { mutableStateOf(false) }\n",
+              "    var selectedTab by rememberSaveable { mutableIntStateOf(0) }\n    val followingIds by FollowStateStore.followingIds.collectAsState()\n    val isFollowing = !isMe && profile.id.isNotBlank() && profile.id in followingIds\n    var followBusy by remember(profile.id) { mutableStateOf(false) }\n    val overlayOffset = remember(profile.id) { Animatable(0f) }\n    val overlayScope = rememberCoroutineScope()\n    val overlayThresholdPx = with(LocalDensity.current) { 88.dp.toPx() }\n",
+              "profile follow state")
+
+          s = replace_once(s,
+              "    // Entrance choreography — content reveals itself once, on first composition.\n",
+              "    LaunchedEffect(profile.id, isMe) {\n        if (!isMe && profile.id.isNotBlank()) FollowStateStore.refresh()\n    }\n\n    // Entrance choreography — content reveals itself once, on first composition.\n",
+              "follow refresh")
+
+          s = replace_once(s,
+              "    Surface(\n        modifier = Modifier.fillMaxSize().testTag(\"profile_screen\"),\n        color = bgColor\n    ) {\n        Box(modifier = Modifier.fillMaxSize()) {\n",
+              "    Box(modifier = Modifier.fillMaxSize()) {\n        Surface(\n            modifier = Modifier\n                .align(Alignment.CenterEnd)\n                .fillMaxWidth(0.95f)\n                .fillMaxHeight()\n                .offset { IntOffset(overlayOffset.value.roundToInt(), 0) }\n                .shadow(24.dp, RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp), clip = false)\n                .pointerInput(profile.id) {\n                    detectHorizontalDragGestures(\n                        onHorizontalDrag = { change, dragAmount ->\n                            change.consume()\n                            overlayScope.launch {\n                                overlayOffset.snapTo((overlayOffset.value + dragAmount).coerceAtLeast(0f))\n                            }\n                        },\n                        onDragEnd = {\n                            overlayScope.launch {\n                                if (overlayOffset.value >= overlayThresholdPx) {\n                                    onBack()\n                                } else {\n                                    overlayOffset.animateTo(\n                                        0f,\n                                        spring(\n                                            dampingRatio = Spring.DampingRatioMediumBouncy,\n                                            stiffness = Spring.StiffnessMediumLow\n                                        )\n                                    )\n                                }\n                            }\n                        },\n                        onDragCancel = {\n                            overlayScope.launch {\n                                overlayOffset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))\n                            }\n                        }\n                    )\n                }\n                .testTag(\"profile_screen\"),\n            shape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),\n            color = bgColor\n        ) {\n            Box(modifier = Modifier.fillMaxSize()) {\n",
+              "profile overlay root")
+
+          s = replace_once(s,
+              "                                            onClick = {\n                                                isFollowing = !isFollowing\n                                                onFollowChanged(isFollowing)\n                                            },\n",
+              "                                            onClick = {\n                                                if (!followBusy && profile.id.isNotBlank()) {\n                                                    val desired = !isFollowing\n                                                    followBusy = true\n                                                    overlayScope.launch {\n                                                        val saved = FollowStateStore.setFollowing(profile.id, desired)\n                                                        followBusy = false\n                                                        if (saved) onFollowChanged(desired)\n                                                    }\n                                                }\n                                            },\n",
+              "follow button action")
+
+          s = replace_once(s,
+              "                                    text = if (isFollowing) \"Following\" else \"Follow\",\n",
+              "                                    text = if (followBusy) \"Updating\" else if (isFollowing) \"Following\" else \"Follow\",\n",
+              "follow button text") if "text = if (isFollowing) \"Following\" else \"Follow\"" in s else s
+
+          s = s.replace(
+              "                                    title = if (isFollowing) \"Following\" else \"Follow\",",
+              "                                    title = if (followBusy) \"Updating\" else if (isFollowing) \"Following\" else \"Follow\",",
+              1
+          )
+
+          s = s.replace(
+              "                                    value = profile.followerCount + if (isFollowing) 1 else 0,",
+              "                                    value = profile.followerCount,",
+              1
+          )
+
+          s = replace_once(s,
+              "        }\n    }\n\n    // ================================================================\n    // AVATAR VIEWER\n",
+              "        }\n    }\n    }\n\n    // ================================================================\n    // AVATAR VIEWER\n",
+              "profile overlay close")
+          p.write_text(s)
+
+          # ---- Feed: compile imports + active presence heartbeat ----
+          p = Path("app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt")
+          s = p.read_text()
+          s = replace_once(s,
+              "import androidx.compose.foundation.lazy.LazyColumn\n",
+              "import androidx.compose.foundation.lazy.LazyColumn\nimport androidx.compose.foundation.lazy.items\n",
+              "lazy items import")
+          s = replace_once(s,
+              "import com.example.data.repository.FollowStateStore\n",
+              "import com.example.data.repository.FollowStateStore\nimport com.example.data.supabase.SupabaseService\n",
+              "presence service import")
+          s = replace_once(s,
+              "import kotlinx.coroutines.flow.collectLatest\n",
+              "import kotlinx.coroutines.flow.collectLatest\nimport kotlinx.coroutines.isActive\n",
+              "isActive import")
+          s = replace_once(s,
+              "    val followingIds by FollowStateStore.followingIds.collectAsState()\n\n    LaunchedEffect(currentUsername) {\n        if (currentUsername.isNotBlank()) FollowStateStore.refresh()\n    }\n",
+              "    val followingIds by FollowStateStore.followingIds.collectAsState()\n    val presenceService = remember { SupabaseService() }\n\n    LaunchedEffect(currentUsername) {\n        if (currentUsername.isNotBlank()) FollowStateStore.refresh()\n        while (isActive && currentUsername.isNotBlank()) {\n            runCatching { presenceService.setMyPresence(true) }\n            delay(60_000)\n        }\n    }\n",
+              "presence heartbeat")
+          p.write_text(s)
+
+          # ---- Search: don't steal horizontal swipe inside people cards ----
+          p = Path("app/src/main/java/com/example/ui/screens/SearchScreen.kt")
+          s = p.read_text()
+          s = s.replace(
+              ".width(150.dp)\n                                        .clip(RoundedCornerShape(20.dp))\n                                        .background(FeedCardSurface)\n                                        .pointerInput(person.username) {\n                                            detectHorizontalDragGestures { _, _ -> }\n                                        }\n                                        .then(\n                                            Modifier\n                                        )",
+              ".width(150.dp)",
+              1
+          )
+          p.write_text(s)
+
+      - name: Commit patched files
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Patch already applied"
+            exit 0
+          fi
+          git config user.name "Blink CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/screens/ProfileScreen.kt app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt app/src/main/java/com/example/ui/screens/SearchScreen.kt
+          git commit -m "Finish premium swipe navigation and follow state"
+          git push origin HEAD:fix/feed-discover-follow-navigation
