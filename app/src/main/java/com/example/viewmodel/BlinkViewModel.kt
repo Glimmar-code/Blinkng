@@ -2050,9 +2050,34 @@ private suspend fun restoreSupabaseSession() {
 
     private fun handleIncomingRealtimeMessage(msg: ChatMessage) {
         val myId = supabaseService.getCurrentUserId().orEmpty()
-        if (msg.isFromMe || (myId.isNotBlank() && msg.senderId == myId)) return
+        val isMine = msg.isFromMe || (myId.isNotBlank() && msg.senderId == myId)
+        if (isMine) {
+            val state = _uiState.value
+            var changed = false
+            val updated = state.conversations.map { conversation ->
+                var messageChanged = false
+                val messages = conversation.messages.map { existing ->
+                    if (existing.id == msg.id && msg.id.isNotBlank()) {
+                        messageChanged = true
+                        existing.copy(status = msg.status, isRead = msg.isRead)
+                    } else existing
+                }.toMutableList()
+                if (messageChanged) {
+                    changed = true
+                    conversation.copy(messages = messages)
+                } else conversation
+            }
+            if (changed) {
+                _uiState.value = state.copy(conversations = updated)
+                persistConversations()
+            }
+            return
+        }
 
         viewModelScope.launch {
+            if (msg.id.isNotBlank()) {
+                runCatching { chatRepository.markMessageDelivered(msg.id) }
+            }
             val initial = _uiState.value
             var senderProfile = initial.profiles.firstOrNull { it.id == msg.senderId }
             if (senderProfile == null && msg.senderId.isNotBlank()) {

@@ -4276,9 +4276,25 @@ private fun MessageRow(
                             }
                             MessageStatus.SENT -> {
                                 Icon(
+                                    imageVector = Icons.Default.Done,
+                                    contentDescription = "Sent",
+                                    tint = Color.White.copy(alpha = 0.80f),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                            MessageStatus.DELIVERED -> {
+                                Icon(
                                     imageVector = Icons.Default.DoneAll,
-                                    contentDescription = if (message.isRead) "Read" else "Sent",
-                                    tint = if (message.isRead) Color(0xFF40C4FF) else Color.White.copy(alpha = 0.80f),
+                                    contentDescription = "Delivered",
+                                    tint = Color.White.copy(alpha = 0.80f),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                            MessageStatus.READ -> {
+                                Icon(
+                                    imageVector = Icons.Default.DoneAll,
+                                    contentDescription = "Read",
+                                    tint = Color(0xFF40C4FF),
                                     modifier = Modifier.size(12.dp)
                                 )
                             }

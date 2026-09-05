@@ -111,7 +111,12 @@ class ChatRepository(
                             timestamp = formatMessageTime(o.optString("created_at")),
                             isFromMe = o.optString("sender_id") == uid,
                             isRead = o.optBoolean("is_read", false),
-                            status = MessageStatus.SENT,
+                            status = when {
+                                o.optBoolean("is_read", false) ||
+                                    o.optString("read_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.READ
+                                o.optString("delivered_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.DELIVERED
+                                else -> MessageStatus.SENT
+                            },
                             isVoiceNote = mediaType.equals("voice", true) || mediaType.equals("audio", true),
                             attachedImageUrl = mediaUrl.takeIf { mediaType.equals("image", true) },
                             attachedVideoUrl = mediaUrl.takeIf { mediaType.equals("video", true) }
@@ -243,7 +248,48 @@ class ChatRepository(
         }
     }
 
-    suspend fun markConversationRead(partnerUsername: String): Boolean = withContext(Dispatchers.IO) {
-        supabaseService.markMessagesRead(partnerUsername)
+    suspend fun markMessageDelivered(messageId: String): Boolean {
+        val cleanId = messageId.trim()
+        if (cleanId.isBlank() || cleanId.startsWith("temp_")) return false
+        return callReceiptRpc(
+            name = "ack_message_delivered",
+            body = JSONObject().put("p_message_id", cleanId)
+        )
+    }
+
+    suspend fun markConversationRead(partnerUsername: String): Boolean {
+        val clean = partnerUsername.trim().removePrefix("@")
+        if (clean.isBlank()) return false
+        return callReceiptRpc(
+            name = "mark_conversation_read",
+            body = JSONObject().put("p_partner_username", clean)
+        )
+    }
+
+    private suspend fun callReceiptRpc(name: String, body: JSONObject): Boolean = withContext(Dispatchers.IO) {
+        try {
+            var token = SupabaseService.accessToken() ?: return@withContext false
+
+            fun request(currentToken: String): okhttp3.Response = client.newCall(
+                Request.Builder()
+                    .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/$name")
+                    .addHeader("apikey", SupabaseConfig.anonKey)
+                    .addHeader("Authorization", "Bearer $currentToken")
+                    .addHeader("Content-Type", "application/json")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).execute()
+
+            var response = request(token)
+            if (response.code == 401) {
+                response.close()
+                if (!refreshSession()) return@withContext false
+                token = SupabaseService.accessToken() ?: return@withContext false
+                response = request(token)
+            }
+            response.use { it.isSuccessful }
+        } catch (_: Exception) {
+            false
+        }
     }
 }

@@ -723,7 +723,11 @@ fun MainAppContent(
                     userMarketItems = userMarketItems,
                     onBack = { viewModel.closeProfile() },
                     onEditProfileClick = { viewModel.openEditProfile(true) },
-                    onDirectMessage = { partner -> viewModel.openChatWithUser(partner) },
+                    onDirectMessage = { partner ->
+                        viewModel.closeProfile()
+                        viewModel.setTab(MainTab.MESSAGES)
+                        viewModel.openChatWithUser(partner, profile.fullName, profile.avatarUrl)
+                    },
                     onEndorseSkill = { skill -> viewModel.endorseSkill(skill) },
                     onLikePost = { viewModel.togglePostLike(it) },
                     onCommentPost = { viewModel.openCommentsForPost(it) },

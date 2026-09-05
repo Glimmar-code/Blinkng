@@ -1054,14 +1054,30 @@ private fun MessageBubble(
             val metadata = when (message.status) {
                 MessageStatus.SENDING -> "Sending…"
                 MessageStatus.FAILED -> "Failed • tap to retry"
-                MessageStatus.SENT -> message.timestamp
+                MessageStatus.SENT, MessageStatus.DELIVERED, MessageStatus.READ -> message.timestamp
             }
-            Text(
-                metadata,
-                color = if (message.status == MessageStatus.FAILED) palette.danger else palette.textSecondary,
-                fontSize = 8.sp,
-                fontWeight = FontWeight.Medium
-            )
+            val receipt = if (!isMine) "" else when (message.status) {
+                MessageStatus.SENT -> "✓"
+                MessageStatus.DELIVERED, MessageStatus.READ -> "✓✓"
+                else -> ""
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    metadata,
+                    color = if (message.status == MessageStatus.FAILED) palette.danger else palette.textSecondary,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                if (receipt.isNotBlank()) {
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        receipt,
+                        color = if (message.status == MessageStatus.READ) Color(0xFF3B82F6) else palette.textSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
     }
 }

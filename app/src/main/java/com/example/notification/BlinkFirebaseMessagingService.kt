@@ -3,6 +3,7 @@ package com.example.notification
 import android.content.Context
 import android.util.Log
 import com.example.BuildConfig
+import com.example.data.repository.ChatRepository
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
 import com.google.firebase.FirebaseApp
@@ -137,6 +138,18 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         val sender = data["sender_username"].orEmpty()
         val senderName = data["sender_name"] ?: sender.ifBlank { "Blink" }
         val senderAvatar = data["sender_avatar"].orEmpty()
+        val messageId = data["message_id"].orEmpty()
+
+        if (type.equals("message", ignoreCase = true) && messageId.isNotBlank()) {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching {
+                    SupabaseService.initialize(applicationContext)
+                    ChatRepository().markMessageDelivered(messageId)
+                }.onFailure { error ->
+                    Log.w(TAG, "Unable to acknowledge delivered message $messageId", error)
+                }
+            }
+        }
 
         when {
             type.equals("message", ignoreCase = true) && sender.isNotBlank() -> {

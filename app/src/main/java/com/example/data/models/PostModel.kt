@@ -197,6 +197,8 @@ data class Comment(
 enum class MessageStatus {
     SENDING,
     SENT,
+    DELIVERED,
+    READ,
     FAILED
 }
 
