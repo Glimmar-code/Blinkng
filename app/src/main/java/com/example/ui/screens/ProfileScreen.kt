@@ -836,7 +836,7 @@ fun ProfileScreen(
                         onProfileClick = onProfileClick
                     )
 
-                    5 -> if (isMe) {
+                    4 -> if (isMe) {
                         profilePostItems(
                             keyPrefix = "saved",
                             posts = savedPosts,
@@ -865,7 +865,7 @@ fun ProfileScreen(
                         )
                     }
 
-                    4 -> if (isMe) {
+                    5 -> if (isMe) {
                         profileMarketItems(
                             items = userMarketItems,
                             isDark = isDark,
@@ -1253,7 +1253,7 @@ private fun ProfileReelCard(
                         .background(Color.Black.copy(alpha = 0.18f))
                 )
                 Icon(
-                    Icons.Default.PlayCircleFilled,
+                    Icons.Default.PlayCircle,
                     contentDescription = "Open reel",
                     tint = Color.White,
                     modifier = Modifier.size(42.dp)
