@@ -30,11 +30,18 @@ jobs:
           from pathlib import Path
           import re
 
+          def require_replace(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f'Could not locate {label}')
+              return text.replace(old, new, 1)
+
           chrome_path = Path('app/src/main/java/com/example/ui/components/PremiumFeedChrome.kt')
           chrome = chrome_path.read_text()
-          chrome = chrome.replace(
+          chrome = require_replace(
+              chrome,
               'import androidx.compose.material.icons.filled.MoreVert\n',
-              'import androidx.compose.material.icons.filled.Menu\n'
+              'import androidx.compose.material.icons.filled.Menu\n',
+              'MoreVert import'
           )
 
           top_pattern = re.compile(
@@ -218,122 +225,95 @@ jobs:
 
           chrome, count = top_pattern.subn(top_replacement, chrome, count=1)
           if count != 1:
-              raise SystemExit('Could not locate FeedTopBar block to replace')
+              raise SystemExit('Could not locate FeedTopBar block')
           chrome_path.write_text(chrome)
 
           bottom_path = Path('app/src/main/java/com/example/ui/components/FloatingBottomBar.kt')
           bottom = bottom_path.read_text()
-
-          if 'import androidx.compose.material.icons.filled.Menu\n' not in bottom:
-              bottom = bottom.replace(
-                  'import androidx.compose.material.icons.filled.Home\n',
-                  'import androidx.compose.material.icons.filled.Home\nimport androidx.compose.material.icons.filled.Menu\n'
-              )
-
-          bottom = bottom.replace(
+          bottom = require_replace(
+              bottom,
+              'import androidx.compose.material.icons.filled.Home\n',
+              'import androidx.compose.material.icons.filled.Home\nimport androidx.compose.material.icons.filled.Menu\n',
+              'bottom Menu import anchor'
+          )
+          bottom = require_replace(
+              bottom,
               'private enum class FeedBottomDestination {\n    HOME, CONNECT, LEADERBOARD, MARKET, MESSAGE\n}',
-              'private enum class FeedBottomDestination {\n    HOME, CONNECT, LEADERBOARD, MARKET, MESSAGE, MENU\n}'
+              'private enum class FeedBottomDestination {\n    HOME, CONNECT, LEADERBOARD, MARKET, MESSAGE, MENU\n}',
+              'bottom destination enum'
+          )
+          bottom = require_replace(
+              bottom,
+              '    FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message")\n)',
+              '    FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message"),\n    FeedBottomItem(FeedBottomDestination.MENU, Icons.Filled.Menu, Icons.Filled.Menu, "Menu")\n)',
+              'bottom item list'
+          )
+          bottom = require_replace(
+              bottom,
+              '    onMessageClick: () -> Unit,\n    isDark: Boolean,\n    modifier: Modifier = Modifier\n)',
+              '    onMessageClick: () -> Unit,\n    isDark: Boolean,\n    onMenuClick: () -> Unit = {},\n    isMenuOpen: Boolean = false,\n    modifier: Modifier = Modifier\n)',
+              'FeedBottomBar signature'
+          )
+          bottom = require_replace(
+              bottom,
+              '    val selectedDestination = when {\n',
+              '    val selectedDestination = when {\n        isMenuOpen -> FeedBottomDestination.MENU\n',
+              'bottom selected destination'
           )
 
-          old_items = '''    FeedBottomItem(FeedBottomDestination.MARKET, Icons.Filled.Storefront, Icons.Outlined.Storefront, "Market"),
-              FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message")
-          )'''
-          new_items = '''    FeedBottomItem(FeedBottomDestination.MARKET, Icons.Filled.Storefront, Icons.Outlined.Storefront, "Market"),
-              FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message"),
-              FeedBottomItem(FeedBottomDestination.MENU, Icons.Filled.Menu, Icons.Filled.Menu, "Menu")
-          )'''
-          if old_items not in bottom:
-              raise SystemExit('Could not locate bottom navigation item list')
-          bottom = bottom.replace(old_items, new_items, 1)
-
-          old_signature = '''    onMarketClick: () -> Unit,
-              onMessageClick: () -> Unit,
-              isDark: Boolean,
-              modifier: Modifier = Modifier
-          )'''
-          new_signature = '''    onMarketClick: () -> Unit,
-              onMessageClick: () -> Unit,
-              isDark: Boolean,
-              onMenuClick: () -> Unit = {},
-              isMenuOpen: Boolean = false,
-              modifier: Modifier = Modifier
-          )'''
-          if old_signature not in bottom:
-              raise SystemExit('Could not locate FeedBottomBar signature')
-          bottom = bottom.replace(old_signature, new_signature, 1)
-
-          bottom = bottom.replace(
-              '    val selectedDestination = when {\n        currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT',
-              '    val selectedDestination = when {\n        isMenuOpen -> FeedBottomDestination.MENU\n        currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT',
-              1
+          bottom, count = re.subn(
+              r'(FeedBottomDestination\.MESSAGE\s*->\s*onMessageClick\(\))',
+              r'\1\n                                FeedBottomDestination.MENU -> onMenuClick()',
+              bottom,
+              count=1,
           )
-
-          old_switch = '''                                FeedBottomDestination.MARKET -> onMarketClick()
-                                      FeedBottomDestination.MESSAGE -> onMessageClick()
-                                  }'''
-          new_switch = '''                                FeedBottomDestination.MARKET -> onMarketClick()
-                                      FeedBottomDestination.MESSAGE -> onMessageClick()
-                                      FeedBottomDestination.MENU -> onMenuClick()
-                                  }'''
-          if old_switch not in bottom:
+          if count != 1:
               raise SystemExit('Could not locate bottom navigation click switch')
-          bottom = bottom.replace(old_switch, new_switch, 1)
 
-          old_wrapper_sig = '''    currentTab: MainTab,
-              onTabSelected: (MainTab) -> Unit,
-              isDark: Boolean,
-              modifier: Modifier = Modifier
-          )'''
-          new_wrapper_sig = '''    currentTab: MainTab,
-              onTabSelected: (MainTab) -> Unit,
-              isDark: Boolean,
-              onMenuClick: () -> Unit = {},
-              modifier: Modifier = Modifier
-          )'''
-          if old_wrapper_sig not in bottom:
-              raise SystemExit('Could not locate FloatingBottomBar compatibility signature')
-          bottom = bottom.replace(old_wrapper_sig, new_wrapper_sig, 1)
-
-          old_wrapper_call = '''        onMarketClick = { onTabSelected(MainTab.MARKET) },
-                  onMessageClick = { onTabSelected(MainTab.MESSAGES) },
-                  isDark = isDark,'''
-          new_wrapper_call = '''        onMarketClick = { onTabSelected(MainTab.MARKET) },
-                  onMessageClick = { onTabSelected(MainTab.MESSAGES) },
-                  isDark = isDark,
-                  onMenuClick = onMenuClick,'''
-          if old_wrapper_call not in bottom:
-              raise SystemExit('Could not locate FloatingBottomBar compatibility call')
-          bottom = bottom.replace(old_wrapper_call, new_wrapper_call, 1)
+          bottom = require_replace(
+              bottom,
+              '    currentTab: MainTab,\n    onTabSelected: (MainTab) -> Unit,\n    isDark: Boolean,\n    modifier: Modifier = Modifier\n)',
+              '    currentTab: MainTab,\n    onTabSelected: (MainTab) -> Unit,\n    isDark: Boolean,\n    onMenuClick: () -> Unit = {},\n    modifier: Modifier = Modifier\n)',
+              'FloatingBottomBar wrapper signature'
+          )
+          bottom = require_replace(
+              bottom,
+              '        onMessageClick = { onTabSelected(MainTab.MESSAGES) },\n        isDark = isDark,',
+              '        onMessageClick = { onTabSelected(MainTab.MESSAGES) },\n        isDark = isDark,\n        onMenuClick = onMenuClick,',
+              'FloatingBottomBar wrapper call'
+          )
           bottom_path.write_text(bottom)
 
           main_path = Path('app/src/main/java/com/example/MainActivity.kt')
           main = main_path.read_text()
-          old_main = '''                onMessageClick = {
-                              isBottomBarVisibleByScroll = true
-                              viewModel.setTab(MainTab.MESSAGES)
-                          },
-                          isDark = uiState.isDarkMode
-                      )'''
-          new_main = '''                onMessageClick = {
-                              isBottomBarVisibleByScroll = true
-                              viewModel.setTab(MainTab.MESSAGES)
-                          },
-                          isDark = uiState.isDarkMode,
-                          onMenuClick = {
-                              isBottomBarVisibleByScroll = true
-                              viewModel.openMenu(true)
-                          },
-                          isMenuOpen = uiState.isMenuOpen
-                      )'''
-          if old_main not in main:
-              raise SystemExit('Could not locate MainActivity bottom navigation wiring')
-          main = main.replace(old_main, new_main, 1)
+          main = require_replace(
+              main,
+              '''                onMessageClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.setTab(MainTab.MESSAGES)
+                },
+                isDark = uiState.isDarkMode
+            )''',
+              '''                onMessageClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.setTab(MainTab.MESSAGES)
+                },
+                isDark = uiState.isDarkMode,
+                onMenuClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.openMenu(true)
+                },
+                isMenuOpen = uiState.isMenuOpen
+            )''',
+              'MainActivity bottom navigation wiring'
+          )
           main_path.write_text(main)
 
       - name: Validate patch
         shell: bash
         run: |
           git diff --check
+          ! grep -q 'text = "B"' app/src/main/java/com/example/ui/components/PremiumFeedChrome.kt
           grep -q 'Icons.Default.Menu' app/src/main/java/com/example/ui/components/PremiumFeedChrome.kt
           grep -q 'FeedBottomDestination.MENU' app/src/main/java/com/example/ui/components/FloatingBottomBar.kt
           grep -q 'isMenuOpen = uiState.isMenuOpen' app/src/main/java/com/example/MainActivity.kt
