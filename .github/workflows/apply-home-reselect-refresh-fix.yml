@@ -21,6 +21,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Sync latest main
+        run: git pull --ff-only origin main
+
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
@@ -39,7 +42,7 @@ jobs:
       - name: Compile Kotlin
         run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
 
-      - name: Commit source fixes
+      - name: Commit and safely land source fixes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -51,4 +54,24 @@ jobs:
             exit 0
           fi
           git commit -m "fix: make Home reselect fast and predictable"
-          git push origin main
+
+          for attempt in 1 2 3; do
+            echo "Landing attempt ${attempt}/3"
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "A newer change conflicts with this Home fix; refusing to overwrite it."
+              exit 1
+            fi
+
+            # Revalidate after rebasing onto any source changes that landed while this ran.
+            gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "main kept moving after three validated attempts; refusing a force push."
+          exit 1
