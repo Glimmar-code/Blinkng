@@ -626,9 +626,53 @@ fun MainAppContent(
                 feedSubTab = uiState.feedSubTab,
                 onHomeClick = {
                     isBottomBarVisibleByScroll = true
-                    if (uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0) {
+
+                    // A Home reselect is only valid when the user is actually looking at
+                    // the main Home feed. Profiles, comments, menus, chats, reels/game,
+                    // and every other surface must navigate Home without refreshing it.
+                    val isHomeFeedSurface =
+                        uiState.selectedTab == MainTab.HOME &&
+                            uiState.feedSubTab == 0 &&
+                            uiState.viewingProduct == null &&
+                            uiState.viewingProfile == null &&
+                            !uiState.isPostItemOpen &&
+                            !uiState.isBecomeSellerOpen &&
+                            !uiState.isEditProfileOpen &&
+                            !uiState.isMenuOpen &&
+                            uiState.activeConversationPartner == null &&
+                            !uiState.isConversationFullScreen &&
+                            uiState.activePostOptionsPost == null &&
+                            uiState.activeCommentsPostId == null &&
+                            !uiState.isActivityOpen &&
+                            !uiState.isGetVerifiedOpen &&
+                            !uiState.isCreatePostOpen &&
+                            !uiState.isCreateStoryOpen &&
+                            uiState.activeViewingStory == null &&
+                            !uiState.showSellerCongratulationsDialog &&
+                            uiState.deepLinkedPost == null
+
+                    if (isHomeFeedSurface) {
                         homeReselectSignal++
                     } else {
+                        // Bottom-nav Home behaves as navigation, not as a hidden refresh.
+                        // Close any transient surface that can sit above a main tab first.
+                        if (uiState.deepLinkedPost != null) viewModel.closeDeepLinkedPost()
+                        if (uiState.activePostOptionsPost != null) viewModel.openPostOptions(null)
+                        if (uiState.activeCommentsPostId != null) viewModel.openCommentsForPost(null)
+                        if (uiState.isMenuOpen) viewModel.openMenu(false)
+                        if (uiState.isEditProfileOpen) viewModel.openEditProfile(false)
+                        if (uiState.isBecomeSellerOpen) viewModel.openBecomeSeller(false)
+                        if (uiState.isPostItemOpen) viewModel.openPostItem(false)
+                        if (uiState.isActivityOpen) viewModel.openActivity(false)
+                        if (uiState.activeConversationPartner != null) viewModel.closeConversation()
+                        if (uiState.viewingProfile != null) viewModel.closeProfile()
+                        if (uiState.viewingProduct != null) viewModel.closeProductDetail()
+                        if (uiState.isGetVerifiedOpen) viewModel.openGetVerified(false)
+                        if (uiState.isCreatePostOpen) viewModel.openCreatePost(false)
+                        if (uiState.isCreateStoryOpen) viewModel.openCreateStory(false)
+                        if (uiState.activeViewingStory != null) viewModel.closeStory()
+                        if (uiState.showSellerCongratulationsDialog) viewModel.dismissSellerCongratulations()
+
                         viewModel.setTab(MainTab.HOME)
                         viewModel.setFeedSubTab(0)
                     }

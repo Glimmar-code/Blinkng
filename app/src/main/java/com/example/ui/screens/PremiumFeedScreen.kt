@@ -528,13 +528,12 @@ private fun PremiumHomeFeed(
 
     LaunchedEffect(homeReselectSignal) {
         if (homeReselectSignal > 0) {
-            onLaneChanged(0)
-            filter = PremiumFeedFilter.ALL
-            if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
-                // Avoid animating through hundreds of composed rows when the user is deep
-                // in the feed. Jump near the top, then animate only the final short distance.
-                if (listState.firstVisibleItemIndex > 8) listState.scrollToItem(8)
-                listState.animateScrollToItem(0)
+            // Home-on-Home is intentionally lightweight:
+            // - about ten posts deep or farther: return to the first post instantly;
+            // - still within the first ten posts: keep position and refresh in place.
+            // Do not reset the user's For You/Following lane or active feed filter.
+            if (listState.firstVisibleItemIndex >= 10) {
+                listState.scrollToItem(0)
             } else {
                 onRefresh()
             }

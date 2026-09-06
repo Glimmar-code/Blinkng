@@ -49,6 +49,7 @@ fun Modifier.shimmerBackground(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("UNUSED_PARAMETER")
 fun PremiumPullRefreshIndicator(
     state: PullToRefreshState,
     isRefreshing: Boolean,
@@ -57,72 +58,36 @@ fun PremiumPullRefreshIndicator(
     refreshingLabel: String = "Updating your feed"
 ) {
     val progress = state.distanceFraction.coerceIn(0f, 1f)
-    val refreshThresholdPx = with(LocalDensity.current) { 80.dp.toPx() }
-    val shimmerOffset = if (isRefreshing) {
-        val transition = rememberInfiniteTransition(label = "refreshShimmer")
-        transition.animateFloat(
-            initialValue = -90f,
-            targetValue = 190f,
-            animationSpec = infiniteRepeatable(tween(1_100, easing = LinearEasing)),
-            label = "refreshShimmerOffset"
-        ).value
-    } else {
-        -70f + (progress * 240f)
-    }
+    val visualProgress = if (isRefreshing) 1f else progress
+    val refreshThresholdPx = with(LocalDensity.current) { 54.dp.toPx() }
 
+    // Keep refresh visually quiet and familiar: a single Chrome-style rolling circle.
+    // No text pill, shimmer bar, or long entrance/exit animation.
     AnimatedVisibility(
         visible = isRefreshing || progress > 0.04f,
         modifier = modifier,
-        enter = fadeIn(tween(140)) + scaleIn(tween(200, easing = FastOutSlowInEasing)),
-        exit = fadeOut(tween(140)) + scaleOut(tween(160))
+        enter = fadeIn(tween(80)),
+        exit = fadeOut(tween(80))
     ) {
-        Surface(
+        Box(
             modifier = Modifier
-                .padding(top = 10.dp)
+                .padding(top = 8.dp)
                 .graphicsLayer {
-                    val visualProgress = if (isRefreshing) 1f else progress
                     translationY = (visualProgress * refreshThresholdPx) - size.height
-                    alpha = visualProgress
-                    scaleX = 0.86f + (visualProgress * 0.14f)
-                    scaleY = 0.86f + (visualProgress * 0.14f)
+                    alpha = visualProgress.coerceIn(0.18f, 1f)
+                    val scale = 0.9f + (visualProgress * 0.1f)
+                    scaleX = scale
+                    scaleY = scale
                 },
-            shape = RoundedCornerShape(100.dp),
-            color = if (darkSurface) Color(0xE61A1A1A) else MaterialTheme.colorScheme.surface.copy(alpha = .96f),
-            shadowElevation = 8.dp
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = when {
-                        isRefreshing -> refreshingLabel
-                        progress >= 1f -> "Release to refresh"
-                        else -> "Pull to refresh"
-                    },
-                    color = if (darkSurface) Color.White else MaterialTheme.colorScheme.onSurface,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(5.dp))
-                Box(
-                    Modifier
-                        .width(74.dp)
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(100.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(
-                                    Color(0xFF7C3AED).copy(alpha = .24f),
-                                    Color(0xFFD946EF),
-                                    Color(0xFF7C3AED).copy(alpha = .24f)
-                                ),
-                                startX = shimmerOffset - 70f,
-                                endX = shimmerOffset
-                            )
-                        )
-                )
-            }
+            androidx.compose.material3.CircularProgressIndicator(
+                modifier = Modifier
+                    .width(22.dp)
+                    .height(22.dp),
+                color = if (darkSurface) Color.White else MaterialTheme.colorScheme.primary,
+                strokeWidth = 2.2.dp
+            )
         }
     }
 }
