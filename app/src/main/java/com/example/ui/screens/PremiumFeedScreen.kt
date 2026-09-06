@@ -124,7 +124,7 @@ private fun buildPremiumHomeRows(
         if (postsSincePreview >= nextGap) {
             // Keep the exact ranked reel order supplied by the existing feed algorithm.
             // Cycling only occurs if the post list is longer than the currently loaded
-            // reel page, and inline autoplay itself never emits a view event.
+            // reel page. View events are still handled by the shared exposure tracker.
             rows += PremiumHomeRow.ReelPreviewRow(
                 reel = reels[reelSlot % reels.size],
                 slot = reelSlot
@@ -658,9 +658,9 @@ private fun PremiumHomeFeed(
             }
     }
 
-    // Inline reels use visibility only to control their two-second muted teaser. They are
-    // intentionally excluded from PostImpressionTracker/trackContentExposure, so autoplay
-    // cannot create fake views or alter the existing ranking/view-weight system.
+    // This list-level visibility state only controls two-second muted autoplay. The
+    // preview card itself uses the same qualified exposure tracker as full reels, so genuine
+    // feed encounters follow the existing repeat-view and delayed-reflection algorithm.
     LaunchedEffect(listState, homeRows) {
         snapshotFlow { listState.layoutInfo }
             .collectLatest { layout ->

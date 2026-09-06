@@ -928,8 +928,8 @@ private fun StaticDisc(avatar: String) {
  *
  * It auto-plays muted only while at least half visible, pauses after roughly two
  * seconds of actual video playback, then exposes a play button that opens the
- * full Reels surface at the current playback position. No content-exposure
- * modifier is attached here, so the teaser cannot create a view by itself.
+ * full Reels surface at the current playback position. The card uses the same
+ * qualified-visibility exposure tracker as the rest of the app.
  */
 @Composable
 internal fun InlineReelPreviewCard(
@@ -942,6 +942,7 @@ internal fun InlineReelPreviewCard(
     var previewFinished by remember(reel.id) { mutableStateOf(false) }
     var previewPositionMs by remember(reel.id) { mutableStateOf(0L) }
     var isBuffering by remember(reel.id) { mutableStateOf(false) }
+    val displayedViewsCount = rememberDelayedContentViewCount(reel.id, reel.viewsCount)
 
     LaunchedEffect(isActive, reel.id) {
         if (!isActive) {
@@ -954,7 +955,8 @@ internal fun InlineReelPreviewCard(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(9f / 16f),
+            .aspectRatio(9f / 16f)
+            .trackContentExposure(reel.id, displayedViewsCount),
         shape = RoundedCornerShape(22.dp),
         color = Color.Black,
         tonalElevation = 0.dp
