@@ -5,13 +5,13 @@ import org.junit.Test
 
 class MessageThemeModeTest {
     @Test
-    fun missingPreferenceDefaultsToPink() {
-        assertEquals(MessageThemeMode.PINK, MessageThemeMode.fromStorage(null))
+    fun missingPreferenceDefaultsToDark() {
+        assertEquals(MessageThemeMode.DARK, MessageThemeMode.fromStorage(null))
     }
 
     @Test
-    fun invalidPreferenceFallsBackToPink() {
-        assertEquals(MessageThemeMode.PINK, MessageThemeMode.fromStorage("unknown"))
+    fun invalidPreferenceFallsBackToDark() {
+        assertEquals(MessageThemeMode.DARK, MessageThemeMode.fromStorage("unknown"))
     }
 
     @Test

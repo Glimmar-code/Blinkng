@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -46,8 +45,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -57,7 +54,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.ui.theme.FeedBackground
 import com.example.ui.theme.FeedBlue
 import com.example.ui.theme.FeedBorder
 import com.example.ui.theme.FeedElevatedSurface
@@ -110,35 +106,16 @@ fun FeedBottomBar(
         else -> null
     }
     val shape = RoundedCornerShape(34.dp)
-    val navigationBackdrop = if (isDark) FeedBackground else MaterialTheme.colorScheme.background
     val navigationSurface = if (isDark) FeedElevatedSurface else MaterialTheme.colorScheme.surface
     val navigationBorder = if (isDark) FeedBorder else MaterialTheme.colorScheme.outlineVariant
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            // Edge-to-edge content used to remain visible through the navigation-bar inset,
-            // which mixed screen colors with the floating bar and looked like an overlap.
-            // Paint one stable backdrop first so every tab has a clean bottom edge.
-            .background(navigationBackdrop)
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .drawBehind {
-                drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(FeedPurple.copy(alpha = 0.10f), Color.Transparent),
-                        center = Offset(size.width * 0.22f, size.height),
-                        radius = size.width * 0.46f
-                    )
-                )
-                drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(FeedBlue.copy(alpha = 0.08f), Color.Transparent),
-                        center = Offset(size.width * 0.82f, size.height),
-                        radius = size.width * 0.42f
-                    )
-                )
-            },
+            // MainActivity's Scaffold already applies the navigation-bar inset. Keep this
+            // wrapper transparent so the active screen remains visible around the floating
+            // pill instead of creating a second black rectangle below the app.
+            .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 4.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(
@@ -147,13 +124,13 @@ fun FeedBottomBar(
             // Keep the actual nav surface opaque so content beneath it cannot tint the bar.
             color = navigationSurface,
             tonalElevation = 0.dp,
-            shadowElevation = 12.dp,
+            shadowElevation = 10.dp,
             border = BorderStroke(1.dp, navigationBorder)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 7.dp),
+                    .padding(horizontal = 6.dp, vertical = 5.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -206,7 +183,7 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     Column(
         modifier = Modifier
             .weight(1f)
-            .heightIn(min = 64.dp)
+            .heightIn(min = 60.dp)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,

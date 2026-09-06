@@ -12,12 +12,12 @@ import androidx.compose.ui.graphics.Color
 /** Independent appearance modes for the messaging experience. */
 enum class MessageThemeMode(val storageValue: String, val displayName: String) {
     PINK("pink", "Pink"),
-    DARK("dark", "Dark"),
+    DARK("dark", "Black"),
     LIGHT("light", "Light");
 
     companion object {
         fun fromStorage(value: String?): MessageThemeMode =
-            entries.firstOrNull { it.storageValue.equals(value, ignoreCase = true) } ?: PINK
+            entries.firstOrNull { it.storageValue.equals(value, ignoreCase = true) } ?: DARK
     }
 }
 
@@ -75,19 +75,19 @@ private val PinkMessagePalette = MessagePalette(
 
 private val DarkMessagePalette = MessagePalette(
     mode = MessageThemeMode.DARK,
-    backgroundTop = Color(0xFF151720),
-    backgroundMiddle = Color(0xFF090A0F),
-    backgroundBottom = Color(0xFF05060B),
-    glass = Color(0xFF10131A),
-    glassElevated = Color(0xFF191E2C),
-    border = Color(0xFF353B4C),
-    accent = Color(0xFF8B5CF6),
-    accentSecondary = Color(0xFF6D28D9),
-    textPrimary = Color(0xFFF7F5FF),
-    textSecondary = Color(0xFFAAA9BD),
-    textMuted = Color(0xFF777A91),
-    incomingBubble = Color(0xFF202431),
-    outgoingBubble = Color(0xFF7C3AED),
+    backgroundTop = Color(0xFF08090F),
+    backgroundMiddle = Color(0xFF030408),
+    backgroundBottom = Color(0xFF000000),
+    glass = Color(0xFF0A0D13),
+    glassElevated = Color(0xFF111620),
+    border = Color(0xFF252B38),
+    accent = Color(0xFF9B6CFF),
+    accentSecondary = Color(0xFF3B82F6),
+    textPrimary = Color(0xFFF8F7FF),
+    textSecondary = Color(0xFFB7B5C8),
+    textMuted = Color(0xFF777B8E),
+    incomingBubble = Color(0xFF171B24),
+    outgoingBubble = Color(0xFF6D3FEF),
     outgoingText = Color.White
 )
 

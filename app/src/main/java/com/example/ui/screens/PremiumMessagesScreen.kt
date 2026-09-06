@@ -24,6 +24,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
@@ -659,6 +660,8 @@ private fun PremiumMessagesHome(
         }
     }
     val startVoiceSearch = rememberSpeechInput { result -> query = result }
+    var entered by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { entered = true }
 
     MessageBackground(palette) {
         Column(
@@ -673,21 +676,41 @@ private fun PremiumMessagesHome(
                 onMore = onOpenAppearance
             )
 
-            SearchMatchesField(
-                value = query,
-                onValueChange = { query = it },
-                onVoiceSearch = startVoiceSearch,
-                palette = palette
-            )
+            AnimatedVisibility(
+                visible = entered,
+                enter = fadeIn(tween(durationMillis = 320)) + slideInVertically(
+                    initialOffsetY = { -it / 4 },
+                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                )
+            ) {
+                SearchMatchesField(
+                    value = query,
+                    onValueChange = { query = it },
+                    onVoiceSearch = startVoiceSearch,
+                    palette = palette
+                )
+            }
 
-            MatchesRail(
-                conversations = conversations,
-                stories = stories,
-                palette = palette,
-                onAddStoryClick = onAddStoryClick,
-                onOpenConversation = onOpenConversation,
-                onStoryClick = onStoryClick
-            )
+            AnimatedVisibility(
+                visible = entered,
+                enter = fadeIn(tween(durationMillis = 380, delayMillis = 45)) + slideInVertically(
+                    initialOffsetY = { it / 5 },
+                    animationSpec = tween(
+                        durationMillis = 380,
+                        delayMillis = 45,
+                        easing = FastOutSlowInEasing
+                    )
+                )
+            ) {
+                MatchesRail(
+                    conversations = conversations,
+                    stories = stories,
+                    palette = palette,
+                    onAddStoryClick = onAddStoryClick,
+                    onOpenConversation = onOpenConversation,
+                    onStoryClick = onStoryClick
+                )
+            }
 
             Text(
                 text = "Chats",
@@ -701,13 +724,26 @@ private fun PremiumMessagesHome(
                 OfflineNotice(palette)
             }
 
-            ConversationList(
-                conversations = filteredConversations,
-                palette = palette,
-                onOpenConversation = onOpenConversation,
-                onProfileClick = onProfileClick,
-                modifier = Modifier.weight(1f)
-            )
+            AnimatedVisibility(
+                visible = entered,
+                modifier = Modifier.weight(1f),
+                enter = fadeIn(tween(durationMillis = 420, delayMillis = 90)) + slideInVertically(
+                    initialOffsetY = { it / 8 },
+                    animationSpec = tween(
+                        durationMillis = 420,
+                        delayMillis = 90,
+                        easing = FastOutSlowInEasing
+                    )
+                )
+            ) {
+                ConversationList(
+                    conversations = filteredConversations,
+                    palette = palette,
+                    onOpenConversation = onOpenConversation,
+                    onProfileClick = onProfileClick,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
 }
@@ -729,11 +765,27 @@ private fun MessageBackground(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            palette.accent.copy(alpha = if (palette.isLight) .09f else .20f),
+                            palette.accent.copy(alpha = if (palette.isLight) .09f else .17f),
                             Color.Transparent
                         ),
                         center = Offset(120f, 90f),
                         radius = 720f
+                    )
+                )
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .fillMaxWidth()
+                .fillMaxHeight(.30f)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            palette.accentSecondary.copy(alpha = if (palette.isLight) .05f else .09f),
+                            Color.Transparent
+                        ),
+                        center = Offset(820f, 420f),
+                        radius = 760f
                     )
                 )
         )
@@ -1035,12 +1087,12 @@ private fun ConversationCard(
     Surface(
         color = palette.glassElevated.copy(alpha = if (palette.isLight) .88f else .66f),
         contentColor = palette.textPrimary,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         border = BorderStroke(1.dp, palette.border),
-        shadowElevation = if (palette.isLight) 2.dp else 1.dp,
+        shadowElevation = if (palette.isLight) 3.dp else 5.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 76.dp)
+            .heightIn(min = 80.dp)
             .clickable(onClick = onOpen)
     ) {
         Row(
@@ -2074,7 +2126,7 @@ private fun PremiumCallScreen(
             RingAvatar(
                 url = call.conversation.partnerAvatar,
                 name = call.conversation.partnerName,
-                palette = messagePalette(MessageThemeMode.PINK),
+                palette = palette,
                 size = 108.dp,
                 emphasizeRing = true,
                 modifier = Modifier
@@ -2190,7 +2242,7 @@ private fun MessageAppearanceSheet(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("Message appearance", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Text("Pink is the default theme", color = palette.textSecondary, fontSize = 11.sp)
+                Text("Black is the default theme", color = palette.textSecondary, fontSize = 11.sp)
             }
             IconButton(onClick = onDismiss) {
                 Icon(Icons.Default.Close, contentDescription = "Close")
@@ -2303,7 +2355,7 @@ private fun ThemePreviewCard(
             }
             Spacer(Modifier.height(8.dp))
             Text(mode.displayName, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-            if (mode == MessageThemeMode.PINK) {
+            if (mode == MessageThemeMode.DARK) {
                 Text("Default", color = preview.textSecondary, fontSize = 8.sp)
             }
         }
