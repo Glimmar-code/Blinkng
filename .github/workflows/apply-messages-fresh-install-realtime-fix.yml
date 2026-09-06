@@ -1,5 +1,6 @@
 name: Apply messages fresh install realtime fix
 
+# Explicit retrigger after workflow installation.
 on:
   push:
     branches: [main]
