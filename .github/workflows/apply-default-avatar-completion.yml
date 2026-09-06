@@ -66,16 +66,14 @@ jobs:
                   )
 
               patched, count = compact_pattern.subn(compact_replacement, text)
-              if count > 0:
-                  # subn counts already-configured lines too, so only write/import when content changed.
-                  if patched != text:
-                      compact_count += sum(
-                          1 for before, after in zip(text.splitlines(), patched.splitlines())
-                          if before != after and 'AsyncImage(' in before and 'avatar' in before.lower()
-                      )
-                      patched = ensure_import(patched, 'import androidx.compose.ui.res.painterResource')
-                      patched = ensure_import(patched, 'import com.example.R')
-                      path.write_text(patched)
+              if count > 0 and patched != text:
+                  compact_count += sum(
+                      1 for before, after in zip(text.splitlines(), patched.splitlines())
+                      if before != after and 'AsyncImage(' in before and 'avatar' in before.lower()
+                  )
+                  patched = ensure_import(patched, 'import androidx.compose.ui.res.painterResource')
+                  patched = ensure_import(patched, 'import com.example.R')
+                  path.write_text(patched)
 
           # Premium chat uses a reusable avatar helper whose parameter is named `url`,
           # so make its blank and failed-image behavior use the standard user icon.
@@ -124,9 +122,6 @@ jobs:
           grep -q 'painter = painterResource(R.drawable.ic_default_profile)' app/src/main/java/com/example/ui/screens/ActivityScreen.kt
           grep -q 'error=painterResource(R.drawable.ic_default_profile)' app/src/main/java/com/example/ui/screens/LeaderboardScreen.kt
 
-      - name: Compile app
-        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
-
       - name: Push completed avatar coverage
         shell: bash
         run: |
@@ -139,3 +134,6 @@ jobs:
           git add app/src/main/java/com/example
           git commit -m 'Complete default profile avatar coverage'
           git push origin HEAD:main
+
+      - name: Compile app
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
