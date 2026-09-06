@@ -18,7 +18,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +45,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
@@ -77,6 +78,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -381,17 +383,13 @@ fun PostCard(
                         .clip(RoundedCornerShape(18.dp))
                 ) {
                     if (displayImages.size == 1) {
-                        AsyncImage(
-                            model = displayImages.first(),
+                        NaturalAspectPostImage(
+                            imageUrl = displayImages.first(),
                             contentDescription = post.altText?.takeIf(String::isNotBlank) ?: "Post image",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1.45f)
-                                .clickable {
-                                    imagePage = 0
-                                    showImageFullscreen = true
-                                }
+                            onClick = {
+                                imagePage = 0
+                                showImageFullscreen = true
+                            }
                         )
                     } else {
                         val mediaState = rememberLazyListState()
@@ -403,17 +401,14 @@ fun PostCard(
                                 items = displayImages,
                                 key = { _, image -> image }
                             ) { index, image ->
-                                AsyncImage(
-                                    model = image,
+                                NaturalAspectPostImage(
+                                    imageUrl = image,
                                     contentDescription = "Post image ${index + 1} of ${displayImages.size}",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .fillParentMaxWidth()
-                                        .aspectRatio(1.45f)
-                                        .clickable {
-                                            imagePage = index
-                                            showImageFullscreen = true
-                                        }
+                                    modifier = Modifier.fillParentMaxWidth(),
+                                    onClick = {
+                                        imagePage = index
+                                        showImageFullscreen = true
+                                    }
                                 )
                             }
                         }
@@ -709,7 +704,43 @@ private fun RowScope.PremiumPostAction(
     }
 }
 
-/** Tap a feed image to expand it. Drag downward to dismiss. */
+/**
+ * Renders feed media at the uploaded image's own aspect ratio instead of forcing
+ * every post into one crop. The full feed width is preserved while portrait,
+ * square, and landscape images are allowed to use the vertical space they need.
+ */
+@Composable
+private fun NaturalAspectPostImage(
+    imageUrl: String,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    var imageAspectRatio by remember(imageUrl) { mutableFloatStateOf(1f) }
+
+    AsyncImage(
+        model = imageUrl,
+        contentDescription = contentDescription,
+        contentScale = ContentScale.Fit,
+        onSuccess = { state ->
+            val drawable = state.result.drawable
+            val width = drawable.intrinsicWidth
+            val height = drawable.intrinsicHeight
+            if (width > 0 && height > 0) {
+                imageAspectRatio = width.toFloat() / height.toFloat()
+            }
+        },
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(imageAspectRatio.coerceAtLeast(0.01f))
+            .clickable(onClick = onClick)
+    )
+}
+
+/**
+ * Tap a feed image to open it full-screen. Pinch with two fingers to zoom up to
+ * 5x and pan around the enlarged image. Back or the close button exits safely.
+ */
 @Composable
 private fun ImageFullscreenDialog(
     images: List<String>,
@@ -720,7 +751,6 @@ private fun ImageFullscreenDialog(
         initialFirstVisibleItemIndex = initialPage.coerceIn(0, (images.size - 1).coerceAtLeast(0))
     )
     var entered by remember { mutableStateOf(false) }
-    var downwardDrag by remember { mutableFloatStateOf(0f) }
     val scope = rememberCoroutineScope()
 
     fun dismissAnimated() {
@@ -750,40 +780,87 @@ private fun ImageFullscreenDialog(
             )
         ) {
             Surface(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures(
-                            onVerticalDrag = { _, dragAmount ->
-                                downwardDrag = (downwardDrag + dragAmount).coerceAtLeast(0f)
-                                if (downwardDrag > 150f) dismissAnimated()
-                            },
-                            onDragEnd = { downwardDrag = 0f },
-                            onDragCancel = { downwardDrag = 0f }
-                        )
-                    }
-                    .graphicsLayer {
-                        translationY = downwardDrag
-                        alpha = (1f - downwardDrag / 900f).coerceIn(0.72f, 1f)
-                    },
+                modifier = Modifier.fillMaxSize(),
                 color = Color.Black.copy(alpha = 0.97f)
             ) {
-                LazyRow(
-                    state = state,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    itemsIndexed(images, key = { _, image -> image }) { index, image ->
-                        AsyncImage(
-                            model = image,
-                            contentDescription = "Fullscreen image ${index + 1} of ${images.size}",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .fillParentMaxWidth()
-                                .fillMaxHeight()
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyRow(
+                        state = state,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        itemsIndexed(images, key = { _, image -> image }) { index, image ->
+                            ZoomableFullscreenImage(
+                                imageUrl = image,
+                                contentDescription = "Fullscreen image ${index + 1} of ${images.size}",
+                                modifier = Modifier.fillParentMaxWidth()
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = ::dismissAnimated,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 18.dp, end = 14.dp)
+                            .size(48.dp)
+                            .background(Color.Black.copy(alpha = 0.48f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close image",
+                            tint = Color.White,
+                            modifier = Modifier.size(26.dp)
                         )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ZoomableFullscreenImage(
+    imageUrl: String,
+    contentDescription: String,
+    modifier: Modifier = Modifier
+) {
+    var scale by remember(imageUrl) { mutableFloatStateOf(1f) }
+    var offset by remember(imageUrl) { mutableStateOf(Offset.Zero) }
+
+    Box(
+        modifier = modifier
+            .fillMaxHeight(),
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = contentDescription,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(imageUrl) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        val newScale = (scale * zoom).coerceIn(1f, 5f)
+                        val maxX = (size.width * (newScale - 1f)) / 2f
+                        val maxY = (size.height * (newScale - 1f)) / 2f
+
+                        scale = newScale
+                        offset = if (newScale <= 1.01f) {
+                            Offset.Zero
+                        } else {
+                            Offset(
+                                x = (offset.x + pan.x).coerceIn(-maxX, maxX),
+                                y = (offset.y + pan.y).coerceIn(-maxY, maxY)
+                            )
+                        }
+                    }
+                }
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                }
+        )
     }
 }
