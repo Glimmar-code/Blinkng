@@ -53,15 +53,11 @@ jobs:
           compact_count = 0
           for path in root.rglob('*.kt'):
               text = path.read_text()
-              changed = False
 
-              def replace_compact(match):
-                  nonlocal compact_count, changed
+              def compact_replacement(match):
                   whole = match.group(0)
                   if 'ic_default_profile' in whole:
                       return whole
-                  compact_count += 1
-                  changed = True
                   return (
                       match.group('prefix')
                       + 'error=painterResource(R.drawable.ic_default_profile),'
@@ -69,11 +65,17 @@ jobs:
                       + match.group('rest')
                   )
 
-              patched = compact_pattern.sub(replace_compact, text)
-              if changed:
-                  patched = ensure_import(patched, 'import androidx.compose.ui.res.painterResource')
-                  patched = ensure_import(patched, 'import com.example.R')
-                  path.write_text(patched)
+              patched, count = compact_pattern.subn(compact_replacement, text)
+              if count > 0:
+                  # subn counts already-configured lines too, so only write/import when content changed.
+                  if patched != text:
+                      compact_count += sum(
+                          1 for before, after in zip(text.splitlines(), patched.splitlines())
+                          if before != after and 'AsyncImage(' in before and 'avatar' in before.lower()
+                      )
+                      patched = ensure_import(patched, 'import androidx.compose.ui.res.painterResource')
+                      patched = ensure_import(patched, 'import com.example.R')
+                      path.write_text(patched)
 
           # Premium chat uses a reusable avatar helper whose parameter is named `url`,
           # so make its blank and failed-image behavior use the standard user icon.
