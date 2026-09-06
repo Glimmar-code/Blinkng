@@ -1,0 +1,357 @@
+name: Apply feed navigation rearrangement
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-feed-navigation-rearrangement.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Rearrange feed navigation
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          chrome_path = Path('app/src/main/java/com/example/ui/components/PremiumFeedChrome.kt')
+          chrome = chrome_path.read_text()
+          chrome = chrome.replace(
+              'import androidx.compose.material.icons.filled.MoreVert\n',
+              'import androidx.compose.material.icons.filled.Menu\n'
+          )
+
+          top_pattern = re.compile(
+              r'@Composable\nfun FeedTopBar\(.*?\n@Composable\nprivate fun FeedRadialHeaderAction\(',
+              re.S,
+          )
+          top_replacement = '''@Composable
+          fun FeedTopBar(
+              userAvatar: String,
+              hasUnreadNotifications: Boolean,
+              onSearchClick: () -> Unit,
+              onNotificationClick: () -> Unit,
+              onMenuClick: () -> Unit,
+              onProfileClick: () -> Unit,
+              modifier: Modifier = Modifier
+          ) {
+              BoxWithConstraints(
+                  modifier = modifier
+                      .fillMaxWidth()
+                      .background(FeedBackground)
+                      .drawBehind {
+                          drawRect(
+                              brush = Brush.radialGradient(
+                                  colors = listOf(FeedPurple.copy(alpha = 0.16f), Color.Transparent),
+                                  center = Offset(size.width * 0.22f, 0f),
+                                  radius = size.width * 0.72f
+                              )
+                          )
+                          drawRect(
+                              brush = Brush.radialGradient(
+                                  colors = listOf(FeedBlue.copy(alpha = 0.11f), Color.Transparent),
+                                  center = Offset(size.width * 0.84f, 0f),
+                                  radius = size.width * 0.58f
+                              )
+                          )
+                      }
+                      .statusBarsPadding()
+              ) {
+                  val horizontalPadding = if (maxWidth >= 600.dp) 20.dp else 14.dp
+
+                  Row(
+                      modifier = Modifier
+                          .fillMaxWidth()
+                          .padding(
+                              start = horizontalPadding,
+                              end = horizontalPadding,
+                              top = 8.dp,
+                              bottom = 8.dp
+                          ),
+                      verticalAlignment = Alignment.CenterVertically
+                  ) {
+                      FeedBrandBlock(
+                          userAvatar = userAvatar,
+                          onProfileClick = onProfileClick,
+                          modifier = Modifier
+                              .weight(1f)
+                              .padding(end = 4.dp)
+                      )
+                      FeedHeaderActions(
+                          hasUnreadNotifications = hasUnreadNotifications,
+                          onSearchClick = onSearchClick,
+                          onNotificationClick = onNotificationClick,
+                          onMenuClick = onMenuClick
+                      )
+                  }
+              }
+          }
+
+          @Composable
+          private fun FeedBrandBlock(
+              userAvatar: String,
+              onProfileClick: () -> Unit,
+              modifier: Modifier = Modifier
+          ) {
+              Row(
+                  modifier = modifier,
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(10.dp)
+              ) {
+                  FeedProfileAvatar(
+                      userAvatar = userAvatar,
+                      onProfileClick = onProfileClick
+                  )
+                  Column(modifier = Modifier.weight(1f)) {
+                      Text(
+                          text = "Home",
+                          style = MaterialTheme.typography.headlineSmall,
+                          color = FeedTextPrimary,
+                          maxLines = 1
+                      )
+                      Text(
+                          text = "Your campus, in real time",
+                          style = MaterialTheme.typography.bodyMedium,
+                          color = FeedTextSecondary,
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis
+                      )
+                  }
+              }
+          }
+
+          @Composable
+          private fun FeedProfileAvatar(
+              userAvatar: String,
+              onProfileClick: () -> Unit
+          ) {
+              Box(
+                  modifier = Modifier
+                      .size(50.dp)
+                      .background(feedAccentBrush(), CircleShape)
+                      .padding(2.dp)
+                      .background(FeedBackground, CircleShape)
+                      .padding(2.dp)
+                      .clickable(role = Role.Button, onClick = onProfileClick)
+                      .semantics { contentDescription = "Open profile" }
+                      .testTag("feed_profile_action"),
+                  contentAlignment = Alignment.Center
+              ) {
+                  AsyncImage(
+                      model = userAvatar,
+                      contentDescription = null,
+                      contentScale = ContentScale.Crop,
+                      modifier = Modifier
+                          .size(42.dp)
+                          .background(FeedElevatedSurface, CircleShape)
+                          .graphicsLayer { clip = true; shape = CircleShape }
+                  )
+              }
+          }
+
+          @Composable
+          private fun FeedHeaderActions(
+              hasUnreadNotifications: Boolean,
+              onSearchClick: () -> Unit,
+              onNotificationClick: () -> Unit,
+              onMenuClick: () -> Unit
+          ) {
+              Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(2.dp)
+              ) {
+                  FeedRadialHeaderAction(
+                      imageVector = Icons.Default.Search,
+                      contentDescription = "Search people and posts",
+                      onClick = onSearchClick,
+                      modifier = Modifier.testTag("feed_search_action")
+                  )
+
+                  Box(modifier = Modifier.size(44.dp)) {
+                      FeedRadialHeaderAction(
+                          imageVector = Icons.Default.NotificationsNone,
+                          contentDescription = "Notifications",
+                          onClick = onNotificationClick,
+                          modifier = Modifier
+                              .align(Alignment.Center)
+                              .testTag("feed_notification_action")
+                      )
+                      if (hasUnreadNotifications) {
+                          Box(
+                              modifier = Modifier
+                                  .align(Alignment.TopEnd)
+                                  .offset(x = (-1).dp, y = 1.dp)
+                                  .size(9.dp)
+                                  .background(feedAccentBrush(), CircleShape)
+                                  .border(1.dp, FeedBackground, CircleShape)
+                          )
+                      }
+                  }
+
+                  FeedRadialHeaderAction(
+                      imageVector = Icons.Default.Menu,
+                      contentDescription = "Menu",
+                      onClick = onMenuClick,
+                      modifier = Modifier.testTag("feed_menu_action")
+                  )
+              }
+          }
+
+          @Composable
+          private fun FeedRadialHeaderAction('''
+
+          chrome, count = top_pattern.subn(top_replacement, chrome, count=1)
+          if count != 1:
+              raise SystemExit('Could not locate FeedTopBar block to replace')
+          chrome_path.write_text(chrome)
+
+          bottom_path = Path('app/src/main/java/com/example/ui/components/FloatingBottomBar.kt')
+          bottom = bottom_path.read_text()
+
+          if 'import androidx.compose.material.icons.filled.Menu\n' not in bottom:
+              bottom = bottom.replace(
+                  'import androidx.compose.material.icons.filled.Home\n',
+                  'import androidx.compose.material.icons.filled.Home\nimport androidx.compose.material.icons.filled.Menu\n'
+              )
+
+          bottom = bottom.replace(
+              'private enum class FeedBottomDestination {\n    HOME, CONNECT, LEADERBOARD, MARKET, MESSAGE\n}',
+              'private enum class FeedBottomDestination {\n    HOME, CONNECT, LEADERBOARD, MARKET, MESSAGE, MENU\n}'
+          )
+
+          old_items = '''    FeedBottomItem(FeedBottomDestination.MARKET, Icons.Filled.Storefront, Icons.Outlined.Storefront, "Market"),
+              FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message")
+          )'''
+          new_items = '''    FeedBottomItem(FeedBottomDestination.MARKET, Icons.Filled.Storefront, Icons.Outlined.Storefront, "Market"),
+              FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message"),
+              FeedBottomItem(FeedBottomDestination.MENU, Icons.Filled.Menu, Icons.Filled.Menu, "Menu")
+          )'''
+          if old_items not in bottom:
+              raise SystemExit('Could not locate bottom navigation item list')
+          bottom = bottom.replace(old_items, new_items, 1)
+
+          old_signature = '''    onMarketClick: () -> Unit,
+              onMessageClick: () -> Unit,
+              isDark: Boolean,
+              modifier: Modifier = Modifier
+          )'''
+          new_signature = '''    onMarketClick: () -> Unit,
+              onMessageClick: () -> Unit,
+              isDark: Boolean,
+              onMenuClick: () -> Unit = {},
+              isMenuOpen: Boolean = false,
+              modifier: Modifier = Modifier
+          )'''
+          if old_signature not in bottom:
+              raise SystemExit('Could not locate FeedBottomBar signature')
+          bottom = bottom.replace(old_signature, new_signature, 1)
+
+          bottom = bottom.replace(
+              '    val selectedDestination = when {\n        currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT',
+              '    val selectedDestination = when {\n        isMenuOpen -> FeedBottomDestination.MENU\n        currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT',
+              1
+          )
+
+          old_switch = '''                                FeedBottomDestination.MARKET -> onMarketClick()
+                                      FeedBottomDestination.MESSAGE -> onMessageClick()
+                                  }'''
+          new_switch = '''                                FeedBottomDestination.MARKET -> onMarketClick()
+                                      FeedBottomDestination.MESSAGE -> onMessageClick()
+                                      FeedBottomDestination.MENU -> onMenuClick()
+                                  }'''
+          if old_switch not in bottom:
+              raise SystemExit('Could not locate bottom navigation click switch')
+          bottom = bottom.replace(old_switch, new_switch, 1)
+
+          old_wrapper_sig = '''    currentTab: MainTab,
+              onTabSelected: (MainTab) -> Unit,
+              isDark: Boolean,
+              modifier: Modifier = Modifier
+          )'''
+          new_wrapper_sig = '''    currentTab: MainTab,
+              onTabSelected: (MainTab) -> Unit,
+              isDark: Boolean,
+              onMenuClick: () -> Unit = {},
+              modifier: Modifier = Modifier
+          )'''
+          if old_wrapper_sig not in bottom:
+              raise SystemExit('Could not locate FloatingBottomBar compatibility signature')
+          bottom = bottom.replace(old_wrapper_sig, new_wrapper_sig, 1)
+
+          old_wrapper_call = '''        onMarketClick = { onTabSelected(MainTab.MARKET) },
+                  onMessageClick = { onTabSelected(MainTab.MESSAGES) },
+                  isDark = isDark,'''
+          new_wrapper_call = '''        onMarketClick = { onTabSelected(MainTab.MARKET) },
+                  onMessageClick = { onTabSelected(MainTab.MESSAGES) },
+                  isDark = isDark,
+                  onMenuClick = onMenuClick,'''
+          if old_wrapper_call not in bottom:
+              raise SystemExit('Could not locate FloatingBottomBar compatibility call')
+          bottom = bottom.replace(old_wrapper_call, new_wrapper_call, 1)
+          bottom_path.write_text(bottom)
+
+          main_path = Path('app/src/main/java/com/example/MainActivity.kt')
+          main = main_path.read_text()
+          old_main = '''                onMessageClick = {
+                              isBottomBarVisibleByScroll = true
+                              viewModel.setTab(MainTab.MESSAGES)
+                          },
+                          isDark = uiState.isDarkMode
+                      )'''
+          new_main = '''                onMessageClick = {
+                              isBottomBarVisibleByScroll = true
+                              viewModel.setTab(MainTab.MESSAGES)
+                          },
+                          isDark = uiState.isDarkMode,
+                          onMenuClick = {
+                              isBottomBarVisibleByScroll = true
+                              viewModel.openMenu(true)
+                          },
+                          isMenuOpen = uiState.isMenuOpen
+                      )'''
+          if old_main not in main:
+              raise SystemExit('Could not locate MainActivity bottom navigation wiring')
+          main = main.replace(old_main, new_main, 1)
+          main_path.write_text(main)
+
+      - name: Validate patch
+        shell: bash
+        run: |
+          git diff --check
+          grep -q 'Icons.Default.Menu' app/src/main/java/com/example/ui/components/PremiumFeedChrome.kt
+          grep -q 'FeedBottomDestination.MENU' app/src/main/java/com/example/ui/components/FloatingBottomBar.kt
+          grep -q 'isMenuOpen = uiState.isMenuOpen' app/src/main/java/com/example/MainActivity.kt
+
+      - name: Compile app
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Push navigation changes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'Navigation already matches requested layout.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/example/ui/components/PremiumFeedChrome.kt \
+                  app/src/main/java/com/example/ui/components/FloatingBottomBar.kt \
+                  app/src/main/java/com/example/MainActivity.kt
+          git commit -m 'Rearrange feed top and bottom navigation'
+          git push origin HEAD:main
