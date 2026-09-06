@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -66,7 +67,7 @@ import com.example.ui.theme.FeedTextSecondary
 import com.example.viewmodel.MainTab
 
 private enum class FeedBottomDestination {
-    HOME, CONNECT, LEADERBOARD, MARKET, MESSAGE
+    HOME, CONNECT, LEADERBOARD, MARKET, MESSAGE, MENU
 }
 
 private data class FeedBottomItem(
@@ -81,7 +82,8 @@ private val feedBottomItems = listOf(
     FeedBottomItem(FeedBottomDestination.CONNECT, Icons.Filled.People, Icons.Outlined.People, "Connect"),
     FeedBottomItem(FeedBottomDestination.LEADERBOARD, Icons.Filled.EmojiEvents, Icons.Outlined.EmojiEvents, "Leaderboard"),
     FeedBottomItem(FeedBottomDestination.MARKET, Icons.Filled.Storefront, Icons.Outlined.Storefront, "Market"),
-    FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message")
+    FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message"),
+    FeedBottomItem(FeedBottomDestination.MENU, Icons.Filled.Menu, Icons.Filled.Menu, "Menu")
 )
 
 @Composable
@@ -94,9 +96,12 @@ fun FeedBottomBar(
     onMarketClick: () -> Unit,
     onMessageClick: () -> Unit,
     isDark: Boolean,
+    onMenuClick: () -> Unit = {},
+    isMenuOpen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val selectedDestination = when {
+        isMenuOpen -> FeedBottomDestination.MENU
         currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT
         currentTab == MainTab.HOME -> FeedBottomDestination.HOME
         currentTab == MainTab.LEADERBOARD -> FeedBottomDestination.LEADERBOARD
@@ -164,6 +169,7 @@ fun FeedBottomBar(
                                 FeedBottomDestination.LEADERBOARD -> onLeaderboardClick()
                                 FeedBottomDestination.MARKET -> onMarketClick()
                                 FeedBottomDestination.MESSAGE -> onMessageClick()
+                                FeedBottomDestination.MENU -> onMenuClick()
                             }
                         }
                     )
@@ -264,6 +270,7 @@ fun FloatingBottomBar(
     currentTab: MainTab,
     onTabSelected: (MainTab) -> Unit,
     isDark: Boolean,
+    onMenuClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     FeedBottomBar(
@@ -275,6 +282,7 @@ fun FloatingBottomBar(
         onMarketClick = { onTabSelected(MainTab.MARKET) },
         onMessageClick = { onTabSelected(MainTab.MESSAGES) },
         isDark = isDark,
+        onMenuClick = onMenuClick,
         modifier = modifier
     )
 }

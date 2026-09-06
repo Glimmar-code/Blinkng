@@ -636,7 +636,12 @@ fun MainAppContent(
                     isBottomBarVisibleByScroll = true
                     viewModel.setTab(MainTab.MESSAGES)
                 },
-                isDark = uiState.isDarkMode
+                isDark = uiState.isDarkMode,
+                onMenuClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.openMenu(true)
+                },
+                isMenuOpen = uiState.isMenuOpen
             )
         }
 

@@ -36,7 +36,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -120,48 +120,43 @@ fun FeedTopBar(
                     start = horizontalPadding,
                     end = horizontalPadding,
                     top = 8.dp,
-                    bottom = 6.dp
+                    bottom = 8.dp
                 ),
-            verticalAlignment = Alignment.Top
+            verticalAlignment = Alignment.CenterVertically
         ) {
             FeedBrandBlock(
+                userAvatar = userAvatar,
+                onProfileClick = onProfileClick,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(top = 10.dp, end = 4.dp)
+                    .padding(end = 4.dp)
             )
             FeedHeaderActions(
-                userAvatar = userAvatar,
                 hasUnreadNotifications = hasUnreadNotifications,
                 onSearchClick = onSearchClick,
                 onNotificationClick = onNotificationClick,
-                onMenuClick = onMenuClick,
-                onProfileClick = onProfileClick
+                onMenuClick = onMenuClick
             )
         }
     }
 }
 
 @Composable
-private fun FeedBrandBlock(modifier: Modifier = Modifier) {
+private fun FeedBrandBlock(
+    userAvatar: String,
+    onProfileClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(
-            text = "B",
-            modifier = Modifier
-                .width(38.dp)
-                .semantics { contentDescription = "Blink" },
-            style = TextStyle(
-                brush = feedAccentBrush(),
-                fontSize = 38.sp,
-                lineHeight = 40.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = (-2).sp
-            )
+        FeedProfileAvatar(
+            userAvatar = userAvatar,
+            onProfileClick = onProfileClick
         )
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Home",
                 style = MaterialTheme.typography.headlineSmall,
@@ -179,39 +174,54 @@ private fun FeedBrandBlock(modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * The profile avatar anchors a 90-degree utility arc. The three action centres
- * sit on an approximately 60dp invisible radius: Search at 9 o'clock,
- * Notifications at about 7:30, and More at 6 o'clock.
- */
 @Composable
-private fun FeedHeaderActions(
+private fun FeedProfileAvatar(
     userAvatar: String,
-    hasUnreadNotifications: Boolean,
-    onSearchClick: () -> Unit,
-    onNotificationClick: () -> Unit,
-    onMenuClick: () -> Unit,
     onProfileClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
-            .width(128.dp)
-            .height(106.dp)
+            .size(50.dp)
+            .background(feedAccentBrush(), CircleShape)
+            .padding(2.dp)
+            .background(FeedBackground, CircleShape)
+            .padding(2.dp)
+            .clickable(role = Role.Button, onClick = onProfileClick)
+            .semantics { contentDescription = "Open profile" }
+            .testTag("feed_profile_action"),
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = userAvatar,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(42.dp)
+                .background(FeedElevatedSurface, CircleShape)
+                .graphicsLayer { clip = true; shape = CircleShape }
+        )
+    }
+}
+
+@Composable
+private fun FeedHeaderActions(
+    hasUnreadNotifications: Boolean,
+    onSearchClick: () -> Unit,
+    onNotificationClick: () -> Unit,
+    onMenuClick: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         FeedRadialHeaderAction(
             imageVector = Icons.Default.Search,
             contentDescription = "Search people and posts",
             onClick = onSearchClick,
-            modifier = Modifier
-                .offset(x = 18.dp, y = 2.dp)
-                .testTag("feed_search_action")
+            modifier = Modifier.testTag("feed_search_action")
         )
 
-        Box(
-            modifier = Modifier
-                .offset(x = 40.dp, y = 44.dp)
-                .size(44.dp)
-        ) {
+        Box(modifier = Modifier.size(44.dp)) {
             FeedRadialHeaderAction(
                 imageVector = Icons.Default.NotificationsNone,
                 contentDescription = "Notifications",
@@ -233,37 +243,11 @@ private fun FeedHeaderActions(
         }
 
         FeedRadialHeaderAction(
-            imageVector = Icons.Default.MoreVert,
-            contentDescription = "More options",
+            imageVector = Icons.Default.Menu,
+            contentDescription = "Menu",
             onClick = onMenuClick,
-            modifier = Modifier
-                .offset(x = 81.dp, y = 62.dp)
-                .testTag("feed_more_action")
+            modifier = Modifier.testTag("feed_menu_action")
         )
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .size(50.dp)
-                .background(feedAccentBrush(), CircleShape)
-                .padding(2.dp)
-                .background(FeedBackground, CircleShape)
-                .padding(2.dp)
-                .clickable(role = Role.Button, onClick = onProfileClick)
-                .semantics { contentDescription = "Open profile" }
-                .testTag("feed_profile_action"),
-            contentAlignment = Alignment.Center
-        ) {
-            AsyncImage(
-                model = userAvatar,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(42.dp)
-                    .background(FeedElevatedSurface, CircleShape)
-                    .graphicsLayer { clip = true; shape = CircleShape }
-            )
-        }
     }
 }
 
