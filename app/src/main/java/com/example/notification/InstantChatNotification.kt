@@ -1,5 +1,7 @@
 package com.example.notification
 
+import android.annotation.SuppressLint
+import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -89,9 +91,7 @@ object InstantChatNotification {
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .build()
 
-        runCatching {
-            NotificationManagerCompat.from(context).notify(notificationId, notification)
-        }
+        postNotification(context, notificationId, notification)
     }
 
     fun showReplyQueued(
@@ -112,7 +112,7 @@ object InstantChatNotification {
             .setRemoteInputHistory(arrayOf(replyText))
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .build()
-        runCatching { NotificationManagerCompat.from(context).notify(notificationId, notification) }
+        postNotification(context, notificationId, notification)
     }
 
     fun showReplySent(
@@ -133,7 +133,7 @@ object InstantChatNotification {
             .setTimeoutAfter(3_000L)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .build()
-        runCatching { NotificationManagerCompat.from(context).notify(notificationId, notification) }
+        postNotification(context, notificationId, notification)
     }
 
     fun showReplyWaiting(
@@ -153,7 +153,7 @@ object InstantChatNotification {
             .setRemoteInputHistory(arrayOf(replyText))
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .build()
-        runCatching { NotificationManagerCompat.from(context).notify(notificationId, notification) }
+        postNotification(context, notificationId, notification)
     }
 
     private fun buildReplyAction(
@@ -219,6 +219,22 @@ object InstantChatNotification {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+    }
+
+    /**
+     * Lint cannot infer the runtime permission contract hidden behind
+     * BlinkNotificationHelper.hasNotificationPermission(), so the suppression is scoped to
+     * this single guarded call. We still re-check immediately before notify and catch the
+     * permission-revoked race instead of allowing a notification callback to crash.
+     */
+    @SuppressLint("MissingPermission")
+    private fun postNotification(context: Context, notificationId: Int, notification: Notification) {
+        if (!BlinkNotificationHelper.hasNotificationPermission(context)) return
+        try {
+            NotificationManagerCompat.from(context).notify(notificationId, notification)
+        } catch (_: SecurityException) {
+            // Permission can be revoked between the check and notify(). Skip safely.
+        }
     }
 
     private fun positiveHash(value: String): Int = value.hashCode() and Int.MAX_VALUE
