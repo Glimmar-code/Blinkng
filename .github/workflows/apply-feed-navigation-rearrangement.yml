@@ -286,27 +286,33 @@ jobs:
 
           main_path = Path('app/src/main/java/com/example/MainActivity.kt')
           main = main_path.read_text()
-          main = require_replace(
-              main,
-              '''                onMessageClick = {
-                    isBottomBarVisibleByScroll = true
-                    viewModel.setTab(MainTab.MESSAGES)
-                },
-                isDark = uiState.isDarkMode
-            )''',
-              '''                onMessageClick = {
-                    isBottomBarVisibleByScroll = true
-                    viewModel.setTab(MainTab.MESSAGES)
-                },
-                isDark = uiState.isDarkMode,
-                onMenuClick = {
-                    isBottomBarVisibleByScroll = true
-                    viewModel.openMenu(true)
-                },
-                isMenuOpen = uiState.isMenuOpen
-            )''',
-              'MainActivity bottom navigation wiring'
+          main_pattern = re.compile(
+              r'^(?P<i>[ \t]*)onMessageClick = \{\n'
+              r'(?P=i)    isBottomBarVisibleByScroll = true\n'
+              r'(?P=i)    viewModel\.setTab\(MainTab\.MESSAGES\)\n'
+              r'(?P=i)\},\n'
+              r'(?P=i)isDark = uiState\.isDarkMode$',
+              re.M,
           )
+
+          def main_replacement(match):
+              i = match.group('i')
+              return (
+                  f'{i}onMessageClick = {{\n'
+                  f'{i}    isBottomBarVisibleByScroll = true\n'
+                  f'{i}    viewModel.setTab(MainTab.MESSAGES)\n'
+                  f'{i}}},\n'
+                  f'{i}isDark = uiState.isDarkMode,\n'
+                  f'{i}onMenuClick = {{\n'
+                  f'{i}    isBottomBarVisibleByScroll = true\n'
+                  f'{i}    viewModel.openMenu(true)\n'
+                  f'{i}}},\n'
+                  f'{i}isMenuOpen = uiState.isMenuOpen'
+              )
+
+          main, count = main_pattern.subn(main_replacement, main, count=1)
+          if count != 1:
+              raise SystemExit('Could not locate MainActivity bottom navigation wiring')
           main_path.write_text(main)
 
       - name: Validate patch
