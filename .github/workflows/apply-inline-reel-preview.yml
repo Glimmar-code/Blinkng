@@ -1,0 +1,432 @@
+name: Apply inline reel feed preview
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-inline-reel-preview.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply inline reel feed patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              return text.replace(old, new, 1)
+
+          premium_path = Path('app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt')
+          premium = premium_path.read_text(encoding='utf-8')
+
+          premium = replace_once(
+              premium,
+              '''        0 -> PremiumHomeFeed(\n            posts = posts,\n            currentUsername = currentUsername,''',
+              '''        0 -> PremiumHomeFeed(\n            posts = posts,\n            reels = reels,\n            currentUsername = currentUsername,''',
+              'PremiumHomeFeed call reels argument'
+          )
+
+          premium = replace_once(
+              premium,
+              '''            onBottomBarVisibilityChange = onBottomBarVisibilityChange,\n            onGameClick = { onSubTabChanged(3) },\n            onReelClick = { onSubTabChanged(1) }\n        )''',
+              '''            onBottomBarVisibilityChange = onBottomBarVisibilityChange,\n            onGameClick = { onSubTabChanged(3) },\n            onReelClick = { onSubTabChanged(1) },\n            onInlineReelClick = { reelId, positionMs ->\n                InlineReelContinuationStore.request(reelId, positionMs)\n                onSubTabChanged(1)\n            }\n        )''',
+              'PremiumHomeFeed inline reel callback'
+          )
+
+          premium = replace_once(
+              premium,
+              '''private fun PremiumHomeFeed(\n    posts: List<FeedPost>,\n    currentUsername: String,''',
+              '''private fun PremiumHomeFeed(\n    posts: List<FeedPost>,\n    reels: List<FeedPost>,\n    currentUsername: String,''',
+              'PremiumHomeFeed reels parameter'
+          )
+
+          premium = replace_once(
+              premium,
+              '''    onBottomBarVisibilityChange: (Boolean) -> Unit,\n    onGameClick: () -> Unit,\n    onReelClick: () -> Unit\n) {''',
+              '''    onBottomBarVisibilityChange: (Boolean) -> Unit,\n    onGameClick: () -> Unit,\n    onReelClick: () -> Unit,\n    onInlineReelClick: (reelId: String, positionMs: Long) -> Unit\n) {''',
+              'PremiumHomeFeed callback parameter'
+          )
+
+          insert_marker = '''    LaunchedEffect(isOnline, isLoading, posts.isEmpty(), filteredPosts.isEmpty(), filter, laneIndex) {'''
+          insert_code = '''    // Reels are inserted only after the server-ranked post list has been produced.\n    // Their own order is also kept exactly as supplied by the ranked reels feed.\n    val eligibleInlineReels = remember(reels, laneIndex, followedAuthorKeys) {\n        reels.filter { reel ->\n            !reel.videoUrl.isNullOrBlank() &&\n                    (laneIndex == 0 ||\n                            reel.author.trim().removePrefix("@").lowercase() in followedAuthorKeys)\n        }\n    }\n    val inlineReelSeed = remember(laneResumeKey) {\n        val prefKey = "inline_reel_seed:$laneResumeKey"\n        if (resumePrefs.contains(prefKey)) {\n            resumePrefs.getInt(prefKey, 0)\n        } else {\n            kotlin.random.Random.nextInt().also { seed ->\n                resumePrefs.edit().putInt(prefKey, seed).apply()\n            }\n        }\n    }\n    val inlineReelsAfterPost = remember(filteredPosts.size, eligibleInlineReels, inlineReelSeed) {\n        buildInlineReelInsertionPlan(\n            postCount = filteredPosts.size,\n            rankedReels = eligibleInlineReels,\n            seed = inlineReelSeed\n        )\n    }\n    val postIndexById = remember(filteredPosts) {\n        filteredPosts.mapIndexed { index, post -> post.id to index }.toMap()\n    }\n    var visibleInlineReelKeys by remember(laneResumeKey) { mutableStateOf(emptySet<String>()) }\n\n'''
+          if premium.count(insert_marker) != 1:
+              raise SystemExit('inline reel insertion state marker not found exactly once')
+          premium = premium.replace(insert_marker, insert_code + insert_marker, 1)
+
+          premium = replace_once(
+              premium,
+              '''    val nearEnd by remember {\n        derivedStateOf {\n            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0\n            filteredPosts.isNotEmpty() && last >= filteredPosts.lastIndex - 3\n        }\n    }''',
+              '''    val nearEnd by remember(postIndexById, filteredPosts.size) {\n        derivedStateOf {\n            val furthestVisiblePost = listState.layoutInfo.visibleItemsInfo\n                .mapNotNull { item ->\n                    val key = item.key as? String ?: return@mapNotNull null\n                    if (!key.startsWith("post:")) return@mapNotNull null\n                    postIndexById[key.removePrefix("post:")]\n                }\n                .maxOrNull() ?: -1\n            filteredPosts.isNotEmpty() &&\n                    furthestVisiblePost >= (filteredPosts.lastIndex - 3).coerceAtLeast(0)\n        }\n    }''',
+              'pagination near-end calculation'
+          )
+
+          premium = replace_once(
+              premium,
+              '''                impressionTracker.update(ids).forEach(latestViewed)''',
+              '''                visibleInlineReelKeys = layout.visibleItemsInfo.mapNotNull { item ->\n                    val key = item.key as? String ?: return@mapNotNull null\n                    if (!key.startsWith("inline-reel:")) return@mapNotNull null\n                    if (\n                        qualifiesForPostImpression(\n                            itemOffset = item.offset,\n                            itemSize = item.size,\n                            viewportStart = layout.viewportStartOffset,\n                            viewportEnd = layout.viewportEndOffset\n                        )\n                    ) key else null\n                }.toSet()\n                impressionTracker.update(ids).forEach(latestViewed)''',
+              'inline reel visibility tracking'
+          )
+
+          items_start = premium.index('''                                items(\n                                    count = filteredPosts.size,''')
+          items_end = premium.index('''                                if (isLoadingMorePosts) {''', items_start)
+          replacement_items = '''                                filteredPosts.forEachIndexed { index, post ->\n                                    item(\n                                        key = "post:${post.id}",\n                                        contentType = premiumPostContentType(post)\n                                    ) {\n                                        PremiumPostEntrance(index = index) {\n                                            PostCard(\n                                                post = post,\n                                                isDark = true,\n                                                onLike = { onLikePost(post.id) },\n                                                onComment = { onCommentPost(post.id) },\n                                                onBookmark = { onBookmarkPost(post.id) },\n                                                onRepost = { onRepostPost(post.id) },\n                                                onShare = { onSharePost(post.id) },\n                                                onOptionsClick = { onOptionsClick(post) },\n                                                onProfileClick = onProfileClick,\n                                                onVotePoll = onVotePoll,\n                                                isAuthor = post.author.equals(currentUsername.removePrefix("@"), ignoreCase = true) ||\n                                                        post.authorUsername.removePrefix("@").equals(currentUsername.removePrefix("@"), ignoreCase = true),\n                                                onDelete = { onDeletePost(post.id) }\n                                            )\n                                        }\n                                    }\n\n                                    inlineReelsAfterPost[index]?.let { reel ->\n                                        val previewKey = "inline-reel:${reel.id}:$index"\n                                        item(\n                                            key = previewKey,\n                                            contentType = "inline_reel_preview"\n                                        ) {\n                                            InlineReelPreviewCard(\n                                                reel = reel,\n                                                isVisible = previewKey in visibleInlineReelKeys,\n                                                onContinue = { positionMs ->\n                                                    onInlineReelClick(reel.id, positionMs)\n                                                }\n                                            )\n                                        }\n                                    }\n                                }\n'''
+          premium = premium[:items_start] + replacement_items + premium[items_end:]
+          premium_path.write_text(premium, encoding='utf-8')
+
+          reels_path = Path('app/src/main/java/com/example/ui/screens/VideoReelsScreen.kt')
+          reels_text = reels_path.read_text(encoding='utf-8')
+
+          reels_text = replace_once(
+              reels_text,
+              '''    val initialPage = remember(reels, resumeUserKey) {\n        val savedId = resumePrefs.getString("reel_id:$resumeUserKey", null)\n        val byId = savedId?.let { id -> reels.indexOfFirst { it.id == id } }\n            ?.takeIf { it >= 0 }\n        val byIndex = resumePrefs.getInt("reel_index:$resumeUserKey", 0)\n        (byId ?: byIndex).coerceIn(0, reels.lastIndex.coerceAtLeast(0))\n    }''',
+              '''    val continuationRequest = remember { InlineReelContinuationStore.consume() }\n    val initialPage = remember(reels, resumeUserKey, continuationRequest?.reelId) {\n        val requestedIndex = continuationRequest?.reelId\n            ?.let { id -> reels.indexOfFirst { it.id == id } }\n            ?.takeIf { it >= 0 }\n        val savedId = resumePrefs.getString("reel_id:$resumeUserKey", null)\n        val byId = savedId?.let { id -> reels.indexOfFirst { it.id == id } }\n            ?.takeIf { it >= 0 }\n        val byIndex = resumePrefs.getInt("reel_index:$resumeUserKey", 0)\n        (requestedIndex ?: byId ?: byIndex).coerceIn(0, reels.lastIndex.coerceAtLeast(0))\n    }''',
+              'reel continuation initial page'
+          )
+
+          reels_text = replace_once(
+              reels_text,
+              '''                isActive = index == pager.currentPage,\n                isAuthor = reel.author.equals(currentUsername, ignoreCase = true),''',
+              '''                isActive = index == pager.currentPage,\n                initialSeekMs = if (reel.id == continuationRequest?.reelId) {\n                    continuationRequest.positionMs\n                } else {\n                    0L\n                },\n                isAuthor = reel.author.equals(currentUsername, ignoreCase = true),''',
+              'target reel initial seek argument'
+          )
+
+          reels_text = replace_once(
+              reels_text,
+              '''private fun ReelPage(\n    reel: FeedPost,\n    pageOffset: Float,\n    isActive: Boolean,\n    isAuthor: Boolean,''',
+              '''private fun ReelPage(\n    reel: FeedPost,\n    pageOffset: Float,\n    isActive: Boolean,\n    initialSeekMs: Long,\n    isAuthor: Boolean,''',
+              'ReelPage initial seek parameter'
+          )
+
+          reels_text = replace_once(
+              reels_text,
+              '''            ReelVideo(\n                url = url,\n                isActive = isActive,\n                isMuted = isMuted,''',
+              '''            ReelVideo(\n                url = url,\n                isActive = isActive,\n                isMuted = isMuted,\n                initialSeekMs = initialSeekMs,''',
+              'ReelVideo initial seek argument'
+          )
+
+          reels_text = replace_once(
+              reels_text,
+              '''private fun ReelVideo(\n    url: String,\n    isActive: Boolean,\n    isMuted: Boolean,\n    onProgressChange: (Float) -> Unit,''',
+              '''private fun ReelVideo(\n    url: String,\n    isActive: Boolean,\n    isMuted: Boolean,\n    initialSeekMs: Long,\n    onProgressChange: (Float) -> Unit,''',
+              'ReelVideo initial seek parameter'
+          )
+
+          reels_text = replace_once(
+              reels_text,
+              '''                setMediaItem(MediaItem.fromUri(url))\n                prepare()''',
+              '''                setMediaItem(MediaItem.fromUri(url))\n                if (initialSeekMs > 0L) seekTo(initialSeekMs)\n                prepare()''',
+              'ReelVideo initial seek application'
+          )
+          reels_path.write_text(reels_text, encoding='utf-8')
+
+          helper_path = Path('app/src/main/java/com/example/ui/screens/InlineReelPreview.kt')
+          helper_path.write_text(r'''package com.example.ui.screens
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
+import coil.compose.AsyncImage
+import com.example.data.local.BlinkMediaCache
+import com.example.data.models.FeedPost
+import com.example.ui.theme.FeedBorder
+import com.example.ui.theme.FeedCardSurface
+import com.example.ui.theme.FeedPurple
+import com.example.ui.theme.FeedTextPrimary
+import com.example.ui.theme.FeedTextSecondary
+import kotlinx.coroutines.delay
+import kotlin.random.Random
+
+internal const val INLINE_REEL_PREVIEW_MS = 2_000L
+private const val INLINE_REEL_PREVIEW_MAX_WAIT_MS = 7_000L
+
+data class InlineReelContinuation(
+    val reelId: String,
+    val positionMs: Long
+)
+
+internal object InlineReelContinuationStore {
+    private var pending: InlineReelContinuation? = null
+
+    @Synchronized
+    fun request(reelId: String, positionMs: Long) {
+        pending = InlineReelContinuation(
+            reelId = reelId,
+            positionMs = positionMs.coerceAtLeast(0L)
+        )
+    }
+
+    @Synchronized
+    fun consume(): InlineReelContinuation? {
+        val request = pending
+        pending = null
+        return request
+    }
+}
+
+/**
+ * Builds presentation-only reel slots without changing the relative order of ranked posts
+ * or ranked reels. Each slot appears after a stable pseudo-random run of 10..20 posts.
+ */
+internal fun buildInlineReelInsertionPlan(
+    postCount: Int,
+    rankedReels: List<FeedPost>,
+    seed: Int
+): Map<Int, FeedPost> {
+    if (postCount < 10 || rankedReels.isEmpty()) return emptyMap()
+
+    val random = Random(seed)
+    val result = linkedMapOf<Int, FeedPost>()
+    var postIndex = random.nextInt(from = 10, until = 21) - 1
+    var reelIndex = 0
+
+    while (postIndex < postCount) {
+        result[postIndex] = rankedReels[reelIndex % rankedReels.size]
+        reelIndex += 1
+        postIndex += random.nextInt(from = 10, until = 21)
+    }
+    return result
+}
+
+/**
+ * A muted two-second reel teaser. It intentionally does not attach content-exposure tracking;
+ * the existing full Reels surface remains the single source of truth for valid reel views.
+ */
+@Composable
+internal fun InlineReelPreviewCard(
+    reel: FeedPost,
+    isVisible: Boolean,
+    onContinue: (positionMs: Long) -> Unit
+) {
+    val context = LocalContext.current
+    val url = reel.videoUrl?.trim().orEmpty()
+    val poster = remember(reel.id, reel.images) {
+        reel.images.firstOrNull { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+    }
+    var previewStarted by remember(reel.id) { mutableStateOf(false) }
+    var previewComplete by remember(reel.id) { mutableStateOf(false) }
+
+    val player = remember(url) {
+        val httpDataSource = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(20_000)
+            .setReadTimeoutMs(30_000)
+
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(BlinkMediaCache.dataSourceFactory(context, httpDataSource))
+            )
+            .build()
+            .apply {
+                repeatMode = Player.REPEAT_MODE_OFF
+                volume = 0f
+                setMediaItem(MediaItem.fromUri(url))
+                prepare()
+            }
+    }
+
+    LaunchedEffect(isVisible, previewComplete, player) {
+        if (!isVisible || previewComplete) {
+            player.pause()
+            return@LaunchedEffect
+        }
+
+        if (!previewStarted) {
+            previewStarted = true
+            player.seekTo(0L)
+        }
+        player.play()
+
+        var visibleWaitMs = 0L
+        while (
+            player.currentPosition < INLINE_REEL_PREVIEW_MS &&
+            player.playbackState != Player.STATE_ENDED &&
+            visibleWaitMs < INLINE_REEL_PREVIEW_MAX_WAIT_MS
+        ) {
+            delay(100L)
+            visibleWaitMs += 100L
+        }
+
+        player.pause()
+        previewComplete = true
+    }
+
+    DisposableEffect(player) {
+        onDispose { player.release() }
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        color = FeedCardSurface,
+        shape = RoundedCornerShape(18.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, FeedBorder.copy(alpha = 0.72f))
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.VideoLibrary,
+                        contentDescription = null,
+                        tint = FeedPurple,
+                        modifier = Modifier.size(19.dp)
+                    )
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        text = "Reel",
+                        color = FeedTextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
+                Text(
+                    text = "@${reel.authorUsername.ifBlank { reel.author }.removePrefix("@")}",
+                    color = FeedTextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(4f / 5f)
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                if (poster != null) {
+                    AsyncImage(
+                        model = poster,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            useController = false
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                            keepScreenOn = false
+                            this.player = player
+                        }
+                    },
+                    update = { view -> view.player = player },
+                    modifier = Modifier.fillMaxSize()
+                )
+
+                AnimatedVisibility(
+                    visible = previewComplete,
+                    enter = fadeIn(),
+                    exit = fadeOut()
+                ) {
+                    IconButton(
+                        onClick = { onContinue(player.currentPosition) },
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.64f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Continue reel",
+                            tint = Color.White,
+                            modifier = Modifier.size(42.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+''', encoding='utf-8')
+          PY
+
+      - name: Verify Kotlin compilation
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit verified source changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt \
+            app/src/main/java/com/example/ui/screens/VideoReelsScreen.kt \
+            app/src/main/java/com/example/ui/screens/InlineReelPreview.kt
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "feat: add inline reel previews to ranked feed"
+            git push origin HEAD:main
+          fi
