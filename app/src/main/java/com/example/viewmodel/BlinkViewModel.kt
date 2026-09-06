@@ -2149,6 +2149,12 @@ private suspend fun restoreSupabaseSession() {
                 isConversationFullScreen = false
             )
             persistUiPreferences()
+            persistConversations()
+            // CHAT_OPEN_HISTORY_EDGE_V1: every chat entry path resolves an existing server chat
+            // and hydrates its latest 50 messages, even if summaries have not synced yet.
+            if (_uiState.value.isOnline) {
+                loadConversationHistory(convo.id, profile.username, older = false)
+            }
         }
     }
     fun loadOlderMessages(partnerUsername: String) {
