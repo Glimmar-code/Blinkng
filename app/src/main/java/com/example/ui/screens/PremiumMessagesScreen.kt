@@ -197,6 +197,10 @@ fun PremiumMessagesScreen(
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
+    hasMoreMessages: (String) -> Boolean = { false },
+    isLoadingOlder: (String) -> Boolean = { false },
+    onLoadOlder: (String) -> Unit = {},
+    isLoadingMessages: (String) -> Boolean = { false },
     onProfileClick: (String) -> Unit,
     onStoryClick: (Story) -> Unit,
     onAddStoryClick: () -> Unit,
@@ -296,6 +300,10 @@ fun PremiumMessagesScreen(
                         onSendMessage = onSendMessage,
                         onSendVideo = onSendVideo,
                         onRetryMessage = onRetryMessage,
+                        hasMoreMessages = hasMoreMessages,
+                        isLoadingOlder = isLoadingOlder,
+                        onLoadOlder = onLoadOlder,
+                        isLoadingMessages = isLoadingMessages,
                         interactionActions = interactionActions,
                         onProfileClick = onProfileClick,
                         onStartCall = { conversation, kind ->
@@ -355,6 +363,10 @@ private fun PremiumMessagesMasterDetail(
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
+    hasMoreMessages: (String) -> Boolean,
+    isLoadingOlder: (String) -> Boolean,
+    onLoadOlder: (String) -> Unit,
+    isLoadingMessages: (String) -> Boolean,
     interactionActions: ChatInteractionActions,
     onProfileClick: (String) -> Unit,
     onStartCall: (ChatConversation, MessageCallKind) -> Unit,
@@ -495,6 +507,10 @@ private fun PremiumMessagesMasterDetail(
                         allConversations = conversations,
                         palette = palette,
                         onBack = { onCloseConversation() },
+                        hasMoreMessages = hasMoreMessages(displayedConversation.id),
+                        isLoadingOlder = isLoadingOlder(displayedConversation.id),
+                        onLoadOlder = { onLoadOlder(displayedConversation.partnerUsername) },
+                        isLoadingMessages = isLoadingMessages(displayedConversation.id),
                         onSend = { content, replyTo ->
                             onSendMessage(displayedConversation.partnerUsername, content, replyTo)
                         },
@@ -1089,6 +1105,10 @@ private fun PremiumChatDetail(
     allConversations: List<ChatConversation>,
     palette: MessagePalette,
     onBack: () -> Unit,
+    hasMoreMessages: Boolean,
+    isLoadingOlder: Boolean,
+    onLoadOlder: () -> Unit,
+    isLoadingMessages: Boolean,
     onSend: (String, String?) -> Unit,
     onForward: (String, ChatMessage) -> Unit,
     interactionActions: ChatInteractionActions,
@@ -1116,6 +1136,16 @@ private fun PremiumChatDetail(
     var pinnedOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    // MESSAGING_RELIABILITY_AUDIT_V3: older pages load only after a real user scroll reaches the top.
+    var userHasScrolled by remember(conversation.id) { mutableStateOf(false) }
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) userHasScrolled = true
+    }
+    LaunchedEffect(listState.firstVisibleItemIndex, userHasScrolled, hasMoreMessages, isLoadingOlder) {
+        if (userHasScrolled && listState.firstVisibleItemIndex <= 2 && hasMoreMessages && !isLoadingOlder) {
+            onLoadOlder()
+        }
+    }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onSendVideo(uri)
     }
@@ -1240,6 +1270,18 @@ private fun PremiumChatDetail(
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(11.dp)
                 ) {
+                    if (isLoadingOlder || (isLoadingMessages && visibleMessages.isEmpty())) {
+                        item(key = "message_history_loading") {
+                            Text(
+                                if (isLoadingOlder) "Loading earlier messages…" else "Loading messages…",
+                                color = palette.textSecondary,
+                                fontSize = 10.sp,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+
                     items(visibleMessages, key = { it.id }) { message ->
                         val replyTarget = message.replyToMessageId?.let { replyId ->
                             conversation.messages.firstOrNull { it.id == replyId }

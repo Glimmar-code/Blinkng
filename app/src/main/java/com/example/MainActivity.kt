@@ -291,6 +291,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+// MESSAGING_RELIABILITY_AUDIT_V3
 fun MainAppContent(
     uiState: com.example.viewmodel.BlinkUiState,
     viewModel: BlinkViewModel
@@ -546,6 +547,16 @@ fun MainAppContent(
                         onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
+                        },
+                        hasMoreMessages = { conversationId ->
+                            uiState.messageHistoryHasMore[conversationId] ?: true
+                        },
+                        isLoadingOlder = { conversationId ->
+                            uiState.loadingOlderConversationId == conversationId
+                        },
+                        onLoadOlder = { partner -> viewModel.loadOlderMessages(partner) },
+                        isLoadingMessages = { conversationId ->
+                            uiState.loadingInitialConversationId == conversationId
                         },
                         onProfileClick = { viewModel.openProfileFromChat(it) },
                         onStoryClick = { story -> viewModel.openStory(story) },

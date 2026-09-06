@@ -9,8 +9,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
@@ -47,6 +50,10 @@ class SupabaseRealtimeManager private constructor() {
     private var webSocket: WebSocket? = null
     private val isConnected = AtomicBoolean(false)
     private val isConnecting = AtomicBoolean(false)
+    // MESSAGING_RELIABILITY_AUDIT_V3: socket-open is not the same as a joined messages channel.
+    private val _messagesSubscribed = MutableStateFlow(false)
+    val messagesSubscribed: StateFlow<Boolean> = _messagesSubscribed.asStateFlow()
+    private var lastAccessTokenSent: String = ""
     private val refCounter = AtomicInteger(1)
     private var heartbeatJob: Job? = null
     private var reconnectJob: Job? = null
@@ -85,7 +92,7 @@ class SupabaseRealtimeManager private constructor() {
         } catch (e: Exception) { Log.e(TAG, "Failed to initiate WebSocket connection", e); isConnecting.set(false); scheduleReconnect() }
     }
     private fun createListener() = object : WebSocketListener() {
-        override fun onOpen(webSocket: WebSocket, response: Response) { isConnected.set(true); isConnecting.set(false); startHeartbeat(); sendAccessToken(); subscribeToTables(); setPresence(true) }
+        override fun onOpen(webSocket: WebSocket, response: Response) { isConnected.set(true); isConnecting.set(false); _messagesSubscribed.value = false; lastAccessTokenSent = ""; startHeartbeat(); sendAccessToken(); subscribeToTables(); setPresence(true) }
         override fun onMessage(webSocket: WebSocket, text: String) = handleIncomingMessage(text)
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { handleDisconnected() }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { Log.e(TAG, "WebSocket Failure: ${t.message}", t); handleDisconnected(); scheduleReconnect() }
@@ -102,25 +109,113 @@ class SupabaseRealtimeManager private constructor() {
         }
     }
     private fun startHeartbeat() {
-        heartbeatJob?.cancel(); heartbeatJob = scope.launch {
-            while (isActive && isConnected.get()) { delay(25_000L); webSocket?.send(JSONObject().apply { put("topic", "phoenix"); put("event", "heartbeat"); put("payload", JSONObject()); put("ref", "hb_${refCounter.getAndIncrement()}") }.toString()); setPresence(true) }
+        heartbeatJob?.cancel()
+        heartbeatJob = scope.launch {
+            while (isActive && isConnected.get()) {
+                delay(25_000L)
+                // Refresh Realtime authorization whenever REST refreshes the Supabase JWT.
+                sendAccessToken()
+                webSocket?.send(
+                    JSONObject().apply {
+                        put("topic", "phoenix")
+                        put("event", "heartbeat")
+                        put("payload", JSONObject())
+                        put("ref", "hb_${refCounter.getAndIncrement()}")
+                    }.toString()
+                )
+                setPresence(true)
+            }
         }
     }
-    private fun sendAccessToken() { val token = SupabaseService.accessToken() ?: return; webSocket?.send(JSONObject().apply { put("topic", "realtime"); put("event", "access_token"); put("payload", JSONObject().put("access_token", token)); put("ref", refCounter.getAndIncrement().toString()) }.toString()) }
+    private fun sendAccessToken() {
+        val token = SupabaseService.accessToken()?.takeIf { it.isNotBlank() } ?: return
+        if (token == lastAccessTokenSent) return
+        val sent = webSocket?.send(
+            JSONObject().apply {
+                put("topic", "realtime")
+                put("event", "access_token")
+                put("payload", JSONObject().put("access_token", token))
+                put("ref", refCounter.getAndIncrement().toString())
+            }.toString()
+        ) == true
+        if (sent) lastAccessTokenSent = token
+    }
     private fun subscribeToTables() {
         val tables = listOf("messages","conversations","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","roommate_profiles","roommate_applications","mentor_profiles","mentor_requests","reading_mate_profiles","reading_mate_requests","housing_agent_profiles","housing_requests","housing_request_applications","game_challenges","skill_endorsements","poll_votes")
         tables.forEach { table -> val join = JSONObject().apply { put("topic", "realtime:public:$table"); put("event", "phx_join"); put("payload", JSONObject().apply { put("config", JSONObject().apply { put("postgres_changes", org.json.JSONArray().apply { put(JSONObject().apply { put("event", "*"); put("schema", "public"); put("table", table) }) }) }) }); put("ref", refCounter.getAndIncrement().toString()) }; webSocket?.send(join.toString()) }
     }
     private fun handleIncomingMessage(text: String) {
         try {
-            val json = JSONObject(text); val event = json.optString("event"); val payload = json.optJSONObject("payload") ?: return; if (event != "postgres_changes") return
-            val data = payload.optJSONObject("data") ?: return; val type = data.optString("type"); val table = data.optString("table"); val record = data.optJSONObject("record") ?: data.optJSONObject("old_record") ?: JSONObject()
+            val json = JSONObject(text)
+            val event = json.optString("event")
+            val topic = json.optString("topic")
+            val payload = json.optJSONObject("payload") ?: JSONObject()
+
+            if (event == "phx_reply" && topic == "realtime:public:messages") {
+                val status = payload.optString("status").ifBlank {
+                    payload.optJSONObject("response")?.optString("status").orEmpty()
+                }
+                if (status.equals("ok", true)) _messagesSubscribed.value = true
+                if (status.equals("error", true)) _messagesSubscribed.value = false
+                return
+            }
+
+            if (event == "system") {
+                val status = payload.optString("status")
+                val extension = payload.optString("extension")
+                val message = payload.optString("message")
+                val channel = payload.optString("channel").ifBlank { topic }
+                val isMessageSubscription = channel.contains("messages", true) || topic.contains("messages", true)
+                if (isMessageSubscription && extension.equals("postgres_changes", true)) {
+                    when {
+                        status.equals("ok", true) && message.contains("Subscribed", true) -> _messagesSubscribed.value = true
+                        status.equals("error", true) -> _messagesSubscribed.value = false
+                    }
+                }
+                return
+            }
+
+            if ((event == "phx_error" || event == "phx_close") && topic.contains("messages", true)) {
+                _messagesSubscribed.value = false
+                return
+            }
+            if (event != "postgres_changes") return
+
+            val data = payload.optJSONObject("data") ?: return
+            val type = data.optString("type")
+            val table = data.optString("table")
+            val record = data.optJSONObject("record") ?: data.optJSONObject("old_record") ?: JSONObject()
+
             when (table) {
-                "messages" -> { val senderId = record.optString("sender_id"); val senderUsername = record.optString("sender_username"); val createdAt = record.optString("created_at"); publishEvent(RealtimeEvent.MessageEvent(type, ChatMessage(id = record.optString("id"), conversationId = record.optString("conversation_id"), senderId = senderId.ifBlank { senderUsername }, senderUsername = senderUsername, receiverId = record.optString("receiver_id").ifBlank { record.optString("receiver_username") }, receiverUsername = record.optString("receiver_username"), text = record.optString("content", record.optString("text")), rawTimestamp = createdAt, timestamp = formatTimestamp(createdAt), isFromMe = senderId == activeUserId || senderUsername.equals(activeUsername, true), isRead = record.optBoolean("is_read", false), status = when {
-                    record.optBoolean("is_read", false) || record.optString("read_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.READ
-                    record.optString("delivered_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.DELIVERED
-                    else -> MessageStatus.SENT
-                }))) }
+                "messages" -> {
+                    _messagesSubscribed.value = true
+                    val senderId = record.optString("sender_id")
+                    val senderUsername = record.optString("sender_username")
+                    val createdAt = record.optString("created_at")
+                    publishEvent(
+                        RealtimeEvent.MessageEvent(
+                            type,
+                            ChatMessage(
+                                id = record.optString("id"),
+                                conversationId = record.optString("conversation_id"),
+                                senderId = senderId.ifBlank { senderUsername },
+                                senderUsername = senderUsername,
+                                receiverId = record.optString("receiver_id").ifBlank { record.optString("receiver_username") },
+                                receiverUsername = record.optString("receiver_username"),
+                                text = record.optString("content", record.optString("text")),
+                                rawTimestamp = createdAt,
+                                timestamp = formatTimestamp(createdAt),
+                                isFromMe = senderId == activeUserId || senderUsername.equals(activeUsername, true),
+                                isRead = record.optBoolean("is_read", false),
+                                status = when {
+                                    record.optBoolean("is_read", false) || record.optString("read_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.READ
+                                    record.optString("delivered_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.DELIVERED
+                                    else -> MessageStatus.SENT
+                                }
+                            )
+                        )
+                    )
+                }
                 "conversations" -> publishEvent(RealtimeEvent.ConversationEvent(type, record.optString("id"), record.optString("last_message"), record.optString("updated_at", record.optString("last_message_at"))))
                 "notifications" -> publishEvent(RealtimeEvent.NotificationEvent(type, record.optString("id"), record.optString("user_id"), record.optString("username"), record.optString("type"), record.optString("title"), record.optString("content")))
                 "feed_posts" -> publishEvent(RealtimeEvent.FeedPostEvent(type, record.optString("id")))
@@ -129,11 +224,20 @@ class SupabaseRealtimeManager private constructor() {
                 "housing_requests", "housing_request_applications", "game_challenges", "study_circles", "study_circle_members" ->
                     publishEvent(RealtimeEvent.ConnectHubEvent(type, table))
             }
-        } catch (e: Exception) { Log.e(TAG, "Error parsing realtime message", e) }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing realtime message", e)
+        }
     }
-    private fun handleDisconnected() { isConnected.set(false); isConnecting.set(false); heartbeatJob?.cancel(); setPresence(false) }
+    private fun handleDisconnected() {
+        isConnected.set(false)
+        isConnecting.set(false)
+        _messagesSubscribed.value = false
+        lastAccessTokenSent = ""
+        heartbeatJob?.cancel()
+        setPresence(false)
+    }
     private fun scheduleReconnect() { reconnectJob?.cancel(); reconnectJob = scope.launch { delay(5_000L); if (!isConnected.get() && activeUsername.isNotBlank()) connect(activeUsername, activeUserId) } }
-    fun disconnect() { setPresence(false); activeUsername = ""; activeUserId = ""; heartbeatJob?.cancel(); reconnectJob?.cancel(); try { webSocket?.close(1000, "User logged out") } catch (_: Exception) {}; webSocket = null; isConnected.set(false); isConnecting.set(false) }
+    fun disconnect() { setPresence(false); activeUsername = ""; activeUserId = ""; heartbeatJob?.cancel(); reconnectJob?.cancel(); try { webSocket?.close(1000, "User logged out") } catch (_: Exception) {}; webSocket = null; isConnected.set(false); isConnecting.set(false); _messagesSubscribed.value = false; lastAccessTokenSent = "" }
     private fun nowIso(): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date())
     private fun formatTimestamp(value: String): String {
         if (value.isBlank()) return "Just now"

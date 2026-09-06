@@ -115,7 +115,7 @@ class ChatRepository(
         conversationId: String,
         beforeCreatedAt: String? = null,
         beforeId: String? = null,
-        limit: Int = 100
+        limit: Int = 50
     ): List<ChatMessage> = withContext(Dispatchers.IO) {
         if (conversationId.isBlank() || conversationId.startsWith("local_")) return@withContext emptyList()
         val uid = supabaseService.getCurrentUserId().orEmpty()
@@ -211,12 +211,13 @@ class ChatRepository(
     }
 
     /** Sends through auth.uid() on the server; retries once after refreshing an expired JWT. */
+    // MESSAGING_RELIABILITY_AUDIT_V3: server-confirmed sends always return both IDs.
     suspend fun sendMessage(
         receiverUsername: String,
         text: String,
         replyToMessageId: String? = null
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
-        val receiver = receiverUsername.trim()
+        val receiver = receiverUsername.trim().removePrefix("@")
         val cleanText = text.trim()
         if (receiver.isBlank() || cleanText.isBlank()) {
             return@withContext Result.failure(Exception("Recipient and message are required."))
@@ -233,7 +234,7 @@ class ChatRepository(
             }
             return client.newCall(
                 Request.Builder()
-                    .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/send_message")
+                    .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/send_message_v2")
                     .addHeader("apikey", SupabaseConfig.anonKey)
                     .addHeader("Authorization", "Bearer $token")
                     .addHeader("Content-Type", "application/json")
@@ -246,8 +247,7 @@ class ChatRepository(
             var response = request()
             if (response.code == 401) {
                 response.close()
-                val refreshed = refreshSession()
-                if (!refreshed) {
+                if (!refreshSession()) {
                     return@withContext Result.failure(Exception("Your session expired. Please sign in again."))
                 }
                 response = request()
@@ -259,27 +259,40 @@ class ChatRepository(
                         .orEmpty().ifBlank { "Unable to send message (${res.code})." }
                     return@withContext Result.failure(Exception(message))
                 }
-                val messageId = raw.trim().removeSurrounding("\"")
-                if (messageId.isBlank() || messageId == "null") {
-                    return@withContext Result.failure(Exception("Message was not created."))
+
+                val rows = org.json.JSONArray(if (raw.isBlank()) "[]" else raw)
+                if (rows.length() == 0) {
+                    return@withContext Result.failure(Exception("Message was created but no server identity was returned."))
                 }
+                val row = rows.getJSONObject(0)
+                val messageId = row.optString("message_id")
+                val conversationId = row.optString("conversation_id")
+                val createdAt = row.optString("created_at").takeIf {
+                    it.isNotBlank() && !it.equals("null", true)
+                } ?: Instant.now().toString()
+                if (messageId.isBlank() || conversationId.isBlank()) {
+                    return@withContext Result.failure(Exception("Message confirmation was incomplete."))
+                }
+
                 val validReplyId = replyToMessageId
                     ?.takeIf { id -> runCatching { java.util.UUID.fromString(id) }.isSuccess }
                 if (validReplyId != null) {
                     runCatching { setMessageReply(messageId, validReplyId) }
                 }
+
                 Result.success(
                     ChatMessage(
                         id = messageId,
+                        conversationId = conversationId,
                         senderId = uid,
+                        receiverUsername = receiver,
                         text = cleanText,
-                        rawTimestamp = Instant.now().toString(),
-                        timestamp = "Just now",
+                        rawTimestamp = createdAt,
+                        timestamp = formatMessageTime(createdAt),
                         isFromMe = true,
                         isRead = false,
                         status = MessageStatus.SENT,
-                        replyToMessageId = replyToMessageId
-                            ?.takeIf { id -> runCatching { java.util.UUID.fromString(id) }.isSuccess }
+                        replyToMessageId = validReplyId
                     )
                 )
             }
@@ -545,6 +558,13 @@ class ChatRepository(
         } catch (_: Exception) {
             false
         }
+    }
+
+    suspend fun ackPendingDeliveries(): Int = withContext(Dispatchers.IO) {
+        runCatching {
+            postAuthenticatedRpc("ack_pending_message_deliveries", JSONObject())
+                .trim().trim('"').toIntOrNull() ?: 0
+        }.getOrDefault(0)
     }
 
     suspend fun markMessageDelivered(messageId: String): Boolean {

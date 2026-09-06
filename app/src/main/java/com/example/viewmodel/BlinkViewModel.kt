@@ -87,6 +87,7 @@ data class BlinkUiState(
     val feedSubTab: Int = 0,
     val isOnline: Boolean = true,
     val isLiveSupabaseConnected: Boolean = false,
+    val isMessagingRealtimeConnected: Boolean = false,
     val isFeedLoading: Boolean = true,
     val isRefreshingContent: Boolean = false,
     val isSyncingContent: Boolean = false,
@@ -102,7 +103,8 @@ data class BlinkUiState(
     val isLoadingMorePosts: Boolean = false,
     val isLoadingMoreReels: Boolean = false,
     val messageHistoryHasMore: Map<String, Boolean> = emptyMap(),
-    val loadingOlderConversationId: String? = null
+    val loadingOlderConversationId: String? = null,
+    val loadingInitialConversationId: String? = null
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
@@ -204,6 +206,17 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                 .onFailure { Log.w(TAG, "Offline cache pruning failed", it) }
         }
         viewModelScope.launch { realtimeManager.events.collect { handleRealtimeEvent(it) } }
+        // MESSAGING_RELIABILITY_AUDIT_V3: expose real messages-channel readiness, not feed REST health.
+        viewModelScope.launch {
+            realtimeManager.messagesSubscribed.collectLatest { subscribed ->
+                _uiState.value = _uiState.value.copy(isMessagingRealtimeConnected = subscribed)
+                if (subscribed) {
+                    viewModelScope.launch(Dispatchers.IO) {
+                        runCatching { chatRepository.ackPendingDeliveries() }
+                    }
+                }
+            }
+        }
         viewModelScope.launch {
             _uiState.collectLatest { state ->
                 val link = pendingDeepLink
@@ -753,13 +766,20 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    private suspend fun persistConversationsNow(
+        snapshot: List<ChatConversation> = _uiState.value.conversations
+    ) {
+        val owner = _uiState.value.myProfile.username
+        cacheWriteMutex.withLock {
+            offlineContentStore.replaceConversations(snapshot, owner)
+        }
+    }
+
     private fun persistConversations() {
         val snapshot = _uiState.value.conversations
         viewModelScope.launch(Dispatchers.IO) {
-            cacheWriteMutex.withLock {
-                runCatching { offlineContentStore.replaceConversations(snapshot, _uiState.value.myProfile.username) }
-                    .onFailure { Log.w(TAG, "Unable to persist conversations", it) }
-            }
+            runCatching { persistConversationsNow(snapshot) }
+                .onFailure { Log.w(TAG, "Unable to persist conversations", it) }
         }
     }
 
@@ -857,6 +877,7 @@ private suspend fun restoreSupabaseSession() {
         if (syncJob?.isActive == true) return
 
         syncJob = viewModelScope.launch {
+            if (_uiState.value.isOnline) runCatching { chatRepository.ackPendingDeliveries() }
             if (!_uiState.value.isOnline) {
                 _uiState.value = _uiState.value.copy(
                     isFeedLoading = false,
@@ -2078,7 +2099,6 @@ private suspend fun restoreSupabaseSession() {
             )
             persistUiPreferences()
             viewModelScope.launch {
-                chatRepository.markConversationRead(clean)
                 if (_uiState.value.isOnline && existing.id.isNotBlank() && !existing.id.startsWith("local_")) {
                     loadConversationHistory(existing.id, clean, older = false)
                 }
@@ -2145,78 +2165,117 @@ private suspend fun restoreSupabaseSession() {
         partnerUsername: String,
         older: Boolean
     ) {
-        if (conversationId.isBlank() || conversationId.startsWith("local_")) return
-        val state = _uiState.value
-        if (state.loadingOlderConversationId == conversationId) return
-        val current = state.conversations.firstOrNull { it.id == conversationId } ?: return
-        val currentOldest = current.messages.minByOrNull { it.rawTimestamp.ifBlank { "9999" } }
+        if (conversationId.isBlank()) return
 
-        var beforeAt = if (older) currentOldest?.rawTimestamp?.takeIf { it.isNotBlank() } else null
-        var beforeId = if (older) currentOldest?.id?.takeIf { it.isNotBlank() } else null
-        var pageNumber = 0
-        var hasMore = true
-
-        _uiState.value = state.copy(loadingOlderConversationId = conversationId)
-        try {
-            while (hasMore && pageNumber < 1_000) {
-                val page = chatRepository.fetchMessagePage(
-                    conversationId = conversationId,
-                    beforeCreatedAt = beforeAt,
-                    beforeId = beforeId,
-                    limit = 100
-                )
-
-                val latest = _uiState.value
-                val updated = latest.conversations.map { conversation ->
-                    if (conversation.id != conversationId) conversation
-                    else {
-                        // Server pages are merged with optimistic/local messages. This makes
-                        // full history restoration safe even while a new message is sending.
-                        val merged = page + conversation.messages
-                        conversation.copy(
-                            messages = merged
-                                .distinctBy { it.id }
-                                .sortedBy { it.rawTimestamp.ifBlank { it.timestamp } }
-                                .toMutableList()
+        var resolvedConversationId = conversationId
+        if (resolvedConversationId.startsWith("local_") && _uiState.value.isOnline) {
+            val server = runCatching { chatRepository.fetchConversations() }.getOrDefault(emptyList())
+                .firstOrNull { it.partnerUsername.equals(partnerUsername, true) }
+            if (server != null && server.id.isNotBlank() && !server.id.startsWith("local_")) {
+                withContext(Dispatchers.Main) {
+                    val latest = _uiState.value
+                    val conversations = latest.conversations.toMutableList()
+                    val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }
+                    if (index >= 0) {
+                        val local = conversations[index]
+                        conversations[index] = server.copy(
+                            messages = local.messages.toMutableList(),
+                            isMuted = local.isMuted
+                        )
+                        val historyMap = latest.messageHistoryHasMore.toMutableMap().apply {
+                            remove(local.id)
+                            put(server.id, get(server.id) ?: true)
+                        }
+                        _uiState.value = latest.copy(
+                            conversations = conversations,
+                            messageHistoryHasMore = historyMap
                         )
                     }
                 }
-
-                hasMore = page.size >= 100
-                _uiState.value = latest.copy(
-                    conversations = updated,
-                    messageHistoryHasMore = latest.messageHistoryHasMore + (conversationId to hasMore),
-                    loadingOlderConversationId = if (hasMore) conversationId else null
-                )
-                persistConversations()
-
-                if (!hasMore) break
-
-                val oldestInPage = page.minByOrNull { it.rawTimestamp.ifBlank { "9999" } }
-                val nextAt = oldestInPage?.rawTimestamp?.takeIf { it.isNotBlank() }
-                val nextId = oldestInPage?.id?.takeIf { it.isNotBlank() }
-                if (nextAt.isNullOrBlank() || nextId.isNullOrBlank()) {
-                    hasMore = false
-                    break
-                }
-                if (nextAt == beforeAt && nextId == beforeId) {
-                    hasMore = false
-                    break
-                }
-
-                beforeAt = nextAt
-                beforeId = nextId
-                pageNumber += 1
-                kotlinx.coroutines.yield()
+                persistConversationsNow()
+                resolvedConversationId = server.id
+            } else {
+                return
             }
+        }
+        if (resolvedConversationId.startsWith("local_")) return
+
+        val state = _uiState.value
+        val current = state.conversations.firstOrNull {
+            it.id == resolvedConversationId || it.partnerUsername.equals(partnerUsername, true)
+        } ?: return
+        if (older && state.loadingOlderConversationId == resolvedConversationId) return
+        if (!older && state.loadingInitialConversationId == resolvedConversationId) return
+
+        val oldest = current.messages
+            .filter { it.rawTimestamp.isNotBlank() && !it.id.startsWith("temp_") }
+            .minWithOrNull(compareBy<ChatMessage> { it.rawTimestamp }.thenBy { it.id })
+        val beforeAt = if (older) oldest?.rawTimestamp else null
+        val beforeId = if (older) oldest?.id else null
+
+        _uiState.value = if (older) {
+            state.copy(loadingOlderConversationId = resolvedConversationId)
+        } else {
+            state.copy(loadingInitialConversationId = resolvedConversationId)
+        }
+
+        try {
+            val page = chatRepository.fetchMessagePage(
+                conversationId = resolvedConversationId,
+                beforeCreatedAt = beforeAt,
+                beforeId = beforeId,
+                limit = 50
+            )
+
+            withContext(Dispatchers.Main) {
+                val latest = _uiState.value
+                val conversations = latest.conversations.toMutableList()
+                val index = conversations.indexOfFirst {
+                    it.id == resolvedConversationId || it.partnerUsername.equals(partnerUsername, true)
+                }
+                if (index >= 0) {
+                    val old = conversations[index]
+                    val merged = LinkedHashMap<String, ChatMessage>()
+                    old.messages.forEach { message ->
+                        val key = message.id.ifBlank { "local:${message.rawTimestamp}:${message.text}" }
+                        merged[key] = message
+                    }
+                    // Server rows win for matching IDs so delivery/read status is refreshed.
+                    page.forEach { message ->
+                        val key = message.id.ifBlank { "server:${message.rawTimestamp}:${message.text}" }
+                        merged[key] = message.copy(conversationId = resolvedConversationId)
+                    }
+                    val messages = merged.values
+                        .sortedWith(compareBy<ChatMessage> { it.rawTimestamp.ifBlank { "9999" } }.thenBy { it.id })
+                        .toMutableList()
+                    val newest = messages.lastOrNull()
+                    conversations[index] = old.copy(
+                        id = resolvedConversationId,
+                        messages = messages,
+                        lastMessage = newest?.text ?: old.lastMessage,
+                        lastMessageTime = newest?.timestamp ?: old.lastMessageTime,
+                        lastMessageRawTime = newest?.rawTimestamp ?: old.lastMessageRawTime
+                    )
+                    _uiState.value = latest.copy(
+                        conversations = conversations,
+                        messageHistoryHasMore = latest.messageHistoryHasMore + (resolvedConversationId to (page.size >= 50))
+                    )
+                }
+            }
+
+            // Make the merged page durable before acknowledging it to the server.
+            persistConversationsNow()
+            runCatching { chatRepository.ackPendingDeliveries() }
+            if (!older) runCatching { chatRepository.markConversationRead(partnerUsername) }
         } catch (e: Exception) {
             Log.w(TAG, "Message history hydration failed for @$partnerUsername", e)
         } finally {
             val latest = _uiState.value
-            _uiState.value = latest.copy(
-                loadingOlderConversationId = null,
-                messageHistoryHasMore = latest.messageHistoryHasMore + (conversationId to hasMore)
-            )
+            _uiState.value = if (older) {
+                latest.copy(loadingOlderConversationId = null)
+            } else {
+                latest.copy(loadingInitialConversationId = null)
+            }
         }
     }
 
@@ -2239,119 +2298,56 @@ private suspend fun restoreSupabaseSession() {
         if (cleanText.isBlank() || cleanPartner.isBlank()) return
 
         val uid = supabaseService.getCurrentUserId() ?: "local_user"
-        val currentUsername = supabaseService.getCurrentUsername() ?: _uiState.value.myProfile.username.ifBlank { "you" }
+        val currentUsername = supabaseService.getCurrentUsername()
+            ?: _uiState.value.myProfile.username.ifBlank { "you" }
         val tempId = "temp_${UUID.randomUUID()}"
+        val currentConversationId = _uiState.value.conversations
+            .firstOrNull { it.partnerUsername.equals(cleanPartner, true) }
+            ?.id
+            ?.takeUnless { it.startsWith("local_") }
         val optimistic = ChatMessage(
             id = tempId,
+            conversationId = currentConversationId,
             senderId = uid,
             senderUsername = currentUsername,
             receiverUsername = cleanPartner,
             text = cleanText,
-            timestamp = "Sending...",
             rawTimestamp = java.time.Instant.now().toString(),
-            isFromMe = true,
+            timestamp = "Sending...",
+            isFromMe = isFromMe,
             isRead = false,
             status = MessageStatus.SENDING,
             replyToMessageId = replyToMessageId
         )
         if (!replyToMessageId.isNullOrBlank()) pendingReplyTargets[tempId] = replyToMessageId
         appendMessageToState(cleanPartner, optimistic)
-        persistConversations()
 
-
-        // FAST_MESSAGE_DELIVERY_V2
-        // Persist the outbox and perform the network insert concurrently. Room durability no
-        // longer sits in front of the Supabase request, so rapid sends feel immediate while
-        // still surviving process death/offline transitions.
         viewModelScope.launch(Dispatchers.IO) {
+            offlineContentStore.enqueueMessage(tempId, cleanPartner, cleanText)
             if (!activeOutboxIds.add(tempId)) return@launch
             try {
-                kotlinx.coroutines.coroutineScope {
-                    val persistJob = async {
-                        offlineContentStore.enqueueMessage(tempId, cleanPartner, cleanText)
-                    }
-                    val networkJob = async {
-                        chatRepository.sendMessage(cleanPartner, cleanText, replyToMessageId)
-                    }
-
-                    val result = networkJob.await()
-                    persistJob.await()
-
-                    result.fold(
-                        onSuccess = { serverMsg ->
-                            offlineContentStore.deleteOutbox(tempId)
-                            pendingReplyTargets.remove(tempId)
-
-                            withContext(Dispatchers.Main) {
-                                replaceMessageInState(
-                                    cleanPartner,
-                                    tempId,
-                                    serverMsg.copy(
-                                        receiverUsername = cleanPartner,
-                                        status = MessageStatus.SENT
-                                    )
-                                )
-                            }
-
-                            // Notification dispatch is deliberately after the UI has already
-                            // changed to SENT; slow push infrastructure cannot delay the tick.
-                            chatRepository.triggerMessagePushBestEffort(serverMsg.id)
-
-                            runCatching {
-                                supabaseService.recordActivity(
-                                    cleanPartner,
-                                    "sent you a direct message",
-                                    NotificationFilter.ALL,
-                                    targetUsername = supabaseService.getCurrentUsername().orEmpty(),
-                                    previewText = cleanText,
-                                    targetType = "CHAT"
-                                )
-                            }
-                            reconcileConversationSummary(cleanPartner)
-                        },
-                        onFailure = { error ->
-                            val detail = error.message.orEmpty()
-                            val lower = detail.lowercase()
-                            val retryable = lower.contains("timeout") ||
-                                lower.contains("timed out") ||
-                                lower.contains("network") ||
-                                lower.contains("failed to connect") ||
-                                lower.contains("unable to resolve host") ||
-                                lower.contains("no route to host") ||
-                                lower.contains("socket") ||
-                                !_uiState.value.isOnline
-
-                            if (retryable) {
-                                offlineContentStore.resetOutbox(tempId)
-                                withContext(Dispatchers.Main) {
-                                    updateMessageStatusInState(
-                                        cleanPartner,
-                                        tempId,
-                                        MessageStatus.SENDING,
-                                        pendingLabel = "Queued"
-                                    )
-                                }
-                            } else {
-                                val pending = offlineContentStore.pendingOutbox(100)
-                                    .firstOrNull { it.localId == tempId }
-                                if (pending != null) {
-                                    offlineContentStore.markOutboxFailure(
-                                        pending,
-                                        detail.ifBlank { "Message send failed" }
-                                    )
-                                }
-                                withContext(Dispatchers.Main) {
-                                    updateMessageStatusInState(
-                                        cleanPartner,
-                                        tempId,
-                                        MessageStatus.FAILED
-                                    )
-                                    showToast(detail.ifBlank { "Message failed. Please try again." })
-                                }
-                            }
+                chatRepository.sendMessage(cleanPartner, cleanText, replyToMessageId).fold(
+                    onSuccess = { serverMsg ->
+                        withContext(Dispatchers.Main) {
+                            replaceMessageInState(
+                                cleanPartner,
+                                tempId,
+                                serverMsg.copy(receiverUsername = cleanPartner, status = MessageStatus.SENT)
+                            )
                         }
-                    )
-                }
+                        // Confirmed server identity must reach Room before the outbox row is removed.
+                        persistConversationsNow()
+                        offlineContentStore.deleteOutbox(tempId)
+                        pendingReplyTargets.remove(tempId)
+                        chatRepository.triggerMessagePushBestEffort(serverMsg.id)
+                    },
+                    onFailure = { error ->
+                        withContext(Dispatchers.Main) {
+                            updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
+                            showToast(error.message ?: "Message couldn't be sent. It will retry when you're online.")
+                        }
+                    }
+                )
             } finally {
                 activeOutboxIds.remove(tempId)
             }
@@ -2392,87 +2388,41 @@ private suspend fun restoreSupabaseSession() {
     }
 
     private suspend fun drainMessageOutbox() {
-        if (supabaseService.getCurrentUserId().isNullOrBlank()) return
-        // Only protect the Room snapshot. Network requests run independently so a slow
-        // message can never block a rapid second/third send.
+        if (supabaseService.getCurrentUserId().isNullOrBlank() || !_uiState.value.isOnline) return
         val pending = messageOutboxMutex.withLock { offlineContentStore.pendingOutbox(100) }
         if (pending.isEmpty()) return
 
-        kotlinx.coroutines.coroutineScope {
-            pending.map { item ->
-                async(Dispatchers.IO) {
-                    if (!activeOutboxIds.add(item.localId)) return@async
-                    try {
-                        chatRepository.sendMessage(
-                            item.receiverUsername,
-                            item.content,
-                            pendingReplyTargets[item.localId]
-                        ).fold(
-                            onSuccess = { serverMsg ->
-                                offlineContentStore.deleteOutbox(item.localId)
-                                pendingReplyTargets.remove(item.localId)
-                                withContext(Dispatchers.Main) {
-                                    replaceMessageInState(
-                                        item.receiverUsername,
-                                        item.localId,
-                                        serverMsg.copy(
-                                            receiverUsername = item.receiverUsername,
-                                            status = MessageStatus.SENT
-                                        )
-                                    )
-                                    persistConversations()
-                                }
-                                chatRepository.triggerMessagePushBestEffort(serverMsg.id)
-                                runCatching {
-                                    supabaseService.recordActivity(
-                                        item.receiverUsername,
-                                        "sent you a direct message",
-                                        NotificationFilter.ALL,
-                                        targetUsername = supabaseService.getCurrentUsername().orEmpty(),
-                                        previewText = item.content,
-                                        targetType = "CHAT"
-                                    )
-                                }
-                                reconcileConversationSummary(item.receiverUsername)
-                            },
-                            onFailure = { error ->
-                                val detail = error.message.orEmpty()
-                                val lower = detail.lowercase()
-                                val retryable = lower.contains("timeout") ||
-                                    lower.contains("timed out") ||
-                                    lower.contains("network") ||
-                                    lower.contains("failed to connect") ||
-                                    lower.contains("unable to resolve host") ||
-                                    lower.contains("no route to host") ||
-                                    lower.contains("socket") ||
-                                    !_uiState.value.isOnline
-
-                                if (retryable) {
-                                    offlineContentStore.resetOutbox(item.localId)
-                                    withContext(Dispatchers.Main) {
-                                        updateMessageStatusInState(
-                                            item.receiverUsername,
-                                            item.localId,
-                                            MessageStatus.SENDING,
-                                            pendingLabel = "Queued"
-                                        )
-                                        persistConversations()
-                                    }
-                                } else {
-                                    offlineContentStore.markOutboxFailure(item, detail.ifBlank { "Message send failed" })
-                                    withContext(Dispatchers.Main) {
-                                        updateMessageStatusInState(item.receiverUsername, item.localId, MessageStatus.FAILED)
-                                        persistConversations()
-                                        showToast(detail.ifBlank { "Message failed. Please try again." })
-                                    }
-                                }
-                            }
-                        )
-                    } finally {
-                        activeOutboxIds.remove(item.localId)
+        for (item in pending) {
+            if (!activeOutboxIds.add(item.localId)) continue
+            try {
+                chatRepository.sendMessage(
+                    item.receiverUsername,
+                    item.content,
+                    pendingReplyTargets[item.localId]
+                ).fold(
+                    onSuccess = { serverMsg ->
+                        withContext(Dispatchers.Main) {
+                            replaceMessageInState(
+                                item.receiverUsername,
+                                item.localId,
+                                serverMsg.copy(receiverUsername = item.receiverUsername, status = MessageStatus.SENT)
+                            )
+                        }
+                        persistConversationsNow()
+                        offlineContentStore.deleteOutbox(item.localId)
+                        pendingReplyTargets.remove(item.localId)
+                        chatRepository.triggerMessagePushBestEffort(serverMsg.id)
+                    },
+                    onFailure = { error ->
+                        offlineContentStore.markOutboxFailure(item, error.message ?: "Send failed")
+                        withContext(Dispatchers.Main) {
+                            updateMessageStatusInState(item.receiverUsername, item.localId, MessageStatus.FAILED)
+                        }
                     }
-                }
-            }.forEach { it.await() }
+                )
+            } finally {
+                activeOutboxIds.remove(item.localId)
+            }
         }
     }
 
@@ -2882,7 +2832,81 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = _uiState.value.copy(conversations = conversations)
         persistConversations()
     }
-    private fun replaceMessageInState(partnerUsername: String, oldId: String, newMsg: ChatMessage) { val conversations = _uiState.value.conversations.toMutableList(); val index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }; if (index >= 0) { val old = conversations[index]; conversations[index] = old.copy(lastMessage = newMsg.text, lastMessageTime = newMsg.timestamp, lastMessageRawTime = newMsg.rawTimestamp, messages = old.messages.map { if (it.id == oldId) newMsg else it }.toMutableList()); _uiState.value = _uiState.value.copy(conversations = conversations); persistConversations() } }
+    private fun replaceMessageInState(partnerUsername: String, oldId: String, newMsg: ChatMessage) {
+        val state = _uiState.value
+        val conversations = state.conversations.toMutableList()
+        var index = conversations.indexOfFirst { it.partnerUsername.equals(partnerUsername, true) }
+        val serverConversationId = newMsg.conversationId
+            ?.takeIf { it.isNotBlank() && !it.startsWith("local_") }
+
+        if (index < 0) {
+            val id = serverConversationId ?: "local_${UUID.randomUUID()}"
+            conversations.add(
+                0,
+                ChatConversation(
+                    id = id,
+                    partnerUsername = partnerUsername,
+                    partnerName = partnerUsername.replace(".", " ").replace("_", " ").capitalizeWords(),
+                    partnerAvatar = "",
+                    lastMessage = newMsg.text,
+                    lastMessageTime = newMsg.timestamp,
+                    lastMessageRawTime = newMsg.rawTimestamp,
+                    messages = mutableListOf(newMsg.copy(conversationId = serverConversationId))
+                )
+            )
+            _uiState.value = state.copy(conversations = conversations)
+            persistConversations()
+            return
+        }
+
+        val old = conversations[index]
+        val resolvedConversationId = if (old.id.startsWith("local_") && serverConversationId != null) {
+            serverConversationId
+        } else old.id
+        val normalized = newMsg.copy(conversationId = serverConversationId ?: newMsg.conversationId)
+        val messages = old.messages.toMutableList()
+        val messageIndex = messages.indexOfFirst { it.id == oldId || (normalized.id.isNotBlank() && it.id == normalized.id) }
+        if (messageIndex >= 0) messages[messageIndex] = normalized
+        else if (messages.none { it.id == normalized.id }) messages.add(normalized)
+
+        conversations[index] = old.copy(
+            id = resolvedConversationId,
+            lastMessage = normalized.text,
+            lastMessageTime = normalized.timestamp,
+            lastMessageRawTime = normalized.rawTimestamp,
+            messages = messages.distinctBy { it.id.ifBlank { "${it.rawTimestamp}:${it.text}" } }
+                .sortedBy { it.rawTimestamp.ifBlank { "9999" } }
+                .toMutableList()
+        )
+
+        // If a server summary arrived while this local conversation was sending, merge it.
+        val duplicateIndex = conversations.indexOfFirst { candidate ->
+            candidate.id == resolvedConversationId && candidate.partnerUsername.equals(partnerUsername, true)
+        }
+        if (duplicateIndex >= 0 && duplicateIndex != index) {
+            val primary = conversations[index]
+            val duplicate = conversations[duplicateIndex]
+            val mergedMessages = (duplicate.messages + primary.messages)
+                .distinctBy { it.id.ifBlank { "${it.rawTimestamp}:${it.text}" } }
+                .sortedBy { it.rawTimestamp.ifBlank { "9999" } }
+                .toMutableList()
+            conversations[index] = primary.copy(messages = mergedMessages)
+            conversations.removeAt(duplicateIndex)
+            if (duplicateIndex < index) index -= 1
+        }
+
+        var history = state.messageHistoryHasMore
+        if (resolvedConversationId != old.id) {
+            history = history - old.id + (resolvedConversationId to (history[old.id] ?: history[resolvedConversationId] ?: true))
+        }
+        _uiState.value = state.copy(
+            conversations = conversations,
+            messageHistoryHasMore = history,
+            loadingOlderConversationId = if (state.loadingOlderConversationId == old.id) resolvedConversationId else state.loadingOlderConversationId,
+            loadingInitialConversationId = if (state.loadingInitialConversationId == old.id) resolvedConversationId else state.loadingInitialConversationId
+        )
+        persistConversations()
+    }
     private fun updateMessageStatusInState(
         partnerUsername: String,
         messageId: String,
