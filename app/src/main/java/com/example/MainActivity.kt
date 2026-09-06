@@ -566,7 +566,8 @@ fun MainAppContent(
                         onAddStoryClick = { viewModel.openCreateStory(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
                         isDark = uiState.isDarkMode,
-                        isConnected = uiState.isOnline
+                        isConnected = uiState.isOnline,
+                        isLoading = uiState.isConversationsLoading
                     )
                 }
             }

@@ -75,6 +75,7 @@ data class BlinkUiState(
     val leaderboardUsers: List<LeaderboardUser> = emptyList(),
     val gameLeaderboardUsers: List<LeaderboardUser> = emptyList(),
     val conversations: List<ChatConversation> = emptyList(),
+    val isConversationsLoading: Boolean = false,
     val activities: List<ActivityItem> = emptyList(),
     val activitiesLoading: Boolean = false,
     val activitiesError: String? = null,
@@ -916,6 +917,7 @@ private suspend fun restoreSupabaseSession() {
                     isFeedLoading = !hadFeed && !showRefreshIndicator,
                     isRefreshingContent = showRefreshIndicator,
                     isSyncingContent = true,
+                    isConversationsLoading = before.conversations.isEmpty(),
                     feedErrorMessage = null
                 )
 
@@ -1102,7 +1104,8 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = _uiState.value.copy(
                         isFeedLoading = false,
                         isRefreshingContent = false,
-                        isSyncingContent = false
+                        isSyncingContent = false,
+                        isConversationsLoading = false
                     )
                     persistExtendedCache()
                 }
@@ -1471,9 +1474,17 @@ private suspend fun restoreSupabaseSession() {
             feedSubTab = nextFeedSubTab,
             viewingProfile = null,
             viewingProduct = null,
-            isConversationFullScreen = false
+            isConversationFullScreen = false,
+            isConversationsLoading = if (
+                tab == MainTab.MESSAGES &&
+                _uiState.value.conversations.isEmpty() &&
+                _uiState.value.isOnline
+            ) true else _uiState.value.isConversationsLoading
         )
         persistUiPreferences()
+        if (tab == MainTab.MESSAGES && _uiState.value.conversations.isEmpty() && _uiState.value.isOnline) {
+            fetchSupabaseData()
+        }
     }
     fun setTab(tab: MainTab) = selectTab(tab)
     fun setFeedSubTab(tab: Int) {

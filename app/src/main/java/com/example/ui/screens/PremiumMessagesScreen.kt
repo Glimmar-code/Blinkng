@@ -208,6 +208,7 @@ fun PremiumMessagesScreen(
     onOpenActivity: () -> Unit,
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
     isConnected: Boolean = true,
+    isLoading: Boolean = false,
     isDark: Boolean = false
 ) {
     val context = LocalContext.current
@@ -286,7 +287,8 @@ fun PremiumMessagesScreen(
                             onStoryClick = onStoryClick,
                             onAddStoryClick = onAddStoryClick,
                             onOpenAppearance = { showAppearanceSheet = true },
-                            isConnected = isConnected
+                            isConnected = isConnected,
+                            isLoading = isLoading
                         )
                     }
 
@@ -326,7 +328,8 @@ fun PremiumMessagesScreen(
                     onStoryClick = onStoryClick,
                     onAddStoryClick = onAddStoryClick,
                     onOpenAppearance = { showAppearanceSheet = true },
-                    isConnected = isConnected
+                    isConnected = isConnected,
+                    isLoading = isLoading
                 )
             }
         }
@@ -648,12 +651,19 @@ private fun PremiumMessagesHome(
     onStoryClick: (Story) -> Unit,
     onAddStoryClick: () -> Unit,
     onOpenAppearance: () -> Unit,
-    isConnected: Boolean
+    isConnected: Boolean,
+    isLoading: Boolean
 ) {
     var query by remember { mutableStateOf("") }
-    val filteredConversations = remember(conversations, query) {
-        if (query.isBlank()) conversations
-        else conversations.filter {
+    val sortedConversations = remember(conversations) {
+        conversations.sortedWith(
+            compareByDescending<ChatConversation> { it.lastMessageRawTime }
+                .thenByDescending { it.id }
+        )
+    }
+    val filteredConversations = remember(sortedConversations, query) {
+        if (query.isBlank()) sortedConversations
+        else sortedConversations.filter {
             it.partnerName.contains(query, ignoreCase = true) ||
                 it.partnerUsername.contains(query, ignoreCase = true) ||
                 it.lastMessage.contains(query, ignoreCase = true)
@@ -741,6 +751,7 @@ private fun PremiumMessagesHome(
                     palette = palette,
                     onOpenConversation = onOpenConversation,
                     onProfileClick = onProfileClick,
+                    isLoading = isLoading && conversations.isEmpty() && query.isBlank(),
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -1026,13 +1037,68 @@ private fun OfflineNotice(palette: MessagePalette) {
 }
 
 @Composable
+private fun PremiumConversationListSkeleton(
+    palette: MessagePalette,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        repeat(7) {
+            Surface(
+                color = palette.glassElevated.copy(alpha = if (palette.isLight) .70f else .48f),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, palette.border.copy(alpha = .70f)),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        Modifier.size(52.dp).clip(CircleShape)
+                            .background(palette.glass.copy(alpha = .88f))
+                    )
+                    Spacer(Modifier.width(11.dp))
+                    Column(Modifier.weight(1f)) {
+                        Box(
+                            Modifier.fillMaxWidth(.46f).height(13.dp)
+                                .clip(RoundedCornerShape(7.dp))
+                                .background(palette.glass.copy(alpha = .90f))
+                        )
+                        Spacer(Modifier.height(9.dp))
+                        Box(
+                            Modifier.fillMaxWidth(.78f).height(10.dp)
+                                .clip(RoundedCornerShape(7.dp))
+                                .background(palette.glass.copy(alpha = .66f))
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Box(
+                        Modifier.width(38.dp).height(9.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(palette.glass.copy(alpha = .62f))
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ConversationList(
     conversations: List<ChatConversation>,
     palette: MessagePalette,
     onOpenConversation: (String) -> Unit,
     onProfileClick: (String) -> Unit,
+    isLoading: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    if (isLoading) {
+        PremiumConversationListSkeleton(palette = palette, modifier = modifier)
+        return
+    }
     if (conversations.isEmpty()) {
         Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
