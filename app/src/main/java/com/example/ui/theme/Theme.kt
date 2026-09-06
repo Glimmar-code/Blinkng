@@ -4,8 +4,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+
+private const val APP_FONT_SCALE = 0.5f
 
 private val DarkColorScheme = darkColorScheme(
     primary = FeedPurple,
@@ -80,9 +85,17 @@ fun BlinkTheme(
     darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
-        typography = Typography,
-        content = content
+    val systemDensity = LocalDensity.current
+    val compactTextDensity = Density(
+        density = systemDensity.density,
+        fontScale = systemDensity.fontScale * APP_FONT_SCALE
     )
+
+    CompositionLocalProvider(LocalDensity provides compactTextDensity) {
+        MaterialTheme(
+            colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
+            typography = Typography,
+            content = content
+        )
+    }
 }
