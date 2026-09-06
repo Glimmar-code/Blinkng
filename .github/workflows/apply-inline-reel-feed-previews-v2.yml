@@ -55,4 +55,4 @@ jobs:
             exit 1
           fi
 
-# Triggered after view-pipeline alignment; source is compiled before push.
+# Triggered after correcting FeedPost viewsCount; source is compiled before push.
