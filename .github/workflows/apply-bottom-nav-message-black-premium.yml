@@ -1,0 +1,60 @@
+name: Apply bottom nav and black premium messages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/apply_bottom_nav_message_black_premium.py'
+      - '.github/workflows/apply-bottom-nav-message-black-premium.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply bottom navigation and premium message fixes
+        run: python3 .github/scripts/apply_bottom_nav_message_black_premium.py
+
+      - name: Check patch formatting
+        run: git diff --check
+
+      - name: Verify message theme defaults
+        run: gradle :app:testDebugUnitTest --tests com.example.ui.theme.MessageThemeModeTest --stacktrace --no-daemon
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit source fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/MainActivity.kt \
+                  app/src/main/java/com/example/ui/components/FloatingBottomBar.kt \
+                  app/src/main/java/com/example/ui/screens/PremiumMessagesScreen.kt \
+                  app/src/main/java/com/example/ui/theme/MessageTheme.kt \
+                  app/src/test/java/com/example/ui/theme/MessageThemeModeTest.kt
+          if git diff --cached --quiet; then
+            echo "No source changes needed."
+            exit 0
+          fi
+          git commit -m "fix: polish bottom nav and default messages to black"
+          git push origin main
