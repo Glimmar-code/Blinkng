@@ -10,7 +10,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 
-private const val APP_FONT_SCALE = 0.5f
+// Keep the app at a balanced, standard mobile typography scale.
+// The previous 0.5x override made every Compose text style (including hard-coded sp sizes)
+// render at half-size. 1.0x keeps headings, chat names, previews, labels and navigation
+// close to the reference sizing while still respecting the user's system font setting.
+private const val APP_FONT_SCALE = 1.0f
 
 private val DarkColorScheme = darkColorScheme(
     primary = FeedPurple,
