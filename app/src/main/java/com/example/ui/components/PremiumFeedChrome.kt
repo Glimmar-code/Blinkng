@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -311,9 +312,8 @@ private fun FeedRadialHeaderAction(
 }
 
 /**
- * Compact navigation for the swipe family. For You, Following and Game are the
- * only page tabs; Reels is intentionally a separate action so it never steals
- * horizontal space from the labels on narrow phones.
+ * Compact navigation for the feed. For You and Following stay as readable tabs.
+ * Reel and Game are compact icon destinations, with Reel intentionally first.
  */
 @Composable
 fun FeedTabs(
@@ -332,12 +332,13 @@ fun FeedTabs(
             .height(54.dp)
     ) {
         val availableWidth = maxWidth
-        val actionsWidth = if (availableWidth < 360.dp) 88.dp else 106.dp
-        val tabWidth = (availableWidth - actionsWidth) / 3
+        val iconWidth = if (availableWidth < 360.dp) 42.dp else 48.dp
+        val filterWidth = if (availableWidth < 360.dp) 40.dp else 44.dp
+        val tabWidth = ((availableWidth - iconWidth * 2 - filterWidth) / 2).coerceAtLeast(72.dp)
         val indicatorWidth = (tabWidth - 18.dp).coerceAtLeast(22.dp)
-        val selected = selectedIndex.coerceIn(0, 2)
+        val labelSelection = selectedIndex.coerceIn(0, 1)
         val indicatorOffset by animateDpAsState(
-            targetValue = tabWidth * selected + (tabWidth - indicatorWidth) / 2,
+            targetValue = tabWidth * labelSelection + (tabWidth - indicatorWidth) / 2,
             animationSpec = spring(
                 dampingRatio = Spring.DampingRatioNoBouncy,
                 stiffness = Spring.StiffnessMediumLow
@@ -346,47 +347,27 @@ fun FeedTabs(
         )
 
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            FeedTabLabel("For You", selected == 0, Modifier.width(tabWidth), onForYouClick)
-            FeedTabLabel("Following", selected == 1, Modifier.width(tabWidth), onFollowingClick)
-            FeedTabLabel("Game", selected == 2, Modifier.width(tabWidth), onGameClick)
+            FeedTabLabel("For You", selectedIndex == 0, Modifier.width(tabWidth), onForYouClick)
+            FeedTabLabel("Following", selectedIndex == 1, Modifier.width(tabWidth), onFollowingClick)
 
-            Surface(
-                modifier = Modifier
-                    .width(if (availableWidth < 360.dp) 44.dp else 58.dp)
-                    .height(38.dp)
-                    .clickable(role = Role.Button, onClick = onReelClick)
-                    .semantics { contentDescription = "Open Reels" },
-                shape = RoundedCornerShape(19.dp),
-                color = FeedPurple.copy(alpha = 0.14f),
-                border = BorderStroke(1.dp, FeedPurple.copy(alpha = 0.42f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = FeedTextPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    if (availableWidth >= 390.dp) {
-                        Spacer(Modifier.width(2.dp))
-                        Text(
-                            "Reels",
-                            color = FeedTextPrimary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1
-                        )
-                    }
-                }
-            }
+            FeedIconDestination(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = "Open Reels",
+                selected = false,
+                width = iconWidth,
+                onClick = onReelClick
+            )
+            FeedIconDestination(
+                imageVector = Icons.Default.SportsEsports,
+                contentDescription = "Open Game",
+                selected = selectedIndex == 2,
+                width = iconWidth,
+                onClick = onGameClick
+            )
 
             Box(
                 modifier = Modifier
-                    .width(if (availableWidth < 360.dp) 44.dp else 48.dp)
+                    .width(filterWidth)
                     .height(52.dp)
                     .clickable(role = Role.Button, onClick = onFilterClick)
                     .semantics { contentDescription = "Filter feed" },
@@ -401,14 +382,48 @@ fun FeedTabs(
             }
         }
 
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .offset(x = indicatorOffset)
-                .width(indicatorWidth)
-                .height(3.dp)
-                .background(feedAccentBrush(), RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+        if (selectedIndex in 0..1) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .offset(x = indicatorOffset)
+                    .width(indicatorWidth)
+                    .height(3.dp)
+                    .background(feedAccentBrush(), RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+            )
+        }
+    }
+}
+
+@Composable
+private fun FeedIconDestination(
+    imageVector: ImageVector,
+    contentDescription: String,
+    selected: Boolean,
+    width: androidx.compose.ui.unit.Dp,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .width(width)
+            .height(38.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { this.contentDescription = contentDescription },
+        shape = RoundedCornerShape(19.dp),
+        color = if (selected) FeedPurple.copy(alpha = 0.28f) else FeedPurple.copy(alpha = 0.12f),
+        border = BorderStroke(
+            1.dp,
+            if (selected) FeedPurple.copy(alpha = 0.78f) else FeedPurple.copy(alpha = 0.34f)
         )
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = imageVector,
+                contentDescription = null,
+                tint = FeedTextPrimary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }
 

@@ -1646,9 +1646,12 @@ fun getCurrentUserId(): String? {
 
         val profile = fetchProfileById(source.cleanString("user_id")) ?: return@withContext null
         val mapped = JSONObject(source.toString()).apply {
-            put("author", profile.username)
+            put("author", profile.fullName.ifBlank { profile.username })
+            put("author_name", profile.fullName.ifBlank { profile.username })
+            put("full_name", profile.fullName.ifBlank { profile.username })
             put("author_avatar", profile.avatarUrl)
             put("username", profile.username)
+            put("author_username", profile.username)
             put("is_verified", profile.verificationBadge != VerificationBadge.NONE)
             put("verification_badge", profile.verificationBadge.name)
         }
@@ -1946,10 +1949,14 @@ fun getCurrentUserId(): String? {
                 val username = profile.cleanString("username")
                 if (username.isBlank() || username.equals("null", true)) continue
 
+                val fullName = profile.cleanString("full_name").ifBlank { username }
                 val mapped = JSONObject(source.toString()).apply {
-                    put("author", username)
+                    put("author", fullName)
+                    put("author_name", fullName)
+                    put("full_name", fullName)
                     put("author_avatar", profile.cleanString("avatar_url"))
                     put("username", username)
+                    put("author_username", username)
                     put("is_verified", profile.optBoolean("is_verified"))
                     put("verification_badge", profile.cleanString("verification_badge"))
                     source.cleanString("poll_id")

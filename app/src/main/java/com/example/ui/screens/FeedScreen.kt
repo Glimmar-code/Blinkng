@@ -36,7 +36,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -65,6 +67,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -863,9 +866,53 @@ private fun TopNavigation(
         verticalAlignment = Alignment.CenterVertically
     ) {
         TopTab("Home", selected == 0, onHome)
-        TopTab("Reel", selected == 1, onReel)
+        TopIconTab(
+            imageVector = Icons.Default.PlayArrow,
+            contentDescription = "Open Reels",
+            selected = selected == 1,
+            onClick = onReel
+        )
+        TopIconTab(
+            imageVector = Icons.Default.SportsEsports,
+            contentDescription = "Open Game",
+            selected = selected == 3,
+            onClick = onGame
+        )
         TopTab("Connect", selected == 2, onConnect)
-        TopTab("Game", selected == 3, onGame)
+    }
+}
+
+@Composable
+private fun TopIconTab(
+    imageVector: ImageVector,
+    contentDescription: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .size(width = 52.dp, height = 40.dp)
+            .semantics { this.selected = selected }
+            .clickable(role = Role.Tab, onClick = onClick),
+        shape = RoundedCornerShape(100.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f)
+        }
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = imageVector,
+                contentDescription = contentDescription,
+                tint = if (selected) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.size(22.dp)
+            )
+        }
     }
 }
 
