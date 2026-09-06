@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -324,6 +326,8 @@ private fun ConnectHeader(
             } else {
                 AsyncImage(
                     model = userAvatar,
+                    error = painterResource(R.drawable.ic_default_profile),
+                    fallback = painterResource(R.drawable.ic_default_profile),
                     contentDescription = "Profile",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -422,6 +426,8 @@ private fun LiveProfileCard(
                     } else {
                         AsyncImage(
                             model = profile.avatarUrl,
+                            error = painterResource(R.drawable.ic_default_profile),
+                            fallback = painterResource(R.drawable.ic_default_profile),
                             contentDescription = profile.fullName,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()

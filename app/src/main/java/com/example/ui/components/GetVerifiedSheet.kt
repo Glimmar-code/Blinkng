@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -138,6 +140,8 @@ fun GetVerifiedSheet(
                         ) {
                             AsyncImage(
                                 model = profile.avatarUrl,
+                                error = painterResource(R.drawable.ic_default_profile),
+                                fallback = painterResource(R.drawable.ic_default_profile),
                                 contentDescription = profile.fullName,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier

@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -193,6 +195,8 @@ private fun FeedProfileAvatar(
     ) {
         AsyncImage(
             model = userAvatar,
+            error = painterResource(R.drawable.ic_default_profile),
+            fallback = painterResource(R.drawable.ic_default_profile),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier

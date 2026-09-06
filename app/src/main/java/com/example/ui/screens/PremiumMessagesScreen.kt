@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -1994,6 +1996,8 @@ private fun PremiumCallScreen(
         if (call.conversation.partnerAvatar.isNotBlank()) {
             AsyncImage(
                 model = call.conversation.partnerAvatar,
+                error = painterResource(R.drawable.ic_default_profile),
+                fallback = painterResource(R.drawable.ic_default_profile),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

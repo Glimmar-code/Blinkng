@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.result.contract.ActivityResultContracts
@@ -850,6 +852,8 @@ private fun ConversationAvatarRail(
                 )
                 AsyncImage(
                     model = conversation.partnerAvatar,
+                    error = painterResource(R.drawable.ic_default_profile),
+                    fallback = painterResource(R.drawable.ic_default_profile),
                     contentDescription = "Open ${conversation.partnerName}",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier

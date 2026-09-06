@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -1121,6 +1123,8 @@ private fun MatchResultCard(
             } else {
                 AsyncImage(
                     model = person.avatarUrl,
+                    error = painterResource(R.drawable.ic_default_profile),
+                    fallback = painterResource(R.drawable.ic_default_profile),
                     contentDescription = person.fullName,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxWidth().height(62.dp)
@@ -1236,6 +1240,8 @@ private fun HubListingCard(
                     } else {
                         AsyncImage(
                             model = avatarUrl,
+                            error = painterResource(R.drawable.ic_default_profile),
+                            fallback = painterResource(R.drawable.ic_default_profile),
                             contentDescription = title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
@@ -1367,6 +1373,8 @@ private fun ApplicantCard(
                     } else {
                         AsyncImage(
                             model = applicant?.avatarUrl,
+                            error = painterResource(R.drawable.ic_default_profile),
+                            fallback = painterResource(R.drawable.ic_default_profile),
                             contentDescription = applicant?.fullName,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()

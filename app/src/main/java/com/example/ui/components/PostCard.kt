@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -272,6 +274,8 @@ fun PostCard(
                 ) {
                     AsyncImage(
                         model = post.authorAvatar,
+                        error = painterResource(R.drawable.ic_default_profile),
+                        fallback = painterResource(R.drawable.ic_default_profile),
                         contentDescription = "$resolvedAuthorName profile picture",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier

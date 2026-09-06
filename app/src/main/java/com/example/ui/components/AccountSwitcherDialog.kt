@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -57,6 +59,8 @@ fun AccountSwitcherDialog(
                             ) {
                                 AsyncImage(
                                     model = account.avatarUrl,
+                                    error = painterResource(R.drawable.ic_default_profile),
+                                    fallback = painterResource(R.drawable.ic_default_profile),
                                     contentDescription = null,
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.size(48.dp).clip(CircleShape)

@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -315,6 +317,8 @@ fun StoryViewerDialog(
                 ) {
                     AsyncImage(
                         model = currentStory.avatar,
+                        error = painterResource(R.drawable.ic_default_profile),
+                        fallback = painterResource(R.drawable.ic_default_profile),
                         contentDescription = currentStory.username,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier

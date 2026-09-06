@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import android.content.Intent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -296,6 +298,8 @@ private fun ProfileHeaderCard(profile: UserProfile, onClick: () -> Unit) {
             Box {
                 AsyncImage(
                     model = profile.avatarUrl,
+                    error = painterResource(R.drawable.ic_default_profile),
+                    fallback = painterResource(R.drawable.ic_default_profile),
                     contentDescription = "My profile picture",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.size(54.dp).clip(CircleShape)

@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -328,6 +330,8 @@ private fun NotificationCard(
                 if (avatar.isNotBlank()) {
                     AsyncImage(
                         model = avatar,
+                        error = painterResource(R.drawable.ic_default_profile),
+                        fallback = painterResource(R.drawable.ic_default_profile),
                         contentDescription = "$displayName profile picture",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier

@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -595,6 +597,8 @@ fun ProductCard(
                 ) {
                     AsyncImage(
                         model = item.sellerAvatar,
+                        error = painterResource(R.drawable.ic_default_profile),
+                        fallback = painterResource(R.drawable.ic_default_profile),
                         contentDescription = item.sellerName,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier

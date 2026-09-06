@@ -1,4 +1,6 @@
 package com.example.ui.components
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
@@ -868,6 +870,8 @@ private fun PostActionPreviewCard(
 
                 AsyncImage(
                     model = post.authorAvatar,
+                    error = painterResource(R.drawable.ic_default_profile),
+                    fallback = painterResource(R.drawable.ic_default_profile),
                     contentDescription =
                         "${post.author} profile",
                     contentScale =

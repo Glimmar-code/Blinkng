@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -262,6 +264,8 @@ fun ProductDetailScreen(
                         ) {
                             AsyncImage(
                                 model = item.sellerAvatar,
+                                error = painterResource(R.drawable.ic_default_profile),
+                                fallback = painterResource(R.drawable.ic_default_profile),
                                 contentDescription = item.sellerName,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier

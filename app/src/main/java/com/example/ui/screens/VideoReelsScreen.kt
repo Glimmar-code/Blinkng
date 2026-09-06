@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -550,6 +552,8 @@ private fun ReelPage(
         ) {
             AsyncImage(
                 model = reel.authorAvatar,
+                error = painterResource(R.drawable.ic_default_profile),
+                fallback = painterResource(R.drawable.ic_default_profile),
                 contentDescription = reel.author,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -884,6 +888,8 @@ private fun StaticDisc(avatar: String) {
         Box(Modifier.padding(7.dp), contentAlignment = Alignment.Center) {
             AsyncImage(
                 model = avatar,
+                error = painterResource(R.drawable.ic_default_profile),
+                fallback = painterResource(R.drawable.ic_default_profile),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().clip(CircleShape)

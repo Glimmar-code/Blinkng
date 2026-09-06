@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -625,6 +627,8 @@ private fun CommentAvatar(
         if (avatarUrl.isNotBlank()) {
             AsyncImage(
                 model = avatarUrl,
+                error = painterResource(R.drawable.ic_default_profile),
+                fallback = painterResource(R.drawable.ic_default_profile),
                 contentDescription = "$displayName avatar",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

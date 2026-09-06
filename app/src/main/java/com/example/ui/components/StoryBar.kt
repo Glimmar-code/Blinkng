@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.border
 
 import androidx.compose.animation.AnimatedContent
@@ -572,6 +574,8 @@ private fun AddStoryCard(
 
             AsyncImage(
                 model = userAvatar,
+                error = painterResource(R.drawable.ic_default_profile),
+                fallback = painterResource(R.drawable.ic_default_profile),
                 contentDescription = "Your Story",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -771,6 +775,8 @@ private fun PremiumStoryItem(
 
                     AsyncImage(
                         model = story.avatar,
+                        error = painterResource(R.drawable.ic_default_profile),
+                        fallback = painterResource(R.drawable.ic_default_profile),
                         contentDescription =
                             story.username,
                         contentScale =

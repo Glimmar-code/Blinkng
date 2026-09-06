@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -761,6 +763,8 @@ private fun AuthorComposerHeader(
     ) {
         AsyncImage(
             model = profile.avatarUrl,
+            error = painterResource(R.drawable.ic_default_profile),
+            fallback = painterResource(R.drawable.ic_default_profile),
             contentDescription = profile.fullName,
             contentScale = ContentScale.Crop,
             modifier = Modifier

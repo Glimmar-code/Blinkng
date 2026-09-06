@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -297,6 +299,8 @@ fun SearchScreen(
                                         Box {
                                             AsyncImage(
                                                 model = person.avatarUrl,
+                                                error = painterResource(R.drawable.ic_default_profile),
+                                                fallback = painterResource(R.drawable.ic_default_profile),
                                                 contentDescription = person.fullName,
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier.size(58.dp).clip(CircleShape)

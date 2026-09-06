@@ -699,8 +699,8 @@ fun MainAppContent(
         // Sub-screen Overlays: User Profile with dynamic tabs (Posts, Liked, Saved, Skills, About) & messaging
         AnimatedVisibility(
             visible = uiState.viewingProfile != null,
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+            enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()
         ) {
             uiState.viewingProfile?.let { profile ->
                 val isMyProfile = viewModel.isMe(profile.username)

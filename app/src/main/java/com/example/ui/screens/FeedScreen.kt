@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -839,6 +841,8 @@ private fun HomeHeader(
         ) {
             AsyncImage(
                 model = userAvatar,
+                error = painterResource(R.drawable.ic_default_profile),
+                fallback = painterResource(R.drawable.ic_default_profile),
                 contentDescription = "Profile",
                 modifier = Modifier
                     .size(36.dp)

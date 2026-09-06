@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -657,6 +659,8 @@ fun GameSection(
                     ) {
                         AsyncImage(
                             model = leader.avatarUrl,
+                            error = painterResource(R.drawable.ic_default_profile),
+                            fallback = painterResource(R.drawable.ic_default_profile),
                             contentDescription = leader.name,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
@@ -774,6 +778,8 @@ private fun GameHeader(
         ) {
             AsyncImage(
                 model = userAvatar,
+                error = painterResource(R.drawable.ic_default_profile),
+                fallback = painterResource(R.drawable.ic_default_profile),
                 contentDescription = "Profile",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

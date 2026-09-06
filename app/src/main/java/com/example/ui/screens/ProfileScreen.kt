@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -419,6 +421,8 @@ fun ProfileScreen(
                                         ) {
                                             AsyncImage(
                                                 model = profile.avatarUrl,
+                                                error = painterResource(R.drawable.ic_default_profile),
+                                                fallback = painterResource(R.drawable.ic_default_profile),
                                                 contentDescription = "Profile picture",
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier
@@ -930,6 +934,8 @@ fun ProfileScreen(
             text = {
                 AsyncImage(
                     model = profile.avatarUrl,
+                    error = painterResource(R.drawable.ic_default_profile),
+                    fallback = painterResource(R.drawable.ic_default_profile),
                     contentDescription = "Full profile picture",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -1937,6 +1943,8 @@ private fun ProfileShareSheet(
             if (avatarUrl.isNotBlank()) {
                 AsyncImage(
                     model = avatarUrl,
+                    error = painterResource(R.drawable.ic_default_profile),
+                    fallback = painterResource(R.drawable.ic_default_profile),
                     contentDescription = "$fullName profile preview",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -1945,6 +1953,22 @@ private fun ProfileShareSheet(
                         .align(Alignment.CenterHorizontally)
                 )
                 Spacer(modifier = Modifier.height(12.dp))
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF303544))
+                        .testTag("profile_share_default_avatar"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Person,
+                        contentDescription = "$fullName default profile picture",
+                        tint = Color(0xFFC5CAD8),
+                        modifier = Modifier.size(42.dp)
+                    )
+                }
             }
 
             Button(onClick = onShare, modifier = Modifier.fillMaxWidth()) {
