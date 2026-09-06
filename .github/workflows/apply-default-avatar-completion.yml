@@ -1,0 +1,139 @@
+name: Complete default avatar coverage
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-default-avatar-completion.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Complete missing-avatar coverage
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          root = Path('app/src/main/java/com/example')
+
+          def ensure_import(text: str, import_line: str) -> str:
+              if import_line in text:
+                  return text
+              lines = text.splitlines(keepends=True)
+              first_import = next((i for i, line in enumerate(lines) if line.startswith('import ')), None)
+              if first_import is None:
+                  package_line = next((i for i, line in enumerate(lines) if line.startswith('package ')), 0)
+                  lines.insert(package_line + 1, '\n' + import_line + '\n')
+              else:
+                  lines.insert(first_import, import_line + '\n')
+              return ''.join(lines)
+
+          # Catch compact one-line avatar AsyncImage calls such as leaderboard rows.
+          compact_pattern = re.compile(
+              r'(?m)^(?P<prefix>[^\n]*AsyncImage\(model\s*=\s*[^,\n]*avatar[^,\n]*,)(?P<rest>[^\n]*)$',
+              re.I,
+          )
+
+          compact_count = 0
+          for path in root.rglob('*.kt'):
+              text = path.read_text()
+              changed = False
+
+              def replace_compact(match):
+                  nonlocal compact_count, changed
+                  whole = match.group(0)
+                  if 'ic_default_profile' in whole:
+                      return whole
+                  compact_count += 1
+                  changed = True
+                  return (
+                      match.group('prefix')
+                      + 'error=painterResource(R.drawable.ic_default_profile),'
+                      + 'fallback=painterResource(R.drawable.ic_default_profile),'
+                      + match.group('rest')
+                  )
+
+              patched = compact_pattern.sub(replace_compact, text)
+              if changed:
+                  patched = ensure_import(patched, 'import androidx.compose.ui.res.painterResource')
+                  patched = ensure_import(patched, 'import com.example.R')
+                  path.write_text(patched)
+
+          # Premium chat uses a reusable avatar helper whose parameter is named `url`,
+          # so make its blank and failed-image behavior use the standard user icon.
+          messages_path = Path('app/src/main/java/com/example/ui/screens/PremiumMessagesScreen.kt')
+          messages = messages_path.read_text()
+          messages = messages.replace(
+              '''        AsyncImage(\n            model = url,\n            contentDescription = name,''',
+              '''        AsyncImage(\n            model = url,\n            error = painterResource(R.drawable.ic_default_profile),\n            fallback = painterResource(R.drawable.ic_default_profile),\n            contentDescription = name,''',
+              1,
+          )
+          messages = messages.replace(
+              '''            Text(\n                initials(name),\n                color = palette.textPrimary,\n                fontWeight = FontWeight.SemiBold,\n                fontSize = 12.sp\n            )''',
+              '''            Icon(\n                painter = painterResource(R.drawable.ic_default_profile),\n                contentDescription = "$name default profile picture",\n                tint = Color.Unspecified,\n                modifier = Modifier.fillMaxSize()\n            )''',
+              1,
+          )
+          messages_path.write_text(messages)
+
+          # Comments should show the same user silhouette rather than an initial when no DP exists.
+          comments_path = Path('app/src/main/java/com/example/ui/components/CommentSheet.kt')
+          comments = comments_path.read_text()
+          comments = comments.replace(
+              '''        Text(\n            text = initial,\n            color = BlinkPink,\n            fontWeight = FontWeight.Bold,\n            fontSize = (size.value * 0.42f).sp\n        )''',
+              '''        Icon(\n            painter = painterResource(R.drawable.ic_default_profile),\n            contentDescription = "$displayName default profile picture",\n            tint = Color.Unspecified,\n            modifier = Modifier.fillMaxSize()\n        )''',
+              1,
+          )
+          comments_path.write_text(comments)
+
+          # Notifications also used a letter placeholder; switch it to the shared default avatar.
+          activity_path = Path('app/src/main/java/com/example/ui/screens/ActivityScreen.kt')
+          activity = activity_path.read_text()
+          activity = activity.replace(
+              '''                        Text(\n                            initial,\n                            fontWeight = FontWeight.Black,\n                            color = MaterialTheme.colorScheme.primary\n                        )''',
+              '''                        Icon(\n                            painter = painterResource(R.drawable.ic_default_profile),\n                            contentDescription = "$displayName default profile picture",\n                            tint = Color.Unspecified,\n                            modifier = Modifier.fillMaxSize()\n                        )''',
+              1,
+          )
+          activity_path.write_text(activity)
+
+          print(f'Compact avatar image calls patched: {compact_count}')
+
+      - name: Validate coverage
+        shell: bash
+        run: |
+          git diff --check
+          grep -q 'painter = painterResource(R.drawable.ic_default_profile)' app/src/main/java/com/example/ui/screens/PremiumMessagesScreen.kt
+          grep -q 'painter = painterResource(R.drawable.ic_default_profile)' app/src/main/java/com/example/ui/components/CommentSheet.kt
+          grep -q 'painter = painterResource(R.drawable.ic_default_profile)' app/src/main/java/com/example/ui/screens/ActivityScreen.kt
+          grep -q 'error=painterResource(R.drawable.ic_default_profile)' app/src/main/java/com/example/ui/screens/LeaderboardScreen.kt
+
+      - name: Compile app
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Push completed avatar coverage
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'Default avatar coverage is already complete.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/example
+          git commit -m 'Complete default profile avatar coverage'
+          git push origin HEAD:main
