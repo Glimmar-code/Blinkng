@@ -100,7 +100,9 @@ fun VideoReelsScreen(
     onLoadMore: () -> Unit = {},
     onHomeClick: () -> Unit = onBackToPosts,
     onConnectClick: () -> Unit = {},
-    onGameClick: () -> Unit = {}
+    onGameClick: () -> Unit = {},
+    initialReelId: String? = null,
+    initialReelPositionMs: Long = 0L
 ) {
     val pullToRefreshState = rememberPullToRefreshState()
 
@@ -144,7 +146,9 @@ fun VideoReelsScreen(
                     onBackToPosts = onBackToPosts,
                     hasMore = hasMore,
                     isLoadingMore = isLoadingMore,
-                    onLoadMore = onLoadMore
+                    onLoadMore = onLoadMore,
+                    initialReelId = initialReelId,
+                    initialReelPositionMs = initialReelPositionMs
                 )
             }
         }
@@ -167,7 +171,9 @@ private fun ReelsContent(
     onBackToPosts: () -> Unit,
     hasMore: Boolean,
     isLoadingMore: Boolean,
-    onLoadMore: () -> Unit
+    onLoadMore: () -> Unit,
+    initialReelId: String?,
+    initialReelPositionMs: Long
 ) {
     val context = LocalContext.current
     val resumePrefs = remember(context) {
@@ -176,17 +182,24 @@ private fun ReelsContent(
     val resumeUserKey = remember(currentUsername) {
         currentUsername.trim().removePrefix("@").lowercase().ifBlank { "anonymous" }
     }
-    val initialPage = remember(reels, resumeUserKey) {
+    val initialPage = remember(reels, resumeUserKey, initialReelId) {
+        val requestedIndex = initialReelId
+            ?.let { id -> reels.indexOfFirst { it.id == id } }
+            ?.takeIf { it >= 0 }
         val savedId = resumePrefs.getString("reel_id:$resumeUserKey", null)
         val byId = savedId?.let { id -> reels.indexOfFirst { it.id == id } }
             ?.takeIf { it >= 0 }
         val byIndex = resumePrefs.getInt("reel_index:$resumeUserKey", 0)
-        (byId ?: byIndex).coerceIn(0, reels.lastIndex.coerceAtLeast(0))
+        (requestedIndex ?: byId ?: byIndex).coerceIn(0, reels.lastIndex.coerceAtLeast(0))
     }
     val pager = rememberPagerState(
         initialPage = initialPage,
         pageCount = { reels.size }
     )
+    var pendingLaunchReelId by remember(initialReelId) { mutableStateOf(initialReelId) }
+    var pendingLaunchPositionMs by remember(initialReelId, initialReelPositionMs) {
+        mutableStateOf(initialReelPositionMs.coerceAtLeast(0L))
+    }
     var selectedTab by remember { mutableStateOf("For You") }
 
     LaunchedEffect(pager, reels, resumeUserKey) {
@@ -227,7 +240,14 @@ private fun ReelsContent(
                 onDelete = onDelete,
                 onProfileClick = onProfileClick,
                 onSwipeToHome = onBackToPosts,
-                onSwipeToProfile = { onProfileClick(reel.author) }
+                onSwipeToProfile = { onProfileClick(reel.author) },
+                initialPositionMs = if (reel.id == pendingLaunchReelId) pendingLaunchPositionMs else 0L,
+                onInitialPositionConsumed = {
+                    if (pendingLaunchReelId == reel.id) {
+                        pendingLaunchReelId = null
+                        pendingLaunchPositionMs = 0L
+                    }
+                }
             )
         }
 
@@ -429,7 +449,9 @@ private fun ReelPage(
     onDelete: (String) -> Unit,
     onProfileClick: (String) -> Unit,
     onSwipeToHome: () -> Unit,
-    onSwipeToProfile: () -> Unit
+    onSwipeToProfile: () -> Unit,
+    initialPositionMs: Long,
+    onInitialPositionConsumed: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
     val displayedViewsCount = rememberDelayedContentViewCount(reel.id, reel.viewsCount)
@@ -497,6 +519,8 @@ private fun ReelPage(
                 url = url,
                 isActive = isActive,
                 isMuted = isMuted,
+                initialPositionMs = initialPositionMs,
+                onInitialPositionConsumed = onInitialPositionConsumed,
                 onProgressChange = { progress = it },
                 onBufferingChange = { isBuffering = it }
             )
@@ -898,6 +922,168 @@ private fun StaticDisc(avatar: String) {
     }
 }
 
+
+/**
+ * A lightweight home-feed teaser for a ranked reel.
+ *
+ * It auto-plays muted only while at least half visible, pauses after roughly two
+ * seconds of actual video playback, then exposes a play button that opens the
+ * full Reels surface at the current playback position. No content-exposure
+ * modifier is attached here, so the teaser cannot create a view by itself.
+ */
+@Composable
+internal fun InlineReelPreviewCard(
+    reel: FeedPost,
+    isActive: Boolean,
+    onContinue: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val url = reel.videoUrl?.trim().orEmpty()
+    var previewFinished by remember(reel.id) { mutableStateOf(false) }
+    var previewPositionMs by remember(reel.id) { mutableStateOf(0L) }
+    var isBuffering by remember(reel.id) { mutableStateOf(false) }
+
+    LaunchedEffect(isActive, reel.id) {
+        if (!isActive) {
+            previewFinished = false
+            previewPositionMs = 0L
+            isBuffering = false
+        }
+    }
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(9f / 16f),
+        shape = RoundedCornerShape(22.dp),
+        color = Color.Black,
+        tonalElevation = 0.dp
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            // Keep a thumbnail behind the player to avoid a black flash while preparing.
+            ReelPreview(reel)
+
+            if (url.isNotBlank() && (isActive || previewFinished)) {
+                ReelVideo(
+                    url = url,
+                    isActive = isActive && !previewFinished,
+                    isMuted = true,
+                    onProgressChange = {},
+                    onBufferingChange = { isBuffering = it },
+                    onPositionChange = { positionMs ->
+                        previewPositionMs = positionMs.coerceAtLeast(0L)
+                        if (positionMs >= 2_000L && !previewFinished) {
+                            previewFinished = true
+                        }
+                    }
+                )
+            }
+
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Black.copy(alpha = .18f),
+                                Color.Transparent,
+                                Color.Black.copy(alpha = .76f)
+                            )
+                        )
+                    )
+            )
+
+            Surface(
+                color = Color.Black.copy(alpha = .48f),
+                shape = RoundedCornerShape(50),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.PlayCircle,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        text = "Reel preview",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 14.dp, end = 74.dp, bottom = 14.dp)
+            ) {
+                Text(
+                    text = "@${reel.authorUsername.ifBlank { reel.author }.removePrefix("@")}",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1
+                )
+                if (reel.text.isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = reel.text,
+                        color = Color.White.copy(alpha = .9f),
+                        fontSize = 12.sp,
+                        maxLines = 2
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isBuffering && isActive && !previewFinished,
+                enter = fadeIn(tween(120)),
+                exit = fadeOut(tween(120)),
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                CircularProgressIndicator(
+                    color = Color.White,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(30.dp)
+                )
+            }
+
+            AnimatedVisibility(
+                visible = previewFinished,
+                enter = fadeIn(tween(140)) + scaleIn(initialScale = .82f, animationSpec = tween(160)),
+                exit = fadeOut(tween(100)),
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = .62f),
+                    shadowElevation = 8.dp
+                ) {
+                    IconButton(
+                        onClick = { onContinue(previewPositionMs.coerceAtLeast(0L)) },
+                        modifier = Modifier.size(68.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "Continue reel",
+                            tint = Color.White,
+                            modifier = Modifier.size(38.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun ReelPreview(reel: FeedPost) {
     val preview = remember(reel.id, reel.images) {
@@ -920,14 +1106,19 @@ private fun ReelVideo(
     url: String,
     isActive: Boolean,
     isMuted: Boolean,
+    initialPositionMs: Long = 0L,
+    onInitialPositionConsumed: () -> Unit = {},
     onProgressChange: (Float) -> Unit,
-    onBufferingChange: (Boolean) -> Unit
+    onBufferingChange: (Boolean) -> Unit,
+    onPositionChange: (Long) -> Unit = {}
 ) {
     val context = LocalContext.current
     var error by remember(url) { mutableStateOf<String?>(null) }
 
     val currentOnProgressChange by rememberUpdatedState(onProgressChange)
     val currentOnBufferingChange by rememberUpdatedState(onBufferingChange)
+    val currentOnInitialPositionConsumed by rememberUpdatedState(onInitialPositionConsumed)
+    val currentOnPositionChange by rememberUpdatedState(onPositionChange)
 
     val player = remember(url) {
         val httpDataSource = DefaultHttpDataSource.Factory()
@@ -963,9 +1154,17 @@ private fun ReelVideo(
             }
     }
 
-    LaunchedEffect(isActive, player) {
+    LaunchedEffect(isActive, player, initialPositionMs) {
         player.playWhenReady = isActive
-        if (isActive) player.play() else player.pause()
+        if (isActive) {
+            if (initialPositionMs > 0L) {
+                player.seekTo(initialPositionMs)
+                currentOnInitialPositionConsumed()
+            }
+            player.play()
+        } else {
+            player.pause()
+        }
     }
 
     LaunchedEffect(isMuted, player) {
@@ -974,11 +1173,13 @@ private fun ReelVideo(
 
     LaunchedEffect(player, isActive) {
         while (isActive) {
+            val position = player.currentPosition.coerceAtLeast(0L)
+            currentOnPositionChange(position)
             val duration = player.duration
             if (duration > 0) {
-                currentOnProgressChange((player.currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f))
+                currentOnProgressChange((position.toFloat() / duration.toFloat()).coerceIn(0f, 1f))
             }
-            delay(200)
+            delay(100)
         }
     }
 

@@ -151,7 +151,9 @@ fun FeedScreen(
     onLoadMorePosts: () -> Unit = {},
     onLoadMoreReels: () -> Unit = {},
     homeReselectSignal: Int = 0,
-    onBottomBarVisibilityChange: (Boolean) -> Unit = {}
+    onBottomBarVisibilityChange: (Boolean) -> Unit = {},
+    initialReelId: String? = null,
+    initialReelPositionMs: Long = 0L
 ) {
     val latestSubTab by rememberUpdatedState(currentSubTab)
     val latestSubTabChanged by rememberUpdatedState(onSubTabChanged)
@@ -258,7 +260,9 @@ fun FeedScreen(
                 onLoadMorePosts = onLoadMorePosts,
                 onLoadMoreReels = onLoadMoreReels,
                 homeReselectSignal = homeReselectSignal,
-                onBottomBarVisibilityChange = onBottomBarVisibilityChange
+                onBottomBarVisibilityChange = onBottomBarVisibilityChange,
+                initialReelId = initialReelId,
+                initialReelPositionMs = initialReelPositionMs
             )
         }
     } else {
@@ -315,7 +319,9 @@ fun FeedScreen(
                 onLoadMorePosts = onLoadMorePosts,
                 onLoadMoreReels = onLoadMoreReels,
                 homeReselectSignal = homeReselectSignal,
-                onBottomBarVisibilityChange = onBottomBarVisibilityChange
+                onBottomBarVisibilityChange = onBottomBarVisibilityChange,
+                initialReelId = initialReelId,
+                initialReelPositionMs = initialReelPositionMs
             )
         }
     }
@@ -374,7 +380,9 @@ private fun LegacyFeedScreen(
     onLoadMorePosts: () -> Unit = {},
     onLoadMoreReels: () -> Unit = {},
     homeReselectSignal: Int = 0,
-    onBottomBarVisibilityChange: (Boolean) -> Unit = {}
+    onBottomBarVisibilityChange: (Boolean) -> Unit = {},
+    initialReelId: String? = null,
+    initialReelPositionMs: Long = 0L
 ) {
     val selectedTopTab = currentSubTab
     val listState = rememberLazyListState()
@@ -529,7 +537,9 @@ private fun LegacyFeedScreen(
                 onLoadMore = onLoadMoreReels,
                 onHomeClick = { navigate(0) },
                 onConnectClick = { navigate(2) },
-                onGameClick = { navigate(3) }
+                onGameClick = { navigate(3) },
+                initialReelId = initialReelId,
+                initialReelPositionMs = initialReelPositionMs
             )
 
             2 -> ConnectSection(

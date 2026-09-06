@@ -92,8 +92,50 @@ import com.example.ui.theme.FeedTextPrimary
 import com.example.ui.theme.FeedTextSecondary
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlin.random.Random
 
 private enum class PremiumFeedFilter { ALL, PHOTOS, POLLS }
+
+private sealed interface PremiumHomeRow {
+    data class PostRow(val post: FeedPost, val sourceIndex: Int) : PremiumHomeRow
+    data class ReelPreviewRow(val reel: FeedPost, val slot: Int) : PremiumHomeRow
+}
+
+private fun buildPremiumHomeRows(
+    posts: List<FeedPost>,
+    reels: List<FeedPost>,
+    seed: Int
+): List<PremiumHomeRow> {
+    if (posts.isEmpty()) return emptyList()
+    if (reels.isEmpty()) {
+        return posts.mapIndexed { index, post -> PremiumHomeRow.PostRow(post, index) }
+    }
+
+    val random = Random(seed)
+    val rows = ArrayList<PremiumHomeRow>(posts.size + (posts.size / 10) + 1)
+    var postsSincePreview = 0
+    var nextGap = random.nextInt(10, 21)
+    var reelSlot = 0
+
+    posts.forEachIndexed { index, post ->
+        rows += PremiumHomeRow.PostRow(post, index)
+        postsSincePreview += 1
+
+        if (postsSincePreview >= nextGap) {
+            // Keep the exact ranked reel order supplied by the existing feed algorithm.
+            // Cycling only occurs if the post list is longer than the currently loaded
+            // reel page, and inline autoplay itself never emits a view event.
+            rows += PremiumHomeRow.ReelPreviewRow(
+                reel = reels[reelSlot % reels.size],
+                slot = reelSlot
+            )
+            reelSlot += 1
+            postsSincePreview = 0
+            nextGap = random.nextInt(10, 21)
+        }
+    }
+    return rows
+}
 
 /**
  * Premium feed shell.
@@ -173,6 +215,14 @@ fun PremiumFeedScreen(
             .apply()
     }
     val followingIds by FollowStateStore.followingIds.collectAsState()
+    var launchReelId by rememberSaveable(resumeUserKey) { mutableStateOf<String?>(null) }
+    var launchReelPositionMs by rememberSaveable(resumeUserKey) { mutableStateOf(0L) }
+
+    fun openReelsAt(reelId: String? = null, positionMs: Long = 0L) {
+        launchReelId = reelId
+        launchReelPositionMs = positionMs.coerceAtLeast(0L)
+        onSubTabChanged(1)
+    }
 
     LaunchedEffect(currentUsername) {
         if (currentUsername.isNotBlank()) FollowStateStore.refresh()
@@ -190,6 +240,7 @@ fun PremiumFeedScreen(
     when (currentSubTab) {
         0 -> PremiumHomeFeed(
             posts = posts,
+            reels = reels,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
             resumeUserKey = resumeUserKey,
@@ -200,7 +251,9 @@ fun PremiumFeedScreen(
             isServerConnected = isServerConnected,
             errorMessage = errorMessage,
             hasMorePosts = hasMorePosts,
+            hasMoreReels = hasMoreReels,
             isLoadingMorePosts = isLoadingMorePosts,
+            isLoadingMoreReels = isLoadingMoreReels,
             homeReselectSignal = homeReselectSignal,
             hasUnreadNotifications = hasUnreadNotifications,
             onLaneChanged = { feedLane = it.coerceIn(0, 1) },
@@ -221,9 +274,11 @@ fun PremiumFeedScreen(
             onViewedPost = onViewedPost,
             onVotePoll = onVotePoll,
             onLoadMorePosts = onLoadMorePosts,
+            onLoadMoreReels = onLoadMoreReels,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
             onGameClick = { onSubTabChanged(3) },
-            onReelClick = { onSubTabChanged(1) }
+            onReelClick = { openReelsAt() },
+            onOpenInlineReel = { reelId, positionMs -> openReelsAt(reelId, positionMs) }
         )
 
         1 -> FeedScreen(
@@ -274,7 +329,9 @@ fun PremiumFeedScreen(
             onLoadMorePosts = onLoadMorePosts,
             onLoadMoreReels = onLoadMoreReels,
             homeReselectSignal = homeReselectSignal,
-            onBottomBarVisibilityChange = onBottomBarVisibilityChange
+            onBottomBarVisibilityChange = onBottomBarVisibilityChange,
+            initialReelId = launchReelId,
+            initialReelPositionMs = launchReelPositionMs
         )
 
         2 -> PremiumConnectHost(
@@ -293,7 +350,7 @@ fun PremiumFeedScreen(
                 feedLane = 0
                 onSubTabChanged(0)
             },
-            onReelClick = { onSubTabChanged(1) },
+            onReelClick = { openReelsAt() },
             onGameClick = { onSubTabChanged(3) }
         )
 
@@ -317,7 +374,7 @@ fun PremiumFeedScreen(
                 feedLane = 1
                 onSubTabChanged(0)
             },
-            onReel = { onSubTabChanged(1) }
+            onReel = { openReelsAt() }
         )
 
         else -> onSubTabChanged(0)
@@ -328,6 +385,7 @@ fun PremiumFeedScreen(
 @Composable
 private fun PremiumHomeFeed(
     posts: List<FeedPost>,
+    reels: List<FeedPost>,
     currentUsername: String,
     userAvatar: String,
     resumeUserKey: String,
@@ -338,7 +396,9 @@ private fun PremiumHomeFeed(
     isServerConnected: Boolean,
     errorMessage: String?,
     hasMorePosts: Boolean,
+    hasMoreReels: Boolean,
     isLoadingMorePosts: Boolean,
+    isLoadingMoreReels: Boolean,
     homeReselectSignal: Int,
     hasUnreadNotifications: Boolean,
     onLaneChanged: (Int) -> Unit,
@@ -359,9 +419,11 @@ private fun PremiumHomeFeed(
     onViewedPost: (String) -> Unit,
     onVotePoll: (postId: String, optionId: String) -> Unit,
     onLoadMorePosts: () -> Unit,
+    onLoadMoreReels: () -> Unit,
     onBottomBarVisibilityChange: (Boolean) -> Unit,
     onGameClick: () -> Unit,
-    onReelClick: () -> Unit
+    onReelClick: () -> Unit,
+    onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
 ) {
     val context = LocalContext.current
     val resumePrefs = remember(context) {
@@ -427,6 +489,25 @@ private fun PremiumHomeFeed(
         }
     }
 
+    val rankedInlineReels = remember(reels, laneIndex, followedAuthorKeys) {
+        reels.filter { reel ->
+            val hasPlayableVideo = reel.isReel && !reel.videoUrl.isNullOrBlank()
+            val authorKey = reel.authorUsername
+                .ifBlank { reel.author }
+                .trim()
+                .removePrefix("@")
+                .lowercase()
+            hasPlayableVideo && (laneIndex == 0 || authorKey in followedAuthorKeys)
+        }
+    }
+    val reelMixSeed = remember(laneResumeKey, filter, filteredPosts.firstOrNull()?.id) {
+        "$laneResumeKey:${filter.name}:${filteredPosts.firstOrNull()?.id.orEmpty()}".hashCode()
+    }
+    val homeRows = remember(filteredPosts, rankedInlineReels, reelMixSeed) {
+        buildPremiumHomeRows(filteredPosts, rankedInlineReels, reelMixSeed)
+    }
+    var activeInlineReelKey by remember(laneResumeKey) { mutableStateOf<String?>(null) }
+
     LaunchedEffect(isOnline, isLoading, posts.isEmpty(), filteredPosts.isEmpty(), filter, laneIndex) {
         offlineEmptyConfirmed = false
         if (
@@ -444,10 +525,10 @@ private fun PremiumHomeFeed(
         }
     }
 
-    val nearEnd by remember {
+    val nearEnd by remember(homeRows) {
         derivedStateOf {
             val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            filteredPosts.isNotEmpty() && last >= filteredPosts.lastIndex - 3
+            homeRows.isNotEmpty() && last >= homeRows.lastIndex - 3
         }
     }
 
@@ -544,13 +625,21 @@ private fun PremiumHomeFeed(
         }
     }
 
-    LaunchedEffect(nearEnd, hasMorePosts, isLoadingMorePosts, laneIndex) {
-        // Pagination remains the normal ranked feed pagination. Filtering happens after
-        // each page arrives, preserving the server algorithm for followed authors.
+    LaunchedEffect(
+        nearEnd,
+        hasMorePosts,
+        hasMoreReels,
+        isLoadingMorePosts,
+        isLoadingMoreReels,
+        laneIndex
+    ) {
+        // Pagination remains the normal ranked server pagination. We only request the next
+        // reel page alongside a deep For You scroll so the teaser pool can grow naturally.
         if (nearEnd && hasMorePosts && !isLoadingMorePosts) onLoadMorePosts()
+        if (nearEnd && laneIndex == 0 && hasMoreReels && !isLoadingMoreReels) onLoadMoreReels()
     }
 
-    LaunchedEffect(listState, filteredPosts) {
+    LaunchedEffect(listState, homeRows) {
         snapshotFlow { listState.layoutInfo }
             .collectLatest { layout ->
                 val ids = layout.visibleItemsInfo.mapNotNull { item ->
@@ -566,6 +655,24 @@ private fun PremiumHomeFeed(
                     ) key.removePrefix("post:") else null
                 }.toSet()
                 impressionTracker.update(ids).forEach(latestViewed)
+            }
+    }
+
+    // Inline reels use visibility only to control their two-second muted teaser. They are
+    // intentionally excluded from PostImpressionTracker/trackContentExposure, so autoplay
+    // cannot create fake views or alter the existing ranking/view-weight system.
+    LaunchedEffect(listState, homeRows) {
+        snapshotFlow { listState.layoutInfo }
+            .collectLatest { layout ->
+                activeInlineReelKey = layout.visibleItemsInfo.firstOrNull { item ->
+                    val key = item.key as? String ?: return@firstOrNull false
+                    key.startsWith("reel_preview:") && qualifiesForPostImpression(
+                        itemOffset = item.offset,
+                        itemSize = item.size,
+                        viewportStart = layout.viewportStartOffset,
+                        viewportEnd = layout.viewportEndOffset
+                    )
+                }?.key as? String
             }
     }
 
@@ -707,27 +814,53 @@ private fun PremiumHomeFeed(
 
                             else -> {
                                 items(
-                                    count = filteredPosts.size,
-                                    key = { index -> "post:${filteredPosts[index].id}" },
-                                    contentType = { index -> premiumPostContentType(filteredPosts[index]) }
+                                    count = homeRows.size,
+                                    key = { index ->
+                                        when (val row = homeRows[index]) {
+                                            is PremiumHomeRow.PostRow -> "post:${row.post.id}"
+                                            is PremiumHomeRow.ReelPreviewRow -> "reel_preview:${row.slot}:${row.reel.id}"
+                                        }
+                                    },
+                                    contentType = { index ->
+                                        when (val row = homeRows[index]) {
+                                            is PremiumHomeRow.PostRow -> premiumPostContentType(row.post)
+                                            is PremiumHomeRow.ReelPreviewRow -> 16
+                                        }
+                                    }
                                 ) { index ->
-                                    val post = filteredPosts[index]
-                                    PremiumPostEntrance(index = index) {
-                                        PostCard(
-                                            post = post,
-                                            isDark = true,
-                                            onLike = { onLikePost(post.id) },
-                                            onComment = { onCommentPost(post.id) },
-                                            onBookmark = { onBookmarkPost(post.id) },
-                                            onRepost = { onRepostPost(post.id) },
-                                            onShare = { onSharePost(post.id) },
-                                            onOptionsClick = { onOptionsClick(post) },
-                                            onProfileClick = onProfileClick,
-                                            onVotePoll = onVotePoll,
-                                            isAuthor = post.author.equals(currentUsername.removePrefix("@"), ignoreCase = true) ||
-                                                    post.authorUsername.removePrefix("@").equals(currentUsername.removePrefix("@"), ignoreCase = true),
-                                            onDelete = { onDeletePost(post.id) }
-                                        )
+                                    when (val row = homeRows[index]) {
+                                        is PremiumHomeRow.PostRow -> {
+                                            val post = row.post
+                                            PremiumPostEntrance(index = row.sourceIndex) {
+                                                PostCard(
+                                                    post = post,
+                                                    isDark = true,
+                                                    onLike = { onLikePost(post.id) },
+                                                    onComment = { onCommentPost(post.id) },
+                                                    onBookmark = { onBookmarkPost(post.id) },
+                                                    onRepost = { onRepostPost(post.id) },
+                                                    onShare = { onSharePost(post.id) },
+                                                    onOptionsClick = { onOptionsClick(post) },
+                                                    onProfileClick = onProfileClick,
+                                                    onVotePoll = onVotePoll,
+                                                    isAuthor = post.author.equals(currentUsername.removePrefix("@"), ignoreCase = true) ||
+                                                            post.authorUsername.removePrefix("@").equals(currentUsername.removePrefix("@"), ignoreCase = true),
+                                                    onDelete = { onDeletePost(post.id) }
+                                                )
+                                            }
+                                        }
+
+                                        is PremiumHomeRow.ReelPreviewRow -> {
+                                            val previewKey = "reel_preview:${row.slot}:${row.reel.id}"
+                                            InlineReelPreviewCard(
+                                                reel = row.reel,
+                                                isActive = activeInlineReelKey == previewKey,
+                                                onContinue = { positionMs ->
+                                                    onOpenInlineReel(row.reel.id, positionMs)
+                                                },
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                            )
+                                        }
                                     }
                                 }
                                 if (isLoadingMorePosts) {
