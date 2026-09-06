@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,7 +43,7 @@ fun CreateStoryScreen(profile:UserProfile,isUploading:Boolean,onBack:()->Unit,on
                 Text("Add Story",style=MaterialTheme.typography.titleLarge,fontWeight=androidx.compose.ui.text.font.FontWeight.Black,modifier=Modifier.weight(1f))
                 Button(onClick={selectedUri?.let{onPublish(it,caption.trim(),isVideo)}},enabled=selectedUri!=null&&!isUploading,shape=RoundedCornerShape(100.dp)){if(isUploading)CircularProgressIndicator(modifier=Modifier.size(18.dp),strokeWidth=2.dp)else Text("Share")}
             }
-            Row(Modifier.padding(horizontal=16.dp),verticalAlignment=Alignment.CenterVertically){AsyncImage(model=profile.avatarUrl,contentDescription=null,contentScale=ContentScale.Crop,modifier=Modifier.size(40.dp).clip(CircleShape));Spacer(Modifier.width(9.dp));Column{Text(profile.fullName.ifBlank{profile.username},fontWeight=androidx.compose.ui.text.font.FontWeight.Bold);Text("@${profile.username} • disappears after 24h",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
+            Row(Modifier.padding(horizontal=16.dp),verticalAlignment=Alignment.CenterVertically){AsyncImage(model=profile.avatarUrl,error=painterResource(R.drawable.ic_default_profile),fallback=painterResource(R.drawable.ic_default_profile),contentDescription=null,contentScale=ContentScale.Crop,modifier=Modifier.size(40.dp).clip(CircleShape));Spacer(Modifier.width(9.dp));Column{Text(profile.fullName.ifBlank{profile.username},fontWeight=androidx.compose.ui.text.font.FontWeight.Bold);Text("@${profile.username} • disappears after 24h",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
             Spacer(Modifier.height(14.dp))
             Surface(Modifier.fillMaxWidth().weight(1f).padding(horizontal=16.dp),shape=RoundedCornerShape(28.dp),color=MaterialTheme.colorScheme.surface,tonalElevation=4.dp){
                 Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){

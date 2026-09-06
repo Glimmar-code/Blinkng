@@ -319,10 +319,11 @@ private fun NotificationCard(
                     color = MaterialTheme.colorScheme.surfaceVariant
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            initial,
-                            fontWeight = FontWeight.Black,
-                            color = MaterialTheme.colorScheme.primary
+                        Icon(
+                            painter = painterResource(R.drawable.ic_default_profile),
+                            contentDescription = "$displayName default profile picture",
+                            tint = Color.Unspecified,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }

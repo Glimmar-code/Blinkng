@@ -2443,6 +2443,8 @@ private fun AvatarImage(
     if (url.isNotBlank()) {
         AsyncImage(
             model = url,
+            error = painterResource(R.drawable.ic_default_profile),
+            fallback = painterResource(R.drawable.ic_default_profile),
             contentDescription = name,
             contentScale = ContentScale.Crop,
             modifier = modifier.clip(CircleShape)
@@ -2452,11 +2454,11 @@ private fun AvatarImage(
             modifier = modifier.clip(CircleShape).background(palette.glass),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                initials(name),
-                color = palette.textPrimary,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 12.sp
+            Icon(
+                painter = painterResource(R.drawable.ic_default_profile),
+                contentDescription = "$name default profile picture",
+                tint = Color.Unspecified,
+                modifier = Modifier.fillMaxSize()
             )
         }
     }

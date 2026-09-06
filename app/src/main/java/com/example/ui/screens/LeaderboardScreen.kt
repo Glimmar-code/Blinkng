@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.fadeIn
@@ -64,7 +66,7 @@ fun LeaderboardScreen(users: List<LeaderboardUser>, userProfile: UserProfile = U
                             Surface(Modifier.weight(1f).height(if(idx==0)142.dp else 118.dp).clickable{onProfileClick(user.username)},shape=RoundedCornerShape(20.dp),border=BorderStroke(1.dp,if(idx==0)BlinkGold else MaterialTheme.colorScheme.outlineVariant),color=if(idx==0)BlinkGold.copy(alpha=.09f)else MaterialTheme.colorScheme.surface){
                                 Column(Modifier.padding(10.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
                                     Text(if(idx==0)"👑" else "#${idx+1}",fontWeight=FontWeight.Black)
-                                    AsyncImage(model=user.avatar,contentDescription=user.fullName,contentScale=ContentScale.Crop,modifier=Modifier.size(if(idx==0)48.dp else 40.dp).clip(CircleShape))
+                                    AsyncImage(model=user.avatar,error=painterResource(R.drawable.ic_default_profile),fallback=painterResource(R.drawable.ic_default_profile),contentDescription=user.fullName,contentScale=ContentScale.Crop,modifier=Modifier.size(if(idx==0)48.dp else 40.dp).clip(CircleShape))
                                     Text(user.fullName.ifBlank{user.username},fontSize=11.sp,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)
                                     Text("${user.points} pts",fontSize=10.sp,color=BlinkPink,fontWeight=FontWeight.Bold)
                                 }
@@ -85,7 +87,7 @@ fun LeaderboardScreen(users: List<LeaderboardUser>, userProfile: UserProfile = U
                     Surface(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=5.dp).clickable{onProfileClick(user.username)},shape=RoundedCornerShape(18.dp),border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),color=MaterialTheme.colorScheme.surface){
                         Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically){
                             Text("#${index+1}",modifier=Modifier.width(42.dp),fontWeight=FontWeight.Black)
-                            AsyncImage(model=user.avatar,contentDescription=user.fullName,contentScale=ContentScale.Crop,modifier=Modifier.size(48.dp).clip(CircleShape))
+                            AsyncImage(model=user.avatar,error=painterResource(R.drawable.ic_default_profile),fallback=painterResource(R.drawable.ic_default_profile),contentDescription=user.fullName,contentScale=ContentScale.Crop,modifier=Modifier.size(48.dp).clip(CircleShape))
                             Spacer(Modifier.width(11.dp))
                             Column(Modifier.weight(1f)){
                                 Row(verticalAlignment=Alignment.CenterVertically){Text(user.fullName.ifBlank{user.username},fontWeight=FontWeight.Bold,maxLines=1);if(user.verificationBadge!=VerificationBadge.NONE){Spacer(Modifier.width(4.dp));Icon(Icons.Default.Verified,null,tint=BlinkPink,modifier=Modifier.size(14.dp))}}

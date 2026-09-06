@@ -1,5 +1,7 @@
 package com.example.auth
 
+import com.example.R
+import androidx.compose.ui.res.painterResource
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
@@ -59,7 +61,7 @@ class AccountSwitcherActivity : ComponentActivity() {
                         items(accounts, key = { it.userId }) { account ->
                             Card(modifier = Modifier.fillMaxWidth()) {
                                 Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    AsyncImage(model = account.avatarUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(52.dp).clip(CircleShape))
+                                    AsyncImage(model = account.avatarUrl,error=painterResource(R.drawable.ic_default_profile),fallback=painterResource(R.drawable.ic_default_profile), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(52.dp).clip(CircleShape))
                                     Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
                                         Text(account.fullName.ifBlank { account.username }, style = MaterialTheme.typography.titleMedium)
                                         Text("@${account.username}", color = MaterialTheme.colorScheme.onSurfaceVariant)

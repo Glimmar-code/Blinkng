@@ -618,11 +618,11 @@ private fun CommentAvatar(
             .background(BlinkPink.copy(alpha = 0.16f))
             .clickable(enabled = username.isNotBlank(), onClick = onClick)
     ) {
-        Text(
-            text = initial,
-            color = BlinkPink,
-            fontWeight = FontWeight.Bold,
-            fontSize = (size.value * 0.42f).sp
+        Icon(
+            painter = painterResource(R.drawable.ic_default_profile),
+            contentDescription = "$displayName default profile picture",
+            tint = Color.Unspecified,
+            modifier = Modifier.fillMaxSize()
         )
         if (avatarUrl.isNotBlank()) {
             AsyncImage(
