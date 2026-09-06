@@ -6,6 +6,8 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   headers: { "Content-Type": "application/json", "Connection": "keep-alive" },
 });
 
+let firebaseTokenCache: { token: string; projectId: string; expiresAt: number } | null = null;
+
 function jwtSubject(authHeader: string): string | null {
   try {
     const token = authHeader.replace(/^Bearer\s+/i, "");
@@ -26,13 +28,18 @@ function base64Url(input: string): string {
 async function firebaseAccessToken(
   serviceAccountJson: string,
 ): Promise<{ token?: string; projectId?: string; error?: string }> {
+  const nowMs = Date.now();
+  if (firebaseTokenCache && firebaseTokenCache.expiresAt > nowMs + 60_000) {
+    return { token: firebaseTokenCache.token, projectId: firebaseTokenCache.projectId };
+  }
+
   try {
     const sa = JSON.parse(serviceAccountJson);
     if (!sa.client_email || !sa.private_key || !sa.project_id) {
       return { error: "Invalid Firebase service account" };
     }
 
-    const now = Math.floor(Date.now() / 1000);
+    const now = Math.floor(nowMs / 1000);
     const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
     const claim = base64Url(JSON.stringify({
       iss: sa.client_email,
@@ -50,7 +57,7 @@ async function firebaseAccessToken(
     const key = await crypto.subtle.importKey(
       "pkcs8",
       keyBytes,
-      { name: "RSASSA-PK1-v1_5".replace("PK1", "PKCS1"), hash: "SHA-256" },
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
       false,
       ["sign"],
     );
@@ -71,7 +78,15 @@ async function firebaseAccessToken(
     if (!response.ok) return { error: `Firebase OAuth failed (${response.status})` };
 
     const body = await response.json();
-    return { token: body.access_token, projectId: sa.project_id };
+    const accessToken = String(body.access_token ?? "");
+    if (!accessToken) return { error: "Firebase OAuth returned no access token" };
+    const expiresInSeconds = Number(body.expires_in ?? 3600);
+    firebaseTokenCache = {
+      token: accessToken,
+      projectId: String(sa.project_id),
+      expiresAt: nowMs + Math.max(300, expiresInSeconds - 120) * 1000,
+    };
+    return { token: accessToken, projectId: String(sa.project_id) };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Firebase auth failed" };
   }
@@ -80,6 +95,69 @@ async function firebaseAccessToken(
 function isUnregisteredFcmToken(status: number, responseText: string): boolean {
   const text = responseText.toUpperCase();
   return status === 404 || text.includes("UNREGISTERED") || text.includes("REGISTRATION-TOKEN-NOT-REGISTERED");
+}
+
+type DispatchClaim = { proceed: boolean; tracked: boolean; attempts: number; reason?: string };
+
+async function claimDispatch(
+  admin: ReturnType<typeof createClient>,
+  messageId: string,
+): Promise<DispatchClaim> {
+  const { data: existing, error: readError } = await admin
+    .from("message_push_dispatches")
+    .select("status,attempts,updated_at")
+    .eq("message_id", messageId)
+    .maybeSingle();
+
+  if (readError) return { proceed: true, tracked: false, attempts: 1 };
+
+  if (existing) {
+    if (existing.status === "sent") {
+      return { proceed: false, tracked: true, attempts: Number(existing.attempts ?? 1), reason: "already_sent" };
+    }
+
+    const ageMs = Date.now() - Date.parse(String(existing.updated_at ?? ""));
+    if (existing.status === "sending" && Number.isFinite(ageMs) && ageMs < 120_000) {
+      return { proceed: false, tracked: true, attempts: Number(existing.attempts ?? 1), reason: "already_sending" };
+    }
+
+    const attempts = Number(existing.attempts ?? 0) + 1;
+    const { error } = await admin
+      .from("message_push_dispatches")
+      .update({ status: "sending", attempts, last_error: null, updated_at: new Date().toISOString() })
+      .eq("message_id", messageId);
+    return error
+      ? { proceed: true, tracked: false, attempts }
+      : { proceed: true, tracked: true, attempts };
+  }
+
+  const { error: insertError } = await admin
+    .from("message_push_dispatches")
+    .insert({ message_id: messageId, status: "sending", attempts: 1, updated_at: new Date().toISOString() });
+
+  if (!insertError) return { proceed: true, tracked: true, attempts: 1 };
+  if (String(insertError.code ?? "") === "23505") {
+    return { proceed: false, tracked: true, attempts: 1, reason: "concurrent_dispatch" };
+  }
+  return { proceed: true, tracked: false, attempts: 1 };
+}
+
+async function finishDispatch(
+  admin: ReturnType<typeof createClient>,
+  messageId: string,
+  tracked: boolean,
+  ok: boolean,
+  errorText = "",
+) {
+  if (!tracked) return;
+  await admin
+    .from("message_push_dispatches")
+    .update({
+      status: ok ? "sent" : "failed",
+      last_error: errorText ? errorText.slice(0, 600) : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("message_id", messageId);
 }
 
 Deno.serve(async (req) => {
@@ -161,8 +239,15 @@ Deno.serve(async (req) => {
   if (!firebaseJson) {
     return json({ error: "Firebase server credential is not configured" }, 503);
   }
+
+  const claim = await claimDispatch(admin, messageId);
+  if (!claim.proceed) {
+    return json({ ok: true, skipped: claim.reason ?? "duplicate", attempts: claim.attempts });
+  }
+
   const firebase = await firebaseAccessToken(firebaseJson);
   if (!firebase.token || !firebase.projectId) {
+    await finishDispatch(admin, messageId, claim.tracked, false, firebase.error ?? "Firebase authentication failed");
     return json({ error: firebase.error ?? "Firebase authentication failed" }, 502);
   }
 
@@ -200,7 +285,10 @@ Deno.serve(async (req) => {
               message: {
                 token,
                 data,
-                android: { priority: "HIGH", ttl: "86400s" },
+                android: {
+                  priority: "HIGH",
+                  ttl: "2419200s",
+                },
               },
             }),
           },
@@ -236,12 +324,19 @@ Deno.serve(async (req) => {
 
   const delivered = sendResults.filter((result) => result.ok).length;
   const failed = sendResults.length - delivered;
+  const failureText = sendResults
+    .filter((result) => !result.ok)
+    .map((result) => `${result.status}:${result.detail}`)
+    .join(" | ");
+
+  await finishDispatch(admin, messageId, claim.tracked, delivered > 0, failureText);
 
   return json({
     ok: delivered > 0,
     delivered,
     failed,
     devices: sendResults.length,
+    attempts: claim.attempts,
     failures: sendResults.filter((result) => !result.ok).slice(0, 5),
   });
 });
