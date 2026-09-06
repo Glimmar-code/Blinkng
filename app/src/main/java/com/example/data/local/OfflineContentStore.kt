@@ -176,12 +176,49 @@ class OfflineContentStore(context: Context) {
         dao.replaceProfiles(rows)
     }
 
+    // CHAT_CACHE_RECONCILIATION_V1: collapse a temporary local alias into the
+    // server conversation for the same partner while preserving every cached message.
+    private fun normalizeConversationsForCache(
+        conversations: List<ChatConversation>
+    ): List<ChatConversation> {
+        if (conversations.size < 2) return conversations
+
+        val grouped = LinkedHashMap<String, MutableList<ChatConversation>>()
+        conversations.forEach { conversation ->
+            val partnerKey = conversation.partnerUsername
+                .trim().removePrefix("@").lowercase()
+                .ifBlank { "id:${conversation.id}" }
+            grouped.getOrPut(partnerKey) { mutableListOf() }.add(conversation)
+        }
+
+        return grouped.values.map { group ->
+            val base = group.firstOrNull { !it.id.startsWith("local_") } ?: group.first()
+            val mergedMessages = group
+                .flatMap { it.messages }
+                .distinctBy { message ->
+                    message.id.ifBlank {
+                        "${message.rawTimestamp}:${message.senderId}:${message.text}"
+                    }
+                }
+                .sortedBy { it.rawTimestamp.ifBlank { it.timestamp } }
+                .toMutableList()
+            val newest = mergedMessages.lastOrNull()
+            base.copy(
+                lastMessage = newest?.text ?: base.lastMessage,
+                lastMessageTime = newest?.timestamp ?: base.lastMessageTime,
+                lastMessageRawTime = newest?.rawTimestamp ?: base.lastMessageRawTime,
+                messages = mergedMessages
+            )
+        }
+    }
+
     suspend fun replaceConversations(conversations: List<ChatConversation>, ownerUsername: String = "") {
         val owner = ownerUsername.trim().removePrefix("@").lowercase().ifBlank { cachedOwnerUsername() }
         if (owner.isBlank()) return
         rememberOwner(owner)
+        val normalizedConversations = normalizeConversationsForCache(conversations)
         val cachedAt = System.currentTimeMillis()
-        val conversationRows = conversations.distinctBy { it.id }.mapIndexedNotNull { index, conversation ->
+        val conversationRows = normalizedConversations.distinctBy { it.id }.mapIndexedNotNull { index, conversation ->
             codec.encodeConversation(conversation.copy(messages = mutableListOf()))?.let { json ->
                 CachedConversationEntity(
                     id = conversation.id,
@@ -193,7 +230,7 @@ class OfflineContentStore(context: Context) {
                 )
             }
         }
-        val messageRows = conversations.flatMap { conversation ->
+        val messageRows = normalizedConversations.flatMap { conversation ->
             conversation.messages.distinctBy { it.id }.mapIndexedNotNull { index, message ->
                 val stableId = message.id.ifBlank { "${conversation.id}_${index}_${message.rawTimestamp}" }
                 codec.encodeMessage(message)?.let { json ->

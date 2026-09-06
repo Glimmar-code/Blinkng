@@ -160,6 +160,8 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val networkMonitor = NetworkMonitor(appContext)
     private val syncMutex = Mutex()
     private val cacheWriteMutex = Mutex()
+    // CHAT_CACHE_RECONCILIATION_V1: stale async snapshots must never write after newer ones.
+    private val conversationCacheRevision = java.util.concurrent.atomic.AtomicLong(0L)
     private val messageOutboxMutex = Mutex()
     private val activeOutboxIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
@@ -770,16 +772,31 @@ private suspend fun restoreSupabaseSession() {
         snapshot: List<ChatConversation> = _uiState.value.conversations
     ) {
         val owner = _uiState.value.myProfile.username
+        val revision = conversationCacheRevision.incrementAndGet()
         cacheWriteMutex.withLock {
-            offlineContentStore.replaceConversations(snapshot, owner)
+            // A newer chat-state write may have been scheduled while this critical write waited.
+            // Persist the newest in-memory state in that case, never an older snapshot.
+            val currentSnapshot = if (revision == conversationCacheRevision.get()) {
+                snapshot
+            } else {
+                _uiState.value.conversations
+            }
+            offlineContentStore.replaceConversations(currentSnapshot, _uiState.value.myProfile.username.ifBlank { owner })
         }
     }
 
     private fun persistConversations() {
         val snapshot = _uiState.value.conversations
+        val owner = _uiState.value.myProfile.username
+        val revision = conversationCacheRevision.incrementAndGet()
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching { persistConversationsNow(snapshot) }
-                .onFailure { Log.w(TAG, "Unable to persist conversations", it) }
+            runCatching {
+                cacheWriteMutex.withLock {
+                    // Skip a snapshot that became stale before it reached disk.
+                    if (revision != conversationCacheRevision.get()) return@withLock
+                    offlineContentStore.replaceConversations(snapshot, owner)
+                }
+            }.onFailure { Log.w(TAG, "Unable to persist conversations", it) }
         }
     }
 
@@ -2361,19 +2378,46 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun sendVideoMessage(partnerUsername: String, uri: Uri) {
-        val cleanPartner = partnerUsername.trim()
+        val cleanPartner = partnerUsername.trim().removePrefix("@")
         if (cleanPartner.isBlank()) return
         val tempId = "temp_video_${UUID.randomUUID()}"
         val uid = supabaseService.getCurrentUserId() ?: "local_user"
-        appendMessageToState(cleanPartner, ChatMessage(id = tempId, senderId = uid, receiverUsername = cleanPartner, text = "Video", timestamp = "Sending...", isFromMe = true, isRead = false, status = MessageStatus.SENDING))
-        viewModelScope.launch {
-            MessageMediaService.sendVideoMessage(appContext, cleanPartner, uri).fold({ serverMsg ->
-                replaceMessageInState(cleanPartner, tempId, serverMsg.copy(status = MessageStatus.SENT))
-                fetchSupabaseData()
-            }, {
-                updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
-                showToast("Failed to send video. Tap the message to retry.")
-            })
+        val existingConversationId = _uiState.value.conversations
+            .firstOrNull { it.partnerUsername.equals(cleanPartner, true) }
+            ?.id
+            ?.takeUnless { it.startsWith("local_") }
+        appendMessageToState(
+            cleanPartner,
+            ChatMessage(
+                id = tempId,
+                conversationId = existingConversationId,
+                senderId = uid,
+                receiverUsername = cleanPartner,
+                text = "Video",
+                rawTimestamp = java.time.Instant.now().toString(),
+                timestamp = "Sending...",
+                isFromMe = true,
+                isRead = false,
+                status = MessageStatus.SENDING
+            )
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            MessageMediaService.sendVideoMessage(appContext, cleanPartner, uri).fold(
+                onSuccess = { serverMsg ->
+                    withContext(Dispatchers.Main) {
+                        replaceMessageInState(cleanPartner, tempId, serverMsg.copy(status = MessageStatus.SENT))
+                    }
+                    // Confirmed media messages receive the same durable Room ordering as text.
+                    persistConversationsNow()
+                    withContext(Dispatchers.Main) { fetchSupabaseData() }
+                },
+                onFailure = {
+                    withContext(Dispatchers.Main) {
+                        updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
+                        showToast("Failed to send video. Tap the message to retry.")
+                    }
+                }
+            )
         }
     }
 

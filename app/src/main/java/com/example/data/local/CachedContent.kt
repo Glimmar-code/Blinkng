@@ -162,6 +162,17 @@ interface CachedContentDao {
     @Query("DELETE FROM cached_feed_content WHERE id = :postId")
     suspend fun deletePost(postId: String)
 
+    // CHAT_CACHE_RECONCILIATION_V1: remove only obsolete local aliases/temp rows.
+    // Real server-backed history is never pruned by these queries.
+    @Query("DELETE FROM cached_messages WHERE owner_username = :ownerUsername AND conversation_id IN (SELECT id FROM cached_conversations WHERE owner_username = :ownerUsername AND substr(id, 1, 6) = 'local_' AND partner_username IN (:partnerUsernames))")
+    suspend fun deleteMessagesForLocalConversationAliases(ownerUsername: String, partnerUsernames: List<String>)
+
+    @Query("DELETE FROM cached_conversations WHERE owner_username = :ownerUsername AND substr(id, 1, 6) = 'local_' AND partner_username IN (:partnerUsernames)")
+    suspend fun deleteLocalConversationAliases(ownerUsername: String, partnerUsernames: List<String>)
+
+    @Query("DELETE FROM cached_messages WHERE owner_username = :ownerUsername AND conversation_id IN (:conversationIds) AND substr(id, 1, 5) = 'temp_'")
+    suspend fun deleteTempMessagesForConversations(ownerUsername: String, conversationIds: List<String>)
+
     @Query("DELETE FROM message_outbox WHERE owner_username = :ownerUsername AND local_id = :localId")
     suspend fun deleteOutbox(ownerUsername: String, localId: String)
 
@@ -197,8 +208,27 @@ interface CachedContentDao {
         conversations: List<CachedConversationEntity>,
         messages: List<CachedMessageEntity>
     ) {
-        // Never blank chat history while a smaller/partial Supabase page refreshes.
-        // Existing rows remain until the long-term prune policy removes old content.
+        // Never blank real server history while a smaller/partial page refreshes.
+        // We only clear stale local aliases/temp rows that are replaced by this snapshot.
+        conversations.groupBy { it.ownerUsername }.forEach { (owner, rows) ->
+            val serverPartners = rows
+                .filterNot { it.id.startsWith("local_") }
+                .map { it.partnerUsername }
+                .filter { it.isNotBlank() }
+                .distinct()
+            if (serverPartners.isNotEmpty()) {
+                deleteMessagesForLocalConversationAliases(owner, serverPartners)
+                deleteLocalConversationAliases(owner, serverPartners)
+            }
+
+            val conversationIds = rows.map { it.id }.filter { it.isNotBlank() }.distinct()
+            if (conversationIds.isNotEmpty()) {
+                // Active temp messages are inserted again below from the current snapshot;
+                // obsolete temp rows from older snapshots stay gone.
+                deleteTempMessagesForConversations(owner, conversationIds)
+            }
+        }
+
         if (conversations.isNotEmpty()) insertConversations(conversations)
         if (messages.isNotEmpty()) insertMessages(messages)
     }
