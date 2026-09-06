@@ -5,28 +5,42 @@ import org.junit.Test
 
 class ContentViewDisplayStateTest {
     @Test
-    fun `pending exposure suppresses a realtime jump until reveal`() {
+    fun `active window freezes realtime model count at its baseline`() {
         val state = ContentViewDisplayState(
             revealedCounts = emptyMap(),
             suppressedBaselines = mapOf("post-a" to 10),
-            pendingByContent = mapOf("post-a" to 1)
+            activeWindows = setOf("post-a")
         )
-        assertEquals(10, state.displayedCount("post-a", 11))
+
+        assertEquals(10, state.displayedCount("post-a", 24))
     }
 
     @Test
-    fun `revealed authoritative count can advance while another exposure is pending`() {
+    fun `active window does not reveal an accumulated authoritative count early`() {
         val state = ContentViewDisplayState(
-            revealedCounts = mapOf("post-a" to 11),
+            revealedCounts = mapOf("post-a" to 40),
             suppressedBaselines = mapOf("post-a" to 10),
-            pendingByContent = mapOf("post-a" to 1)
+            activeWindows = setOf("post-a")
         )
-        assertEquals(11, state.displayedCount("post-a", 12))
+
+        assertEquals(10, state.displayedCount("post-a", 40))
     }
 
     @Test
-    fun `model count is authoritative once no local reveal is pending`() {
-        val state = ContentViewDisplayState(revealedCounts = mapOf("post-a" to 11))
-        assertEquals(25, state.displayedCount("post-a", 25))
+    fun `closing the window exposes the newest authoritative count in one update`() {
+        val state = ContentViewDisplayState(
+            revealedCounts = mapOf("post-a" to 40)
+        )
+
+        assertEquals(40, state.displayedCount("post-a", 24))
+    }
+
+    @Test
+    fun `newer server model remains authoritative after a window closes`() {
+        val state = ContentViewDisplayState(
+            revealedCounts = mapOf("post-a" to 40)
+        )
+
+        assertEquals(55, state.displayedCount("post-a", 55))
     }
 }
