@@ -61,7 +61,7 @@ old_state = '''    var previewFinished by remember(reel.id) { mutableStateOf(fal
 new_state = '''    var previewFinished by remember(reel.id) { mutableStateOf(false) }
     var previewPositionMs by remember(reel.id) { mutableStateOf(0L) }
     var isBuffering by remember(reel.id) { mutableStateOf(false) }
-    val displayedViewsCount = rememberDelayedContentViewCount(reel.id, reel.views)
+    val displayedViewsCount = rememberDelayedContentViewCount(reel.id, reel.viewsCount)
 
     LaunchedEffect(isActive, reel.id) {
 '''
