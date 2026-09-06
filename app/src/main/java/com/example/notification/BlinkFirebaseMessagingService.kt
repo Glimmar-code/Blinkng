@@ -2,6 +2,11 @@ package com.example.notification
 
 import android.content.Context
 import android.util.Log
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.example.BuildConfig
 import com.example.data.repository.ChatRepository
 import com.example.data.supabase.SupabaseConfig
@@ -66,8 +71,6 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
 
         private fun logToken(label: String, token: String) {
             if (BuildConfig.DEBUG) {
-                // Full token is intentionally logged only in debug builds so it can be
-                // copied into Firebase Console -> Send test message.
                 Log.d(TAG, "$label: $token")
             } else {
                 Log.i(TAG, "$label refreshed (${token.take(8)}…)")
@@ -98,10 +101,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 client.newCall(request).execute().use { response ->
                     val responseBody = response.body?.string().orEmpty()
                     if (!response.isSuccessful) {
-                        Log.w(
-                            TAG,
-                            "FCM token sync failed: ${response.code} ${responseBody.take(240)}"
-                        )
+                        Log.w(TAG, "FCM token sync failed: ${response.code} ${responseBody.take(240)}")
                     } else {
                         Log.d(TAG, "FCM token registered with Supabase.")
                     }
@@ -109,6 +109,21 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             } catch (error: Exception) {
                 Log.w(TAG, "FCM token sync error", error)
             }
+        }
+
+        private fun enqueueGapSync(context: Context) {
+            val work = OneTimeWorkRequestBuilder<NotificationSyncWorker>()
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
+                .build()
+            WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+                "blink_fcm_gap_sync",
+                ExistingWorkPolicy.REPLACE,
+                work
+            )
         }
     }
 
@@ -138,30 +153,23 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         val sender = data["sender_username"].orEmpty()
         val senderName = data["sender_name"] ?: sender.ifBlank { "Blink" }
         val senderAvatar = data["sender_avatar"].orEmpty()
+        val conversationId = data["conversation_id"].orEmpty()
         val messageId = data["message_id"].orEmpty()
 
-        if (type.equals("message", ignoreCase = true) && messageId.isNotBlank()) {
-            CoroutineScope(Dispatchers.IO).launch {
-                runCatching {
-                    SupabaseService.initialize(applicationContext)
-                    ChatRepository().markMessageDelivered(messageId)
-                }.onFailure { error ->
-                    Log.w(TAG, "Unable to acknowledge delivered message $messageId", error)
-                }
-            }
-        }
-
+        // Chat notifications are intentionally rendered synchronously from the data payload.
+        // Do not fetch avatars or make any network call first: FCM gives this callback only a
+        // short execution window and network work here is a common source of delayed/missed push.
         when {
             type.equals("message", ignoreCase = true) && sender.isNotBlank() -> {
-                CoroutineScope(Dispatchers.IO).launch {
-                    BlinkNotificationHelper.showChatMessageNotification(
-                        this@BlinkFirebaseMessagingService,
-                        sender,
-                        senderName,
-                        body,
-                        senderAvatar
-                    )
-                }
+                InstantChatNotification.show(
+                    context = this,
+                    senderUsername = sender,
+                    senderName = senderName,
+                    messageText = body,
+                    senderAvatar = senderAvatar,
+                    conversationId = conversationId,
+                    messageId = messageId
+                )
             }
 
             type.equals("market", ignoreCase = true) -> {
@@ -182,5 +190,23 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 )
             }
         }
+
+        // Delivery acknowledgement is secondary work; never block the visible notification on it.
+        if (type.equals("message", ignoreCase = true) && messageId.isNotBlank()) {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching {
+                    SupabaseService.initialize(applicationContext)
+                    ChatRepository().markMessageDelivered(messageId)
+                }.onFailure { error ->
+                    Log.w(TAG, "Unable to acknowledge delivered message $messageId", error)
+                }
+            }
+        }
+    }
+
+    override fun onDeletedMessages() {
+        super.onDeletedMessages()
+        Log.w(TAG, "FCM reported deleted pending messages; scheduling immediate Supabase reconciliation.")
+        enqueueGapSync(applicationContext)
     }
 }
