@@ -9,13 +9,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
     private val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
 
     override suspend fun doWork(): Result {
+        SupabaseService.initialize(applicationContext)
         val token = SupabaseService.accessToken() ?: return Result.success()
         val uid = SupabaseService().getCurrentUserId() ?: return Result.success()
         return try {
@@ -38,7 +38,6 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
                 val raw = response.body?.string().orEmpty()
                 val rows = if (raw.isBlank()) JSONArray() else JSONArray(raw)
                 var newest = lastSeen
-                var newlyShown = 0
                 for (i in 0 until rows.length()) {
                     val row = rows.optJSONObject(i) ?: continue
                     val created = row.optString("created_at", "")
@@ -51,12 +50,12 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
                         if (looksLikeMessage && actorId.isNotBlank()) {
                             val actor = fetchActorProfile(token, actorId)
                             if (actor != null) {
-                                BlinkNotificationHelper.showChatMessageNotification(
-                                    applicationContext,
-                                    actor.optString("username"),
-                                    actor.optString("full_name").ifBlank { actor.optString("username") },
-                                    body,
-                                    actor.optString("avatar_url")
+                                InstantChatNotification.show(
+                                    context = applicationContext,
+                                    senderUsername = actor.optString("username"),
+                                    senderName = actor.optString("full_name").ifBlank { actor.optString("username") },
+                                    messageText = body,
+                                    senderAvatar = actor.optString("avatar_url")
                                 )
                             } else {
                                 BlinkNotificationHelper.showSocialNotification(applicationContext, title, body)
@@ -69,7 +68,6 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
                                 row.optString("post_id").takeIf { it.isNotBlank() && it != "null" }
                             )
                         }
-                        newlyShown++
                     }
                 }
                 val contentRange = response.header("Content-Range")
@@ -81,7 +79,6 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
             Result.retry()
         }
     }
-
 
     private fun fetchActorProfile(accessToken: String, actorId: String): JSONObject? {
         if (actorId.isBlank()) return null
@@ -99,5 +96,4 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
             }
         }.getOrNull()
     }
-
 }
