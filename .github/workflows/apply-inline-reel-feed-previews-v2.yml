@@ -43,7 +43,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No source changes to commit"
           else
-            git commit -m "feat: mix reel previews into ranked home feed"
+            git commit -m "fix: apply shared view tracking to inline reels"
             for attempt in 1 2 3 4 5; do
               if git pull --rebase origin main && git push origin HEAD:main; then
                 exit 0
@@ -54,3 +54,5 @@ jobs:
             echo "Could not push source changes after retries"
             exit 1
           fi
+
+# Triggered after view-pipeline alignment; source is compiled before push.
