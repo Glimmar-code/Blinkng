@@ -151,6 +151,7 @@ ksp {
 }
 
 dependencies {
+  implementation(project(":shared"))
   coreLibraryDesugaring(libs.desugar.jdk.libs)
   implementation(platform(libs.androidx.compose.bom))
   implementation(libs.androidx.activity.compose)
