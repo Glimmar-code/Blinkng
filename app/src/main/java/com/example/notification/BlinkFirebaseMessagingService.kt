@@ -8,6 +8,8 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.BuildConfig
+import com.example.call.CallType
+import com.example.call.IncomingCallNotification
 import com.example.data.repository.ChatRepository
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
@@ -158,10 +160,34 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         val conversationId = data["conversation_id"].orEmpty()
         val messageId = data["message_id"].orEmpty()
 
-        // Chat notifications are intentionally rendered synchronously from the data payload.
-        // Do not fetch avatars or make any network call first: FCM gives this callback only a
-        // short execution window and network work here is a common source of delayed/missed push.
+        // Visible notification work must stay synchronous. FCM gives this callback a short
+        // execution window; never block incoming chat/call UI on avatar or database fetches.
         when {
+            type.equals("incoming_call", ignoreCase = true) -> {
+                val callId = data["call_id"].orEmpty()
+                val callerId = data["caller_id"].orEmpty()
+                if (callId.isNotBlank() && callerId.isNotBlank()) {
+                    IncomingCallNotification.showIncoming(
+                        context = this,
+                        callId = callId,
+                        callType = CallType.fromWire(data["call_type"]),
+                        peerId = callerId,
+                        peerUsername = sender,
+                        peerName = senderName,
+                        peerAvatar = senderAvatar,
+                        conversationId = conversationId
+                    )
+                }
+            }
+
+            type.equals("call_update", ignoreCase = true) -> {
+                IncomingCallNotification.handleCallUpdate(
+                    context = this,
+                    callId = data["call_id"].orEmpty(),
+                    event = data["call_event"].orEmpty()
+                )
+            }
+
             type.equals("message", ignoreCase = true) && sender.isNotBlank() -> {
                 InstantChatNotification.show(
                     context = this,
