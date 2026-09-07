@@ -36,7 +36,7 @@ jobs:
             while IFS= read -r file; do
               [ -n "$file" ] || continue
               echo "----- $file -----"
-              git diff --cc -- "$file" | sed -n '1,380p' || true
+              git diff --cc -- "$file" | sed -n '1,420p' || true
             done < <(git diff --name-only --diff-filter=U)
           }
 
@@ -45,23 +45,22 @@ jobs:
             echo "===== MERGE $branch ====="
             if git merge-base --is-ancestor "origin/$branch" HEAD; then return 0; fi
             if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
-            report_conflict "$branch"
-            exit 10
+            report_conflict "$branch"; exit 10
           }
 
           merge_auth() {
             local branch="fix/auth-google-reset-account-switch"
             echo "===== MERGE $branch ====="
             if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
-            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            mapfile -t c < <(git diff --name-only --diff-filter=U)
             expected=("app/src/main/AndroidManifest.xml" "app/src/main/java/com/example/auth/GoogleAuthCallbackActivity.kt" "app/src/main/java/com/example/auth/GoogleNonce.kt")
-            [ "${#conflicts[@]}" -eq 3 ] || { report_conflict "$branch"; exit 10; }
-            for f in "${expected[@]}"; do printf '%s\n' "${conflicts[@]}" | grep -Fxq "$f" || { report_conflict "$branch"; exit 10; }; done
+            [ "${#c[@]}" -eq 3 ] || { report_conflict "$branch"; exit 10; }
+            for f in "${expected[@]}"; do printf '%s\n' "${c[@]}" | grep -Fxq "$f" || { report_conflict "$branch"; exit 10; }; done
             git checkout --ours -- app/src/main/AndroidManifest.xml app/src/main/java/com/example/auth/GoogleAuthCallbackActivity.kt app/src/main/java/com/example/auth/GoogleNonce.kt
             python - <<'PY'
           from pathlib import Path
-          p=Path('app/src/main/AndroidManifest.xml'); text=p.read_text()
-          if '.auth.PasswordResetActivity' not in text:
+          p=Path('app/src/main/AndroidManifest.xml'); s=p.read_text()
+          if '.auth.PasswordResetActivity' not in s:
               block='''        <activity
                       android:name=".auth.PasswordResetActivity"
                       android:exported="true"
@@ -76,8 +75,8 @@ jobs:
                   </activity>
           '''
               anchor='        <service\n            android:name=".notification.BlinkFirebaseMessagingService"'
-              if anchor not in text: raise SystemExit('Firebase service anchor missing')
-              p.write_text(text.replace(anchor,block+anchor,1))
+              if anchor not in s: raise SystemExit('Firebase service anchor missing')
+              p.write_text(s.replace(anchor,block+anchor,1))
           PY
             git add app/src/main/AndroidManifest.xml app/src/main/java/com/example/auth/GoogleAuthCallbackActivity.kt app/src/main/java/com/example/auth/GoogleNonce.kt
             git commit --no-edit
@@ -87,18 +86,99 @@ jobs:
             local branch="feature/admin-control-center-v3"
             echo "===== MERGE $branch ====="
             if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
-            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
-            [ "${#conflicts[@]}" -eq 1 ] && [ "${conflicts[0]}" = "app/src/main/java/com/example/AdminControlCenterActivity.kt" ] || { report_conflict "$branch"; exit 10; }
-            # V3 is the full implementation; it already preserves current Supabase initialization and BlinkTheme.
+            mapfile -t c < <(git diff --name-only --diff-filter=U)
+            [ "${#c[@]}" -eq 1 ] && [ "${c[0]}" = "app/src/main/java/com/example/AdminControlCenterActivity.kt" ] || { report_conflict "$branch"; exit 10; }
             git checkout --theirs -- app/src/main/java/com/example/AdminControlCenterActivity.kt
             git add app/src/main/java/com/example/AdminControlCenterActivity.kt
+            git commit --no-edit
+          }
+
+          merge_connect() {
+            local branch="feature/connect-vertical-directory-20"
+            local file="app/src/main/java/com/example/ui/screens/ConnectHubPremiumPanel.kt"
+            echo "===== MERGE $branch ====="
+            if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
+            mapfile -t c < <(git diff --name-only --diff-filter=U)
+            [ "${#c[@]}" -eq 1 ] && [ "${c[0]}" = "$file" ] || { report_conflict "$branch"; exit 10; }
+            git checkout --ours -- "$file"
+            python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          path=Path('app/src/main/java/com/example/ui/screens/ConnectHubPremiumPanel.kt')
+          s=path.read_text()
+          theirs=subprocess.check_output(['git','show','origin/feature/connect-vertical-directory-20:app/src/main/java/com/example/ui/screens/ConnectHubPremiumPanel.kt'], text=True)
+
+          def add_after(text, anchor, addition):
+              if addition.strip() in text: return text
+              if anchor not in text: raise SystemExit(f'Connect anchor missing: {anchor!r}')
+              return text.replace(anchor, anchor+addition, 1)
+
+          s=add_after(s,'import androidx.compose.runtime.Composable\n','import androidx.compose.runtime.LaunchedEffect\n')
+          s=add_after(s,'import com.example.data.repository.ConnectHubRepository\n','import com.example.data.repository.ConnectCategoryCatalogRepository\nimport com.example.data.repository.ConnectDirectoryCategory\n')
+          state='''    val categoryCatalogRepository = remember { ConnectCategoryCatalogRepository() }
+              var directoryCategories by remember {
+                  mutableStateOf(ConnectCategoryCatalogRepository.defaultCategories())
+              }
+
+              LaunchedEffect(Unit) {
+                  directoryCategories = categoryCatalogRepository.fetchCategories()
+              }
+          '''
+          anchor='    val matchRepository = remember { ConnectHubRepository() }\n'
+          if 'val categoryCatalogRepository' not in s:
+              if anchor not in s: raise SystemExit('matchRepository anchor missing')
+              s=s.replace(anchor,anchor+state,1)
+          s=s.replace('"Swipe between roommates, mentors, reading mates, housing and challenges."','"Choose from 20 professional ways to connect. Every option opens a live Connect workflow."',1)
+          call='''        CategoryTabBar(
+                  categories = categories,
+                  badgeCounts = badgeCounts,
+          '''
+          replacement='''        CategoryTabBar(
+                  categories = categories,
+                  directoryCategories = directoryCategories,
+                  badgeCounts = badgeCounts,
+          '''
+          if 'directoryCategories = directoryCategories' not in s:
+              if call not in s: raise SystemExit('CategoryTabBar call anchor missing')
+              s=s.replace(call,replacement,1)
+          hp='''        HorizontalPager(
+                  state = pagerState,
+                  modifier = Modifier
+          '''
+          hpr='''        HorizontalPager(
+                  state = pagerState,
+                  userScrollEnabled = false,
+                  modifier = Modifier
+          '''
+          if 'userScrollEnabled = false' not in s:
+              if hp not in s: raise SystemExit('HorizontalPager anchor missing')
+              s=s.replace(hp,hpr,1)
+
+          marker='@Composable\nprivate fun CategoryTabBar('
+          def function_span(text):
+              start=text.index(marker)
+              brace=text.index('{',start)
+              depth=0
+              for i in range(brace,len(text)):
+                  if text[i]=='{': depth+=1
+                  elif text[i]=='}':
+                      depth-=1
+                      if depth==0: return start,i+1
+              raise SystemExit('Unclosed CategoryTabBar')
+          a,b=function_span(s)
+          ta,tb=function_span(theirs)
+          s=s[:a]+theirs[ta:tb]+s[b:]
+          path.write_text(s)
+          PY
+            git add "$file"
             git commit --no-edit
           }
 
           # Already merged to main: fix/post-like-speed-reliability, game-professional-overhaul.
           merge_auth
           merge_admin
-          merge_one feature/connect-vertical-directory-20
+          merge_connect
           merge_one fix/professional-notifications-20260907
           merge_one fix/reel-route-target-20260907
           merge_one feature/professional-search-discover
@@ -115,11 +195,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Set up Gradle
         if: success()
         uses: gradle/actions/setup-gradle@v4
-
       - name: Android quality gate
         if: success()
         run: |
@@ -128,7 +206,6 @@ jobs:
           gradle :app:lintDebug --stacktrace --no-daemon
           gradle :app:assembleDebugAndroidTest --stacktrace --no-daemon
           gradle :app:assembleDebug --stacktrace --no-daemon
-
       - name: Push integration result branch
         if: success()
         run: git push --force-with-lease origin HEAD:refs/heads/automation/integration-sept7-result
