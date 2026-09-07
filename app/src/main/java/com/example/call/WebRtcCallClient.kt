@@ -98,7 +98,7 @@ class WebRtcCallClient(
             tcpCandidatePolicy = PeerConnection.TcpCandidatePolicy.ENABLED
         }
 
-        peerConnection = factory.createPeerConnection(rtcConfiguration, peerObserver)
+        peerConnection = factory.createPeerConnection(rtcConfiguration, createPeerObserver())
             ?: throw IllegalStateException("Unable to create WebRTC peer connection")
 
         audioSource = factory.createAudioSource(MediaConstraints())
@@ -339,7 +339,7 @@ class WebRtcCallClient(
         remoteRenderer?.let { track.addSink(it) }
     }
 
-    private val peerObserver = object : PeerConnection.Observer {
+    private fun createPeerObserver(): PeerConnection.Observer = object : PeerConnection.Observer {
         override fun onSignalingChange(newState: PeerConnection.SignalingState) = Unit
 
         override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState) {
