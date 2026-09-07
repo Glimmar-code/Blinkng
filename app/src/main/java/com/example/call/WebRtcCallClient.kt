@@ -1,7 +1,9 @@
 package com.example.call
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
 import android.util.Log
@@ -57,6 +59,8 @@ class WebRtcCallClient(
     private val appContext = context.applicationContext
     private val eglBase: EglBase = EglBase.create()
     private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { }
+    private var audioFocusRequest: AudioFocusRequest? = null
     private val audioDeviceModule: AudioDeviceModule
     private val factory: PeerConnectionFactory
     private val peerConnection: PeerConnection
@@ -79,6 +83,7 @@ class WebRtcCallClient(
     init {
         initializeFactoryOnce()
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        requestCallAudioFocus()
         setSpeakerEnabled(speakerEnabled)
 
         audioDeviceModule = JavaAudioDeviceModule.builder(appContext)
@@ -274,7 +279,46 @@ class WebRtcCallClient(
             @Suppress("DEPRECATION")
             runCatching { audioManager.isSpeakerphoneOn = false }
         }
+        abandonCallAudioFocus()
         audioManager.mode = AudioManager.MODE_NORMAL
+    }
+
+    private fun requestCallAudioFocus() {
+        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setOnAudioFocusChangeListener(audioFocusListener)
+                .build()
+            audioFocusRequest = request
+            audioManager.requestAudioFocus(request)
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.requestAudioFocus(
+                audioFocusListener,
+                AudioManager.STREAM_VOICE_CALL,
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT
+            )
+        }
+        if (result != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            Log.w(TAG, "Call audio focus was not granted")
+        }
+    }
+
+    private fun abandonCallAudioFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { request ->
+                runCatching { audioManager.abandonAudioFocusRequest(request) }
+            }
+            audioFocusRequest = null
+        } else {
+            @Suppress("DEPRECATION")
+            runCatching { audioManager.abandonAudioFocus(audioFocusListener) }
+        }
     }
 
     private fun initializeFactoryOnce() {
