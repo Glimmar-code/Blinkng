@@ -34,7 +34,19 @@ object ShareLinkManager {
     fun generateShareLink(type: ShareContentType, id: String): String {
         val cleanId = id.trim().removePrefix("@")
         require(cleanId.isNotBlank()) { "Share id cannot be blank." }
-        return "$baseUrl/${type.pathSegment}/${Uri.encode(cleanId)}"
+        val encoded = Uri.encode(cleanId)
+        return when (type) {
+            ShareContentType.PROFILE -> "$baseUrl/@$encoded"
+            ShareContentType.POST -> "$baseUrl/post/$encoded"
+            ShareContentType.REEL -> "$baseUrl/reel/$encoded"
+        }
+    }
+
+    /** App-only deep link used by the public web viewer for authenticated interactions. */
+    fun generateAppLink(type: ShareContentType, id: String): String {
+        val cleanId = id.trim().removePrefix("@")
+        require(cleanId.isNotBlank()) { "Share id cannot be blank." }
+        return "blink://${type.pathSegment}/${Uri.encode(cleanId)}"
     }
 
     fun share(
@@ -60,10 +72,7 @@ object ShareLinkManager {
         // obtain the avatar/post/reel preview from the Open Graph metadata of this URL.
         previewImageUrl?.takeIf { it.isNotBlank() }
 
-        val chooser = Intent.createChooser(
-            sendIntent,
-            title.ifBlank { "Share on Blink" }
-        )
+        val chooser = Intent.createChooser(sendIntent, title.ifBlank { "Share on Blink" })
         if (context !is Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(chooser)
     }
