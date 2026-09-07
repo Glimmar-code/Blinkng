@@ -147,7 +147,14 @@ object IncomingCallNotification {
     }
 
     fun handleCallUpdate(context: Context, callId: String, event: String) {
-        if (event.lowercase() in setOf("cancelled", "declined", "ended", "missed", "failed", "answered")) {
+        val normalized = event.lowercase()
+        if (normalized == "answered") {
+            // Another device on the same receiver account answered. Remove only the stale
+            // incoming notification; never stop an already-running call foreground service.
+            cancel(context, callId)
+            return
+        }
+        if (normalized in setOf("cancelled", "declined", "ended", "missed", "failed")) {
             cancel(context, callId)
             if (BlinkCallForegroundService.activeCallId == callId) {
                 context.stopService(Intent(context, BlinkCallForegroundService::class.java))
