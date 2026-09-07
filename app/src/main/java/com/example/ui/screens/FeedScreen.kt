@@ -92,6 +92,7 @@ import com.example.data.models.LeaderboardUser
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
 import com.example.data.repository.UserInteractionRepository
+import com.example.ui.components.BlinkAiSheet
 import com.example.ui.components.PostCard
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.components.StoryBar
@@ -422,6 +423,7 @@ private fun LegacyFeedScreen(
     // 0 = full header + tabs, 1 = compact utility header, 2 = hidden while scrolling.
     var chromeStage by remember { mutableIntStateOf(0) }
     var fabVisible by remember { mutableStateOf(true) }
+    var showBlinkAi by remember { mutableStateOf(false) }
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }.collectLatest { scrolling ->
@@ -815,6 +817,10 @@ private fun LegacyFeedScreen(
                 }
                 }
 
+                if (showBlinkAi) {
+                    BlinkAiSheet(onDismiss = { showBlinkAi = false })
+                }
+
                 AnimatedVisibility(
                     visible = fabVisible,
                     enter = fadeIn(tween(180)),
@@ -824,17 +830,34 @@ private fun LegacyFeedScreen(
                         .navigationBarsPadding()
                         .padding(end = 16.dp, bottom = 74.dp)
                 ) {
-                    FloatingActionButton(
-                        onClick = onOpenCreatePost,
-                        containerColor = if (isDark) BlinkCream else BlinkBlack,
-                        contentColor = if (isDark) BlinkBlack else BlinkCream,
-                        modifier = Modifier.testTag("create_post_fab")
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Add,
-                            contentDescription = "Create post",
-                            modifier = Modifier.size(27.dp)
-                        )
+                        FloatingActionButton(
+                            onClick = { showBlinkAi = true },
+                            containerColor = BlinkPink,
+                            contentColor = Color.White,
+                            modifier = Modifier.testTag("blink_ai_fab")
+                        ) {
+                            Text(
+                                text = "AI",
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+
+                        FloatingActionButton(
+                            onClick = onOpenCreatePost,
+                            containerColor = if (isDark) BlinkCream else BlinkBlack,
+                            contentColor = if (isDark) BlinkBlack else BlinkCream,
+                            modifier = Modifier.testTag("create_post_fab")
+                        ) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "Create post",
+                                modifier = Modifier.size(27.dp)
+                            )
+                        }
                     }
                 }
             }
