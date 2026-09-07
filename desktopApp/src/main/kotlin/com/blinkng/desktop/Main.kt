@@ -1,6 +1,5 @@
 package com.blinkng.desktop
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,8 +33,9 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Storefront
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.VideoLibrary
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -45,6 +45,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,6 +64,20 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.blinkng.desktop.ui.AdminScreen
+import com.blinkng.desktop.ui.BlinkAuthScreen
+import com.blinkng.desktop.ui.ConnectScreen
+import com.blinkng.desktop.ui.GamesScreen
+import com.blinkng.desktop.ui.HomeScreen
+import com.blinkng.desktop.ui.LeaderboardScreen
+import com.blinkng.desktop.ui.MarketplaceScreen
+import com.blinkng.desktop.ui.MessagesScreen
+import com.blinkng.desktop.ui.NotificationsScreen
+import com.blinkng.desktop.ui.ProfileScreen
+import com.blinkng.desktop.ui.ReelsScreen
+import com.blinkng.desktop.ui.SearchScreen
+import com.blinkng.desktop.ui.SettingsScreen
+import com.blinkng.desktop.ui.StoreScreen
 import java.awt.Dimension
 
 private val BlinkPurple = Color(0xFF6D3DF5)
@@ -70,96 +85,61 @@ private val BlinkBackground = Color(0xFF0B0B0F)
 private val BlinkSurface = Color(0xFF121218)
 private val BlinkSurfaceRaised = Color(0xFF191920)
 
-private val BlinkDesktopColors = darkColorScheme(
+private val BlinkDarkColors = darkColorScheme(
     primary = BlinkPurple,
     background = BlinkBackground,
     surface = BlinkSurface,
     surfaceVariant = BlinkSurfaceRaised,
 )
 
+private val BlinkLightColors = lightColorScheme(
+    primary = BlinkPurple,
+)
+
 private data class BlinkDestination(
     val id: String,
     val title: String,
-    val description: String,
     val icon: ImageVector,
+    val adminOnly: Boolean = false,
 )
 
-private val destinations = listOf(
-    BlinkDestination("home", "Home", "Feed, stories and creation", Icons.Rounded.Home),
-    BlinkDestination("reels", "Reels", "Full-screen short videos", Icons.Rounded.VideoLibrary),
-    BlinkDestination("connect", "Connect", "Campus matching and communities", Icons.Rounded.Groups),
-    BlinkDestination("messages", "Messages", "Chats, voice and video calls", Icons.Rounded.Chat),
-    BlinkDestination("marketplace", "Marketplace", "Campus buying and selling", Icons.Rounded.Storefront),
-    BlinkDestination("games", "Games", "Games, challenges and rewards", Icons.Rounded.SportsEsports),
-    BlinkDestination("notifications", "Notifications", "Activity and official messages", Icons.Rounded.Notifications),
-    BlinkDestination("store", "Blink Store", "Coins, VIP, boosts and purchases", Icons.Rounded.ShoppingBag),
-    BlinkDestination("leaderboard", "Leaderboard", "Campus and global rankings", Icons.Rounded.Leaderboard),
-    BlinkDestination("profile", "Profile", "Profile, posts, reels and settings", Icons.Rounded.Person),
-    BlinkDestination("admin", "Admin", "Professional administration center", Icons.Rounded.AdminPanelSettings),
-    BlinkDestination("settings", "Settings", "Account, privacy and app preferences", Icons.Rounded.Settings),
+private val baseDestinations = listOf(
+    BlinkDestination("home", "Home", Icons.Rounded.Home),
+    BlinkDestination("reels", "Reels", Icons.Rounded.VideoLibrary),
+    BlinkDestination("connect", "Connect", Icons.Rounded.Groups),
+    BlinkDestination("messages", "Messages", Icons.Rounded.Chat),
+    BlinkDestination("marketplace", "Marketplace", Icons.Rounded.Storefront),
+    BlinkDestination("games", "Games", Icons.Rounded.SportsEsports),
+    BlinkDestination("notifications", "Notifications", Icons.Rounded.Notifications),
+    BlinkDestination("store", "Blink Store", Icons.Rounded.ShoppingBag),
+    BlinkDestination("leaderboard", "Leaderboard", Icons.Rounded.Leaderboard),
+    BlinkDestination("profile", "Profile", Icons.Rounded.Person),
+    BlinkDestination("admin", "Admin", Icons.Rounded.AdminPanelSettings, adminOnly = true),
+    BlinkDestination("settings", "Settings", Icons.Rounded.Settings),
 )
 
 fun main() = application {
-    val state = rememberWindowState(width = 1440.dp, height = 900.dp)
+    val windowState = rememberWindowState(width = 1440.dp, height = 900.dp)
+    val appState = remember { DesktopAppState() }
 
     Window(
         onCloseRequest = ::exitApplication,
         title = "Blinkng",
-        state = state,
+        state = windowState,
     ) {
         LaunchedEffect(Unit) {
             window.minimumSize = Dimension(960, 640)
+            appState.initialize()
         }
 
-        MaterialTheme(colorScheme = BlinkDesktopColors) {
-            BlinkDesktopApp()
-        }
-    }
-}
-
-@Composable
-private fun BlinkDesktopApp() {
-    var selectedId by remember { mutableStateOf("home") }
-    var search by remember { mutableStateOf("") }
-    val selected = destinations.first { it.id == selectedId }
-
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            BlinkTopBar(
-                search = search,
-                onSearchChange = { search = it },
-                onProfileClick = { selectedId = "profile" },
-            )
-            Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val compact = maxWidth < 1180.dp
-                val showRightPanel = maxWidth >= 1360.dp
-
-                Row(modifier = Modifier.fillMaxSize()) {
-                    BlinkSidebar(
-                        compact = compact,
-                        selectedId = selectedId,
-                        onSelect = { selectedId = it },
-                    )
-
-                    Divider(
-                        modifier = Modifier.fillMaxHeight().width(1.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                    )
-
-                    BlinkContent(
-                        destination = selected,
-                        modifier = Modifier.weight(1f),
-                    )
-
-                    if (showRightPanel) {
-                        Divider(
-                            modifier = Modifier.fillMaxHeight().width(1.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
-                        )
-                        BlinkRightPanel()
-                    }
+        val theme = appState.settings?.theme?.lowercase()
+        val colors = if (theme == "light") BlinkLightColors else BlinkDarkColors
+        MaterialTheme(colorScheme = colors) {
+            Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                when {
+                    !appState.initialized -> InitializingScreen()
+                    appState.session == null -> BlinkAuthScreen(appState)
+                    else -> AuthenticatedShell(appState)
                 }
             }
         }
@@ -167,18 +147,74 @@ private fun BlinkDesktopApp() {
 }
 
 @Composable
-private fun BlinkTopBar(
-    search: String,
-    onSearchChange: (String) -> Unit,
-    onProfileClick: () -> Unit,
-) {
+private fun InitializingScreen() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("BLINKNG", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Black, fontSize = 28.sp)
+            Text("Restoring your secure session…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun AuthenticatedShell(state: DesktopAppState) {
+    val visibleDestinations = remember(state.adminCapability.allowed) {
+        baseDestinations.filter { !it.adminOnly || state.adminCapability.allowed }
+    }
+    if (state.selectedRoute == "admin" && !state.adminCapability.allowed) state.selectedRoute = "home"
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        BlinkTopBar(state)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val compact = maxWidth < 1180.dp
+            val showRightPanel = maxWidth >= 1420.dp && state.selectedRoute !in setOf("messages", "search")
+            Row(modifier = Modifier.fillMaxSize()) {
+                BlinkSidebar(
+                    compact = compact,
+                    destinations = visibleDestinations,
+                    selectedId = state.selectedRoute,
+                    onSelect = { state.selectedRoute = it },
+                )
+                HorizontalDivider(modifier = Modifier.fillMaxHeight().width(1.dp))
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    when (state.selectedRoute) {
+                        "home" -> HomeScreen(state)
+                        "reels" -> ReelsScreen(state)
+                        "connect" -> ConnectScreen(state)
+                        "messages" -> MessagesScreen(state)
+                        "marketplace" -> MarketplaceScreen(state)
+                        "games" -> GamesScreen(state)
+                        "notifications" -> NotificationsScreen(state)
+                        "store" -> StoreScreen(state)
+                        "leaderboard" -> LeaderboardScreen(state)
+                        "profile" -> ProfileScreen(state)
+                        "admin" -> AdminScreen(state)
+                        "settings" -> SettingsScreen(state)
+                        "search" -> SearchScreen(state)
+                        else -> HomeScreen(state)
+                    }
+                }
+                if (showRightPanel) {
+                    HorizontalDivider(modifier = Modifier.fillMaxHeight().width(1.dp))
+                    BlinkRightPanel(state)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BlinkTopBar(state: DesktopAppState) {
+    var search by remember(state.globalSearch) { mutableStateOf(state.globalSearch) }
+    val profile = state.profile
     Row(
         modifier = Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(
-            modifier = Modifier.width(210.dp),
+            modifier = Modifier.width(210.dp).clickable { state.selectedRoute = "home" },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -193,22 +229,29 @@ private fun BlinkTopBar(
 
         OutlinedTextField(
             value = search,
-            onValueChange = onSearchChange,
+            onValueChange = { search = it },
             modifier = Modifier.weight(1f),
             singleLine = true,
             leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-            placeholder = { Text("Search Blinkng") },
+            placeholder = { Text("Search people and posts") },
             shape = RoundedCornerShape(16.dp),
         )
-
-        IconButton(onClick = { }) {
+        IconButton(
+            onClick = {
+                state.globalSearch = search.trim()
+                state.selectedRoute = "search"
+            },
+        ) {
+            Icon(Icons.Rounded.Search, contentDescription = "Search")
+        }
+        IconButton(onClick = { state.selectedRoute = "notifications" }) {
             Icon(Icons.Rounded.Notifications, contentDescription = "Notifications")
         }
 
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(14.dp))
-                .clickable(onClick = onProfileClick)
+                .clickable { state.selectedRoute = "profile" }
                 .padding(horizontal = 10.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -220,8 +263,14 @@ private fun BlinkTopBar(
                 Icon(Icons.Rounded.Person, contentDescription = null, modifier = Modifier.size(20.dp))
             }
             Column {
-                Text("Your profile", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Text("Blink account", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(profile?.fullName ?: "Blink account", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1)
+                    if (profile?.isVerified == true) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Rounded.Verified, contentDescription = "Verified", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                    }
+                }
+                Text("@${profile?.username ?: "user"}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
             }
         }
     }
@@ -230,11 +279,11 @@ private fun BlinkTopBar(
 @Composable
 private fun BlinkSidebar(
     compact: Boolean,
+    destinations: List<BlinkDestination>,
     selectedId: String,
     onSelect: (String) -> Unit,
 ) {
     val width = if (compact) 88.dp else 248.dp
-
     LazyColumn(
         modifier = Modifier.width(width).fillMaxHeight().padding(horizontal = 10.dp),
         contentPadding = PaddingValues(vertical = 12.dp),
@@ -243,9 +292,7 @@ private fun BlinkSidebar(
         items(destinations, key = { it.id }) { destination ->
             NavigationDrawerItem(
                 label = {
-                    if (!compact) {
-                        Text(destination.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                    if (!compact) Text(destination.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
                 selected = selectedId == destination.id,
                 onClick = { onSelect(destination.id) },
@@ -262,153 +309,28 @@ private fun BlinkSidebar(
 }
 
 @Composable
-private fun BlinkContent(
-    destination: BlinkDestination,
-    modifier: Modifier = Modifier,
-) {
-    LazyColumn(
-        modifier = modifier.fillMaxHeight(),
-        contentPadding = PaddingValues(horizontal = 28.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-    ) {
-        item {
-            Text(destination.title, fontWeight = FontWeight.Black, fontSize = 28.sp)
-            Spacer(Modifier.height(5.dp))
-            Text(
-                destination.description,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 14.sp,
-            )
-        }
-
-        if (destination.id == "home") {
-            item { CreatePostCard() }
-            items(3) { index -> DesktopFeedPlaceholder(index + 1) }
-        } else {
-            item { FeatureMigrationCard(destination) }
-        }
-    }
-}
-
-@Composable
-private fun CreatePostCard() {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Box(
-                modifier = Modifier.size(42.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Rounded.Person, contentDescription = null)
-            }
-            Surface(
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-            ) {
-                Text(
-                    "Create a post on Blinkng…",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DesktopFeedPlaceholder(number: Int) {
-    Surface(
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(
-                    modifier = Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
-                )
-                Column {
-                    Text("Blinkng feed slot $number", fontWeight = FontWeight.Bold)
-                    Text(
-                        "Live Android/Supabase feed data will be connected during feature migration.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp,
-                    )
-                }
-            }
-            Spacer(Modifier.height(18.dp))
-            Box(
-                modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("Shared post/reel renderer", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
-@Composable
-private fun FeatureMigrationCard(destination: BlinkDestination) {
-    Surface(
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(24.dp),
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Box(
-                modifier = Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(BlinkPurple.copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(destination.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text("${destination.title} desktop surface", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "This route is reserved in the Windows shell. The Android feature will be migrated into shared logic/UI or a Windows-specific adapter so both platforms stay feature-compatible.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 20.sp,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun BlinkRightPanel() {
+private fun BlinkRightPanel(state: DesktopAppState) {
+    val profile = state.profile
     Column(
-        modifier = Modifier.width(310.dp).fillMaxHeight().padding(20.dp),
+        modifier = Modifier.width(300.dp).fillMaxHeight().padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("Blinkng Desktop", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Text("Your Blink", fontWeight = FontWeight.Bold, fontSize = 18.sp)
         Text(
-            "Designed for wide screens while keeping the same account, backend and feature set as the Android app.",
+            profile?.university ?: "Blinkng",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            lineHeight = 19.sp,
         )
-        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-        Text("Desktop advantages", fontWeight = FontWeight.SemiBold)
-        listOf(
-            "Keyboard and mouse navigation",
-            "Resizable multi-column layouts",
-            "Desktop notifications and tray support",
-            "Drag-and-drop file workflows",
-            "Native Windows EXE/MSI distribution",
-        ).forEach { item ->
-            Text("• $item", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-        }
+        HorizontalDivider()
+        Text("${profile?.followerCount ?: 0} followers", fontWeight = FontWeight.SemiBold)
+        Text("${profile?.followingCount ?: 0} following", fontWeight = FontWeight.SemiBold)
+        Text("${profile?.coinBalance ?: 0} Blink Coins", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+        HorizontalDivider()
+        Text("Desktop", fontWeight = FontWeight.Bold)
+        Text(
+            "This Windows client is connected to the same Blinkng account and production Supabase backend as Android.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+        )
     }
 }
