@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
     return json({ error: "Invalid JSON" }, 400);
   }
   if (!callId) return json({ error: "call_id is required" }, 400);
-  if (!["invite", "cancelled", "declined", "ended", "missed", "failed"].includes(event)) {
+  if (!["invite", "answered", "cancelled", "declined", "ended", "missed", "failed"].includes(event)) {
     return json({ error: "Unsupported call event" }, 400);
   }
 
@@ -132,9 +132,17 @@ Deno.serve(async (req) => {
     if (senderId !== call.caller_id || call.status !== "ringing") return json({ error: "Call is not ringable" }, 409);
     if (Date.parse(String(call.timeout_at)) <= Date.now()) return json({ ok: true, skipped: "expired" });
     targetUserId = String(call.callee_id);
+  } else if (event === "answered") {
+    // An answered event is intentionally sent back to the receiver account itself. FCM fans
+    // it out to all signed-in receiver devices so every stale ringing surface is dismissed.
+    if (senderId !== call.callee_id || !["connecting", "connected"].includes(String(call.status))) {
+      return json({ error: "Call is not answerable" }, 409);
+    }
+    targetUserId = String(call.callee_id);
   }
 
   const expectedStatus: Record<string, string[]> = {
+    answered: ["connecting", "connected"],
     cancelled: ["cancelled", "ended"],
     declined: ["declined"],
     ended: ["ended"],
