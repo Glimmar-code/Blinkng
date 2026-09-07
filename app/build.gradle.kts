@@ -141,7 +141,7 @@ android {
   buildFeatures { compose = true; buildConfig = true }
   // Shared Blinkng contracts/business logic are compiled into the APK and Windows app.
   // Keep this source set platform-neutral: no android.* or desktop-only imports.
-  sourceSets.getByName("main").java.srcDir("../shared/src/main/kotlin")
+  sourceSets.getByName("main").kotlin.srcDir("../shared/src/main/kotlin")
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo { includeInApk = false; includeInBundle = true }
 }
