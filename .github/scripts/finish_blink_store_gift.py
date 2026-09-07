@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Integration patch: rerunnable and validated by the workflow compile gate.
 path = Path("app/src/main/java/com/example/BlinkStoreActivity.kt")
 text = path.read_text()
 
