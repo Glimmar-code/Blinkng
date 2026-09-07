@@ -92,7 +92,9 @@ data class ScheduledPost(
     val id: String = "sched_${System.currentTimeMillis()}",
     val post: FeedPost,
     val scheduledTimeMillis: Long,
-    val scheduledTimeFormatted: String
+    val scheduledTimeFormatted: String,
+    val status: String = "pending",
+    val errorMessage: String? = null
 )
 
 data class Story(

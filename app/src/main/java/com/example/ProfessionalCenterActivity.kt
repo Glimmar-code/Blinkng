@@ -88,8 +88,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.models.AppSettings
 import com.example.data.models.MarketplaceOrder
+import com.example.data.models.ScheduledPost
 import com.example.data.models.UserProfile
 import com.example.data.repository.ProfessionalRepository
+import com.example.data.repository.ScheduledPostRepository
 import com.example.data.supabase.SupabaseService
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
@@ -115,6 +117,7 @@ class ProfessionalCenterActivity : ComponentActivity() {
 
 private enum class ProfessionalSection(val key: String, val label: String) {
     PRIVACY("privacy", "Privacy"),
+    SCHEDULED("scheduled", "Scheduled"),
     SAFETY("safety", "Safety"),
     MARKET("market", "Orders"),
     GROUPS("groups", "Groups"),
@@ -127,6 +130,7 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { ProfessionalRepository() }
+    val scheduledRepository = remember { ScheduledPostRepository() }
     val service = remember { SupabaseService() }
 
     var section by rememberSaveable {
@@ -135,6 +139,7 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
     var settings by remember { mutableStateOf(AppSettings()) }
     var blocked by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
     var orders by remember { mutableStateOf<List<MarketplaceOrder>>(emptyList()) }
+    var scheduledPosts by remember { mutableStateOf<List<ScheduledPost>>(emptyList()) }
     var wishlistCount by remember { mutableStateOf(0) }
     var loading by remember { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
@@ -147,6 +152,7 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
             settings = repository.fetchSettings()
             blocked = repository.fetchBlockedProfiles()
             orders = repository.fetchMarketplaceOrders()
+            scheduledPosts = scheduledRepository.fetchMine(includeHistory = true)
             wishlistCount = repository.fetchWishlistIds().size
         }.onFailure { errorText = it.message ?: "Couldn't load Professional Center." }
         loading = false
@@ -237,6 +243,35 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
                             busy = false
                         }
                     }
+
+                    ProfessionalSection.SCHEDULED -> ScheduledPostsSection(
+                        posts = scheduledPosts,
+                        busy = busy,
+                        onPublishNow = { id ->
+                            scope.launch {
+                                busy = true
+                                runCatching { scheduledRepository.publishNow(id) }
+                                    .onSuccess {
+                                        Toast.makeText(context, "Scheduled post published.", Toast.LENGTH_SHORT).show()
+                                        reload()
+                                    }
+                                    .onFailure { Toast.makeText(context, it.message ?: "Publish failed", Toast.LENGTH_SHORT).show() }
+                                busy = false
+                            }
+                        },
+                        onCancel = { id ->
+                            scope.launch {
+                                busy = true
+                                runCatching { scheduledRepository.cancel(id) }
+                                    .onSuccess {
+                                        Toast.makeText(context, "Scheduled post cancelled.", Toast.LENGTH_SHORT).show()
+                                        reload()
+                                    }
+                                    .onFailure { Toast.makeText(context, it.message ?: "Cancel failed", Toast.LENGTH_SHORT).show() }
+                                busy = false
+                            }
+                        }
+                    )
 
                     ProfessionalSection.SAFETY -> SafetySection(
                         blocked = blocked,
@@ -378,12 +413,78 @@ private fun PrivacySection(settings: AppSettings, busy: Boolean, onChange: (AppS
                 }
             }
         }
+        item { ToggleRow("Push notifications", "Receive activity and unread-message alerts.", settings.pushNotifications, busy) { onChange(settings.copy(pushNotifications = it)) } }
+        item { ToggleRow("Email notifications", "Allow account and activity emails.", settings.emailNotifications, busy) { onChange(settings.copy(emailNotifications = it)) } }
         item { ToggleRow("Private account", "Restrict profile visibility.", settings.privateAccount, busy) { onChange(settings.copy(privateAccount = it)) } }
         item { ToggleRow("Online status", "Show when you're active.", settings.showOnlineStatus, busy) { onChange(settings.copy(showOnlineStatus = it)) } }
         item { ToggleRow("Read receipts", "Show when chats are read.", settings.readReceipts, busy) { onChange(settings.copy(readReceipts = it)) } }
         item { ToggleRow("Autoplay videos", "Automatically play reels.", settings.autoplayVideos, busy) { onChange(settings.copy(autoplayVideos = it)) } }
         item { ToggleRow("Data saver", "Reduce media preloading.", settings.dataSaver, busy) { onChange(settings.copy(dataSaver = it)) } }
         item { ToggleRow("Reduce motion", "Use gentler animations.", settings.reduceMotion, busy) { onChange(settings.copy(reduceMotion = it)) } }
+    }
+}
+
+@Composable
+private fun ScheduledPostsSection(
+    posts: List<ScheduledPost>,
+    busy: Boolean,
+    onPublishNow: (String) -> Unit,
+    onCancel: (String) -> Unit
+) {
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp, 6.dp, 14.dp, 28.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
+    ) {
+        item { Header(Icons.Default.Inventory2, "Scheduled posts", "Supabase keeps these schedules even when the app is closed or reinstalled.") }
+        if (posts.isEmpty()) {
+            item { EmptyState("Nothing scheduled", "Create a post and choose Schedule for later.") }
+        }
+        items(posts, key = { it.id }) { scheduled ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f))
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            scheduled.status.replaceFirstChar(Char::uppercase),
+                            modifier = Modifier.weight(1f),
+                            fontWeight = FontWeight.Black,
+                            color = if (scheduled.status == "failed") MaterialTheme.colorScheme.error else BlinkPink
+                        )
+                        Text(scheduled.scheduledTimeFormatted, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(Modifier.height(7.dp))
+                    Text(
+                        scheduled.post.text.ifBlank { if (!scheduled.post.videoUrl.isNullOrBlank()) "Reel" else "Media post" },
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    scheduled.errorMessage?.let {
+                        Spacer(Modifier.height(6.dp))
+                        Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                    }
+                    if (scheduled.status == "pending" || scheduled.status == "failed") {
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { onPublishNow(scheduled.id) },
+                                enabled = !busy,
+                                modifier = Modifier.weight(1f)
+                            ) { Text(if (scheduled.status == "failed") "Retry now" else "Publish now") }
+                            OutlinedButton(
+                                onClick = { onCancel(scheduled.id) },
+                                enabled = !busy && scheduled.status == "pending",
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Cancel") }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

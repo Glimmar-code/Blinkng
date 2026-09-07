@@ -45,6 +45,7 @@ class ScheduledPostRepository {
             put("is_disappearing", post.isDisappearing)
             put("audio_title", post.audioTitle ?: JSONObject.NULL)
             put("alt_text", post.altText ?: JSONObject.NULL)
+            put("text_style", post.textStyle ?: JSONObject.NULL)
             post.poll?.let { poll ->
                 put(
                     "poll",
@@ -69,12 +70,13 @@ class ScheduledPostRepository {
         ).trim().removeSurrounding("\"")
     }
 
-    suspend fun fetchMine(): List<ScheduledPost> = withContext(Dispatchers.IO) {
+    suspend fun fetchMine(includeHistory: Boolean = false): List<ScheduledPost> = withContext(Dispatchers.IO) {
         val token = SupabaseService.accessToken() ?: return@withContext emptyList()
+        val statusClause = if (includeHistory) "" else "&status=in.(pending,failed)"
         val request = Request.Builder()
             .url(
                 "${SupabaseConfig.url.trimEnd('/')}/rest/v1/scheduled_feed_posts" +
-                    "?select=id,payload,scheduled_for,status&status=in.(pending,failed)&order=scheduled_for.asc&limit=100"
+                    "?select=id,payload,scheduled_for,status,error_message${statusClause}&order=scheduled_for.desc&limit=100"
             )
             .addHeader("apikey", SupabaseConfig.anonKey)
             .addHeader("Authorization", "Bearer $token")
@@ -94,7 +96,9 @@ class ScheduledPostRepository {
                             id = row.optString("id"),
                             post = parsePayload(row.optJSONObject("payload") ?: JSONObject()),
                             scheduledTimeMillis = millis,
-                            scheduledTimeFormatted = formatTime(millis)
+                            scheduledTimeFormatted = formatTime(millis),
+                            status = row.optString("status", "pending"),
+                            errorMessage = row.optString("error_message").takeIf { it.isNotBlank() && it != "null" }
                         )
                     )
                 }
@@ -144,7 +148,8 @@ class ScheduledPostRepository {
             isPinned = payload.optBoolean("is_pinned", false),
             isDisappearing = payload.optBoolean("is_disappearing", false),
             audioTitle = payload.optString("audio_title").takeIf { it.isNotBlank() && it != "null" },
-            altText = payload.optString("alt_text").takeIf { it.isNotBlank() && it != "null" }
+            altText = payload.optString("alt_text").takeIf { it.isNotBlank() && it != "null" },
+            textStyle = payload.optString("text_style").takeIf { it.isNotBlank() && it != "null" }
         )
     }
 

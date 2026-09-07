@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Poll
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
@@ -105,6 +106,9 @@ import com.example.data.models.PostPoll
 import com.example.data.models.ScheduledPost
 import com.example.data.models.UserProfile
 import org.json.JSONArray
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 @OptIn(
@@ -160,6 +164,7 @@ fun CreatePostSheet(
     var audienceMenuOpen by rememberSaveable { mutableStateOf(false) }
     var categoryMenuOpen by rememberSaveable { mutableStateOf(false) }
     var showDiscardDialog by rememberSaveable { mutableStateOf(false) }
+    var showScheduleDialog by rememberSaveable { mutableStateOf(false) }
     var selectedTextStyle by rememberSaveable { mutableStateOf("aurora") }
     var textPresentation by rememberSaveable { mutableStateOf("plain") }
 
@@ -226,6 +231,51 @@ fun CreatePostSheet(
         selectedVideo != null ||
         pollValid
     val canSubmit = hasContent && !isSubmitting
+
+    fun scheduledPreviewPost(): FeedPost {
+        val poll = if (pollValid) {
+            PostPoll(
+                question = pollQuestion.trim(),
+                options = validPollOptions.map { PollOption(UUID.randomUUID().toString(), it) }
+            )
+        } else null
+        val style = selectedTextStyle.takeIf {
+            textPresentation == "color" &&
+                cleanText.isNotBlank() &&
+                selectedImages.isEmpty() &&
+                selectedVideo == null &&
+                !pollValid
+        }
+        return FeedPost(
+            id = "scheduled_preview_${System.currentTimeMillis()}",
+            author = profile.username,
+            authorAvatar = profile.avatarUrl,
+            facultyTag = profile.faculty,
+            timeAgo = "Scheduled",
+            text = cleanText,
+            images = selectedImages,
+            likes = 0,
+            commentsCount = 0,
+            sharesCount = 0,
+            isReel = selectedVideo != null,
+            videoUrl = selectedVideo,
+            poll = poll,
+            audience = audience,
+            category = category,
+            allowComments = allowComments,
+            textStyle = style
+        )
+    }
+
+    fun scheduleAfter(delayMillis: Long) {
+        if (!canSubmit) return
+        val timeMillis = System.currentTimeMillis() + delayMillis
+        val formatted = Instant.ofEpochMilli(timeMillis)
+            .atZone(ZoneId.systemDefault())
+            .format(DateTimeFormatter.ofPattern("EEE, MMM d • h:mm a"))
+        showScheduleDialog = false
+        onSchedulePost(scheduledPreviewPost(), timeMillis, formatted)
+    }
 
     fun submit() {
         if (!canSubmit) {
@@ -699,6 +749,18 @@ fun CreatePostSheet(
                     }
                 }
 
+                OutlinedButton(
+                    onClick = { showScheduleDialog = true },
+                    enabled = canSubmit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Text("Schedule for later")
+                }
+
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -751,6 +813,36 @@ fun CreatePostSheet(
             }
         }
         }
+    }
+
+    if (showScheduleDialog) {
+        AlertDialog(
+            onDismissRequest = { showScheduleDialog = false },
+            title = { Text("Schedule this post") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "The media is uploaded now and Supabase publishes the post automatically at the selected time.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    listOf(
+                        "In 30 minutes" to 30L * 60_000L,
+                        "In 1 hour" to 60L * 60_000L,
+                        "In 5 hours" to 5L * 60L * 60_000L,
+                        "In 1 day" to 24L * 60L * 60_000L
+                    ).forEach { (label, delayMillis) ->
+                        OutlinedButton(
+                            onClick = { scheduleAfter(delayMillis) },
+                            enabled = !isSubmitting,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text(label) }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showScheduleDialog = false }) { Text("Close") }
+            }
+        )
     }
 
     if (showDiscardDialog) {

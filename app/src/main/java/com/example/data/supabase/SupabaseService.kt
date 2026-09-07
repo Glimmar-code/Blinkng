@@ -576,6 +576,16 @@ class SupabaseService {
                 if (cleanEmail.isBlank()) {
                     return@withContext Result.failure(Exception("Email address is required."))
                 }
+                val strongPassword = password.length >= 8 &&
+                    password.any(Char::isLowerCase) &&
+                    password.any(Char::isUpperCase) &&
+                    password.any(Char::isDigit) &&
+                    password.any { !it.isLetterOrDigit() && !it.isWhitespace() }
+                if (!strongPassword) {
+                    return@withContext Result.failure(
+                        Exception("Use at least 8 characters with uppercase, lowercase, a number, and a symbol.")
+                    )
+                }
                 val cleanUsername = username.trim().lowercase(Locale.US).replace("@", "").replace(" ", "_")
                 val cleanFullName = fullName.trim().ifBlank { cleanUsername }
 

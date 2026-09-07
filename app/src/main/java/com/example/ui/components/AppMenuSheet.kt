@@ -57,6 +57,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.ShoppingBag
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Storefront
@@ -204,6 +205,9 @@ fun AppMenuSheet(
                 expanded = "Campus & tools" in expandedSections,
                 onToggle = { toggle("Campus & tools") }
             ) {
+                MenuItemRow(Icons.Outlined.Schedule, "Scheduled posts", "Manage posts queued for later") {
+                    openProfessional("scheduled")
+                }
                 MenuItemRow(Icons.Outlined.Groups, "Study & group center", "Group chats and study tools") {
                     openProfessional("groups")
                 }

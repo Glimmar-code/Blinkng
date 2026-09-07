@@ -156,6 +156,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     val marketRepository = MarketRepository(supabaseService)
     val chatRepository = ChatRepository(supabaseService)
     private val connectHubRepository = ConnectHubRepository(supabaseService)
+    private val scheduledPostRepository = ScheduledPostRepository()
     val realtimeManager = SupabaseRealtimeManager.getInstance()
     private val offlineContentStore = OfflineContentStore(appContext)
     private val networkMonitor = NetworkMonitor(appContext)
@@ -989,6 +990,10 @@ private suspend fun restoreSupabaseSession() {
                         runCatching { supabaseService.fetchStories() }
                             .onFailure { Log.e(TAG, "Stories fetch failed", it) }
                     }
+                    val scheduledPostsRequest = async {
+                        runCatching { scheduledPostRepository.fetchMine() }
+                            .onFailure { Log.e(TAG, "Scheduled posts fetch failed", it) }
+                    }
                     val activitiesRequest = async {
                         runCatching { supabaseService.fetchActivities() }
                             .onFailure { Log.e(TAG, "Activities fetch failed", it) }
@@ -1031,6 +1036,9 @@ private suspend fun restoreSupabaseSession() {
                     val connectHub = connectHubRequest.await()
                         .getOrDefault(before.connectHub)
 
+                    val scheduledPosts = scheduledPostsRequest.await()
+                        .getOrDefault(before.scheduledPosts)
+
                     val cloudStories = storiesRequest.await()
                         .getOrDefault(before.stories.filterNot { it.id == "story_me" })
 
@@ -1062,6 +1070,7 @@ private suspend fun restoreSupabaseSession() {
                         leaderboardUsers = leaderboard,
                         gameLeaderboardUsers = gameLeaderboard,
                         connectHub = connectHub,
+                        scheduledPosts = scheduledPosts,
                         isConnectHubLoading = false,
                         stories = mergedStories,
                         activitiesLoading = true,
@@ -1678,18 +1687,119 @@ private suspend fun restoreSupabaseSession() {
     fun saveDraft(draft: PostDraft) { val updated = listOf(draft) + _uiState.value.savedDrafts.filter { it.id != draft.id }; _uiState.value = _uiState.value.copy(savedDrafts = updated); saveDraftsToPrefs(updated); showToast("💾 Draft saved to phone storage") }
     fun deleteDraft(draftId: String) { val updated = _uiState.value.savedDrafts.filter { it.id != draftId }; _uiState.value = _uiState.value.copy(savedDrafts = updated); saveDraftsToPrefs(updated); showToast("🗑️ Draft deleted") }
 
-    fun schedulePost(post: FeedPost, timeMillis: Long, timeFormatted: String) { val sched = ScheduledPost("sched_${System.currentTimeMillis()}", post, timeMillis, timeFormatted); _uiState.value = _uiState.value.copy(scheduledPosts = listOf(sched) + _uiState.value.scheduledPosts, isCreatePostOpen = false); showToast("⏰ Post scheduled for $timeFormatted") }
-    fun deleteScheduledPost(id: String) { _uiState.value = _uiState.value.copy(scheduledPosts = _uiState.value.scheduledPosts.filter { it.id != id }); showToast("🗑️ Scheduled post removed") }
+    fun refreshScheduledPosts() {
+        if (!_uiState.value.isOnline) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val remote = scheduledPostRepository.fetchMine()
+                withContext(Dispatchers.Main) {
+                    _uiState.value = _uiState.value.copy(scheduledPosts = remote)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Scheduled posts refresh failed", e)
+            }
+        }
+    }
+
+    fun schedulePost(post: FeedPost, timeMillis: Long, timeFormatted: String) {
+        if (_uiState.value.isCreatingPost) return
+        if (timeMillis < System.currentTimeMillis() + 60_000L) {
+            showToast("Choose a time at least one minute from now.")
+            return
+        }
+
+        val profile = _uiState.value.myProfile
+        val userId = supabaseService.getCurrentUserId()
+            ?: profile.id.takeIf { it.isNotBlank() }
+        if (userId.isNullOrBlank()) {
+            showToast("Please sign in again before scheduling a post.")
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(isCreatingPost = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val uploadedImages = mutableListOf<String>()
+                for (input in post.images) {
+                    val uploaded = if (input.startsWith("content://")) {
+                        uploadPostUri(userId, input, false)
+                    } else input
+                    if (uploaded.isNullOrBlank()) {
+                        throw IllegalStateException("One of the selected images could not be uploaded.")
+                    }
+                    uploadedImages += uploaded
+                }
+
+                val uploadedVideo = post.videoUrl?.let { input ->
+                    if (input.startsWith("content://")) uploadPostUri(userId, input, true) else input
+                }
+                if (!post.videoUrl.isNullOrBlank() && uploadedVideo.isNullOrBlank()) {
+                    throw IllegalStateException("The selected video could not be uploaded.")
+                }
+
+                val remotePost = post.copy(
+                    author = profile.username,
+                    authorAvatar = profile.avatarUrl,
+                    images = uploadedImages,
+                    videoUrl = uploadedVideo,
+                    isReel = post.isReel || !uploadedVideo.isNullOrBlank()
+                )
+                val scheduleId = scheduledPostRepository.schedule(remotePost, timeMillis)
+                if (scheduleId.isBlank()) throw IllegalStateException("Supabase did not save the schedule.")
+                val latest = scheduledPostRepository.fetchMine()
+
+                withContext(Dispatchers.Main) {
+                    _uiState.value = _uiState.value.copy(
+                        scheduledPosts = latest,
+                        isCreatePostOpen = false,
+                        isCreatingPost = false
+                    )
+                    showToast("Post scheduled for $timeFormatted")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Schedule post failed", e)
+                withContext(Dispatchers.Main) {
+                    showToast(e.message ?: "Couldn't schedule the post.")
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    _uiState.value = _uiState.value.copy(isCreatingPost = false)
+                }
+            }
+        }
+    }
+
+    fun deleteScheduledPost(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                scheduledPostRepository.cancel(id)
+                val latest = scheduledPostRepository.fetchMine()
+                withContext(Dispatchers.Main) {
+                    _uiState.value = _uiState.value.copy(scheduledPosts = latest)
+                    showToast("Scheduled post cancelled.")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Cancel scheduled post failed", e)
+                withContext(Dispatchers.Main) { showToast(e.message ?: "Couldn't cancel scheduled post.") }
+            }
+        }
+    }
+
     fun publishScheduledPostNow(id: String) {
-        val sched = _uiState.value.scheduledPosts.find { it.id == id } ?: return
-        val post = sched.post
-        _uiState.value = _uiState.value.copy(
-            scheduledPosts = _uiState.value.scheduledPosts.filter { it.id != id },
-            posts = if (post.isReel || !post.videoUrl.isNullOrBlank()) _uiState.value.posts else listOf(post) + _uiState.value.posts,
-            reels = if (post.isReel || !post.videoUrl.isNullOrBlank()) listOf(post) + _uiState.value.reels else _uiState.value.reels
-        )
-        persistCurrentFeed()
-        showToast("✨ Post published")
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                scheduledPostRepository.publishNow(id)
+                val latest = scheduledPostRepository.fetchMine()
+                withContext(Dispatchers.Main) {
+                    _uiState.value = _uiState.value.copy(scheduledPosts = latest)
+                    showToast("Scheduled post published.")
+                    fetchSupabaseData()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Publish scheduled post failed", e)
+                withContext(Dispatchers.Main) { showToast(e.message ?: "Couldn't publish scheduled post.") }
+            }
+        }
     }
 
     fun addPost(

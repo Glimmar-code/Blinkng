@@ -701,6 +701,13 @@ fun SignInScreen(
 // SIGN UP
 // ================================================================
 
+private fun isStrongBlinkPassword(password: String): Boolean =
+    password.length >= 8 &&
+        password.any(Char::isLowerCase) &&
+        password.any(Char::isUpperCase) &&
+        password.any(Char::isDigit) &&
+        password.any { !it.isLetterOrDigit() && !it.isWhitespace() }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SignUpScreen(
@@ -772,7 +779,7 @@ fun SignUpScreen(
         fullName.trim().length >= 2 &&
                 username.trim().length >= 3 &&
                 email.contains("@") &&
-                password.length >= 6 &&
+                isStrongBlinkPassword(password) &&
                 acceptTerms
 
     Box(
@@ -1043,9 +1050,9 @@ fun SignUpScreen(
                                 validationError =
                                     "Enter a valid email address."
 
-                            password.length < 6 ->
+                            !isStrongBlinkPassword(password) ->
                                 validationError =
-                                    "Your password should contain at least 6 characters."
+                                    "Use at least 8 characters with uppercase, lowercase, a number, and a symbol."
 
                             !acceptTerms ->
                                 validationError =
