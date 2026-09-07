@@ -82,6 +82,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -111,6 +112,8 @@ import com.example.data.models.MatchSpinPreferences
 import com.example.data.models.NigerianUniversities
 import com.example.data.models.UserProfile
 import com.example.data.repository.ConnectHubRepository
+import com.example.data.repository.ConnectCategoryCatalogRepository
+import com.example.data.repository.ConnectDirectoryCategory
 import com.example.ui.components.shimmerBackground
 import com.example.ui.theme.BlinkOnlineGreen
 import com.example.ui.theme.BlinkPink
@@ -189,6 +192,12 @@ fun ConnectHubPremiumPanel(
     var followingIds by remember { mutableStateOf(setOf<String>()) }
     val coroutineScope = rememberCoroutineScope()
     val matchRepository = remember { ConnectHubRepository() }
+    val categoryCatalogRepository = remember { ConnectCategoryCatalogRepository() }
+    var directoryCategories by remember { mutableStateOf(ConnectCategoryCatalogRepository.defaultCategories()) }
+
+    LaunchedEffect(Unit) {
+        directoryCategories = categoryCatalogRepository.fetchCategories()
+    }
 
     val toggleFollow: (String) -> Unit = { id ->
         followingIds = if (id in followingIds) followingIds - id else followingIds + id
@@ -329,7 +338,7 @@ fun ConnectHubPremiumPanel(
 
         Text("Connect Hub", fontSize = 18.sp, fontWeight = FontWeight.Black)
         Text(
-            "Swipe between roommates, mentors, reading mates, housing and challenges.",
+            "Choose from 20 professional ways to connect. Every option opens a live Connect workflow.",
             fontSize = 11.5.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -363,6 +372,7 @@ fun ConnectHubPremiumPanel(
 
         CategoryTabBar(
             categories = categories,
+            directoryCategories = directoryCategories,
             badgeCounts = badgeCounts,
             pagerState = pagerState,
             coroutineScope = coroutineScope
@@ -372,6 +382,7 @@ fun ConnectHubPremiumPanel(
 
         HorizontalPager(
             state = pagerState,
+            userScrollEnabled = false,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(PagerHeight),
@@ -1548,71 +1559,152 @@ private fun MatchReasonPills(reasons: List<String>) {
 
 @Composable
 private fun CategoryTabBar(
-    categories: List<*>,
+    categories: List<ConnectCategory>,
+    directoryCategories: List<ConnectDirectoryCategory>,
     badgeCounts: List<Int>,
     pagerState: PagerState,
     coroutineScope: CoroutineScope
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    val visibleDirectory = remember(directoryCategories) {
+        directoryCategories.sortedBy { it.displayOrder }.take(20)
+    }
+    var selectedSlug by rememberSaveable(visibleDirectory) {
+        mutableStateOf(visibleDirectory.firstOrNull()?.slug.orEmpty())
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        categories.forEachIndexed { index, categoryAny ->
-            val category = categoryAny as ConnectCategory
-            val selected = pagerState.currentPage == index
-            val bg by animateColorAsState(
-                targetValue = if (selected) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f),
-                animationSpec = tween(260),
-                label = "tabBg"
+        visibleDirectory.forEachIndexed { directoryIndex, item ->
+            val targetCategory = when (item.routeKind.lowercase()) {
+                "roommate" -> ConnectCategory.ROOMMATE
+                "mentor" -> ConnectCategory.MENTOR
+                "reading" -> ConnectCategory.READING
+                "agents" -> ConnectCategory.AGENTS
+                "housing" -> ConnectCategory.HOUSING
+                "challenges" -> ConnectCategory.CHALLENGES
+                else -> ConnectCategory.MENTOR
+            }
+            val targetIndex = categories.indexOf(targetCategory).coerceAtLeast(0)
+            val selected = selectedSlug == item.slug
+            val pendingCount = badgeCounts.getOrElse(targetIndex) { 0 }
+
+            val background by animateColorAsState(
+                targetValue = if (selected) {
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = .72f)
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
+                animationSpec = tween(220),
+                label = "directoryRowBackground"
             )
-            val fg by animateColorAsState(
-                targetValue = if (selected) MaterialTheme.colorScheme.onPrimary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                animationSpec = tween(260),
-                label = "tabFg"
+            val foreground by animateColorAsState(
+                targetValue = if (selected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                animationSpec = tween(220),
+                label = "directoryRowForeground"
             )
-            val scale by animateFloatAsState(
-                targetValue = if (selected) 1f else 0.96f,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-                label = "tabScale"
-            )
+
             Surface(
                 modifier = Modifier
-                    .graphicsLayer { scaleX = scale; scaleY = scale }
+                    .fillMaxWidth()
                     .clickable {
-                        coroutineScope.launch { pagerState.animateScrollToPage(index) }
+                        selectedSlug = item.slug
+                        coroutineScope.launch {
+                            pagerState.animateScrollToPage(targetIndex)
+                        }
                     },
-                shape = RoundedCornerShape(100.dp),
-                color = bg
+                shape = RoundedCornerShape(18.dp),
+                color = background,
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = .35f)
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = .72f)
+                    }
+                )
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(category.icon, contentDescription = null, tint = fg, modifier = Modifier.size(15.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        category.shortLabel,
-                        color = fg,
-                        fontSize = 12.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                    )
-                    val count = badgeCounts.getOrElse(index) { 0 }
-                    if (count > 0) {
-                        Spacer(Modifier.width(6.dp))
-                        Surface(shape = CircleShape, color = fg.copy(alpha = .22f)) {
-                            Text(
-                                "$count",
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = fg
+                    Surface(
+                        shape = RoundedCornerShape(13.dp),
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = .14f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f)
+                        }
+                    ) {
+                        Box(
+                            modifier = Modifier.size(42.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                targetCategory.icon,
+                                contentDescription = null,
+                                tint = if (selected) MaterialTheme.colorScheme.primary else foreground,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
+                    }
+
+                    Spacer(Modifier.width(11.dp))
+
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "${directoryIndex + 1}. ${item.title}",
+                                color = foreground,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (pendingCount > 0) {
+                                Spacer(Modifier.width(7.dp))
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = .14f)
+                                ) {
+                                    Text(
+                                        text = pendingCount.toString(),
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = item.description,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 10.5.sp,
+                            lineHeight = 14.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(100.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f)
+                    ) {
+                        Text(
+                            text = targetCategory.shortLabel,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }
