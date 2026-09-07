@@ -14,6 +14,7 @@ import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.Person
 import androidx.core.content.ContextCompat
 
 object IncomingCallNotification {
@@ -37,8 +38,8 @@ object IncomingCallNotification {
     ) {
         if (callId.isBlank()) return
         createChannels(context)
-        // NotificationManagerCompat.notify is guarded by the runtime POST_NOTIFICATIONS
-        // check below. The lint suppression only teaches static analysis about that guard.
+        // Android 13+ requires POST_NOTIFICATIONS before the operating system may show
+        // the incoming-call heads-up/full-screen UI. The app requests it after sign-in.
         if (!hasNotificationPermission(context)) return
 
         val answerIntent = CallActivity.incomingIntent(
@@ -92,11 +93,27 @@ object IncomingCallNotification {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val caller = Person.Builder()
+            .setName(peerName.ifBlank { "Blink user" })
+            .setKey(peerId.ifBlank { peerUsername.ifBlank { callId } })
+            .setImportant(true)
+            .build()
         val label = if (callType == CallType.VIDEO) "Incoming video call" else "Incoming voice call"
+
+        // CallStyle gives Android a real incoming-call surface with system Answer/Decline
+        // affordances. The full-screen intent is used when Android permits it (for example
+        // on a locked device); otherwise the same notification degrades to a heads-up banner.
         val notification = NotificationCompat.Builder(context, CHANNEL_INCOMING_CALLS)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(android.R.drawable.ic_menu_call)
             .setContentTitle(peerName.ifBlank { "Blink user" })
             .setContentText(label)
+            .setStyle(
+                NotificationCompat.CallStyle.forIncomingCall(
+                    caller,
+                    declinePendingIntent,
+                    answerPendingIntent
+                )
+            )
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
@@ -104,9 +121,13 @@ object IncomingCallNotification {
             .setAutoCancel(false)
             .setTimeoutAfter(50_000L)
             .setContentIntent(openPendingIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Decline", declinePendingIntent)
-            .addAction(android.R.drawable.ic_menu_call, "Answer", answerPendingIntent)
+            .setFullScreenIntent(openPendingIntent, true)
             .build()
+            .apply {
+                // Keep the ringtone repeating until Answer/Decline/cancel/timeout, rather than
+                // behaving like a one-shot message notification.
+                flags = flags or Notification.FLAG_INSISTENT
+            }
 
         runCatching {
             NotificationManagerCompat.from(context).notify(notificationId(callId), notification)
@@ -119,7 +140,7 @@ object IncomingCallNotification {
     }
 
     fun handleCallUpdate(context: Context, callId: String, event: String) {
-        if (event.lowercase() in setOf("cancelled", "declined", "ended", "missed", "failed")) {
+        if (event.lowercase() in setOf("cancelled", "declined", "ended", "missed", "failed", "answered")) {
             cancel(context, callId)
             if (BlinkCallForegroundService.activeCallId == callId) {
                 context.stopService(Intent(context, BlinkCallForegroundService::class.java))
@@ -154,7 +175,7 @@ object IncomingCallNotification {
         )
         val kind = if (callType == CallType.VIDEO) "Video call" else "Voice call"
         return NotificationCompat.Builder(context, CHANNEL_ONGOING_CALLS)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(android.R.drawable.ic_menu_call)
             .setContentTitle(peerName.ifBlank { "Blink call" })
             .setContentText("$kind • $status")
             .setCategory(NotificationCompat.CATEGORY_CALL)
