@@ -216,6 +216,15 @@ private fun ReelsContent(
         initialPage = initialPage,
         pageCount = { reels.size }
     )
+
+    LaunchedEffect(initialReelId) {
+        val targetId = initialReelId ?: return@LaunchedEffect
+        val targetIndex = reels.indexOfFirst { it.id == targetId }
+        if (targetIndex >= 0 && pager.currentPage != targetIndex) {
+            pager.scrollToPage(targetIndex)
+        }
+    }
+
     var pendingLaunchReelId by remember(initialReelId) { mutableStateOf(initialReelId) }
     var pendingLaunchPositionMs by remember(initialReelId, initialReelPositionMs) {
         mutableStateOf(initialReelPositionMs.coerceAtLeast(0L))
