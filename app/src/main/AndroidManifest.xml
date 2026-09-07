@@ -12,6 +12,21 @@
             android:exported="false"
             android:noHistory="true"
             android:theme="@style/Theme.MyApplication" />
+        <activity
+            android:name=".auth.PasswordResetActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.MyApplication">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="blink"
+                    android:host="auth"
+                    android:path="/reset-password" />
+            </intent-filter>
+        </activity>
         <service
             android:name=".notification.BlinkFirebaseMessagingService"
             android:exported="false">
