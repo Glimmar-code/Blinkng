@@ -1010,7 +1010,7 @@ fun MainAppContent(
                 savedDrafts = uiState.savedDrafts,
                 scheduledPosts = uiState.scheduledPosts,
                 onDismiss = { viewModel.openCreatePost(false) },
-                onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText ->
+                onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText, textStyle ->
                     // Dismiss immediately; publishing stays in the ViewModel/background flow.
                     viewModel.openCreatePost(false)
                     viewModel.addPost(
@@ -1031,7 +1031,8 @@ fun MainAppContent(
                         isPinned = isPinned,
                         isDisappearing = isDisappearing,
                         audioTitle = audioTitle,
-                        altText = altText
+                        altText = altText,
+                        textStyle = textStyle
                     )
                 },
                 onSaveDraft = { draft ->

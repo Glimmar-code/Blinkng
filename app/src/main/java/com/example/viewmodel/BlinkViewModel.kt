@@ -1668,13 +1668,13 @@ private suspend fun restoreSupabaseSession() {
                 for (item in json.split(";;;DRAFT_DELIM;;;")) {
                     if (item.isBlank()) continue
                     val parts = item.split(":::FIELD:::")
-                    if (parts.size >= 8) drafts.add(PostDraft(id = parts.getOrNull(0) ?: "draft_${System.currentTimeMillis()}", text = parts.getOrNull(1) ?: "", faculty = parts.getOrNull(2) ?: "SIMME", imageUri = parts.getOrNull(3)?.takeIf { it.isNotBlank() }, videoUri = parts.getOrNull(4)?.takeIf { it.isNotBlank() }, isReel = parts.getOrNull(5)?.toBoolean() ?: false, category = parts.getOrNull(6) ?: "Campus Life", audience = parts.getOrNull(7) ?: "Everyone", tags = parts.getOrNull(8)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(), mentions = parts.getOrNull(9)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(), savedAtTimestamp = parts.getOrNull(10)?.toLongOrNull() ?: System.currentTimeMillis()))
+                    if (parts.size >= 8) drafts.add(PostDraft(id = parts.getOrNull(0) ?: "draft_${System.currentTimeMillis()}", text = parts.getOrNull(1) ?: "", faculty = parts.getOrNull(2) ?: "SIMME", imageUri = parts.getOrNull(3)?.takeIf { it.isNotBlank() }, videoUri = parts.getOrNull(4)?.takeIf { it.isNotBlank() }, isReel = parts.getOrNull(5)?.toBoolean() ?: false, category = parts.getOrNull(6) ?: "Campus Life", audience = parts.getOrNull(7) ?: "Everyone", tags = parts.getOrNull(8)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(), mentions = parts.getOrNull(9)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(), savedAtTimestamp = parts.getOrNull(10)?.toLongOrNull() ?: System.currentTimeMillis(), textStyle = parts.getOrNull(11)?.takeIf { it.isNotBlank() }))
                 }
                 _uiState.value = _uiState.value.copy(savedDrafts = drafts)
             }
         } catch (e: Exception) { Log.e(TAG, "Failed to load drafts", e) }
     }
-    private fun saveDraftsToPrefs(drafts: List<PostDraft>) { try { val serialized = drafts.joinToString(";;;DRAFT_DELIM;;;") { d -> listOf(d.id, d.text, d.faculty, d.imageUri ?: "", d.videoUri ?: "", d.isReel.toString(), d.category, d.audience, d.tags.joinToString(","), d.mentions.joinToString(","), d.savedAtTimestamp.toString()).joinToString(":::FIELD:::") }; prefs.edit().putString("blink_saved_drafts_data", serialized).apply() } catch (e: Exception) { Log.e(TAG, "Failed to save drafts", e) } }
+    private fun saveDraftsToPrefs(drafts: List<PostDraft>) { try { val serialized = drafts.joinToString(";;;DRAFT_DELIM;;;") { d -> listOf(d.id, d.text, d.faculty, d.imageUri ?: "", d.videoUri ?: "", d.isReel.toString(), d.category, d.audience, d.tags.joinToString(","), d.mentions.joinToString(","), d.savedAtTimestamp.toString(), d.textStyle ?: "").joinToString(":::FIELD:::") }; prefs.edit().putString("blink_saved_drafts_data", serialized).apply() } catch (e: Exception) { Log.e(TAG, "Failed to save drafts", e) } }
     fun saveDraft(draft: PostDraft) { val updated = listOf(draft) + _uiState.value.savedDrafts.filter { it.id != draft.id }; _uiState.value = _uiState.value.copy(savedDrafts = updated); saveDraftsToPrefs(updated); showToast("💾 Draft saved to phone storage") }
     fun deleteDraft(draftId: String) { val updated = _uiState.value.savedDrafts.filter { it.id != draftId }; _uiState.value = _uiState.value.copy(savedDrafts = updated); saveDraftsToPrefs(updated); showToast("🗑️ Draft deleted") }
 
@@ -1710,7 +1710,8 @@ private suspend fun restoreSupabaseSession() {
         isPinned: Boolean = false,
         isDisappearing: Boolean = false,
         audioTitle: String? = null,
-        altText: String? = null
+        altText: String? = null,
+        textStyle: String? = null
     ) {
         if (_uiState.value.isCreatingPost) return
 
@@ -1774,7 +1775,8 @@ private suspend fun restoreSupabaseSession() {
                     isPinned,
                     isDisappearing,
                     audioTitle,
-                    altText
+                    altText,
+                    textStyle
                 ) ?: throw IllegalStateException("The server did not save the post.")
 
                 withContext(Dispatchers.Main) {

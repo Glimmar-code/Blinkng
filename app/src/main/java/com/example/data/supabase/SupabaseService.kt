@@ -1984,7 +1984,7 @@ fun getCurrentUserId(): String? {
         tags: List<String> = emptyList(), mentions: List<String> = emptyList(), poll: PostPoll? = null, isReel: Boolean = false,
         audience: String = "Everyone", category: String = "Campus Life", location: String? = null, linkUrl: String? = null,
         allowComments: Boolean = true, hideLikes: Boolean = false, isPinned: Boolean = false, isDisappearing: Boolean = false,
-        audioTitle: String? = null, altText: String? = null
+        audioTitle: String? = null, altText: String? = null, textStyle: String? = null
     ): FeedPost? = withContext(Dispatchers.IO) {
         try {
             val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
@@ -2049,6 +2049,9 @@ fun getCurrentUserId(): String? {
                 put("is_disappearing", isDisappearing)
                 audioTitle?.takeIf { it.isNotBlank() }?.let { put("audio_title", it) }
                 altText?.takeIf { it.isNotBlank() }?.let { put("alt_text", it) }
+                textStyle?.takeIf { it.isNotBlank() }?.let { style ->
+                    put("gradient", JSONObject().put("key", style.trim().lowercase(Locale.US)))
+                }
             }
             val created = executeRequest(newRequestBuilder("/rest/v1/feed_posts", true).addHeader("Prefer", "return=representation")
                 .post(body.toString().toRequestBody(jsonMediaType)).build()).use { resp ->
@@ -3090,7 +3093,10 @@ suspend fun uploadPostMedia(
             isPinned = obj.optBoolean("is_pinned", false),
             isDisappearing = obj.optBoolean("is_disappearing", false),
             audioTitle = obj.cleanString("audio_title").takeIf { it.isNotBlank() },
-            altText = obj.cleanString("alt_text").takeIf { it.isNotBlank() }
+            altText = obj.cleanString("alt_text").takeIf { it.isNotBlank() },
+            textStyle = obj.optJSONObject("gradient")
+                ?.cleanString("key")
+                ?.takeIf { it.isNotBlank() }
         )
     }
 

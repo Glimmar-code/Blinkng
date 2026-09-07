@@ -62,7 +62,8 @@ data class FeedPost(
     val adLabel: String? = null,
     val adCta: String? = null,
     val createdAt: String = "",
-    val authorUsername: String = ""
+    val authorUsername: String = "",
+    val textStyle: String? = null
 )
 
 data class PostDraft(
@@ -83,7 +84,8 @@ data class PostDraft(
     val pollQuestion: String = "",
     val pollOptions: List<String> = emptyList(),
     val savedAtTimestamp: Long = System.currentTimeMillis(),
-    val audioTrack: String? = null
+    val audioTrack: String? = null,
+    val textStyle: String? = null
 )
 
 data class ScheduledPost(

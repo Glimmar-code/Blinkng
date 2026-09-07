@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -19,9 +20,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
@@ -31,6 +34,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -76,13 +80,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -126,6 +135,7 @@ fun CreatePostSheet(
         Boolean,
         Boolean,
         String?,
+        String?,
         String?
     ) -> Unit,
     onSaveDraft: (PostDraft) -> Unit = {},
@@ -150,6 +160,7 @@ fun CreatePostSheet(
     var audienceMenuOpen by rememberSaveable { mutableStateOf(false) }
     var categoryMenuOpen by rememberSaveable { mutableStateOf(false) }
     var showDiscardDialog by rememberSaveable { mutableStateOf(false) }
+    var selectedTextStyle by rememberSaveable { mutableStateOf("aurora") }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = listOf(
@@ -254,7 +265,8 @@ fun CreatePostSheet(
             false,
             false,
             null,
-            null
+            null,
+            selectedTextStyle.takeIf { cleanText.isNotBlank() && selectedImages.isEmpty() && selectedVideo == null && !pollValid }
         )
     }
 
@@ -272,7 +284,8 @@ fun CreatePostSheet(
                 videoUri = selectedVideo,
                 isReel = selectedVideo != null,
                 category = category,
-                audience = audience
+                audience = audience,
+                textStyle = selectedTextStyle.takeIf { text.isNotBlank() && selectedImages.isEmpty() && selectedVideo == null && !pollValid }
             )
         )
         Toast.makeText(context, "Draft saved.", Toast.LENGTH_SHORT).show()
@@ -304,14 +317,18 @@ fun CreatePostSheet(
         }
     }
 
-    ModalBottomSheet(
+    Dialog(
         onDismissRequest = ::requestDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
+                .statusBarsPadding()
                 .navigationBarsPadding()
                 .imePadding()
         ) {
@@ -387,38 +404,44 @@ fun CreatePostSheet(
                     )
                 }
 
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = {
-                        if (it.length <= 5000) text = it
-                    },
-                    enabled = !isSubmitting,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    minLines = 5,
-                    maxLines = 12,
-                    placeholder = {
-                        Text(
-                            if (selectedVideo != null) "Write a caption for your reel..."
-                            else "What's happening on campus?"
-                        )
-                    },
-                    supportingText = {
-                        Row(Modifier.fillMaxWidth()) {
+                val textOnlyComposer = selectedImages.isEmpty() && selectedVideo == null && !showPoll
+                if (textOnlyComposer) {
+                    ColoredTextComposer(
+                        text = text,
+                        onTextChanged = { if (it.length <= 5000) text = it },
+                        selectedStyleKey = selectedTextStyle,
+                        onStyleSelected = { selectedTextStyle = it },
+                        enabled = !isSubmitting
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = { if (it.length <= 5000) text = it },
+                        enabled = !isSubmitting,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        minLines = 4,
+                        maxLines = 10,
+                        placeholder = {
                             Text(
-                                if (selectedImages.isNotEmpty()) {
-                                    "${selectedImages.size}/10 photos selected"
-                                } else {
-                                    "Be clear, useful, and respectful."
-                                },
-                                modifier = Modifier.weight(1f)
+                                if (selectedVideo != null) "Write a caption for your reel..."
+                                else "Say something about this post..."
                             )
-                            Text("${text.length}/5000")
-                        }
-                    },
-                    shape = RoundedCornerShape(20.dp)
-                )
+                        },
+                        supportingText = {
+                            Row(Modifier.fillMaxWidth()) {
+                                Text(
+                                    if (selectedImages.isNotEmpty()) "${selectedImages.size}/10 photos selected"
+                                    else "Be clear, useful, and respectful.",
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text("${text.length}/5000")
+                            }
+                        },
+                        shape = RoundedCornerShape(20.dp)
+                    )
+                }
 
                 if (selectedImages.isNotEmpty()) {
                     LazyRow(
@@ -608,6 +631,7 @@ fun CreatePostSheet(
                                     mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
                                     audience = draft.audience
                                     category = draft.category
+                                    selectedTextStyle = draft.textStyle ?: "aurora"
                                     showPoll = false
                                 },
                                 onDelete = { onDeleteDraft(draft.id) }
@@ -667,6 +691,7 @@ fun CreatePostSheet(
                 }
             }
         }
+        }
     }
 
     if (showDiscardDialog) {
@@ -695,6 +720,111 @@ fun CreatePostSheet(
     }
 }
 
+
+@Composable
+private fun ColoredTextComposer(
+    text: String,
+    onTextChanged: (String) -> Unit,
+    selectedStyleKey: String,
+    onStyleSelected: (String) -> Unit,
+    enabled: Boolean
+) {
+    val style = resolveTextPostStyle(selectedStyleKey)
+    val size = when {
+        text.length > 320 -> 22.sp
+        text.length > 170 -> 26.sp
+        else -> 31.sp
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 310.dp)
+            .background(style.brush())
+            .padding(horizontal = 26.dp, vertical = 34.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        BasicTextField(
+            value = text,
+            onValueChange = onTextChanged,
+            enabled = enabled,
+            textStyle = TextStyle(
+                color = style.textColor,
+                fontSize = size,
+                lineHeight = size * 1.18f,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            ),
+            cursorBrush = SolidColor(style.textColor),
+            modifier = Modifier.fillMaxWidth(),
+            decorationBox = { innerTextField ->
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (text.isBlank()) {
+                        Text(
+                            text = "Create a public post...",
+                            color = style.textColor.copy(alpha = 0.82f),
+                            fontSize = 31.sp,
+                            lineHeight = 36.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    innerTextField()
+                }
+            }
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 4.dp)
+    ) {
+        Text(
+            text = "Style",
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold
+        )
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(TextPostStyles, key = { it.key }) { option ->
+                val selected = option.key == selectedStyleKey
+                Surface(
+                    modifier = Modifier
+                        .size(if (selected) 62.dp else 58.dp)
+                        .clickable(enabled = enabled) { onStyleSelected(option.key) },
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.Transparent,
+                    border = if (selected) BorderStroke(3.dp, MaterialTheme.colorScheme.onSurface) else null
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(if (selected) 3.dp else 0.dp)
+                            .clip(RoundedCornerShape(13.dp))
+                            .background(option.brush()),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Aa",
+                            color = option.textColor,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 17.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun ComposerTopBar(
     isSubmitting: Boolean,
@@ -703,35 +833,32 @@ private fun ComposerTopBar(
     onDismiss: () -> Unit,
     onSubmit: () -> Unit
 ) {
-    Row(
-        Modifier
+    Box(
+        modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .heightIn(min = 60.dp)
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center
     ) {
         IconButton(
             onClick = onDismiss,
-            enabled = !isSubmitting
+            enabled = !isSubmitting,
+            modifier = Modifier.align(Alignment.CenterStart)
         ) {
             Icon(Icons.Default.Close, contentDescription = "Close")
         }
 
-        Column(Modifier.weight(1f)) {
-            Text(
-                if (isReel) "Create reel" else "Create post",
-                fontWeight = FontWeight.Black,
-                fontSize = 19.sp
-            )
-            Text(
-                if (isReel) "Share a vertical video with campus" else "Share something with your community",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        Text(
+            text = if (isReel) "Create reel" else "Create post",
+            fontWeight = FontWeight.Black,
+            fontSize = 20.sp,
+            modifier = Modifier.align(Alignment.Center)
+        )
 
         Button(
             onClick = onSubmit,
-            enabled = canSubmit
+            enabled = canSubmit,
+            modifier = Modifier.align(Alignment.CenterEnd)
         ) {
             if (isSubmitting) {
                 CircularProgressIndicator(
@@ -965,67 +1092,54 @@ private fun AddToPostCard(
     onVideo: () -> Unit,
     onPoll: () -> Unit
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 7.dp),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+    Text(
+        text = "Add to your post",
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.titleSmall
+    )
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(Modifier.padding(14.dp)) {
-            Text(
-                "Add to your post",
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleSmall
-            )
+        item {
+            ComposerActionTile("Gallery", Icons.Default.Image, enabled, onImages)
+        }
+        item {
+            ComposerActionTile("Video", Icons.Default.VideoLibrary, enabled, onVideo)
+        }
+        item {
+            ComposerActionTile("Poll", Icons.Default.Poll, enabled, onPoll)
+        }
+    }
+}
 
-            Spacer(Modifier.height(10.dp))
-
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                AssistChip(
-                    onClick = onImages,
-                    enabled = enabled,
-                    label = { Text("Photos") },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Default.Image,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                )
-
-                AssistChip(
-                    onClick = onVideo,
-                    enabled = enabled,
-                    label = { Text("Video") },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Default.VideoLibrary,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                )
-
-                AssistChip(
-                    onClick = onPoll,
-                    enabled = enabled,
-                    label = { Text("Poll") },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Default.Poll,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                )
-            }
+@Composable
+private fun ComposerActionTile(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .width(138.dp)
+            .height(92.dp)
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        tonalElevation = 3.dp,
+        shadowElevation = 2.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp))
+            Spacer(Modifier.height(6.dp))
+            Text(label, fontWeight = FontWeight.SemiBold)
         }
     }
 }

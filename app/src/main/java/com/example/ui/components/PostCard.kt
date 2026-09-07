@@ -90,6 +90,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -155,6 +156,7 @@ fun PostCard(
             .filter { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
             .distinct()
     }
+    val isTextOnlyPost = post.text.isNotBlank() && displayImages.isEmpty() && post.poll == null && post.videoUrl.isNullOrBlank()
     var showImageFullscreen by remember(post.id) { mutableStateOf(false) }
     var imagePage by remember(post.id) { mutableIntStateOf(0) }
     var expandedText by remember(post.id) { mutableStateOf(false) }
@@ -185,22 +187,14 @@ fun PostCard(
         modifier = modifier
             .trackContentExposure(post.id, displayedViewsCount)
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(24.dp),
+            .padding(vertical = 5.dp),
+        shape = RoundedCornerShape(0.dp),
         colors = CardDefaults.cardColors(containerColor = FeedCardSurface),
-        border = BorderStroke(1.dp, FeedBorder),
+        border = null,
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .drawBehind {
-                    drawRect(
-                        brush = railBrush,
-                        size = Size(4.dp.toPx(), size.height)
-                    )
-                }
-                .padding(start = 4.dp)
+            modifier = Modifier.fillMaxWidth()
         ) {
             if (post.isSponsored) {
                 Row(
@@ -347,17 +341,50 @@ fun PostCard(
             }
 
             if (post.text.isNotBlank()) {
-                SelectionContainer {
-                    Text(
-                        text = post.text,
-                        color = FeedTextPrimary,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        maxLines = if (expandedText) Int.MAX_VALUE else 7,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                if (isTextOnlyPost) {
+                    val textStyle = remember(post.id, post.textStyle) {
+                        resolveTextPostStyle(post.textStyle, post.id)
+                    }
+                    val textSize = when {
+                        post.text.length > 520 -> 20.sp
+                        post.text.length > 300 -> 23.sp
+                        post.text.length > 170 -> 26.sp
+                        else -> 31.sp
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 320.dp)
+                            .background(textStyle.brush())
+                            .padding(horizontal = 28.dp, vertical = 36.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        SelectionContainer {
+                            Text(
+                                text = post.text,
+                                color = textStyle.textColor,
+                                fontSize = textSize,
+                                lineHeight = textSize * 1.18f,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                maxLines = if (expandedText) Int.MAX_VALUE else 14,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                } else {
+                    SelectionContainer {
+                        Text(
+                            text = post.text,
+                            color = FeedTextPrimary,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            maxLines = if (expandedText) Int.MAX_VALUE else 7,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-                if (post.text.length > 320) {
+                if (post.text.length > 520) {
                     Text(
                         text = if (expandedText) "Show less" else "See more",
                         color = FeedPurple,
@@ -379,8 +406,7 @@ fun PostCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, top = 12.dp)
-                        .clip(RoundedCornerShape(18.dp))
+                        .padding(top = 6.dp)
                 ) {
                     if (displayImages.size == 1) {
                         NaturalAspectPostImage(
