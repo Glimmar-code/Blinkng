@@ -12,6 +12,7 @@ import com.example.data.models.VerificationBadge
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
 import com.example.ui.components.PostCard
+import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.BlinkOnlineGreen
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.FeedBackground
@@ -926,16 +927,7 @@ private fun ProfessionalVerifiedName(person: UserProfile, fontSize: Int) {
         )
         if (person.verificationBadge != VerificationBadge.NONE) {
             Spacer(Modifier.width(3.dp))
-            Icon(
-                Icons.Default.Verified,
-                contentDescription = when (person.verificationBadge) {
-                    VerificationBadge.GOLD -> "Gold verified account"
-                    VerificationBadge.BLUE -> "Verified account"
-                    VerificationBadge.NONE -> null
-                },
-                tint = BlinkPink,
-                modifier = Modifier.size((fontSize + 2).dp)
-            )
+            VerifiedMark(person.verificationBadge, size = (fontSize + 2).dp)
         }
     }
 }
