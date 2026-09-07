@@ -141,6 +141,18 @@ fun PostCard(
         else -> VerificationBadge.NONE
     },
     hasActiveStory: Boolean = false,
+    authorProfileId: String = "",
+    isFollowingAuthor: Boolean = false,
+    onFollowAuthor: (String) -> Unit = {},
+    onUnfollowAuthor: (String) -> Unit = {},
+    onMessageAuthor: () -> Unit = {},
+    onGiftCoinsAuthor: (String) -> Unit = {},
+    onChallengeAuthor: (String) -> Unit = {},
+    onMentorRequestAuthor: (String) -> Unit = {},
+    onFriendRequestAuthor: (String) -> Unit = {},
+    onRoommateRequestAuthor: (String) -> Unit = {},
+    onStudyMateRequestAuthor: (String) -> Unit = {},
+    onConnectHubAuthor: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val resolvedAuthorName = authorName.trim().ifBlank { post.author.trim() }
@@ -297,6 +309,23 @@ fun PostCard(
                                 modifier = Modifier.size(16.dp)
                             )
                         }
+                        if (!isAuthor && authorProfileId.isNotBlank()) {
+                            Spacer(Modifier.width(6.dp))
+                            ProfileFollowInteractButton(
+                                isFollowing = isFollowingAuthor,
+                                onFollow = { onFollowAuthor(authorProfileId) },
+                                onUnfollow = { onUnfollowAuthor(authorProfileId) },
+                                onMessage = onMessageAuthor,
+                                onGiftCoins = { onGiftCoinsAuthor(authorProfileId) },
+                                onGameChallenge = { onChallengeAuthor(authorProfileId) },
+                                onMentorRequest = { onMentorRequestAuthor(authorProfileId) },
+                                onFriendRequest = { onFriendRequestAuthor(authorProfileId) },
+                                onRoommateRequest = { onRoommateRequestAuthor(authorProfileId) },
+                                onStudyMateRequest = { onStudyMateRequestAuthor(authorProfileId) },
+                                onViewProfile = { onProfileClick(profileTarget) },
+                                onOpenConnectHub = onConnectHubAuthor
+                            )
+                        }
                         if (resolvedAuthorUsername.isNotBlank()) {
                             Spacer(Modifier.width(5.dp))
                             Text(
@@ -348,15 +377,47 @@ fun PostCard(
             }
 
             if (post.text.isNotBlank()) {
-                SelectionContainer {
-                    Text(
-                        text = post.text,
-                        color = primaryText,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
-                        maxLines = if (expandedText) Int.MAX_VALUE else 7,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                val hasSavedTextStyle = post.textStyle?.isNotBlank() == true &&
+                    displayImages.isEmpty() && post.poll == null
+                if (hasSavedTextStyle) {
+                    val textStyle = resolveTextPostStyle(post.textStyle, post.id)
+                    val textSize = when {
+                        post.text.length > 320 -> 22.sp
+                        post.text.length > 170 -> 26.sp
+                        else -> 31.sp
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 280.dp)
+                            .background(textStyle.brush())
+                            .padding(horizontal = 26.dp, vertical = 34.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        SelectionContainer {
+                            Text(
+                                text = post.text,
+                                color = textStyle.textColor,
+                                fontSize = textSize,
+                                lineHeight = textSize * 1.18f,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                maxLines = if (expandedText) Int.MAX_VALUE else 14,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                } else {
+                    SelectionContainer {
+                        Text(
+                            text = post.text,
+                            color = primaryText,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
+                            maxLines = if (expandedText) Int.MAX_VALUE else 7,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
                 if (post.text.length > 320) {
                     Text(
@@ -365,7 +426,7 @@ fun PostCard(
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
-                            .padding(start = 14.dp, bottom = 8.dp)
+                            .padding(start = 14.dp, top = 6.dp, bottom = 8.dp)
                             .clickable { expandedText = !expandedText }
                     )
                 }

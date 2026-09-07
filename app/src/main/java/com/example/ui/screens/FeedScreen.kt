@@ -56,9 +56,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -81,12 +83,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
 import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.models.LeaderboardUser
 import com.example.data.models.VerificationBadge
+import com.example.data.repository.FollowStateStore
+import com.example.data.repository.UserInteractionRepository
 import com.example.ui.components.PostCard
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.components.StoryBar
@@ -95,6 +100,7 @@ import com.example.ui.theme.BlinkBlack
 import com.example.ui.theme.BlinkCream
 import com.example.ui.theme.BlinkPink
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 
 // ============================================================================
@@ -390,6 +396,12 @@ private fun LegacyFeedScreen(
     val bottomBarVisibility by rememberUpdatedState(onBottomBarVisibilityChange)
     val recordVisiblePost by rememberUpdatedState(onViewedPost)
     val refreshFeed by rememberUpdatedState(onRefresh)
+    val interactionRepository = remember { UserInteractionRepository() }
+    val interactionScope = rememberCoroutineScope()
+    val followingIds by FollowStateStore.followingIds.collectAsState()
+    LaunchedEffect(currentUsername) {
+        FollowStateStore.refresh()
+    }
     val postIds = remember(posts) { posts.mapTo(linkedSetOf()) { it.id } }
     val profilesByUsername = remember(profiles) {
         profiles.asSequence()
@@ -521,6 +533,10 @@ private fun LegacyFeedScreen(
             1 -> VideoReelsScreen(
                 reels = reels,
                 currentUsername = currentUsername,
+                profiles = profiles,
+                connectHub = connectHub,
+                connectHubActions = connectHubActions,
+                onDirectMessage = onDirectMessage,
                 isDark = isDark,
                 onLike = onLikePost,
                 onComment = onCommentPost,
@@ -708,6 +724,10 @@ private fun LegacyFeedScreen(
                                     else -> VerificationBadge.NONE
                                 }
                                 val hasActiveStory = resolvedUsername.lowercase() in activeStoryUsernames
+                                val authorId = authorProfile?.id.orEmpty()
+                                val mentorListingId = connectHub.mentors.firstOrNull { it.userId == authorId }?.id
+                                val roommateListingId = connectHub.roommates.firstOrNull { it.userId == authorId }?.id
+                                val readingListingId = connectHub.readingMates.firstOrNull { it.userId == authorId }?.id
 
                                 Column {
                                     PostCard(
@@ -726,7 +746,44 @@ private fun LegacyFeedScreen(
                                         authorName = resolvedName,
                                         authorUsername = resolvedUsername,
                                         authorVerificationBadge = resolvedBadge,
-                                        hasActiveStory = hasActiveStory
+                                        hasActiveStory = hasActiveStory,
+                                        authorProfileId = authorId,
+                                        isFollowingAuthor = authorId.isNotBlank() && authorId in followingIds,
+                                        onFollowAuthor = { id ->
+                                            interactionScope.launch { FollowStateStore.setFollowing(id, true) }
+                                        },
+                                        onUnfollowAuthor = { id ->
+                                            interactionScope.launch { FollowStateStore.setFollowing(id, false) }
+                                        },
+                                        onMessageAuthor = {
+                                            onDirectMessage(
+                                                resolvedUsername,
+                                                resolvedName,
+                                                authorProfile?.avatarUrl?.takeIf { it.isNotBlank() } ?: post.authorAvatar
+                                            )
+                                        },
+                                        onGiftCoinsAuthor = { id ->
+                                            interactionScope.launch { interactionRepository.giftCoins(id, 10) }
+                                        },
+                                        onChallengeAuthor = { id ->
+                                            connectHubActions.challengeUser(id, ChallengeGameType.GENERAL_KNOWLEDGE.apiName)
+                                        },
+                                        onMentorRequestAuthor = {
+                                            if (mentorListingId != null) connectHubActions.requestMentor(mentorListingId)
+                                            else navigate(2)
+                                        },
+                                        onFriendRequestAuthor = { id ->
+                                            interactionScope.launch { interactionRepository.sendFriendRequest(id) }
+                                        },
+                                        onRoommateRequestAuthor = {
+                                            if (roommateListingId != null) connectHubActions.applyRoommate(roommateListingId)
+                                            else navigate(2)
+                                        },
+                                        onStudyMateRequestAuthor = {
+                                            if (readingListingId != null) connectHubActions.requestReadingMate(readingListingId)
+                                            else navigate(2)
+                                        },
+                                        onConnectHubAuthor = { navigate(2) }
                                     )
                                     Spacer(
                                         Modifier

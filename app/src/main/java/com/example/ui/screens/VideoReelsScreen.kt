@@ -49,8 +49,14 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.example.data.local.BlinkMediaCache
+import com.example.data.models.ChallengeGameType
+import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
+import com.example.data.models.UserProfile
+import com.example.data.repository.FollowStateStore
+import com.example.data.repository.UserInteractionRepository
 import com.example.ui.components.PremiumPullRefreshIndicator
+import com.example.ui.components.ProfileFollowInteractButton
 import com.example.ui.components.formatNumber
 import com.example.ui.components.rememberDelayedContentViewCount
 import com.example.ui.components.trackContentExposure
@@ -92,6 +98,10 @@ fun VideoReelsScreen(
     onDelete: (String) -> Unit,
     onProfileClick: (String) -> Unit,
     onBackToPosts: () -> Unit,
+    profiles: List<UserProfile> = emptyList(),
+    connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
+    connectHubActions: ConnectHubActions = ConnectHubActions(),
+    onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit = { _, _, _ -> },
     isLoading: Boolean = false,
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = {},
@@ -144,6 +154,11 @@ fun VideoReelsScreen(
                     onDelete = onDelete,
                     onProfileClick = onProfileClick,
                     onBackToPosts = onBackToPosts,
+                    profiles = profiles,
+                    connectHub = connectHub,
+                    connectHubActions = connectHubActions,
+                    onDirectMessage = onDirectMessage,
+                    onOpenConnectHub = onConnectClick,
                     hasMore = hasMore,
                     isLoadingMore = isLoadingMore,
                     onLoadMore = onLoadMore,
@@ -169,6 +184,11 @@ private fun ReelsContent(
     onDelete: (String) -> Unit,
     onProfileClick: (String) -> Unit,
     onBackToPosts: () -> Unit,
+    profiles: List<UserProfile>,
+    connectHub: ConnectHubSnapshot,
+    connectHubActions: ConnectHubActions,
+    onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit,
+    onOpenConnectHub: () -> Unit,
     hasMore: Boolean,
     isLoadingMore: Boolean,
     onLoadMore: () -> Unit,
@@ -202,6 +222,10 @@ private fun ReelsContent(
     }
     var selectedTab by remember { mutableStateOf("For You") }
 
+    LaunchedEffect(currentUsername) {
+        FollowStateStore.refresh()
+    }
+
     LaunchedEffect(pager, reels, resumeUserKey) {
         snapshotFlow { pager.currentPage }.collectLatest { page ->
             reels.getOrNull(page)?.let { reel ->
@@ -232,13 +256,19 @@ private fun ReelsContent(
                 reel = reel,
                 pageOffset = pageOffset,
                 isActive = index == pager.currentPage,
-                isAuthor = reel.author.equals(currentUsername, ignoreCase = true),
+                isAuthor = reel.author.equals(currentUsername.removePrefix("@"), ignoreCase = true) ||
+                    reel.authorUsername.removePrefix("@").equals(currentUsername.removePrefix("@"), ignoreCase = true),
                 onLike = onLike,
                 onComment = onComment,
                 onBookmark = onBookmark,
                 onShare = onShare,
                 onDelete = onDelete,
                 onProfileClick = onProfileClick,
+                profiles = profiles,
+                connectHub = connectHub,
+                connectHubActions = connectHubActions,
+                onDirectMessage = onDirectMessage,
+                onOpenConnectHub = onOpenConnectHub,
                 onSwipeToHome = onBackToPosts,
                 onSwipeToProfile = { onProfileClick(reel.author) },
                 initialPositionMs = if (reel.id == pendingLaunchReelId) pendingLaunchPositionMs else 0L,
@@ -448,6 +478,11 @@ private fun ReelPage(
     onShare: (String) -> Unit,
     onDelete: (String) -> Unit,
     onProfileClick: (String) -> Unit,
+    profiles: List<UserProfile>,
+    connectHub: ConnectHubSnapshot,
+    connectHubActions: ConnectHubActions,
+    onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit,
+    onOpenConnectHub: () -> Unit,
     onSwipeToHome: () -> Unit,
     onSwipeToProfile: () -> Unit,
     initialPositionMs: Long,
@@ -455,6 +490,22 @@ private fun ReelPage(
 ) {
     val haptic = LocalHapticFeedback.current
     val displayedViewsCount = rememberDelayedContentViewCount(reel.id, reel.viewsCount)
+    val reelUsername = reel.authorUsername.trim().removePrefix("@").ifBlank {
+        reel.author.trim().removePrefix("@")
+    }
+    val authorProfile = remember(reel.id, profiles) {
+        profiles.firstOrNull { it.username.trim().removePrefix("@").equals(reelUsername, true) }
+            ?: profiles.firstOrNull { it.fullName.trim().equals(reel.author.trim(), true) }
+    }
+    val authorId = authorProfile?.id.orEmpty()
+    val authorName = authorProfile?.fullName?.takeIf { it.isNotBlank() } ?: reel.author
+    val authorAvatar = authorProfile?.avatarUrl?.takeIf { it.isNotBlank() } ?: reel.authorAvatar
+    val followingIds by FollowStateStore.followingIds.collectAsState()
+    val interactionRepository = remember { UserInteractionRepository() }
+    val interactionScope = rememberCoroutineScope()
+    val mentorListingId = connectHub.mentors.firstOrNull { it.userId == authorId }?.id
+    val roommateListingId = connectHub.roommates.firstOrNull { it.userId == authorId }?.id
+    val readingListingId = connectHub.readingMates.firstOrNull { it.userId == authorId }?.id
 
     var burstTrigger by remember(reel.id) { mutableStateOf(0) }
     var isMuted by remember(reel.id) { mutableStateOf(false) }
@@ -636,13 +687,68 @@ private fun ReelPage(
                 .padding(start = 15.dp, end = 88.dp, bottom = 22.dp)
                 .entranceEffect(delayMillis = 120)
         ) {
-            Text(
-                "@${reel.author}",
-                color = Color.White,
-                fontWeight = FontWeight.Black,
-                fontSize = 14.sp,
-                modifier = Modifier.clickable { onProfileClick(reel.author) }
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                AsyncImage(
+                    model = authorAvatar,
+                    error = painterResource(R.drawable.ic_default_profile),
+                    fallback = painterResource(R.drawable.ic_default_profile),
+                    contentDescription = "$authorName profile picture",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .clickable { onProfileClick(reelUsername) }
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "@$reelUsername",
+                    color = Color.White,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    modifier = Modifier.clickable { onProfileClick(reelUsername) }
+                )
+                if (!isAuthor && authorId.isNotBlank()) {
+                    Spacer(Modifier.width(8.dp))
+                    ProfileFollowInteractButton(
+                        isFollowing = authorId in followingIds,
+                        onFollow = {
+                            interactionScope.launch { FollowStateStore.setFollowing(authorId, true) }
+                        },
+                        onUnfollow = {
+                            interactionScope.launch { FollowStateStore.setFollowing(authorId, false) }
+                        },
+                        onMessage = { onDirectMessage(reelUsername, authorName, authorAvatar) },
+                        onGiftCoins = {
+                            interactionScope.launch { interactionRepository.giftCoins(authorId, 10) }
+                        },
+                        onGameChallenge = {
+                            connectHubActions.challengeUser(authorId, ChallengeGameType.GENERAL_KNOWLEDGE.apiName)
+                        },
+                        onMentorRequest = {
+                            if (mentorListingId != null) connectHubActions.requestMentor(mentorListingId)
+                            else onOpenConnectHub()
+                        },
+                        onFriendRequest = {
+                            interactionScope.launch { interactionRepository.sendFriendRequest(authorId) }
+                        },
+                        onRoommateRequest = {
+                            if (roommateListingId != null) connectHubActions.applyRoommate(roommateListingId)
+                            else onOpenConnectHub()
+                        },
+                        onStudyMateRequest = {
+                            if (readingListingId != null) connectHubActions.requestReadingMate(readingListingId)
+                            else onOpenConnectHub()
+                        },
+                        onViewProfile = { onProfileClick(reelUsername) },
+                        onOpenConnectHub = onOpenConnectHub,
+                        darkSurface = true
+                    )
+                }
+            }
             if (reel.text.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
                 ExpandableCaption(reel.text)
