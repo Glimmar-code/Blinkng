@@ -1,0 +1,102 @@
+name: Integrate Sep 7 branches safely
+
+on:
+  push:
+    branches:
+      - automation/integrate-sept7-all
+    paths:
+      - '.github/workflows/integrate-sept7-all.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  merge-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout automation branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up merge workspace
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+          git checkout -B integration-sept7 origin/main
+          echo "Starting from $(git rev-parse HEAD)"
+
+      - name: Merge all Sep 7 work and report first real conflict
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          merge_one() {
+            local branch="$1"
+            echo ""
+            echo "===== MERGE $branch ====="
+            if git merge-base --is-ancestor "origin/$branch" HEAD; then
+              echo "$branch is already contained in the integration tree"
+              return 0
+            fi
+
+            if git merge --no-ff --no-edit "origin/$branch"; then
+              echo "Merged $branch"
+              return 0
+            fi
+
+            echo "::error::Conflict while merging $branch"
+            echo "Conflicted files:"
+            git diff --name-only --diff-filter=U || true
+            echo "Status:"
+            git status --short || true
+            echo "Conflict excerpts:"
+            while IFS= read -r file; do
+              [ -n "$file" ] || continue
+              echo "----- $file -----"
+              git diff --cc -- "$file" | sed -n '1,260p' || true
+            done < <(git diff --name-only --diff-filter=U)
+            exit 10
+          }
+
+          merge_one fix/post-like-speed-reliability
+          merge_one game-professional-overhaul
+          merge_one fix/auth-google-reset-account-switch
+          merge_one feature/admin-control-center-v3
+          merge_one feature/connect-vertical-directory-20
+          merge_one fix/professional-notifications-20260907
+          merge_one fix/reel-route-target-20260907
+          merge_one feature/professional-search-discover
+          merge_one leaderboard-top10-professional
+          merge_one fix/verified-name-consistency
+          merge_one feature/windows-desktop-foundation
+          merge_one supabase-recovery-20260907
+
+          echo "All branches merged cleanly"
+          git --no-pager log --oneline --decorate -25
+
+      - name: Set up Java 17
+        if: success()
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        if: success()
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Android quality gate
+        if: success()
+        run: |
+          gradle :app:compileDebugKotlin --stacktrace --no-daemon
+          gradle :app:testDebugUnitTest --stacktrace --no-daemon
+          gradle :app:lintDebug --stacktrace --no-daemon
+          gradle :app:assembleDebugAndroidTest --stacktrace --no-daemon
+          gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Push integration result branch
+        if: success()
+        run: |
+          git push --force-with-lease origin HEAD:refs/heads/automation/integration-sept7-result
