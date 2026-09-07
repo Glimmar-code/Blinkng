@@ -1,0 +1,59 @@
+name: Windows desktop quality gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce Android-Windows feature parity
+        run: python3 scripts/check_windows_parity.py
+
+  windows-build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # The repository currently contains Gradle wrapper properties but not the
+      # wrapper launch scripts. Pin Gradle explicitly so the desktop build is
+      # deterministic and does not depend on the runner's preinstalled version.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.12.1'
+
+      - name: Compile and test desktop app
+        run: gradle -p desktopApp build --stacktrace --no-daemon
+
+      - name: Build Windows EXE and MSI
+        run: gradle -p desktopApp packageExe packageMsi --stacktrace --no-daemon
+
+      - name: Upload Windows installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: blinkng-windows-${{ github.sha }}
+          path: |
+            desktopApp/build/compose/binaries/main/exe/*.exe
+            desktopApp/build/compose/binaries/main/msi/*.msi
+          if-no-files-found: error
+          retention-days: 14
