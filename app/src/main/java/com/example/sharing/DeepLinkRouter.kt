@@ -36,8 +36,7 @@ object DeepLinkRouter {
         val baseSegments = base.pathSegments.filter { it.isNotBlank() }
         val incoming = uri.pathSegments.filter { it.isNotBlank() }
         if (incoming.size < baseSegments.size) return null
-        if (!incoming.take(baseSegments.size).map(String::lowercase)
-                .equals(baseSegments.map(String::lowercase))) return null
+        if (incoming.take(baseSegments.size).map { it.lowercase() } != baseSegments.map { it.lowercase() }) return null
 
         val segments = incoming.drop(baseSegments.size)
         if (segments.size == 1 && segments[0].startsWith("@")) {
