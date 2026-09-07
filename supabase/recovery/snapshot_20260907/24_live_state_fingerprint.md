@@ -13,9 +13,9 @@ The canonical ordering rules used to produce these hashes are implemented in `25
 | Tables (`private`, `private_ranking`, `public`) | 133 | `0c7bf1b2e58fe6ec3346334026a112d4` |
 | Constraints | 556 | `055cf21cddf7dbce6763b29b0df3f662` |
 | Indexes | 458 | `767ce81f7a8b79e7122bc358d7b618c4` |
-| SQL functions/procedures | 319 | `1d2ef17819c3b33039f4332dd26e87d5` |
+| SQL functions/procedures | 320 | `3c4768506ff40a703f3e204d06ca1064` |
 | Views/materialized views | 3 | `b4431e20dc3a047f53bf6caaa3acba62` |
-| Custom triggers (`auth`, `private`, `private_ranking`, `public`) | 83 | `f544a2a36aee003c398d8fbe06c306ed` |
+| Custom triggers (`auth`, `private`, `private_ranking`, `public`) | 84 | `b002be5ef1e9fd0a4f812ba24edef7ff` |
 | RLS policy definitions (`public`, `storage`) | 310 | `466dc57fbccfa02e751d4ca2789f75cf` |
 | RLS enable/force state (`private`, `private_ranking`, `public`, `storage`) | 141 | `982f3811309115667c9758d66b164f8e` |
 | Table grants for `anon`, `authenticated`, `service_role` | 1466 | `aef76448ede722e873b9a1086c3f31a2` |
@@ -62,6 +62,10 @@ Secret values are never stored here.
 | `send-call-notification` | 2 | enabled | no | `f8598d130669efa94c38e8d6d4675e0b69f46634ea56f59c2e3c6f8f3bb98968` |
 
 Repository source for these functions lives under `supabase/functions/`. A recovery is not accepted until the deployed functions are checked against the repository source and the required secret values are restored from the approved secret manager.
+
+## Drift captured during this recovery run
+
+The live migration `20260907192348_unify_blink_coin_wallet_v2` appeared after the first fingerprint was generated. Its SQL has been captured in `supabase/migrations/20260907192348_unify_blink_coin_wallet_v2.sql`, and this manifest was refreshed after that migration. The change increased the live function count from 319 to 320 and the custom-trigger count from 83 to 84.
 
 ## Interpretation
 
