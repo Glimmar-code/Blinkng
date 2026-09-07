@@ -272,7 +272,12 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
                     activateRow = null
                     runAction("${item.name} activated.") { service.activate(row.optString("id"), targetId) }
                 },
-                onMessage = { message = it }
+                onDigitalGift = { username, giftMessage ->
+                    activateRow = null
+                    runAction("Digital gift sent to @${username.trim().removePrefix("@")}.") {
+                        service.sendDigitalGift(row.optString("id"), username, giftMessage)
+                    }
+                }
             )
         }
     }
@@ -621,7 +626,15 @@ private fun PurchaseDialog(item: BlinkStoreItem, balance: Long, vipActive: Boole
 }
 
 @Composable
-private fun TargetDialog(item: BlinkStoreItem, targets: JSONObject, onDismiss: () -> Unit, onSelect: (String) -> Unit, onMessage: (String) -> Unit) {
+private fun TargetDialog(
+    item: BlinkStoreItem,
+    targets: JSONObject,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+    onDigitalGift: (String, String) -> Unit
+) {
+    var recipientUsername by remember(item.id) { mutableStateOf("") }
+    var giftMessage by remember(item.id) { mutableStateOf("") }
     val key = when (item.target) {
         BlinkStoreTarget.POST, BlinkStoreTarget.REEL -> "posts"
         BlinkStoreTarget.MARKETPLACE -> "market"
@@ -640,7 +653,30 @@ private fun TargetDialog(item: BlinkStoreItem, targets: JSONObject, onDismiss: (
         title = { Text("Use ${item.name}") },
         text = {
             if (item.id == "digital_gift") {
-                Text("Digital gifts are sent from a user's profile. Open the recipient profile and choose Send Gift so Blink can attach the gift to the correct account.")
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Send this Vault gift directly to another Blink account.")
+                    OutlinedTextField(
+                        value = recipientUsername,
+                        onValueChange = { recipientUsername = it.take(64) },
+                        singleLine = true,
+                        label = { Text("Recipient username") },
+                        placeholder = { Text("@username") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = giftMessage,
+                        onValueChange = { giftMessage = it.take(200) },
+                        label = { Text("Message (optional)") },
+                        supportingText = { Text("${giftMessage.length}/200") },
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "The gift is consumed only after the server validates the recipient and records the transfer.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             } else if (rows.isEmpty()) {
                 Text("No eligible ${item.target.name.lowercase()} found yet.")
             } else {
@@ -657,8 +693,17 @@ private fun TargetDialog(item: BlinkStoreItem, targets: JSONObject, onDismiss: (
             }
         },
         confirmButton = {
-            if (item.id == "digital_gift") Button(onClick = { onMessage("Open a Blink profile and choose Send Gift to use this item on that person."); onDismiss() }) { Text("OK") }
-            else OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+            if (item.id == "digital_gift") {
+                Button(
+                    onClick = { onDigitalGift(recipientUsername, giftMessage) },
+                    enabled = recipientUsername.trim().removePrefix("@").isNotBlank()
+                ) { Text("Send Gift") }
+            } else {
+                OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+        dismissButton = {
+            if (item.id == "digital_gift") OutlinedButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
 }
