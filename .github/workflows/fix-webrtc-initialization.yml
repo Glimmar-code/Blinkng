@@ -1,0 +1,54 @@
+name: Fix WebRTC observer initialization
+
+on:
+  push:
+    branches:
+      - fix/native-chat-calls-20260907
+    paths:
+      - .github/workflows/fix-webrtc-initialization.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/native-chat-calls-20260907
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fix observer initialization order
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('app/src/main/java/com/example/call/WebRtcCallClient.kt')
+          text = path.read_text()
+          old_create = 'factory.createPeerConnection(rtcConfiguration, peerObserver)'
+          new_create = 'factory.createPeerConnection(rtcConfiguration, createPeerObserver())'
+          old_decl = 'private val peerObserver = object : PeerConnection.Observer {'
+          new_decl = 'private fun createPeerObserver(): PeerConnection.Observer = object : PeerConnection.Observer {'
+          if old_create in text:
+              text = text.replace(old_create, new_create, 1)
+          elif new_create not in text:
+              raise SystemExit('createPeerConnection observer source not found')
+          if old_decl in text:
+              text = text.replace(old_decl, new_decl, 1)
+          elif new_decl not in text:
+              raise SystemExit('peer observer declaration not found')
+          path.write_text(text)
+          PY
+          git diff --check
+          grep -q 'createPeerObserver()' app/src/main/java/com/example/call/WebRtcCallClient.kt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/call/WebRtcCallClient.kt
+          if git diff --cached --quiet; then
+            echo "WebRTC observer initialization already fixed."
+            exit 0
+          fi
+          git commit -m "Fix WebRTC observer initialization"
+          git push origin HEAD:fix/native-chat-calls-20260907
