@@ -1,0 +1,25 @@
+# Blinkng local Supabase configuration.
+# Safe to commit: do not put production passwords, service-role keys,
+# SMTP passwords, OAuth client secrets, or Firebase credentials in this file.
+
+project_id = "blinkng"
+
+[db]
+major_version = 17
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[realtime]
+enabled = true
+
+[storage]
+enabled = true
+
+[auth]
+enabled = true
+
+# Production Auth provider settings, redirect URLs, SMTP credentials and
+# third-party secrets must be configured through Supabase/secrets management
+# and documented as required configuration in RECOVERY.md, not committed here.
