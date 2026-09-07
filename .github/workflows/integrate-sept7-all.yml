@@ -25,12 +25,35 @@ jobs:
       - name: Merge Sep 7 work from latest main
         run: bash .github/scripts/integrate_sept7.sh
 
-      - name: Verify shared module wiring
+      - name: Normalize shared Kotlin wiring
         run: |
-          grep -Fq 'include(":shared")' settings.gradle.kts
-          grep -Fq 'implementation(project(":shared"))' app/build.gradle.kts
-          test -f shared/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+
+          settings = Path('settings.gradle.kts')
+          s = settings.read_text()
+          s = s.replace('\ninclude(":shared")\n', '\n')
+          settings.write_text(s)
+
+          app = Path('app/build.gradle.kts')
+          s = app.read_text()
+          s = s.replace('  implementation(project(":shared"))\n', '')
+          source = '  sourceSets.getByName("main").kotlin.srcDir("../shared/src/main/kotlin")\n'
+          if source not in s:
+              anchor = '  buildFeatures { compose = true; buildConfig = true }\n'
+              if anchor not in s:
+                  raise SystemExit('Android buildFeatures anchor not found')
+              s = s.replace(anchor, anchor + source, 1)
+          app.write_text(s)
+          PY
+          grep -Fq 'sourceSets.getByName("main").kotlin.srcDir("../shared/src/main/kotlin")' app/build.gradle.kts
+          grep -Fq 'kotlin.srcDir("../shared/src/main/kotlin")' desktopApp/build.gradle.kts
           test -f shared/src/main/kotlin/com/blinkng/shared/BlinkBackendDefaults.kt
+          test -f shared/src/main/kotlin/com/blinkng/shared/BlinkFeatureCatalog.kt
+          git add settings.gradle.kts app/build.gradle.kts
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: compile shared Blink Kotlin sources without plugin conflict"
+          fi
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
