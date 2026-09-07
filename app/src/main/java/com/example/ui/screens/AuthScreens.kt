@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import com.example.data.local.rememberPersistentTextState
 import com.example.auth.RememberedLoginStore
+import com.example.auth.AccountSessionStore
+import com.example.auth.GoogleAuthLaunchGate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -305,7 +307,7 @@ fun OnboardingScreen(
                 Text(
                     text = "By continuing, you agree to Blink's community guidelines.",
                     textAlign = TextAlign.Center,
-                    fontSize = 9.sp,
+                    fontSize = 11.sp,
                     color = DarkTextSecondary
                 )
             }
@@ -354,9 +356,7 @@ fun SignInScreen(
         mutableStateOf(false)
     }
 
-    var googleLoading by remember {
-        mutableStateOf(false)
-    }
+    val googleLoading by GoogleAuthLaunchGate.inFlight.collectAsState()
 
     var authError by remember {
         mutableStateOf<String?>(null)
@@ -367,11 +367,8 @@ fun SignInScreen(
     }
 
     var rememberMe by rememberSaveable {
-        mutableStateOf(true)
+        mutableStateOf(rememberedLogin != null)
     }
-
-    val coroutineScope =
-        rememberCoroutineScope()
 
     LaunchedEffect(rememberMe, emailOrUsername, password) {
         delay(300)
@@ -448,20 +445,9 @@ fun SignInScreen(
                     else
                         "Continue with Google",
                     onClick = {
-
-                        if (googleLoading) {
-                            return@GoogleSignInButton
-                        }
-
-                        googleLoading = true
-                        authError = null
-
-                        // Credential Manager / Google picker is triggered by AuthRepository.
-                        onGoogleSignIn("")
-
-                        coroutineScope.launch {
-                            delay(1200)
-                            googleLoading = false
+                        if (!googleLoading) {
+                            authError = null
+                            onGoogleSignIn("")
                         }
                     },
                     modifier = Modifier
@@ -501,7 +487,7 @@ fun SignInScreen(
                         emailOrUsername = it
                         authError = null
                     },
-                    label = "University Email or Username",
+                    label = "Email or username",
                     icon = Icons.Default.Email,
                     keyboardType = KeyboardType.Email,
                     testTag = "signin_email_field"
@@ -524,10 +510,6 @@ fun SignInScreen(
                     },
                     onFocus = {},
                     testTag = "signin_password_field"
-                )
-
-                PasswordStrengthBar(
-                    password = password
                 )
 
                 Row(
@@ -554,7 +536,7 @@ fun SignInScreen(
                         )
 
                         Text(
-                            "Remember username & password",
+                            "Keep me signed in",
                             color = DarkTextSecondary,
                             fontSize = 11.5.sp
                         )
@@ -586,7 +568,7 @@ fun SignInScreen(
 
                             emailOrUsername.isBlank() -> {
                                 authError =
-                                    "Enter your university email or username."
+                                    "Enter your email or username."
                             }
 
                             password.isBlank() -> {
@@ -606,7 +588,14 @@ fun SignInScreen(
 
                                     isSubmitting = false
 
-                                    if (!success) {
+                                    if (success) {
+                                        AccountSessionStore.setSignInRequired(context, !rememberMe)
+                                        if (rememberMe) {
+                                            RememberedLoginStore.save(context, emailOrUsername.trim(), password)
+                                        } else {
+                                            RememberedLoginStore.clear(context)
+                                        }
+                                    } else {
                                         authError =
                                             errorMessage
                                                 ?: "Unable to sign in."
@@ -1268,7 +1257,7 @@ fun ProfileSetupOnboardingScreen(
                             text = "STEP ${currentStep + 1}/4",
                             color = BlinkPink,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 9.sp,
+                            fontSize = 11.sp,
                             modifier = Modifier.padding(
                                 horizontal = 9.dp,
                                 vertical = 5.dp
@@ -1495,7 +1484,7 @@ fun ProfileSetupOnboardingScreen(
 
                                 Text(
                                     "${bio.length}/180",
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     color = DarkTextSecondary,
                                     modifier = Modifier.align(
                                         Alignment.End
@@ -2092,7 +2081,7 @@ private fun PasswordStrengthBar(
             Text(
                 "$score/4",
                 color = DarkTextSecondary,
-                fontSize = 9.sp
+                fontSize = 11.sp
             )
         }
 
@@ -2691,7 +2680,7 @@ private fun ProfilePreviewCard(
                 Text(
                     university,
                     color = DarkTextSecondary,
-                    fontSize = 9.sp
+                    fontSize = 11.sp
                 )
             }
 
@@ -2861,7 +2850,7 @@ private fun PremiumFeatureCard(
                 Text(
                     description,
                     color = DarkTextSecondary,
-                    fontSize = 9.sp,
+                    fontSize = 11.sp,
                     lineHeight = 13.sp
                 )
             }

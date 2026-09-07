@@ -567,8 +567,8 @@ class SupabaseService {
         password: String,
         username: String,
         fullName: String,
-        faculty: String = "SIMME",
-        university: String = "University of Lagos"
+        faculty: String = "",
+        university: String = ""
     ): Result<UserProfile> =
         withContext(Dispatchers.IO) {
             try {
@@ -818,7 +818,7 @@ class SupabaseService {
 
                 val request =
                     newRequestBuilder(
-                        "/auth/v1/recover",
+                        "/auth/v1/recover?redirect_to=${URLEncoder.encode("blink://reset-password", StandardCharsets.UTF_8.name())}",
                         authenticated = false
                     )
                         .post(
@@ -3976,6 +3976,39 @@ suspend fun uploadPostMedia(
                 false
             }
         }
+
+
+    /** Updates the authenticated recovery session password. */
+    suspend fun updatePassword(newPassword: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val strongPassword = newPassword.length >= 8 &&
+            newPassword.any(Char::isLowerCase) &&
+            newPassword.any(Char::isUpperCase) &&
+            newPassword.any(Char::isDigit) &&
+            newPassword.any { !it.isLetterOrDigit() && !it.isWhitespace() }
+        if (!strongPassword) {
+            return@withContext Result.failure(
+                Exception("Use at least 8 characters with uppercase, lowercase, a number, and a symbol.")
+            )
+        }
+        try {
+            val body = JSONObject().put("password", newPassword)
+            val request = newRequestBuilder("/auth/v1/user", authenticated = true)
+                .put(body.toString().toRequestBody(jsonMediaType))
+                .build()
+            executeRequest(request).use { response ->
+                val responseBody = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        Exception(parseSupabaseError(responseBody, "Unable to update password."))
+                    )
+                }
+                Result.success(Unit)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "AUTH_UPDATE_PASSWORD exception", e)
+            Result.failure(Exception(e.message ?: "Unable to update password."))
+        }
+    }
 
 }
 

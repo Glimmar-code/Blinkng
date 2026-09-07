@@ -8,6 +8,8 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.auth.AccountSessionStore
+import com.example.auth.AuthErrorMapper
+import com.example.auth.PasswordRecoveryLinkParser
 import com.example.data.local.CachedAppSnapshot
 import com.example.data.local.OfflineContentStore
 import com.example.data.models.*
@@ -38,7 +40,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
-enum class AppDestination { SPLASH, ONBOARDING, SIGN_IN, SIGN_UP, PROFILE_SETUP, MAIN }
+enum class AppDestination { SPLASH, ONBOARDING, SIGN_IN, SIGN_UP, RESET_PASSWORD, PROFILE_SETUP, MAIN }
 
 enum class MainTab(val index: Int, val title: String) { HOME(0, "Home"), SEARCH(1, "Search"), LEADERBOARD(2, "Leaderboard"), MARKET(3, "Market"), MESSAGES(4, "Messages") }
 
@@ -266,6 +268,60 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
             pendingDeepLink = null
             routeDeepLink(link)
         }
+    }
+
+    /** Returns true when the incoming URI is an authentication/recovery route. */
+    fun handleAuthDeepLink(uri: Uri?): Boolean {
+        val recovery = PasswordRecoveryLinkParser.parse(uri?.toString()) ?: return false
+        if (!recovery.error.isNullOrBlank()) {
+            SupabaseService.clearSession()
+            AccountSessionStore.setSignInRequired(appContext, true)
+            _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+            showToast("That password reset link is invalid or expired. Request a new one.")
+            return true
+        }
+        if (recovery.accessToken.isBlank()) {
+            SupabaseService.clearSession()
+            AccountSessionStore.setSignInRequired(appContext, true)
+            _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+            showToast("That password reset link is incomplete or expired. Request a new one.")
+            return true
+        }
+        SupabaseService.saveSession(
+            accessToken = recovery.accessToken,
+            refreshToken = recovery.refreshToken.ifBlank { null }
+        )
+        AccountSessionStore.setSignInRequired(appContext, false)
+        _uiState.value = _uiState.value.copy(destination = AppDestination.RESET_PASSWORD)
+        return true
+    }
+
+    fun updateRecoveredPassword(newPassword: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val result = supabaseService.updatePassword(newPassword)
+            if (result.isSuccess) {
+                SupabaseService.clearSession()
+                AccountSessionStore.setSignInRequired(appContext, true)
+                prefs.edit().putBoolean(KEY_IS_LOGGED_IN, false).apply()
+                authPrefs.edit().putBoolean(KEY_IS_LOGGED_IN, false).apply()
+                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                val message = "Password updated. Sign in with your new password."
+                showToast(message)
+                onResult(true, message)
+            } else {
+                val message = AuthErrorMapper.friendly(
+                    result.exceptionOrNull()?.message,
+                    "Unable to update password. Request a new reset link and try again."
+                )
+                onResult(false, message)
+            }
+        }
+    }
+
+    fun cancelPasswordRecovery() {
+        SupabaseService.clearSession()
+        AccountSessionStore.setSignInRequired(appContext, true)
+        _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
     }
 
     private fun routeDeepLink(link: AppDeepLink) {
@@ -1426,7 +1482,7 @@ private suspend fun restoreSupabaseSession() {
         if (email.isBlank() || !email.contains("@")) { onResult(false, "Please enter a valid university or Gmail address."); return }
         viewModelScope.launch {
             val success = authRepository.recoverPassword(email)
-            val msg = if (success) "Password reset instructions sent to $email." else "Could not send password reset email."
+            val msg = if (success) "If an account exists for that email, a password reset link has been sent." else "Could not send the password reset email. Check your connection and try again."
             showToast(msg); onResult(success, msg)
         }
     }

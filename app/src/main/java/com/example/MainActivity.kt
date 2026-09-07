@@ -76,6 +76,10 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIncomingIntent(intent: Intent?) {
         handleNotificationIntent(intent)
+        if (viewModel.handleAuthDeepLink(intent?.data)) {
+            intent?.data = null
+            return
+        }
         DeepLinkRouter.parse(intent?.data)?.let { deepLink ->
             viewModel.handleDeepLink(deepLink)
             intent?.data = null
@@ -263,6 +267,15 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onGoogleSignUp = { email -> viewModel.loginWithGoogle(email) },
                                         onSwitchToSignIn = { viewModel.setDestination(AppDestination.SIGN_IN) }
+                                    )
+                                }
+
+                                AppDestination.RESET_PASSWORD -> {
+                                    ResetPasswordScreen(
+                                        onSubmit = { password, onResult ->
+                                            viewModel.updateRecoveredPassword(password, onResult)
+                                        },
+                                        onCancel = { viewModel.cancelPasswordRecovery() }
                                     )
                                 }
 

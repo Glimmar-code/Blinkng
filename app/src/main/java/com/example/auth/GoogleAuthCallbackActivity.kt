@@ -148,4 +148,9 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
         finish()
     }
 
+    override fun onDestroy() {
+        if (isFinishing) GoogleAuthLaunchGate.end()
+        super.onDestroy()
+    }
+
 }
