@@ -18,6 +18,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Refresh latest main
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
@@ -30,58 +35,29 @@ jobs:
       - name: Apply persistent input and auth fixes
         run: python .github/scripts/apply_persistent_text_auth_google_fix.py
 
-      - name: Repair Compose MutableState adapters
+      - name: Complete Compose MutableState adapters
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          targets = [
-              Path('app/src/main/java/com/example/data/local/PersistentTextDraftStore.kt'),
-              Path('.github/scripts/apply_persistent_text_auth_google_fix.py'),
-          ]
+          path = Path('app/src/main/java/com/example/data/local/PersistentTextDraftStore.kt')
+          text = path.read_text()
 
-          old_string = '''            override var value: String
-              get() = backing.value
-              set(newValue) {
-                  backing.value = newValue
-                  PersistentTextDraftStore.writeStorageKey(context, storageKey, newValue)
-              }
-          '''
-          new_string = old_string + '''            override fun component1(): String = value
-              override fun component2(): (String) -> Unit = { value = it }
-          '''
+          string_marker = '                    PersistentTextDraftStore.writeStorageKey(context, storageKey, newValue)\n                }\n        }\n'
+          string_replacement = '                    PersistentTextDraftStore.writeStorageKey(context, storageKey, newValue)\n                }\n            override fun component1(): String = value\n            override fun component2(): (String) -> Unit = { value = it }\n        }\n'
+          if 'override fun component1(): String = value' not in text:
+              if text.count(string_marker) != 1:
+                  raise RuntimeError('String MutableState adapter marker not found exactly once')
+              text = text.replace(string_marker, string_replacement, 1)
 
-          old_list = '''            override var value: List<String>
-              get() = backing.value
-              set(newValue) {
-                  backing.value = newValue
-                  val hasTypedContent = newValue.any { it.isNotBlank() }
-                  PersistentTextDraftStore.writeStorageKey(
-                      context,
-                      storageKey,
-                      if (hasTypedContent) encode(newValue) else ""
-                  )
-              }
-          '''
-          new_list = old_list + '''            override fun component1(): List<String> = value
-              override fun component2(): (List<String>) -> Unit = { value = it }
-          '''
+          list_marker = '                        if (hasTypedContent) encode(newValue) else ""\n                    )\n                }\n        }\n'
+          list_replacement = '                        if (hasTypedContent) encode(newValue) else ""\n                    )\n                }\n            override fun component1(): List<String> = value\n            override fun component2(): (List<String>) -> Unit = { value = it }\n        }\n'
+          if 'override fun component1(): List<String> = value' not in text:
+              if text.count(list_marker) != 1:
+                  raise RuntimeError('List MutableState adapter marker not found exactly once')
+              text = text.replace(list_marker, list_replacement, 1)
 
-          for path in targets:
-              text = path.read_text()
-              if 'override fun component1(): String = value' not in text:
-                  if text.count(old_string) != 1:
-                      raise RuntimeError(f'{path}: String MutableState adapter not found exactly once')
-                  text = text.replace(old_string, new_string, 1)
-              if 'override fun component1(): List<String> = value' not in text:
-                  if text.count(old_list) != 1:
-                      raise RuntimeError(f'{path}: list MutableState adapter not found exactly once')
-                  text = text.replace(old_list, new_list, 1)
-              text = text.replace(
-                  'mutableStateOf(rememberedLogin != null || true)',
-                  'mutableStateOf(true)'
-              )
-              path.write_text(text)
+          path.write_text(text)
 
           auth = Path('app/src/main/java/com/example/ui/screens/AuthScreens.kt')
           auth_text = auth.read_text().replace(
@@ -110,10 +86,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/scripts/apply_persistent_text_auth_google_fix.py app/src/main/java app/src/test/java
+          git add app/src/main/java app/src/test/java
           if git diff --cached --quiet; then
             echo "No source changes to commit"
-          else
-            git commit -m "fix: persist input drafts and repair remembered Google auth"
-            git push origin HEAD:main
+            exit 0
           fi
+          git commit -m "fix: persist input drafts and repair remembered Google auth"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
