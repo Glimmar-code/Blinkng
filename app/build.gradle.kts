@@ -39,6 +39,21 @@ val resolvedVersionName = providers.environmentVariable("VERSION_NAME").orNull
   ?.takeIf { it.isNotEmpty() }
   ?: "1.0.$resolvedVersionCode"
 
+// Until the production domain is supplied, public shares use the GitHub Pages preview.
+// Override with -PBLINK_SHARE_BASE_URL=https://blink.ng or the matching environment
+// variable later; no Kotlin source or manifest edit is required.
+val configuredShareBaseUrl = providers.gradleProperty("BLINK_SHARE_BASE_URL").orNull
+  ?: providers.environmentVariable("BLINK_SHARE_BASE_URL").orNull
+val resolvedShareBaseUrl = configuredShareBaseUrl
+  ?.trim()
+  ?.trimEnd('/')
+  ?.takeIf { it.startsWith("https://") }
+  ?: "https://glimmar-code.github.io/Blinkng"
+val resolvedShareUri = java.net.URI(resolvedShareBaseUrl)
+val resolvedShareHost = resolvedShareUri.host
+  ?: throw GradleException("BLINK_SHARE_BASE_URL must contain a valid HTTPS host")
+val resolvedSharePathPrefix = resolvedShareUri.path.orEmpty().trimEnd('/')
+
 val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
 val releaseStorePassword = System.getenv("STORE_PASSWORD")
 val releaseKeyAlias = System.getenv("KEY_ALIAS")
@@ -70,8 +85,9 @@ android {
     targetSdk = 36
     versionCode = resolvedVersionCode
     versionName = resolvedVersionName
-    manifestPlaceholders["shareHost"] = "my-app.com"
-    buildConfigField("String", "SHARE_BASE_URL", "\"https://my-app.com\"")
+    manifestPlaceholders["shareHost"] = resolvedShareHost
+    manifestPlaceholders["sharePathPrefix"] = resolvedSharePathPrefix
+    buildConfigField("String", "SHARE_BASE_URL", "\"$resolvedShareBaseUrl\"")
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
   signingConfigs {
