@@ -14,7 +14,7 @@ report_conflict() {
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     echo "----- $file -----"
-    git diff --cc -- "$file" | sed -n '1,600p' || true
+    git diff --cc -- "$file" | sed -n '1,620p' || true
   done < <(git diff --name-only --diff-filter=U)
 }
 
@@ -61,20 +61,16 @@ PY
 }
 
 merge_admin() {
-  local branch="feature/admin-control-center-v3"
-  local file="app/src/main/java/com/example/AdminControlCenterActivity.kt"
+  local branch="feature/admin-control-center-v3" file="app/src/main/java/com/example/AdminControlCenterActivity.kt"
   echo "===== MERGE $branch ====="
   if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
   mapfile -t c < <(git diff --name-only --diff-filter=U)
   [ "${#c[@]}" -eq 1 ] && [ "${c[0]}" = "$file" ] || { report_conflict "$branch"; exit 10; }
-  git checkout --theirs -- "$file"
-  git add "$file"
-  git commit --no-edit
+  git checkout --theirs -- "$file"; git add "$file"; git commit --no-edit
 }
 
 merge_connect() {
-  local branch="feature/connect-vertical-directory-20"
-  local file="app/src/main/java/com/example/ui/screens/ConnectHubPremiumPanel.kt"
+  local branch="feature/connect-vertical-directory-20" file="app/src/main/java/com/example/ui/screens/ConnectHubPremiumPanel.kt"
   echo "===== MERGE $branch ====="
   if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
   mapfile -t c < <(git diff --name-only --diff-filter=U)
@@ -83,15 +79,12 @@ merge_connect() {
   python - <<'PY'
 from pathlib import Path
 import re, subprocess
-path=Path('app/src/main/java/com/example/ui/screens/ConnectHubPremiumPanel.kt')
-s=path.read_text()
+path=Path('app/src/main/java/com/example/ui/screens/ConnectHubPremiumPanel.kt'); s=path.read_text()
 theirs=subprocess.check_output(['git','show','origin/feature/connect-vertical-directory-20:app/src/main/java/com/example/ui/screens/ConnectHubPremiumPanel.kt'], text=True)
-
 def add_after(text, anchor, addition):
     if addition.strip() in text: return text
     if anchor not in text: raise SystemExit(f'Connect anchor missing: {anchor!r}')
     return text.replace(anchor, anchor+addition, 1)
-
 s=add_after(s,'import androidx.compose.runtime.Composable\n','import androidx.compose.runtime.LaunchedEffect\n')
 s=add_after(s,'import com.example.data.repository.ConnectHubRepository\n','import com.example.data.repository.ConnectCategoryCatalogRepository\nimport com.example.data.repository.ConnectDirectoryCategory\n')
 if 'val categoryCatalogRepository' not in s:
@@ -121,17 +114,13 @@ def function_span(text):
             depth-=1
             if depth==0: return start,i+1
     raise SystemExit('Unclosed CategoryTabBar')
-a,b=function_span(s); ta,tb=function_span(theirs)
-s=s[:a]+theirs[ta:tb]+s[b:]
-path.write_text(s)
+a,b=function_span(s); ta,tb=function_span(theirs); s=s[:a]+theirs[ta:tb]+s[b:]; path.write_text(s)
 PY
-  git add "$file"
-  git commit --no-edit
+  git add "$file"; git commit --no-edit
 }
 
 merge_notifications() {
-  local branch="fix/professional-notifications-20260907"
-  local file="app/src/main/java/com/example/ui/screens/ActivityScreen.kt"
+  local branch="fix/professional-notifications-20260907" file="app/src/main/java/com/example/ui/screens/ActivityScreen.kt"
   echo "===== MERGE $branch ====="
   if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
   mapfile -t c < <(git diff --name-only --diff-filter=U)
@@ -139,41 +128,33 @@ merge_notifications() {
   python - <<'PY'
 from pathlib import Path
 import re
-p=Path('app/src/main/java/com/example/ui/screens/ActivityScreen.kt')
-s=p.read_text()
+p=Path('app/src/main/java/com/example/ui/screens/ActivityScreen.kt'); s=p.read_text()
 if s.count('<<<<<<< HEAD') != 2: raise SystemExit('Unexpected notification conflicts')
 pattern=r'''<<<<<<< HEAD\n\s*val accent = if \(item\.vipPriority\) \{\n\s*Color\(0xFFF59E0B\)\n\s*\} else when \(category\) \{\n\s*NotificationFilter\.LIKES -> BlinkPink\n\s*NotificationFilter\.COMMENTS -> BlinkPurple\n\s*NotificationFilter\.MARKET -> Color\(0xFF22C55E\)\n\s*NotificationFilter\.ALL -> BlinkPink\n\s*\}\n=======\n\s*val isOfficial = item\.targetType\.equals\("notification", ignoreCase = true\)\n\s*val accent = notificationAccent\(category, isOfficial\)\n>>>>>>> origin/fix/professional-notifications-20260907'''
 repl='''    val isOfficial = item.targetType.equals("notification", ignoreCase = true)
     val accent = if (item.vipPriority) Color(0xFFF59E0B) else notificationAccent(category, isOfficial)'''
 s,n=re.subn(pattern,repl,s,count=1)
 if n != 1: raise SystemExit('Could not resolve notification accent')
-start=s.index('<<<<<<< HEAD'); marker='>>>>>>> origin/fix/professional-notifications-20260907'; end=s.index(marker,start)+len(marker)
-block=s[start:end]
-ours=block.split('=======',1)[0].split('<<<<<<< HEAD\n',1)[1]
-theirs=block.split('=======\n',1)[1].rsplit('\n'+marker,1)[0]
+start=s.index('<<<<<<< HEAD'); marker='>>>>>>> origin/fix/professional-notifications-20260907'; end=s.index(marker,start)+len(marker); block=s[start:end]
+ours=block.split('=======',1)[0].split('<<<<<<< HEAD\n',1)[1]; theirs=block.split('=======\n',1)[1].rsplit('\n'+marker,1)[0]
 s=s[:start]+ours+theirs+'\n'+s[end:]
 if any(x in s for x in ('<<<<<<<','>>>>>>>','=======')): raise SystemExit('Notification markers remain')
 p.write_text(s)
 PY
-  git add "$file"
-  git commit --no-edit
+  git add "$file"; git commit --no-edit
 }
 
 merge_search() {
-  local branch="feature/professional-search-discover"
-  local file="app/src/main/java/com/example/ui/screens/SearchScreen.kt"
+  local branch="feature/professional-search-discover" file="app/src/main/java/com/example/ui/screens/SearchScreen.kt"
   echo "===== MERGE $branch ====="
   if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
   mapfile -t c < <(git diff --name-only --diff-filter=U)
   [ "${#c[@]}" -eq 1 ] && [ "${c[0]}" = "$file" ] || { report_conflict "$branch"; exit 10; }
-  git checkout --theirs -- "$file"
-  git add "$file"
-  git commit --no-edit
+  git checkout --theirs -- "$file"; git add "$file"; git commit --no-edit
 }
 
 merge_leaderboard() {
-  local branch="leaderboard-top10-professional"
-  local file="app/src/main/java/com/example/ui/screens/LeaderboardScreen.kt"
+  local branch="leaderboard-top10-professional" file="app/src/main/java/com/example/ui/screens/LeaderboardScreen.kt"
   echo "===== MERGE $branch ====="
   if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
   mapfile -t c < <(git diff --name-only --diff-filter=U)
@@ -181,8 +162,7 @@ merge_leaderboard() {
   git checkout --theirs -- "$file"
   python - <<'PY'
 from pathlib import Path
-p=Path('app/src/main/java/com/example/ui/screens/LeaderboardScreen.kt'); s=p.read_text()
-anchor='import com.example.data.models.VerificationBadge\n'; addition='import com.example.ui.components.BlinkVipMarkForUsername\nimport com.example.ui.components.VerifiedMark\n'
+p=Path('app/src/main/java/com/example/ui/screens/LeaderboardScreen.kt'); s=p.read_text(); anchor='import com.example.data.models.VerificationBadge\n'; addition='import com.example.ui.components.BlinkVipMarkForUsername\nimport com.example.ui.components.VerifiedMark\n'
 if 'import com.example.ui.components.VerifiedMark' not in s:
     if anchor not in s: raise SystemExit('Leaderboard import anchor missing')
     s=s.replace(anchor,anchor+addition,1)
@@ -195,8 +175,7 @@ old1='''                                if (user.verificationBadge != Verificati
                                         modifier = Modifier.size(13.dp)
                                     )
                                 }
-'''
-new1='''                                if (user.verificationBadge != VerificationBadge.NONE) {
+'''; new1='''                                if (user.verificationBadge != VerificationBadge.NONE) {
                                     Spacer(Modifier.width(3.dp))
                                     VerifiedMark(user.verificationBadge, size = 13.dp)
                                 }
@@ -215,8 +194,7 @@ old2='''                    if (user.verificationBadge != VerificationBadge.NONE
                             modifier = Modifier.size(14.dp)
                         )
                     }
-'''
-new2='''                    if (user.verificationBadge != VerificationBadge.NONE) {
+'''; new2='''                    if (user.verificationBadge != VerificationBadge.NONE) {
                         Spacer(Modifier.width(4.dp))
                         VerifiedMark(user.verificationBadge, size = 14.dp)
                     }
@@ -227,31 +205,23 @@ new2='''                    if (user.verificationBadge != VerificationBadge.NONE
                     )
 '''
 if old1 not in s or old2 not in s: raise SystemExit('Leaderboard identity anchors missing')
-s=s.replace(old1,new1,1).replace(old2,new2,1)
-p.write_text(s)
+s=s.replace(old1,new1,1).replace(old2,new2,1); p.write_text(s)
 PY
-  git add "$file"
-  git commit --no-edit
+  git add "$file"; git commit --no-edit
 }
 
 merge_verified() {
-  local branch="fix/verified-name-consistency"
-  local leaderboard="app/src/main/java/com/example/ui/screens/LeaderboardScreen.kt"
-  local search="app/src/main/java/com/example/ui/screens/SearchScreen.kt"
-  local professional="app/src/main/java/com/example/ui/screens/ProfessionalSearchScreen.kt"
+  local branch="fix/verified-name-consistency" leaderboard="app/src/main/java/com/example/ui/screens/LeaderboardScreen.kt" search="app/src/main/java/com/example/ui/screens/SearchScreen.kt" professional="app/src/main/java/com/example/ui/screens/ProfessionalSearchScreen.kt"
   echo "===== MERGE $branch ====="
   if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
   mapfile -t c < <(git diff --name-only --diff-filter=U)
   [ "${#c[@]}" -eq 2 ] || { report_conflict "$branch"; exit 10; }
   printf '%s\n' "${c[@]}" | grep -Fxq "$leaderboard" || { report_conflict "$branch"; exit 10; }
   printf '%s\n' "${c[@]}" | grep -Fxq "$search" || { report_conflict "$branch"; exit 10; }
-  # Keep the newer professional Search wrapper and Top-10 leaderboard. Their verified
-  # name behavior supersedes the older copies from this branch. Reel changes auto-merge.
   git checkout --ours -- "$leaderboard" "$search"
   python - <<'PY'
 from pathlib import Path
-p=Path('app/src/main/java/com/example/ui/screens/ProfessionalSearchScreen.kt'); s=p.read_text()
-anchor='import com.example.ui.components.PostCard\n'
+p=Path('app/src/main/java/com/example/ui/screens/ProfessionalSearchScreen.kt'); s=p.read_text(); anchor='import com.example.ui.components.PostCard\n'
 if 'import com.example.ui.components.VerifiedMark' not in s:
     if anchor not in s: raise SystemExit('Professional Search component import anchor missing')
     s=s.replace(anchor,anchor+'import com.example.ui.components.VerifiedMark\n',1)
@@ -268,18 +238,47 @@ old='''        if (person.verificationBadge != VerificationBadge.NONE) {
                 modifier = Modifier.size((fontSize + 2).dp)
             )
         }
-'''
-new='''        if (person.verificationBadge != VerificationBadge.NONE) {
+'''; new='''        if (person.verificationBadge != VerificationBadge.NONE) {
             Spacer(Modifier.width(3.dp))
             VerifiedMark(person.verificationBadge, size = (fontSize + 2).dp)
         }
 '''
 if old not in s: raise SystemExit('Professional Search verified-name anchor missing')
-s=s.replace(old,new,1)
+s=s.replace(old,new,1); p.write_text(s)
+PY
+  git add "$leaderboard" "$search" "$professional"; git commit --no-edit
+}
+
+merge_recovery() {
+  local branch="supabase-recovery-20260907"
+  local envfile=".env.example"
+  local callfn="supabase/functions/send-call-notification/index.ts"
+  local cleanup="supabase/migrations/20260907175503_cleanup_interrupted_schema_export.sql"
+  echo "===== MERGE $branch ====="
+  if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
+  mapfile -t c < <(git diff --name-only --diff-filter=U)
+  [ "${#c[@]}" -eq 3 ] || { report_conflict "$branch"; exit 10; }
+  for f in "$envfile" "$callfn" "$cleanup"; do printf '%s\n' "${c[@]}" | grep -Fxq "$f" || { report_conflict "$branch"; exit 10; }; done
+  # Runtime call handling on main is newer (including answered-device fanout), and the
+  # production cleanup migration is intentionally a replay-safe no-op. Do not regress either.
+  git checkout --ours -- "$callfn" "$cleanup" "$envfile"
+  python - <<'PY'
+from pathlib import Path
+p=Path('.env.example'); s=p.read_text().rstrip()+"\n"
+server='''
+# SERVER-ONLY SECRET NAMES — placeholders/documentation only.
+# Never put real values in this file, the Android APK, Windows app, or public Git history.
+SUPABASE_SERVICE_ROLE_KEY=DO_NOT_COMMIT_REAL_VALUE
+SUPABASE_DB_PASSWORD=DO_NOT_COMMIT_REAL_VALUE
+FIREBASE_SERVICE_ACCOUNT_JSON=DO_NOT_COMMIT_REAL_VALUE
+SMTP_PASSWORD=DO_NOT_COMMIT_REAL_VALUE
+GOOGLE_OAUTH_CLIENT_SECRET=DO_NOT_COMMIT_REAL_VALUE
+PAYMENT_PROVIDER_SECRET=DO_NOT_COMMIT_REAL_VALUE
+'''
+if 'SUPABASE_SERVICE_ROLE_KEY=' not in s: s += server
 p.write_text(s)
 PY
-  git add "$leaderboard" "$search" "$professional"
-  git commit --no-edit
+  git add "$envfile" "$callfn" "$cleanup"; git commit --no-edit
 }
 
 # Already merged to main: fix/post-like-speed-reliability, game-professional-overhaul.
@@ -292,6 +291,12 @@ merge_search
 merge_leaderboard
 merge_verified
 merge_one feature/windows-desktop-foundation
-merge_one supabase-recovery-20260907
+merge_recovery
+
+# Drop only the temporary branch-integration workflow accidentally carried by the Reel branch.
+if [ -f .github/workflows/integrate-reel-route-target.yml ]; then
+  git rm .github/workflows/integrate-reel-route-target.yml
+  git commit -m "ci: remove temporary reel integration workflow"
+fi
 
 git --no-pager log --oneline --decorate -25
