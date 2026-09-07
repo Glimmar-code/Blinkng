@@ -35,6 +35,7 @@ import com.example.data.supabase.AdminAnnouncementDetail
 import com.example.data.supabase.AdminAnnouncementService
 import com.example.data.supabase.SupabaseService
 import com.example.ui.components.VerifiedMark
+import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
 import kotlinx.coroutines.async
@@ -346,7 +347,9 @@ private fun NotificationCard(
     onNotificationClick: (ActivityItem) -> Unit
 ) {
     val category = resolvedNotificationCategory(item)
-    val accent = when (category) {
+    val accent = if (item.vipPriority) {
+        Color(0xFFF59E0B)
+    } else when (category) {
         NotificationFilter.LIKES -> BlinkPink
         NotificationFilter.COMMENTS -> BlinkPurple
         NotificationFilter.MARKET -> Color(0xFF22C55E)
@@ -452,6 +455,11 @@ private fun NotificationCard(
                         Spacer(Modifier.width(4.dp))
                         VerifiedMark(verificationBadge, size = 12.dp)
                     }
+                    BlinkVipMarkForUsername(
+                        username = username,
+                        knownVip = if (item.actorIsVip || profile?.isBlinkVip == true) true else null,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
                 }
 
                 Spacer(Modifier.height(3.dp))

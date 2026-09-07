@@ -309,6 +309,11 @@ fun PostCard(
                                 modifier = Modifier.size(16.dp)
                             )
                         }
+                        BlinkVipMarkForUsername(
+                            username = resolvedAuthorUsername,
+                            knownVip = if (post.authorIsVip) true else null,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
                         if (!isAuthor && authorProfileId.isNotBlank()) {
                             Spacer(Modifier.width(6.dp))
                             ProfileFollowInteractButton(

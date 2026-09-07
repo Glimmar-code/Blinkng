@@ -46,6 +46,8 @@ data class UserProfile(
     var avatarUrl: String = "",
     var coverPhotoUrl: String = "",
     var verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    var isBlinkVip: Boolean = false,
+    var blinkVipUntil: String = "",
     var professionalHeadline: String = "",
     var currentJobTitle: String = "",
     var university: String = "",

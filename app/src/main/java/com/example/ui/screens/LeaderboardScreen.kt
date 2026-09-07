@@ -26,6 +26,7 @@ import coil.compose.AsyncImage
 import com.example.data.models.LeaderboardUser
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
+import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.BlinkGold
 import com.example.ui.theme.BlinkPink
@@ -179,6 +180,11 @@ fun LeaderboardScreen(
                                             Spacer(Modifier.width(3.dp))
                                             VerifiedMark(user.verificationBadge, size = 11.dp)
                                         }
+                                        BlinkVipMarkForUsername(
+                                            username = user.username,
+                                            knownVip = if (user.isVip) true else null,
+                                            modifier = Modifier.padding(start = 3.dp)
+                                        )
                                     }
                                     Text(
                                         "${user.points} pts",
@@ -245,6 +251,11 @@ fun LeaderboardScreen(
                                     Spacer(Modifier.width(4.dp))
                                     VerifiedMark(user.verificationBadge, size = 14.dp)
                                 }
+                                BlinkVipMarkForUsername(
+                                    username = user.username,
+                                    knownVip = if (user.isVip) true else null,
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
                             }
                             Text(
                                 "@${user.username}",

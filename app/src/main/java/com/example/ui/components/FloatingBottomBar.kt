@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import android.app.Activity
+import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,10 +15,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -32,14 +34,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.example.BlinkStoreActivity
+import com.example.R
 import com.example.ui.theme.FeedBlue
 import com.example.viewmodel.MainTab
 
 private enum class FeedBottomDestination {
-    HOME, CONNECT, LEADERBOARD, MARKET, MESSAGE, MENU
+    HOME, CONNECT, LEADERBOARD, MARKET, MESSAGE, STORE
 }
 
 private data class FeedBottomItem(
@@ -55,7 +60,7 @@ private val feedBottomItems = listOf(
     FeedBottomItem(FeedBottomDestination.LEADERBOARD, Icons.Filled.EmojiEvents, Icons.Outlined.EmojiEvents, "Leaderboard"),
     FeedBottomItem(FeedBottomDestination.MARKET, Icons.Filled.Storefront, Icons.Outlined.Storefront, "Market"),
     FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message"),
-    FeedBottomItem(FeedBottomDestination.MENU, Icons.Filled.Menu, Icons.Filled.Menu, "Menu")
+    FeedBottomItem(FeedBottomDestination.STORE, Icons.Filled.Apps, Icons.Filled.Apps, "Blink Store")
 )
 
 @Composable
@@ -72,8 +77,8 @@ fun FeedBottomBar(
     isMenuOpen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val selectedDestination = when {
-        isMenuOpen -> FeedBottomDestination.MENU
         currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT
         currentTab == MainTab.HOME -> FeedBottomDestination.HOME
         currentTab == MainTab.LEADERBOARD -> FeedBottomDestination.LEADERBOARD
@@ -112,7 +117,13 @@ fun FeedBottomBar(
                             FeedBottomDestination.LEADERBOARD -> onLeaderboardClick()
                             FeedBottomDestination.MARKET -> onMarketClick()
                             FeedBottomDestination.MESSAGE -> onMessageClick()
-                            FeedBottomDestination.MENU -> onMenuClick()
+                            FeedBottomDestination.STORE -> {
+                                context.startActivity(Intent(context, BlinkStoreActivity::class.java))
+                                (context as? Activity)?.overridePendingTransition(
+                                    R.anim.blink_slide_in_right,
+                                    R.anim.blink_stay
+                                )
+                            }
                         }
                     }
                 )

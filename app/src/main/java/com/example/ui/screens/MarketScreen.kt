@@ -39,6 +39,7 @@ import com.example.data.models.MarketItem
 import com.example.data.models.VerificationBadge
 import com.example.data.models.kMarketCategoriesList
 import com.example.ui.components.VerifiedMark
+import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.theme.BlinkBlue
 import com.example.ui.theme.BlinkGold
 import com.example.ui.theme.BlinkPink
@@ -635,6 +636,11 @@ fun ProductCard(
                     } else if (item.sellerIsVerified) {
                         VerifiedMark(badge = VerificationBadge.BLUE, size = 12.dp)
                     }
+                    BlinkVipMarkForUsername(
+                        username = item.sellerUsername,
+                        knownVip = if (item.sellerIsVip) true else null,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
                 }
             }
         }

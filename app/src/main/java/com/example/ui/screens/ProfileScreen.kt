@@ -60,6 +60,7 @@ import com.example.ui.components.FacultyBadge
 import com.example.ui.components.FollowerGrowthChart
 import com.example.ui.components.PostCard
 import com.example.ui.components.VerifiedMark
+import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.theme.*
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
@@ -525,6 +526,11 @@ fun ProfileScreen(
                                     Spacer(modifier = Modifier.width(7.dp))
                                     VerifiedMark(badge = profile.verificationBadge, size = 20.dp)
                                 }
+                                BlinkVipMarkForUsername(
+                                    username = profile.username,
+                                    knownVip = if (profile.isBlinkVip) true else null,
+                                    modifier = Modifier.padding(start = 6.dp)
+                                )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Surface(
                                     shape = RoundedCornerShape(100.dp),

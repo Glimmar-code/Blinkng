@@ -148,6 +148,7 @@ import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
+import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.theme.BlinkMessageTheme
 import com.example.ui.theme.MessagePalette
 import com.example.ui.theme.MessageThemeMode
@@ -1187,6 +1188,11 @@ private fun ConversationCard(
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     VerificationDot(conversation.verificationBadge, conversation.isVerified)
+                    BlinkVipMarkForUsername(
+                        username = conversation.partnerUsername,
+                        knownVip = if (conversation.partnerIsVip) true else null,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
                 }
                 Spacer(Modifier.height(3.dp))
                 Text(
@@ -1648,6 +1654,11 @@ private fun ChatHeader(
                             modifier = Modifier.weight(1f, fill = false)
                         )
                         VerificationDot(conversation.verificationBadge, conversation.isVerified)
+                    BlinkVipMarkForUsername(
+                        username = conversation.partnerUsername,
+                        knownVip = if (conversation.partnerIsVip) true else null,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
                     }
                     Text(
                         if (conversation.isOnline) "Active now" else conversation.lastSeen,
