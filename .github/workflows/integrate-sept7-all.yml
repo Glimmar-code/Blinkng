@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: integrate-sept7-main
+  cancel-in-progress: true
+
 jobs:
   merge-and-check:
     runs-on: ubuntu-latest
@@ -18,7 +22,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Merge Sep 7 work
+      - name: Merge Sep 7 work from latest main
         run: bash .github/scripts/integrate_sept7.sh
 
       - name: Fix shared Kotlin source wiring
