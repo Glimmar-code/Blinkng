@@ -14,7 +14,7 @@ report_conflict() {
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     echo "----- $file -----"
-    git diff --cc -- "$file" | sed -n '1,520p' || true
+    git diff --cc -- "$file" | sed -n '1,560p' || true
   done < <(git diff --name-only --diff-filter=U)
 }
 
@@ -112,7 +112,6 @@ if 'directoryCategories = directoryCategories' not in s:
 if 'userScrollEnabled = false' not in s:
     s,n=re.subn(r'(HorizontalPager\(\s*\n\s*state\s*=\s*pagerState,\s*\n)(\s*modifier\s*=)',r'\1            userScrollEnabled = false,\n\2',s,count=1)
     if n != 1: raise SystemExit('HorizontalPager anchor missing')
-
 marker='@Composable\nprivate fun CategoryTabBar('
 def function_span(text):
     start=text.index(marker); brace=text.index('{',start); depth=0
@@ -170,9 +169,72 @@ merge_search() {
   if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
   mapfile -t c < <(git diff --name-only --diff-filter=U)
   [ "${#c[@]}" -eq 1 ] && [ "${c[0]}" = "$file" ] || { report_conflict "$branch"; exit 10; }
-  # The branch intentionally turns SearchScreen into a stable wrapper around the new
-  # ProfessionalSearchScreen while preserving the exact public parameter contract.
   git checkout --theirs -- "$file"
+  git add "$file"
+  git commit --no-edit
+}
+
+merge_leaderboard() {
+  local branch="leaderboard-top10-professional"
+  local file="app/src/main/java/com/example/ui/screens/LeaderboardScreen.kt"
+  echo "===== MERGE $branch ====="
+  if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
+  mapfile -t c < <(git diff --name-only --diff-filter=U)
+  [ "${#c[@]}" -eq 1 ] && [ "${c[0]}" = "$file" ] || { report_conflict "$branch"; exit 10; }
+  git checkout --theirs -- "$file"
+  python - <<'PY'
+from pathlib import Path
+p=Path('app/src/main/java/com/example/ui/screens/LeaderboardScreen.kt')
+s=p.read_text()
+anchor='import com.example.data.models.VerificationBadge\n'
+addition='import com.example.ui.components.BlinkVipMarkForUsername\nimport com.example.ui.components.VerifiedMark\n'
+if 'import com.example.ui.components.VerifiedMark' not in s:
+    if anchor not in s: raise SystemExit('Leaderboard import anchor missing')
+    s=s.replace(anchor,anchor+addition,1)
+old1='''                                if (user.verificationBadge != VerificationBadge.NONE) {
+                                    Spacer(Modifier.width(3.dp))
+                                    Icon(
+                                        Icons.Default.Verified,
+                                        null,
+                                        tint = BlinkPink,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+'''
+new1='''                                if (user.verificationBadge != VerificationBadge.NONE) {
+                                    Spacer(Modifier.width(3.dp))
+                                    VerifiedMark(user.verificationBadge, size = 13.dp)
+                                }
+                                BlinkVipMarkForUsername(
+                                    username = user.username,
+                                    knownVip = if (user.isVip) true else null,
+                                    modifier = Modifier.padding(start = 3.dp)
+                                )
+'''
+old2='''                    if (user.verificationBadge != VerificationBadge.NONE) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.Verified,
+                            null,
+                            tint = BlinkPink,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+'''
+new2='''                    if (user.verificationBadge != VerificationBadge.NONE) {
+                        Spacer(Modifier.width(4.dp))
+                        VerifiedMark(user.verificationBadge, size = 14.dp)
+                    }
+                    BlinkVipMarkForUsername(
+                        username = user.username,
+                        knownVip = if (user.isVip) true else null,
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+'''
+if old1 not in s or old2 not in s: raise SystemExit('Leaderboard identity anchors missing')
+s=s.replace(old1,new1,1).replace(old2,new2,1)
+p.write_text(s)
+PY
   git add "$file"
   git commit --no-edit
 }
@@ -184,7 +246,7 @@ merge_connect
 merge_notifications
 merge_one fix/reel-route-target-20260907
 merge_search
-merge_one leaderboard-top10-professional
+merge_leaderboard
 merge_one fix/verified-name-consistency
 merge_one feature/windows-desktop-foundation
 merge_one supabase-recovery-20260907
