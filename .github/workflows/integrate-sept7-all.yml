@@ -27,7 +27,7 @@ jobs:
           git checkout -B integration-sept7 origin/main
           echo "Starting from $(git rev-parse HEAD)"
 
-      - name: Merge all Sep 7 work and report first real conflict
+      - name: Merge remaining Sep 7 work and report first real conflict
         shell: bash
         run: |
           set -euo pipefail
@@ -55,13 +55,12 @@ jobs:
             while IFS= read -r file; do
               [ -n "$file" ] || continue
               echo "----- $file -----"
-              git diff --cc -- "$file" | sed -n '1,260p' || true
+              git diff --cc -- "$file" | sed -n '1,320p' || true
             done < <(git diff --name-only --diff-filter=U)
             exit 10
           }
 
-          merge_one fix/post-like-speed-reliability
-          merge_one game-professional-overhaul
+          # Already merged to main earlier today: fix/post-like-speed-reliability, game-professional-overhaul.
           merge_one fix/auth-google-reset-account-switch
           merge_one feature/admin-control-center-v3
           merge_one feature/connect-vertical-directory-20
@@ -73,7 +72,7 @@ jobs:
           merge_one feature/windows-desktop-foundation
           merge_one supabase-recovery-20260907
 
-          echo "All branches merged cleanly"
+          echo "All remaining branches merged cleanly"
           git --no-pager log --oneline --decorate -25
 
       - name: Set up Java 17
