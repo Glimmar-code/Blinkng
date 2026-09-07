@@ -1,0 +1,55 @@
+name: Finish Blink Store digital gift
+
+on:
+  push:
+    branches: ['feature/blink-coin-store-vip']
+    paths:
+      - '.github/scripts/finish_blink_store_gift.py'
+      - '.github/workflows/finish-blink-store-gift.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - name: Checkout store branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply digital gift UI integration
+        run: python3 .github/scripts/finish_blink_store_gift.py
+
+      - name: Validate patch
+        run: git diff --check
+
+      - name: Compile Android app
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit digital gift UI
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/BlinkStoreActivity.kt
+          if git diff --cached --quiet; then
+            echo "No Store gift changes needed."
+            exit 0
+          fi
+          git commit -m "feat: complete Blink digital gift flow"
+          git pull --rebase origin feature/blink-coin-store-vip
+          git push origin HEAD:feature/blink-coin-store-vip
