@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/apply-blink-store-nav-inset.yml'
+  issues:
+    types: [opened]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +16,6 @@ jobs:
   patch:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.actor != 'github-actions[bot]'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
