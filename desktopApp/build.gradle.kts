@@ -30,6 +30,9 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-compose:3.6.2")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.2")
 
+    // Native Windows Media Foundation video playback for Blinkng reels/posts.
+    implementation("io.github.kdroidfilter:composemediaplayer:0.11.4")
+
     // Windows DPAPI wrapper used to protect persisted refresh/access tokens at rest.
     implementation("net.java.dev.jna:jna-platform:5.17.0")
 }
