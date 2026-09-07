@@ -7,11 +7,20 @@ import com.example.data.models.PostPoll
 import com.example.data.models.Story
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+
+internal fun isIgnorableLikeCountRefreshFailure(error: Throwable): Boolean =
+    error is IllegalStateException &&
+        error.message?.contains("Like count refresh failed", ignoreCase = true) == true
 
 class PostRepository(
     private val supabaseService: SupabaseService = SupabaseService()
 ) {
+    private val likeMutationMutexGuard = Mutex()
+    private val likeMutationMutexes = mutableMapOf<String, Mutex>()
+
     suspend fun fetchFeed(isReel: Boolean? = null): List<FeedPost> = withContext(Dispatchers.IO) {
         try {
             when (isReel) {
@@ -125,7 +134,6 @@ class PostRepository(
         )
     }
 
-    
     suspend fun togglePostRepost(postId: String): Pair<Boolean, Int>? = withContext(Dispatchers.IO) {
         supabaseService.togglePostRepost(postId)
     }
@@ -149,16 +157,39 @@ class PostRepository(
     suspend fun reportComment(commentId: String, reason: String): Boolean = withContext(Dispatchers.IO) {
         supabaseService.reportComment(commentId, reason)
     }
-suspend fun togglePostLike(
+
+    suspend fun togglePostLike(
         postId: String,
         liked: Boolean,
         newLikeCount: Int
     ): Boolean = withContext(Dispatchers.IO) {
-        supabaseService.togglePostLike(
-            postId = postId,
-            liked = liked,
-            newLikeCount = newLikeCount
-        )
+        val postMutex = likeMutationMutexGuard.withLock {
+            likeMutationMutexes.getOrPut(postId) { Mutex() }
+        }
+
+        postMutex.withLock {
+            try {
+                supabaseService.togglePostLike(
+                    postId = postId,
+                    liked = liked,
+                    newLikeCount = newLikeCount
+                )
+            } catch (error: IllegalStateException) {
+                // SupabaseService currently performs a follow-up count GET after the
+                // like row has already been committed. A failure in that optional
+                // refresh must not roll back an otherwise successful optimistic like.
+                if (isIgnorableLikeCountRefreshFailure(error)) {
+                    Log.w(
+                        "PostRepository",
+                        "Like persisted but count refresh failed for post=$postId; keeping optimistic state.",
+                        error
+                    )
+                    true
+                } else {
+                    throw error
+                }
+            }
+        }
     }
 
     suspend fun deletePost(postId: String): Boolean = withContext(Dispatchers.IO) {
