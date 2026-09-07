@@ -42,8 +42,16 @@ class CallRepository {
             .put("p_call_type", type.wireValue)
     )
 
-    suspend fun answerCall(callId: String): Result<BlinkCall> =
-        rpcCall("answer_call", JSONObject().put("p_call_id", callId))
+    suspend fun answerCall(callId: String): Result<BlinkCall> {
+        val result = rpcCall("answer_call", JSONObject().put("p_call_id", callId))
+        if (result.isSuccess) {
+            // Tell every signed-in device for this receiver that another device answered,
+            // so stale incoming-call notifications stop ringing immediately.
+            dispatchPush(callId, "answered")
+                .onFailure { Log.w(TAG, "Unable to synchronize answered call across devices", it) }
+        }
+        return result
+    }
 
     suspend fun declineCall(callId: String): Result<BlinkCall> =
         rpcCall("decline_call", JSONObject().put("p_call_id", callId))
