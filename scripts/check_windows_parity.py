@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail CI when an Android user-facing code change forgets Windows/shared parity."""
+"""Enforce Blinkng Android ↔ Windows feature parity in pull requests."""
 
 from __future__ import annotations
 
@@ -7,19 +7,24 @@ import os
 import subprocess
 import sys
 
-ANDROID_PREFIX = "app/src/main/java/"
-PARITY_PREFIXES = (
+ANDROID_USER_SURFACES = (
+    "app/src/main/java/",
+    "app/src/main/res/",
+    "app/src/main/AndroidManifest.xml",
+)
+IMPLEMENTATION_PREFIXES = (
     "desktopApp/",
     "shared/",
-    "platform-parity/",
 )
+PARITY_LEDGER = "platform-parity/changes.md"
+EXCEPTION_MARKER = "PARITY-EXCEPTION:"
 
 
 def git(*args: str) -> str:
     return subprocess.check_output(["git", *args], text=True).strip()
 
 
-def changed_files() -> list[str]:
+def diff_range() -> str | None:
     base_ref = os.getenv("GITHUB_BASE_REF", "").strip()
     if base_ref:
         subprocess.run(
@@ -28,45 +33,79 @@ def changed_files() -> list[str]:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        base = f"origin/{base_ref}"
-        diff_range = f"{base}...HEAD"
-    else:
-        try:
-            git("rev-parse", "HEAD^")
-            diff_range = "HEAD^...HEAD"
-        except subprocess.CalledProcessError:
-            return []
+        return f"origin/{base_ref}...HEAD"
 
-    output = git("diff", "--name-only", diff_range)
+    try:
+        git("rev-parse", "HEAD^")
+        return "HEAD^...HEAD"
+    except subprocess.CalledProcessError:
+        return None
+
+
+def changed_files(range_: str | None) -> list[str]:
+    if not range_:
+        return []
+    output = git("diff", "--name-only", range_)
     return [line.strip() for line in output.splitlines() if line.strip()]
 
 
+def added_exception_marker(range_: str) -> bool:
+    try:
+        patch = git("diff", "--unified=0", range_, "--", PARITY_LEDGER)
+    except subprocess.CalledProcessError:
+        return False
+    return any(
+        line.startswith("+") and not line.startswith("+++") and EXCEPTION_MARKER in line
+        for line in patch.splitlines()
+    )
+
+
 def main() -> int:
-    files = changed_files()
-    android_changes = [path for path in files if path.startswith(ANDROID_PREFIX) and path.endswith(".kt")]
+    range_ = diff_range()
+    files = changed_files(range_)
+
+    android_changes = [
+        path for path in files
+        if any(path == prefix or path.startswith(prefix) for prefix in ANDROID_USER_SURFACES)
+    ]
 
     if not android_changes:
-        print("Windows parity gate: no Android Kotlin feature changes detected.")
+        print("Windows parity gate: PASS — no Android user-surface changes detected.")
         return 0
 
-    parity_changes = [path for path in files if path.startswith(PARITY_PREFIXES)]
-    if parity_changes:
-        print("Windows parity gate: PASS")
+    implementation_changes = [
+        path for path in files if path.startswith(IMPLEMENTATION_PREFIXES)
+    ]
+
+    if implementation_changes:
+        print("Windows parity gate: PASS — Windows/shared implementation detected.")
         print("Android changes:")
         for path in android_changes:
             print(f"  - {path}")
-        print("Parity/shared changes:")
-        for path in parity_changes:
+        print("Windows/shared implementation changes:")
+        for path in implementation_changes:
             print(f"  - {path}")
+        return 0
+
+    ledger_changed = PARITY_LEDGER in files
+    explicit_exception = bool(range_) and ledger_changed and added_exception_marker(range_)
+
+    if explicit_exception:
+        print("Windows parity gate: PASS WITH EXPLICIT PLATFORM EXCEPTION")
+        print(
+            "Reviewers must verify that the documented exception is genuinely platform-specific "
+            "and includes a Windows equivalent where appropriate."
+        )
         return 0
 
     print("Windows parity gate: FAIL", file=sys.stderr)
     print(
-        "This PR changes Android Kotlin code but contains no Windows/shared/parity update.",
+        "This PR changes an Android user surface without a Windows/shared implementation.",
         file=sys.stderr,
     )
     print(
-        "Implement the feature in shared code, update desktopApp, or document a genuine platform exception in platform-parity/changes.md.",
+        "Implement the change in shared code, update desktopApp, or add a genuine "
+        f"'{EXCEPTION_MARKER} <feature-id>' entry to {PARITY_LEDGER} with a reason and Windows equivalent.",
         file=sys.stderr,
     )
     print("Android files detected:", file=sys.stderr)
