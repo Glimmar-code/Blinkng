@@ -1,6 +1,7 @@
 package com.example.call
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -23,6 +24,7 @@ object IncomingCallNotification {
     private fun notificationId(callId: String): Int =
         70_000 + (callId.hashCode() and 0x7fffffff) % 20_000
 
+    @SuppressLint("MissingPermission")
     fun showIncoming(
         context: Context,
         callId: String,
@@ -35,6 +37,8 @@ object IncomingCallNotification {
     ) {
         if (callId.isBlank()) return
         createChannels(context)
+        // NotificationManagerCompat.notify is guarded by the runtime POST_NOTIFICATIONS
+        // check below. The lint suppression only teaches static analysis about that guard.
         if (!hasNotificationPermission(context)) return
 
         val answerIntent = CallActivity.incomingIntent(
@@ -104,7 +108,9 @@ object IncomingCallNotification {
             .addAction(android.R.drawable.ic_menu_call, "Answer", answerPendingIntent)
             .build()
 
-        runCatching { NotificationManagerCompat.from(context).notify(notificationId(callId), notification) }
+        runCatching {
+            NotificationManagerCompat.from(context).notify(notificationId(callId), notification)
+        }
     }
 
     fun cancel(context: Context, callId: String) {
