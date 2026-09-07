@@ -1,0 +1,120 @@
+name: Apply 95 percent left profile panel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-profile-95-left-panel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply profile panel motion and placement
+        shell: python
+        run: |
+          from pathlib import Path
+
+          main_path = Path('app/src/main/java/com/example/MainActivity.kt')
+          main = main_path.read_text()
+          profile_anchor = '// Sub-screen Overlays: User Profile with dynamic tabs (Posts, Liked, Saved, Skills, About) & messaging'
+          next_anchor = '// Sub-screen Overlays: Post Item Screen'
+          start = main.find(profile_anchor)
+          end = main.find(next_anchor, start)
+          if start < 0 or end < 0:
+              raise SystemExit('Could not locate the profile overlay block in MainActivity')
+
+          segment = main[start:end]
+          old_motion = '''enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()'''
+          new_motion = '''enter = slideInHorizontally(
+                animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
+                initialOffsetX = { -it }
+            ) + fadeIn(animationSpec = tween(220)),
+            exit = slideOutHorizontally(
+                animationSpec = tween(durationMillis = 300, easing = FastOutLinearInEasing),
+                targetOffsetX = { -it }
+            ) + fadeOut(animationSpec = tween(180))'''
+          if old_motion in segment:
+              segment = segment.replace(old_motion, new_motion, 1)
+              main = main[:start] + segment + main[end:]
+              main_path.write_text(main)
+          elif new_motion not in segment:
+              raise SystemExit('Profile overlay transition did not match the expected implementation')
+
+          profile_path = Path('app/src/main/java/com/example/ui/screens/ProfileScreen.kt')
+          profile = profile_path.read_text()
+          root_anchor = 'Box(modifier = Modifier.fillMaxSize()) {'
+          root_start = profile.find(root_anchor)
+          if root_start < 0:
+              raise SystemExit('Could not locate ProfileScreen root box')
+          root_end = profile.find('// ============================================================', root_start)
+          if root_end < 0:
+              raise SystemExit('Could not bound ProfileScreen panel modifier')
+
+          panel = profile[root_start:root_end]
+          replacements = [
+              ('.align(Alignment.CenterEnd)', '.align(Alignment.CenterStart)'),
+              ('.shadow(24.dp, RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp), clip = false)',
+               '.shadow(24.dp, RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp), clip = false)'),
+              ('overlayOffset.snapTo((overlayOffset.value + dragAmount).coerceAtLeast(0f))',
+               'overlayOffset.snapTo((overlayOffset.value + dragAmount).coerceAtMost(0f))'),
+              ('if (overlayOffset.value >= overlayThresholdPx) {',
+               'if (overlayOffset.value <= -overlayThresholdPx) {'),
+              ('shape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),',
+               'shape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),'),
+          ]
+          for old, new in replacements:
+              if old in panel:
+                  panel = panel.replace(old, new, 1)
+              elif new not in panel:
+                  raise SystemExit(f'Expected profile panel token not found: {old}')
+
+          profile = profile[:root_start] + panel + profile[root_end:]
+          profile_path.write_text(profile)
+
+          print('Profile panel is anchored to the left at 95% width.')
+          print('The remaining 5% stays visible on the right.')
+          print('Opening motion is 360ms; closing motion is 300ms.')
+          print('Swipe-left dismissal follows the direction of the panel.')
+
+      - name: Validate patch
+        shell: bash
+        run: |
+          git diff --check
+          grep -q 'fillMaxWidth(0.95f)' app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+          grep -q 'align(Alignment.CenterStart)' app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+          grep -q 'coerceAtMost(0f)' app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+          grep -q 'overlayOffset.value <= -overlayThresholdPx' app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+          grep -q 'RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)' app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+          grep -q 'durationMillis = 360' app/src/main/java/com/example/MainActivity.kt
+
+      - name: Compile app
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Push profile panel changes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo '95 percent left profile panel is already applied.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/example/MainActivity.kt app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+          git commit -m 'Make profile a 95 percent left sliding panel'
+          git push origin HEAD:main
