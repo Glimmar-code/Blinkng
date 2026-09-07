@@ -149,6 +149,11 @@ fun PostCard(
     }
     val profileTarget = resolvedAuthorUsername.ifBlank { post.author }
     val displayedViewsCount = rememberDelayedContentViewCount(post.id, post.viewsCount)
+    val surfaceColor = if (isDark) Color(0xFF101112) else Color.White
+    val primaryText = if (isDark) Color(0xFFF2F3F5) else Color(0xFF111111)
+    val secondaryText = if (isDark) Color(0xFFB0B3B8) else Color(0xFF65676B)
+    val dividerColor = if (isDark) Color(0xFF2D3035) else Color(0xFFE4E6EB)
+    val socialBlue = Color(0xFF1877F2)
 
     val displayImages = remember(post.images) {
         post.images
@@ -156,65 +161,55 @@ fun PostCard(
             .filter { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
             .distinct()
     }
-    val isTextOnlyPost = post.text.isNotBlank() && displayImages.isEmpty() && post.poll == null && post.videoUrl.isNullOrBlank()
     var showImageFullscreen by remember(post.id) { mutableStateOf(false) }
     var imagePage by remember(post.id) { mutableIntStateOf(0) }
     var expandedText by remember(post.id) { mutableStateOf(false) }
     val likeScale = remember(post.id) { Animatable(1f) }
     val scope = rememberCoroutineScope()
     val likedTint by animateColorAsState(
-        targetValue = if (post.isLiked) FeedPurple else FeedTextSecondary,
-        animationSpec = tween(160),
-        label = "postLikeTint"
+        targetValue = if (post.isLiked) socialBlue else secondaryText,
+        animationSpec = tween(150),
+        label = "simplePostLikeTint"
     )
     val repostTint by animateColorAsState(
-        targetValue = if (post.isRepostedByMe) FeedPurple else FeedTextSecondary,
-        animationSpec = tween(160),
-        label = "postRepostTint"
+        targetValue = if (post.isRepostedByMe) socialBlue else secondaryText,
+        animationSpec = tween(150),
+        label = "simplePostRepostTint"
     )
     val savedTint by animateColorAsState(
-        targetValue = if (post.isBookmarked) FeedBlue else FeedTextSecondary,
-        animationSpec = tween(160),
-        label = "postSaveTint"
+        targetValue = if (post.isBookmarked) socialBlue else secondaryText,
+        animationSpec = tween(150),
+        label = "simplePostSavedTint"
     )
-    val railBrush = remember {
-        Brush.verticalGradient(
-            listOf(FeedGradientStart, FeedGradientMiddle, FeedGradientEnd)
-        )
-    }
 
-    Card(
+    Surface(
         modifier = modifier
             .trackContentExposure(post.id, displayedViewsCount)
-            .fillMaxWidth()
-            .padding(vertical = 5.dp),
-        shape = RoundedCornerShape(0.dp),
-        colors = CardDefaults.cardColors(containerColor = FeedCardSurface),
-        border = null,
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            .fillMaxWidth(),
+        color = surfaceColor,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             if (post.isSponsored) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 11.dp, bottom = 2.dp),
+                        .padding(start = 14.dp, end = 14.dp, top = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = Icons.Default.Campaign,
                         contentDescription = null,
-                        tint = FeedPurple,
-                        modifier = Modifier.size(16.dp)
+                        tint = secondaryText,
+                        modifier = Modifier.size(15.dp)
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
                         text = post.adLabel ?: "Sponsored",
-                        color = FeedPurple,
+                        color = secondaryText,
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -223,19 +218,19 @@ fun PostCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 17.dp, end = 17.dp, top = 10.dp, bottom = 2.dp),
+                        .padding(start = 15.dp, end = 15.dp, top = 9.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = Icons.Default.Repeat,
                         contentDescription = null,
-                        tint = FeedTextMuted,
-                        modifier = Modifier.size(16.dp)
+                        tint = secondaryText,
+                        modifier = Modifier.size(15.dp)
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
                         text = "@$reposter reposted",
-                        color = FeedTextMuted,
+                        color = secondaryText,
                         style = MaterialTheme.typography.labelSmall
                     )
                 }
@@ -244,27 +239,22 @@ fun PostCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, top = 16.dp, end = 8.dp, bottom = 10.dp),
+                    .padding(start = 14.dp, top = 12.dp, end = 6.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val avatarFrameModifier = if (hasActiveStory) {
+                val avatarModifier = if (hasActiveStory) {
                     Modifier
-                        .size(50.dp)
-                        .background(
-                            Brush.linearGradient(
-                                listOf(FeedGradientStart, FeedGradientEnd)
-                            ),
-                            CircleShape
-                        )
+                        .size(46.dp)
+                        .background(socialBlue, CircleShape)
                         .padding(2.dp)
-                        .background(FeedCardSurface, CircleShape)
+                        .background(surfaceColor, CircleShape)
                         .padding(2.dp)
                 } else {
-                    Modifier.size(50.dp)
+                    Modifier.size(46.dp)
                 }
 
                 Box(
-                    modifier = avatarFrameModifier
+                    modifier = avatarModifier
                         .clip(CircleShape)
                         .clickable(role = Role.Button) { onProfileClick(profileTarget) }
                 ) {
@@ -274,25 +264,24 @@ fun PostCard(
                         fallback = painterResource(R.drawable.ic_default_profile),
                         contentDescription = "$resolvedAuthorName profile picture",
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
+                        modifier = Modifier.fillMaxSize().clip(CircleShape)
                     )
                 }
-                Spacer(Modifier.width(11.dp))
+
+                Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = resolvedAuthorName,
-                            color = FeedTextPrimary,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
+                            color = primaryText,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.clickable { onProfileClick(profileTarget) }
                         )
                         if (authorVerificationBadge != VerificationBadge.NONE) {
-                            Spacer(Modifier.width(5.dp))
+                            Spacer(Modifier.width(4.dp))
                             Icon(
                                 imageVector = Icons.Default.Verified,
                                 contentDescription = when (authorVerificationBadge) {
@@ -302,95 +291,81 @@ fun PostCard(
                                 },
                                 tint = when (authorVerificationBadge) {
                                     VerificationBadge.GOLD -> BlinkGold
-                                    VerificationBadge.BLUE -> FeedBlue
-                                    VerificationBadge.NONE -> FeedBlue
+                                    VerificationBadge.BLUE -> socialBlue
+                                    VerificationBadge.NONE -> socialBlue
                                 },
-                                modifier = Modifier.size(17.dp)
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        if (resolvedAuthorUsername.isNotBlank()) {
+                            Spacer(Modifier.width(5.dp))
+                            Text(
+                                text = "@$resolvedAuthorUsername",
+                                color = secondaryText,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
-                    val meta = listOf(
-                        resolvedAuthorUsername.takeIf(String::isNotBlank)?.let { "@$it" }.orEmpty(),
-                        post.timeAgo,
-                        post.facultyTag
-                    )
+
+                    val meta = listOf(post.timeAgo, post.facultyTag)
                         .filter(String::isNotBlank)
-                        .joinToString("  •  ")
+                        .joinToString("  ·  ")
                     if (meta.isNotBlank()) {
                         Text(
-                            text = meta,
-                            color = FeedTextSecondary,
-                            style = MaterialTheme.typography.bodyMedium,
+                            text = "$meta  ·  Public",
+                            color = secondaryText,
+                            style = MaterialTheme.typography.bodySmall,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable { onProfileClick(profileTarget) }
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
+
+                IconButton(
+                    onClick = onBookmark,
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        imageVector = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        contentDescription = if (post.isBookmarked) "Remove saved post" else "Save post",
+                        tint = savedTint,
+                        modifier = Modifier.size(21.dp)
+                    )
+                }
                 IconButton(
                     onClick = onOptionsClick,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(38.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.MoreHoriz,
                         contentDescription = "Post options",
-                        tint = FeedTextPrimary,
-                        modifier = Modifier.size(25.dp)
+                        tint = primaryText,
+                        modifier = Modifier.size(23.dp)
                     )
                 }
             }
 
             if (post.text.isNotBlank()) {
-                if (isTextOnlyPost) {
-                    val textStyle = remember(post.id, post.textStyle) {
-                        resolveTextPostStyle(post.textStyle, post.id)
-                    }
-                    val textSize = when {
-                        post.text.length > 520 -> 20.sp
-                        post.text.length > 300 -> 23.sp
-                        post.text.length > 170 -> 26.sp
-                        else -> 31.sp
-                    }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 320.dp)
-                            .background(textStyle.brush())
-                            .padding(horizontal = 28.dp, vertical = 36.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        SelectionContainer {
-                            Text(
-                                text = post.text,
-                                color = textStyle.textColor,
-                                fontSize = textSize,
-                                lineHeight = textSize * 1.18f,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                maxLines = if (expandedText) Int.MAX_VALUE else 14,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                } else {
-                    SelectionContainer {
-                        Text(
-                            text = post.text,
-                            color = FeedTextPrimary,
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            maxLines = if (expandedText) Int.MAX_VALUE else 7,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                SelectionContainer {
+                    Text(
+                        text = post.text,
+                        color = primaryText,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
+                        maxLines = if (expandedText) Int.MAX_VALUE else 7,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                if (post.text.length > 520) {
+                if (post.text.length > 320) {
                     Text(
                         text = if (expandedText) "Show less" else "See more",
-                        color = FeedPurple,
+                        color = socialBlue,
                         style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
-                            .padding(start = 16.dp, top = 6.dp)
+                            .padding(start = 14.dp, bottom = 8.dp)
                             .clickable { expandedText = !expandedText }
                     )
                 }
@@ -403,11 +378,7 @@ fun PostCard(
             }
 
             if (displayImages.isNotEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 6.dp)
-                ) {
+                Box(modifier = Modifier.fillMaxWidth()) {
                     if (displayImages.size == 1) {
                         NaturalAspectPostImage(
                             imageUrl = displayImages.first(),
@@ -441,90 +412,97 @@ fun PostCard(
                         Surface(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(10.dp),
-                            shape = RoundedCornerShape(20.dp),
+                                .padding(8.dp),
+                            shape = RoundedCornerShape(14.dp),
                             color = Color.Black.copy(alpha = 0.62f)
                         ) {
                             Text(
                                 text = "${mediaState.firstVisibleItemIndex + 1}/${displayImages.size}",
                                 color = Color.White,
                                 style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                     }
                 }
             }
 
-            HorizontalDivider(
-                modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp),
-                color = FeedBorder.copy(alpha = 0.82f)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (!post.hideLikes) {
+                    Text(
+                        text = "${formatNumber(post.likes)} likes",
+                        color = secondaryText,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = listOf(
+                        "${formatNumber(post.commentsCount)} comments",
+                        "${formatNumber(post.sharesCount)} shares",
+                        "${formatNumber(displayedViewsCount)} views"
+                    ).joinToString("  ·  "),
+                    color = secondaryText,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1
+                )
+            }
+
+            HorizontalDivider(color = dividerColor)
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                    .padding(horizontal = 4.dp, vertical = 1.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                ReadOnlyMetricAction(
-                    icon = Icons.Default.Visibility,
-                    value = formatNumber(displayedViewsCount),
-                    description = "$displayedViewsCount views"
-                )
                 PremiumPostAction(
                     icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    value = formatNumber(post.likes),
+                    value = "Like",
                     tint = likedTint,
                     description = if (post.isLiked) "Unlike" else "Like",
                     iconScale = likeScale.value,
                     onClick = {
                         scope.launch {
                             likeScale.snapTo(1f)
-                            likeScale.animateTo(1.18f, tween(80))
-                            likeScale.animateTo(
-                                1f,
-                                spring(
-                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                    stiffness = Spring.StiffnessMedium
-                                )
-                            )
+                            likeScale.animateTo(1.15f, tween(80))
+                            likeScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
                         }
                         onLike()
                     }
                 )
                 PremiumPostAction(
                     icon = Icons.Default.ChatBubbleOutline,
-                    value = formatNumber(post.commentsCount),
-                    tint = FeedTextSecondary,
+                    value = "Comment",
+                    tint = secondaryText,
                     description = "Comment",
                     onClick = onComment
                 )
                 if (!isAuthor) {
                     PremiumPostAction(
                         icon = Icons.Default.Repeat,
-                        value = formatNumber(post.repostsCount),
+                        value = "Repost",
                         tint = repostTint,
                         description = if (post.isRepostedByMe) "Undo repost" else "Repost",
                         onClick = onRepost
                     )
                 }
                 PremiumPostAction(
-                    icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                    value = "Save",
-                    tint = savedTint,
-                    description = if (post.isBookmarked) "Remove saved post" else "Save post",
-                    onClick = onBookmark
-                )
-                PremiumPostAction(
                     icon = Icons.Default.Share,
-                    value = null,
-                    tint = FeedTextSecondary,
+                    value = "Share",
+                    tint = secondaryText,
                     description = "Share",
                     onClick = onShare
                 )
             }
+
+            HorizontalDivider(color = dividerColor)
         }
     }
 
@@ -542,83 +520,78 @@ private fun PremiumPollCard(
     poll: PostPoll,
     onVote: (String) -> Unit
 ) {
-    Card(
+    val outline = MaterialTheme.colorScheme.outlineVariant
+    val selectedColor = MaterialTheme.colorScheme.primary
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = FeedElevatedSurface),
-        border = BorderStroke(1.dp, FeedBorder)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Poll,
-                    contentDescription = null,
-                    tint = FeedPurple,
-                    modifier = Modifier.size(21.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = poll.question,
-                    color = FeedTextPrimary,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Spacer(Modifier.size(8.dp))
-            val total = poll.options.sumOf { it.votes }.coerceAtLeast(1)
-            poll.options.forEach { option ->
-                val progress = option.votes.toFloat() / total
-                val selected = option.isVotedByMe
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .heightIn(min = 48.dp)
-                        .clickable(enabled = !poll.hasVoted && !selected) { onVote(option.id) },
-                    shape = RoundedCornerShape(14.dp),
-                    color = FeedCardSurface,
-                    border = BorderStroke(
-                        1.dp,
-                        if (selected) FeedPurple.copy(alpha = 0.72f) else FeedBorder
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = option.text,
-                                color = FeedTextPrimary,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (poll.hasVoted || selected) {
-                                Text(
-                                    text = "${(progress * 100).toInt()}%",
-                                    color = FeedTextSecondary,
-                                    style = MaterialTheme.typography.labelSmall
-                                )
-                            }
-                        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Default.Poll,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(7.dp))
+            Text(
+                text = poll.question,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Spacer(Modifier.size(7.dp))
+        val total = poll.options.sumOf { it.votes }.coerceAtLeast(1)
+        poll.options.forEach { option ->
+            val progress = option.votes.toFloat() / total
+            val selected = option.isVotedByMe
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp)
+                    .heightIn(min = 46.dp)
+                    .clickable(enabled = !poll.hasVoted && !selected) { onVote(option.id) },
+                shape = RoundedCornerShape(10.dp),
+                color = Color.Transparent,
+                border = BorderStroke(1.dp, if (selected) selectedColor else outline)
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = option.text,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
                         if (poll.hasVoted || selected) {
-                            Spacer(Modifier.size(6.dp))
-                            LinearProgressIndicator(
-                                progress = { progress },
-                                modifier = Modifier.fillMaxWidth(),
-                                color = FeedPurple,
-                                trackColor = FeedBorder
+                            Text(
+                                text = "${(progress * 100).toInt()}%",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall
                             )
                         }
                     }
+                    if (poll.hasVoted || selected) {
+                        Spacer(Modifier.size(6.dp))
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = selectedColor,
+                            trackColor = outline
+                        )
+                    }
                 }
             }
-            Text(
-                text = "${poll.totalVotes} votes",
-                color = FeedTextMuted,
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.padding(top = 4.dp)
-            )
         }
+        Text(
+            text = "${poll.totalVotes} votes",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(top = 4.dp)
+        )
     }
 }
 

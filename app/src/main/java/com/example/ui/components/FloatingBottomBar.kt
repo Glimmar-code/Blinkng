@@ -105,52 +105,38 @@ fun FeedBottomBar(
         currentTab == MainTab.MESSAGES -> FeedBottomDestination.MESSAGE
         else -> null
     }
-    val shape = RoundedCornerShape(34.dp)
-    val navigationSurface = if (isDark) FeedElevatedSurface else MaterialTheme.colorScheme.surface
-    val navigationBorder = if (isDark) FeedBorder else MaterialTheme.colorScheme.outlineVariant
+    val navigationSurface = if (isDark) Color(0xFF0E0F10) else Color.White
+    val navigationBorder = if (isDark) Color(0xFF2D3035) else Color(0xFFE1E4E8)
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            // MainActivity's Scaffold already applies the navigation-bar inset. Keep this
-            // wrapper transparent so the active screen remains visible around the floating
-            // pill instead of creating a second black rectangle below the app.
-            .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 4.dp),
-        contentAlignment = Alignment.Center
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(0.dp),
+        color = navigationSurface,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        border = BorderStroke(1.dp, navigationBorder)
     ) {
-        Surface(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            shape = shape,
-            // Keep the actual nav surface opaque so content beneath it cannot tint the bar.
-            color = navigationSurface,
-            tonalElevation = 0.dp,
-            shadowElevation = 10.dp,
-            border = BorderStroke(1.dp, navigationBorder)
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 5.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                feedBottomItems.forEach { item ->
-                    val selected = item.destination == selectedDestination
-                    FeedBottomBarItem(
-                        item = item,
-                        selected = selected,
-                        onClick = {
-                            when (item.destination) {
-                                FeedBottomDestination.HOME -> onHomeClick()
-                                FeedBottomDestination.CONNECT -> onConnectClick()
-                                FeedBottomDestination.LEADERBOARD -> onLeaderboardClick()
-                                FeedBottomDestination.MARKET -> onMarketClick()
-                                FeedBottomDestination.MESSAGE -> onMessageClick()
-                                FeedBottomDestination.MENU -> onMenuClick()
-                            }
+            feedBottomItems.forEach { item ->
+                val selected = item.destination == selectedDestination
+                FeedBottomBarItem(
+                    item = item,
+                    selected = selected,
+                    onClick = {
+                        when (item.destination) {
+                            FeedBottomDestination.HOME -> onHomeClick()
+                            FeedBottomDestination.CONNECT -> onConnectClick()
+                            FeedBottomDestination.LEADERBOARD -> onLeaderboardClick()
+                            FeedBottomDestination.MARKET -> onMarketClick()
+                            FeedBottomDestination.MESSAGE -> onMessageClick()
+                            FeedBottomDestination.MENU -> onMenuClick()
                         }
-                    )
-                }
+                    }
+                )
             }
         }
     }
@@ -162,80 +148,31 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val scale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0.92f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMediumLow
-        ),
-        label = "bottomNavScale"
-    )
-    val tint by animateColorAsState(
-        targetValue = if (selected) FeedTextPrimary else FeedTextSecondary,
-        label = "bottomNavTint"
-    )
-    val labelTint by animateColorAsState(
-        targetValue = if (selected) FeedTextPrimary else FeedTextSecondary,
-        label = "bottomNavLabelTint"
-    )
-    val interactionSource = remember { MutableInteractionSource() }
-
+    val tint = if (selected) FeedBlue else MaterialTheme.colorScheme.onSurface
     Column(
         modifier = Modifier
             .weight(1f)
-            .heightIn(min = 60.dp)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                role = Role.Tab,
-                onClick = onClick
-            )
+            .heightIn(min = 62.dp)
+            .clickable(role = Role.Tab, onClick = onClick)
             .testTag("feed_nav_${item.destination.name.lowercase()}"),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.Top
     ) {
         Box(
             modifier = Modifier
-                .size(34.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
-                .background(
-                    color = if (selected) FeedPurple.copy(alpha = 0.18f) else Color.Transparent,
-                    shape = CircleShape
-                ),
+                .fillMaxWidth(.66f)
+                .heightIn(min = 3.dp, max = 3.dp)
+                .background(if (selected) FeedBlue else Color.Transparent)
+        )
+        Box(
+            modifier = Modifier.weight(1f),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = if (selected) item.filledIcon else item.outlinedIcon,
                 contentDescription = item.label,
                 tint = tint,
-                modifier = Modifier.size(23.dp)
-            )
-        }
-        Spacer(Modifier.size(2.dp))
-        Text(
-            text = item.label,
-            color = labelTint,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        AnimatedVisibility(
-            visible = selected,
-            enter = fadeIn() + scaleIn(initialScale = 0.5f),
-            exit = fadeOut() + scaleOut(targetScale = 0.5f)
-        ) {
-            Box(
-                modifier = Modifier
-                    .padding(top = 3.dp)
-                    .size(5.dp)
-                    .background(
-                        brush = Brush.linearGradient(listOf(FeedPurple, FeedBlue)),
-                        shape = CircleShape
-                    )
+                modifier = Modifier.size(26.dp)
             )
         }
     }

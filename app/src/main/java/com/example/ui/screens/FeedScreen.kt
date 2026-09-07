@@ -597,7 +597,7 @@ private fun LegacyFeedScreen(
                             .fillMaxSize()
                             .nestedScroll(nestedScrollConnection)
                             ,
-                        contentPadding = PaddingValues(bottom = 92.dp)
+                        contentPadding = PaddingValues(bottom = 72.dp)
                     ) {
                         stickyHeader(key = "home_feed_chrome") {
                             Surface(
@@ -728,7 +728,12 @@ private fun LegacyFeedScreen(
                                         authorVerificationBadge = resolvedBadge,
                                         hasActiveStory = hasActiveStory
                                     )
-                                    Spacer(Modifier.height(8.dp))
+                                    Spacer(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .height(7.dp)
+                                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f))
+                                    )
                                 }
                             }
                             if (hasMorePosts) {
@@ -760,7 +765,7 @@ private fun LegacyFeedScreen(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
-                        .padding(end = 20.dp, bottom = 92.dp)
+                        .padding(end = 16.dp, bottom = 74.dp)
                 ) {
                     FloatingActionButton(
                         onClick = onOpenCreatePost,
@@ -800,7 +805,7 @@ private fun HomeHeader(
         Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+            .padding(start = 6.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
@@ -814,21 +819,13 @@ private fun HomeHeader(
             )
         }
 
-        Column(
-            Modifier.weight(1f),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                "Home",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black
-            )
-            Text(
-                "Your campus, in real time",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        Text(
+            "Blink",
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
 
         IconButton(
             onClick = onNotificationClick,
@@ -843,10 +840,9 @@ private fun HomeHeader(
 
         Box(
             Modifier
-                .size(44.dp)
+                .size(42.dp)
                 .clip(CircleShape)
-                .clickable(role = Role.Button, onClick = onProfileClick)
-                .semantics { },
+                .clickable(role = Role.Button, onClick = onProfileClick),
             contentAlignment = Alignment.Center
         ) {
             AsyncImage(
@@ -854,13 +850,9 @@ private fun HomeHeader(
                 error = painterResource(R.drawable.ic_default_profile),
                 fallback = painterResource(R.drawable.ic_default_profile),
                 contentDescription = "Profile",
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
+                modifier = Modifier.size(34.dp).clip(CircleShape)
             )
         }
-
-        Spacer(Modifier.width(4.dp))
     }
 }
 
@@ -903,30 +895,27 @@ private fun TopIconTab(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    Surface(
+    Column(
         modifier = Modifier
-            .size(width = 52.dp, height = 40.dp)
+            .width(58.dp)
             .semantics { this.selected = selected }
-            .clickable(role = Role.Tab, onClick = onClick),
-        shape = RoundedCornerShape(100.dp),
-        color = if (selected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f)
-        }
+            .clickable(role = Role.Tab, onClick = onClick)
+            .padding(top = 7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = imageVector,
-                contentDescription = contentDescription,
-                tint = if (selected) {
-                    MaterialTheme.colorScheme.onPrimary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier.size(22.dp)
-            )
-        }
+        Icon(
+            imageVector = imageVector,
+            contentDescription = contentDescription,
+            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(23.dp)
+        )
+        Spacer(Modifier.height(6.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+        )
     }
 }
 
@@ -936,23 +925,26 @@ private fun TopTab(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    Surface(
+    Column(
         modifier = Modifier
             .semantics { this.selected = selected }
-            .clickable(role = Role.Tab, onClick = onClick),
-        shape = RoundedCornerShape(100.dp),
-        color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
+            .clickable(role = Role.Tab, onClick = onClick)
+            .padding(top = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text,
-            color = if (selected) {
-                MaterialTheme.colorScheme.onPrimary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
+            modifier = Modifier.padding(horizontal = 12.dp)
+        )
+        Spacer(Modifier.height(7.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
         )
     }
 }

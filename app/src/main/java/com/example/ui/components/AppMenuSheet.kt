@@ -126,6 +126,15 @@ fun AppMenuSheet(
     onSimulateNotification: () -> Unit
 ) {
     val context = LocalContext.current
+    var expandedSections by rememberSaveable { mutableStateOf(setOf("Campus & tools")) }
+
+    fun toggle(title: String) {
+        expandedSections = if (title in expandedSections) {
+            expandedSections - title
+        } else {
+            expandedSections + title
+        }
+    }
 
     fun openProfessional(section: String) {
         onDismiss()
@@ -139,128 +148,110 @@ fun AppMenuSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
-        dragHandle = { BottomSheetDefaults.DragHandle() },
+        dragHandle = null,
+        shape = RoundedCornerShape(0.dp),
         modifier = Modifier.testTag("app_menu_sheet")
     ) {
-        var contentVisible by remember { mutableStateOf(false) }
-        LaunchedEffect(Unit) { delay(25); contentVisible = true }
-        var expandedSections by rememberSaveable {
-            mutableStateOf(setOf("Profile", "Experience", "Marketplace", "Privacy & Security", "Session"))
-        }
-
-        fun toggle(title: String) {
-            expandedSections = if (title in expandedSections) expandedSections - title else expandedSections + title
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp)
-                .padding(bottom = 34.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(bottom = 28.dp)
+                .verticalScroll(rememberScrollState())
         ) {
-            AnimatedVisibility(
-                visible = contentVisible,
-                enter = fadeIn(tween(260)) + slideInVertically(tween(320, easing = FastOutSlowInEasing)) { -it / 7 }
+            ProfileHeaderCard(profile) {
+                onDismiss()
+                onViewProfile()
+            }
+
+            MenuItemRow(Icons.Outlined.Notifications, "Activity", "Mentions and notifications") {
+                onDismiss(); onOpenActivity()
+            }
+            MenuItemRow(Icons.Outlined.EmojiEvents, "Leaderboard", "Campus ranking and points") {
+                onDismiss(); onOpenLeaderboard()
+            }
+            MenuItemRow(Icons.Outlined.Storefront, "Marketplace", "Browse campus listings") {
+                onDismiss(); onOpenMarket()
+            }
+            MenuItemRow(Icons.Outlined.AddShoppingCart, "List an item", "Create a marketplace listing") {
+                onDismiss(); onOpenPostItem()
+            }
+            MenuItemRow(Icons.Outlined.AccountBalanceWallet, "Seller hub", "Seller verification and tools") {
+                onDismiss(); onOpenBecomeSeller()
+            }
+
+            MenuSection(
+                title = "Settings and privacy",
+                expanded = "Settings and privacy" in expandedSections,
+                onToggle = { toggle("Settings and privacy") }
             ) {
-                ProfileHeaderCard(profile) {
-                    onDismiss()
-                    onViewProfile()
+                ThemeToggleRow(isDark = isDark, onToggleTheme = onToggleTheme)
+                MenuItemRow(Icons.Outlined.Lock, "Privacy & DM settings", "Private account and messaging controls") {
+                    openProfessional("privacy")
+                }
+                MenuItemRow(Icons.Outlined.Block, "Safety & blocked accounts", "Block, unblock and report users") {
+                    openProfessional("safety")
+                }
+                MenuItemRow(Icons.Outlined.Security, "Login & account security", "Session and security controls") {
+                    openProfessional("account")
+                }
+                MenuItemRow(Icons.Outlined.Storage, "Data & storage", "Cache and account data") {
+                    openProfessional("account")
                 }
             }
 
-            MenuSection("Profile", expandedSections.contains("Profile"), { toggle("Profile") }) {
-                MenuItemRow(Icons.Outlined.Person, "View profile", "Badges, skills, posts and campus identity") {
-                    onDismiss(); onViewProfile()
-                }
-                MenuItemRow(Icons.Outlined.Edit, "Edit profile", "Academic details, bio, contact and links") {
-                    onDismiss(); onEditProfile()
+            MenuSection(
+                title = "Campus & tools",
+                expanded = "Campus & tools" in expandedSections,
+                onToggle = { toggle("Campus & tools") }
+            ) {
+                MenuItemRow(Icons.Outlined.Groups, "Study & group center", "Group chats and study tools") {
+                    openProfessional("groups")
                 }
                 MenuItemRow(
                     Icons.Outlined.Verified,
                     "Campus verification",
-                    if (profile.verificationBadge != VerificationBadge.NONE) "Verification is active" else "Manage verification from your profile",
+                    "Manage your verification",
                     trailingText = if (profile.verificationBadge != VerificationBadge.NONE) "Active" else null
                 ) {
                     onDismiss(); onViewProfile()
                 }
-            }
-
-            MenuSection("Marketplace", expandedSections.contains("Marketplace"), { toggle("Marketplace") }) {
-                MenuItemRow(Icons.Outlined.Storefront, "Browse marketplace", "Campus listings from real Blink sellers") {
-                    onDismiss(); onOpenMarket()
-                }
-                MenuItemRow(Icons.Outlined.AddShoppingCart, "List an item", "Create a marketplace listing") {
-                    onDismiss(); onOpenPostItem()
-                }
-                MenuItemRow(Icons.Outlined.AccountBalanceWallet, "Seller hub", "Seller verification and listing tools") {
-                    onDismiss(); onOpenBecomeSeller()
-                }
-                MenuItemRow(Icons.Outlined.ShoppingBag, "Orders & wishlist", "Buyer/seller status controls and saved items", trailingText = "Live") {
+                MenuItemRow(Icons.Outlined.ShoppingBag, "Orders & wishlist", "Saved market items and order status") {
                     openProfessional("market")
                 }
             }
 
-            MenuSection("Campus & community", expandedSections.contains("Campus & community"), { toggle("Campus & community") }) {
-                MenuItemRow(Icons.Outlined.Groups, "Study & group center", "Create secure group chats and coordinate study") {
-                    openProfessional("groups")
+            MenuSection(
+                title = "Account and support",
+                expanded = "Account and support" in expandedSections,
+                onToggle = { toggle("Account and support") }
+            ) {
+                MenuItemRow(Icons.Outlined.Edit, "Edit profile", "Edit your campus profile") {
+                    onDismiss(); onEditProfile()
                 }
-                MenuItemRow(Icons.Outlined.EmojiEvents, "Leaderboard", "Campus points, games and contributor rankings") {
-                    onDismiss(); onOpenLeaderboard()
-                }
-                MenuItemRow(Icons.Outlined.Notifications, "Activity", "Mentions, interactions and live notifications") {
-                    onDismiss(); onOpenActivity()
-                }
-            }
-
-            MenuSection("Experience", expandedSections.contains("Experience"), { toggle("Experience") }) {
-                ThemeToggleRow(isDark = isDark, onToggleTheme = onToggleTheme)
-            }
-
-            MenuSection("Privacy & Security", expandedSections.contains("Privacy & Security"), { toggle("Privacy & Security") }) {
-                MenuItemRow(Icons.Outlined.Lock, "Privacy & DM settings", "Private account, DM privacy, read receipts and presence", trailingText = "Live") {
-                    openProfessional("privacy")
-                }
-                MenuItemRow(Icons.Outlined.Block, "Safety & blocked accounts", "Block, unblock and report users", trailingText = "Live") {
-                    openProfessional("safety")
-                }
-                MenuItemRow(Icons.Outlined.Security, "Login & account security", "Encrypted session and account lifecycle controls") {
-                    openProfessional("account")
-                }
-                MenuItemRow(Icons.Outlined.Storage, "Data & storage", "Clear cache and export your account data") {
-                    openProfessional("account")
-                }
-                MenuItemRow(
-                    Icons.Outlined.DeleteForever,
-                    "Delete account",
-                    "Permanent deletion with server-session revocation",
-                    iconColor = MaterialTheme.colorScheme.error,
-                    titleColor = MaterialTheme.colorScheme.error
-                ) {
-                    openProfessional("account")
-                }
-            }
-
-            MenuSection("About", expandedSections.contains("About"), { toggle("About") }) {
-                MenuItemRow(Icons.Outlined.Info, "About Blink", "Student community platform • professional build") {
-                    onShowToast("Blink • Student community, Connect Hub, Games and Marketplace")
-                }
-            }
-
-            MenuSection("Session", expandedSections.contains("Session"), { toggle("Session") }) {
-                MenuItemRow(Icons.Outlined.SwitchAccount, "Switch account", "Use one of your securely saved recent accounts") {
+                MenuItemRow(Icons.Outlined.SwitchAccount, "Switch account", "Use a saved account") {
                     onDismiss()
                     context.startActivity(Intent(context, AccountSwitcherActivity::class.java))
+                }
+                MenuItemRow(Icons.Outlined.Info, "About Blink", "About this app") {
+                    onShowToast("Blink • Student community, Connect Hub, Games and Marketplace")
                 }
                 MenuItemRow(
                     Icons.AutoMirrored.Filled.Logout,
                     "Log out",
-                    "End this device session securely",
+                    "End this device session",
                     iconColor = MaterialTheme.colorScheme.error,
                     titleColor = MaterialTheme.colorScheme.error
                 ) {
                     onDismiss(); onLogout()
+                }
+                MenuItemRow(
+                    Icons.Outlined.DeleteForever,
+                    "Delete account",
+                    "Permanent account deletion",
+                    iconColor = MaterialTheme.colorScheme.error,
+                    titleColor = MaterialTheme.colorScheme.error
+                ) {
+                    openProfessional("account")
                 }
             }
         }
@@ -269,66 +260,52 @@ fun AppMenuSheet(
 
 @Composable
 private fun ProfileHeaderCard(profile: UserProfile, onClick: () -> Unit) {
-    var pressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        if (pressed) .985f else 1f,
-        spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "menuProfileScale"
-    )
-    val pulse = rememberInfiniteTransition(label = "menuOnlinePulse")
-    val pulseScale by pulse.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.35f,
-        animationSpec = infiniteRepeatable(tween(1050), RepeatMode.Reverse),
-        label = "menuOnlinePulseScale"
-    )
-
-    Surface(
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .18f),
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .scale(scale)
-            .clickable {
-                pressed = true
-                onClick()
-            }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box {
-                AsyncImage(
-                    model = profile.avatarUrl,
-                    error = painterResource(R.drawable.ic_default_profile),
-                    fallback = painterResource(R.drawable.ic_default_profile),
-                    contentDescription = "My profile picture",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(54.dp).clip(CircleShape)
-                )
-                if (profile.onlineNow) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .size(13.dp)
-                            .scale(pulseScale)
-                            .background(Color(0xFF22C55E), CircleShape)
-                    )
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(profile.fullName.ifBlank { profile.username }, fontWeight = FontWeight.Black, fontSize = 16.sp)
-                Text("@${profile.username}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(
-                    listOf(profile.academicLevel, profile.department, profile.university).filter { it.isNotBlank() }.joinToString(" • "),
-                    fontSize = 9.5.sp,
-                    color = BlinkPink,
-                    maxLines = 1
+        Box {
+            AsyncImage(
+                model = profile.avatarUrl,
+                error = painterResource(R.drawable.ic_default_profile),
+                fallback = painterResource(R.drawable.ic_default_profile),
+                contentDescription = "My profile picture",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(52.dp).clip(CircleShape)
+            )
+            if (profile.onlineNow) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(12.dp)
+                        .background(Color(0xFF22C55E), CircleShape)
                 )
             }
-            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = "Open profile", modifier = Modifier.size(14.dp))
         }
+        Spacer(Modifier.width(13.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                profile.fullName.ifBlank { profile.username },
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                "@${profile.username}",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.ArrowForwardIos,
+            contentDescription = "Open profile",
+            modifier = Modifier.size(15.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
-    LaunchedEffect(pressed) { if (pressed) { delay(130); pressed = false } }
 }
 
 @Composable
@@ -338,65 +315,72 @@ private fun MenuSection(
     onToggle: () -> Unit,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val rotation by animateFloatAsState(if (expanded) 90f else 0f, MenuMotion.chevron, label = "menuChevron")
+    val rotation by animateFloatAsState(
+        if (expanded) 90f else 0f,
+        MenuMotion.chevron,
+        label = "menuChevron"
+    )
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
                 .clickable(onClick = onToggle)
-                .padding(horizontal = 5.dp, vertical = 7.dp),
+                .padding(horizontal = 20.dp, vertical = 15.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                title.uppercase(),
+                title,
                 modifier = Modifier.weight(1f),
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.Black,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                letterSpacing = .7.sp
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
-            Icon(Icons.Default.ChevronRight, contentDescription = if (expanded) "Collapse $title" else "Expand $title", modifier = Modifier.size(16.dp).rotate(rotation))
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = if (expanded) "Collapse $title" else "Expand $title",
+                modifier = Modifier.size(21.dp).rotate(rotation),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         AnimatedVisibility(
             visible = expanded,
-            enter = expandVertically(tween(230, easing = FastOutSlowInEasing)) + fadeIn(tween(180)),
-            exit = shrinkVertically(tween(190)) + fadeOut(tween(120))
+            enter = expandVertically(tween(180, easing = FastOutSlowInEasing)) + fadeIn(tween(120)),
+            exit = shrinkVertically(tween(150)) + fadeOut(tween(100))
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp), content = content)
+            Column(content = content)
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f)
+        ) {
+            Spacer(Modifier.size(1.dp))
         }
     }
 }
 
 @Composable
 private fun ThemeToggleRow(isDark: Boolean, onToggleTheme: () -> Unit) {
-    val bg by animateColorAsState(
-        if (isDark) Color(0xFF251E2D) else Color(0xFFF4E9FF),
-        tween(220),
-        label = "menuThemeBg"
-    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onToggleTheme)
-            .padding(horizontal = 11.dp, vertical = 10.dp),
+            .padding(horizontal = 22.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(36.dp).background(bg, CircleShape), contentAlignment = Alignment.Center) {
-            AnimatedContent(
-                targetState = isDark,
-                transitionSpec = { scaleIn().togetherWith(fadeOut()) },
-                label = "menuThemeIcon"
-            ) { dark ->
-                Icon(if (dark) Icons.Default.DarkMode else Icons.Default.LightMode, contentDescription = "Appearance", tint = BlinkPink)
-            }
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text("Appearance", fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
-            Text(if (isDark) "Dark mode" else "Light mode", fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Icon(
+            if (isDark) Icons.Default.DarkMode else Icons.Default.LightMode,
+            contentDescription = "Appearance",
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(28.dp)
+        )
+        Spacer(Modifier.width(18.dp))
+        Text(
+            "Appearance",
+            modifier = Modifier.weight(1f),
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp,
+            color = MaterialTheme.colorScheme.onSurface
+        )
         Switch(
             checked = isDark,
             onCheckedChange = { onToggleTheme() },
@@ -415,43 +399,41 @@ private fun MenuItemRow(
     titleColor: Color = Color.Unspecified,
     onClick: () -> Unit
 ) {
-    var pressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (pressed) .985f else 1f, tween(100), label = "menuRowScale")
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .scale(scale)
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                pressed = true
-                onClick()
-            }
-            .padding(horizontal = 11.dp, vertical = 10.dp),
+            .clickable(onClick = onClick)
+            .padding(horizontal = 22.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Surface(shape = CircleShape, color = iconColor.copy(alpha = .12f)) {
-            Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.padding(9.dp).size(19.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                title,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.5.sp,
-                color = if (titleColor == Color.Unspecified) MaterialTheme.colorScheme.onSurface else titleColor
-            )
-            Text(subtitle, fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
-        }
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (titleColor == MaterialTheme.colorScheme.error) titleColor else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(28.dp)
+        )
+        Spacer(Modifier.width(18.dp))
+        Text(
+            title,
+            modifier = Modifier.weight(1f),
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp,
+            color = if (titleColor == Color.Unspecified) MaterialTheme.colorScheme.onSurface else titleColor
+        )
         if (trailingText != null) {
-            Surface(shape = RoundedCornerShape(100.dp), color = BlinkPink.copy(alpha = .12f)) {
-                Text(trailingText, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = BlinkPink, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
-            }
-        } else {
-            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, contentDescription = null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                trailingText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(Modifier.width(6.dp))
         }
+        Icon(
+            Icons.AutoMirrored.Filled.ArrowForwardIos,
+            contentDescription = null,
+            modifier = Modifier.size(13.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
-    LaunchedEffect(pressed) { if (pressed) { delay(120); pressed = false } }
 }
