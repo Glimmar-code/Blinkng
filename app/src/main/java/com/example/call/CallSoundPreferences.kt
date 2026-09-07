@@ -70,6 +70,13 @@ object CallSoundPreferences {
             .apply()
     }
 
+    fun reset(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .apply()
+    }
+
     fun channelId(context: Context, type: CallType): String {
         val tone = ringtoneUri(context, type)?.toString().orEmpty()
         val fingerprint = "$tone|${vibrateEnabled(context)}|${ringEnabled(context, type)}"
