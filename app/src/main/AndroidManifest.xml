@@ -20,6 +20,14 @@
         <activity android:name=".AdminControlCenterActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".auth.AccountSwitcherActivity" android:exported="false" />
         <activity
+            android:name=".notification.NotificationAndCallSettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MyApplication" />
+        <activity
+            android:name=".call.CallHistoryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.MyApplication" />
+        <activity
             android:name=".auth.GoogleAuthCallbackActivity"
             android:exported="false"
             android:noHistory="true"
