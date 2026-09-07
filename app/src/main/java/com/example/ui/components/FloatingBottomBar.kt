@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import android.app.Activity
+import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,9 +34,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.example.BlinkStoreActivity
+import com.example.R
 import com.example.ui.theme.FeedBlue
 import com.example.viewmodel.MainTab
 
@@ -72,8 +77,8 @@ fun FeedBottomBar(
     isMenuOpen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val selectedDestination = when {
-        isMenuOpen -> FeedBottomDestination.STORE
         currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT
         currentTab == MainTab.HOME -> FeedBottomDestination.HOME
         currentTab == MainTab.LEADERBOARD -> FeedBottomDestination.LEADERBOARD
@@ -112,7 +117,13 @@ fun FeedBottomBar(
                             FeedBottomDestination.LEADERBOARD -> onLeaderboardClick()
                             FeedBottomDestination.MARKET -> onMarketClick()
                             FeedBottomDestination.MESSAGE -> onMessageClick()
-                            FeedBottomDestination.STORE -> onMenuClick()
+                            FeedBottomDestination.STORE -> {
+                                context.startActivity(Intent(context, BlinkStoreActivity::class.java))
+                                (context as? Activity)?.overridePendingTransition(
+                                    R.anim.blink_slide_in_right,
+                                    R.anim.blink_stay
+                                )
+                            }
                         }
                     }
                 )
