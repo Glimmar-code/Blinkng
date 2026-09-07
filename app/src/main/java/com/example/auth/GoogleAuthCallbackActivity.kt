@@ -2,7 +2,6 @@ package com.example.auth
 
 import android.content.Intent
 import android.os.Bundle
-import android.util.Base64
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -19,7 +18,6 @@ import com.example.data.supabase.SupabaseService
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.launch
-import java.security.SecureRandom
 
 /**
  * Native Android Sign in with Google entry point.
@@ -33,8 +31,9 @@ import java.security.SecureRandom
  * validates that token and creates the normal Supabase access/refresh session used
  * by the rest of the app.
  *
- * Important: Google Credential Manager expects the nonce placed in the ID token to
- * be the same nonce that the relying party validates. Do not SHA-256 this nonce here.
+ * Supabase's Google ID-token flow uses two forms of the same nonce: Google receives
+ * SHA-256(rawNonce) and Supabase receives rawNonce. Supabase then hashes the raw value
+ * and verifies that it matches the nonce claim in Google's ID token.
  */
 class GoogleAuthCallbackActivity : ComponentActivity() {
 
@@ -64,17 +63,16 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
             return
         }
 
-        // One cryptographically-random nonce is used for both the Google request and
-        // the Supabase ID-token exchange so replay protection remains intact.
-        val rawNonce = generateSecureRandomNonce()
+        val rawNonce = GoogleNonce.generate()
+        val googleNonce = GoogleNonce.sha256Hex(rawNonce)
 
         // This is an explicit Sign in with Google button, so use Google's dedicated
-        // button option. Using GetGoogleIdOption here can result in Credential Manager
-        // failing before the account chooser opens on some devices/emulators.
+        // button option. The ID token contains the hashed nonce; the raw nonce is kept
+        // locally and supplied to Supabase during the token exchange below.
         val googleOption = GetSignInWithGoogleOption.Builder(
             serverClientId = webClientId
         )
-            .setNonce(rawNonce)
+            .setNonce(googleNonce)
             .build()
 
         val request = GetCredentialRequest.Builder()
@@ -147,14 +145,5 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
     private fun failAndFinish(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
         finish()
-    }
-
-    private fun generateSecureRandomNonce(byteLength: Int = 32): String {
-        val bytes = ByteArray(byteLength)
-        SecureRandom().nextBytes(bytes)
-        return Base64.encodeToString(
-            bytes,
-            Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING
-        )
     }
 }
