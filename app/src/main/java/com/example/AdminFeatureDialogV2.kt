@@ -31,8 +31,11 @@ internal fun AdminFeatureDialogV2(
 ) {
     val scope = rememberCoroutineScope()
     val kind = feature.inputKind
+    val isAdminAnnouncement = feature.featureId in 161..170
     var entityRef by remember(feature.featureId) { mutableStateOf("") }
     var mainText by remember(feature.featureId) { mutableStateOf("") }
+    var topic by remember(feature.featureId) { mutableStateOf("") }
+    var subtopic by remember(feature.featureId) { mutableStateOf("") }
     var amount by remember(feature.featureId) { mutableStateOf("") }
     var durationDays by remember(feature.featureId) { mutableStateOf(7) }
     var reason by remember(feature.featureId) { mutableStateOf("") }
@@ -54,6 +57,7 @@ internal fun AdminFeatureDialogV2(
     fun options(): JSONObject {
         val out = JSONObject()
         if (reason.isNotBlank()) out.put("reason", reason.trim())
+        if (isAdminAnnouncement) out.put("title", topic.trim().ifBlank { "Blink" })
         if (kind == "toggle" || kind == "feature_toggle") out.put("enabled", enabled)
         if (kind.contains("badge")) out.put("badge", badge)
         if (kind.contains("permissions") || kind == "role_template") {
@@ -147,7 +151,33 @@ internal fun AdminFeatureDialogV2(
                     OutlinedTextField(mainText, { mainText = it }, Modifier.fillMaxWidth(), label = { Text("Search query") }, singleLine = true)
                 }
 
-                if (kind.contains("message") || kind.contains("note") || kind == "campaign_text" || kind == "version") {
+                if (isAdminAnnouncement) {
+                    Text("Message details", fontWeight = FontWeight.Black, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = topic,
+                        onValueChange = { topic = it.take(120) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Topic") },
+                        supportingText = { Text("Main heading users will see") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = subtopic,
+                        onValueChange = { subtopic = it.take(160) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Subtopic") },
+                        supportingText = { Text("Optional secondary heading") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = mainText,
+                        onValueChange = { mainText = it.take(12000) },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Message") },
+                        supportingText = { Text("Full message shown on the dedicated message screen") },
+                        minLines = 6
+                    )
+                } else if (kind.contains("message") || kind.contains("note") || kind == "campaign_text" || kind == "version") {
                     OutlinedTextField(
                         mainText,
                         { mainText = it.take(2000) },
@@ -273,12 +303,17 @@ internal fun AdminFeatureDialogV2(
                 }
 
                 Button(
-                    enabled = !busy,
+                    enabled = !busy && (!isAdminAnnouncement || (topic.isNotBlank() && mainText.isNotBlank())),
                     onClick = {
                         scope.launch {
                             busy = true
                             result = ""
                             val textPayload = when {
+                                isAdminAnnouncement -> JSONObject()
+                                    .put("_blink_admin_message_v1", true)
+                                    .put("subtopic", subtopic.trim())
+                                    .put("message", mainText.trim())
+                                    .toString()
                                 kind == "feature_toggle" -> featureToggleKey
                                 kind == "emergency" -> mainText.ifBlank { "lockdown" }
                                 feature.featureId in setOf(83, 97, 124, 132, 152) -> university.ifBlank { mainText }
@@ -302,7 +337,13 @@ internal fun AdminFeatureDialogV2(
                     }
                 ) {
                     if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    else Text(if (kind == "insight" || kind == "none") "Run" else "Apply")
+                    else Text(
+                        when {
+                            isAdminAnnouncement -> "Send message"
+                            kind == "insight" || kind == "none" -> "Run"
+                            else -> "Apply"
+                        }
+                    )
                 }
 
                 if (result.isNotBlank()) {
