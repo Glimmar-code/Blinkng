@@ -44,7 +44,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.example.ui.theme.BlinkTheme
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -110,6 +112,7 @@ class IncomingCallBannerActivity : ComponentActivity() {
     private var peerAvatar: String = ""
     private var conversationId: String = ""
     private var ringtone: Ringtone? = null
+    private var ringtoneLoopJob: Job? = null
     private var vibrator: Vibrator? = null
     private var actionInProgress = false
 
@@ -242,6 +245,21 @@ class IncomingCallBannerActivity : ComponentActivity() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) isLooping = true
                 play()
             }
+
+            // Ringtone.isLooping is only available from Android 9. On Android 7-8,
+            // replay the selected ringtone whenever one cycle finishes so foreground
+            // incoming calls keep audibly ringing until Answer/Decline/timeout.
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P && ringtone != null) {
+                ringtoneLoopJob = lifecycleScope.launch {
+                    while (isActive && !isFinishing && !actionInProgress) {
+                        delay(750L)
+                        val activeRingtone = ringtone ?: break
+                        if (!activeRingtone.isPlaying) {
+                            runCatching { activeRingtone.play() }
+                        }
+                    }
+                }
+            }
         }
 
         if (CallSoundPreferences.vibrateEnabled(this)) {
@@ -262,6 +280,8 @@ class IncomingCallBannerActivity : ComponentActivity() {
     }
 
     private fun stopRinging() {
+        ringtoneLoopJob?.cancel()
+        ringtoneLoopJob = null
         runCatching { ringtone?.stop() }
         ringtone = null
         runCatching { vibrator?.cancel() }
