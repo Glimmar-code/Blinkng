@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 rootProject.name = "Blink"
 
 include(":app")
+include(":shared")
