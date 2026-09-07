@@ -221,7 +221,8 @@ fun PremiumFeedScreen(
     onLoadMoreReels: () -> Unit = {},
     homeReselectSignal: Int = 0,
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
-    hasUnreadNotifications: Boolean = false
+    hasUnreadNotifications: Boolean = false,
+    routedReelId: String? = null
 ) {
     val context = LocalContext.current
     val resumePrefs = remember(context) {
@@ -243,6 +244,13 @@ fun PremiumFeedScreen(
     val followingIds by FollowStateStore.followingIds.collectAsState()
     var launchReelId by rememberSaveable(resumeUserKey) { mutableStateOf<String?>(null) }
     var launchReelPositionMs by rememberSaveable(resumeUserKey) { mutableStateOf(0L) }
+
+    LaunchedEffect(currentSubTab) {
+        if (currentSubTab != 1 && launchReelId != null) {
+            launchReelId = null
+            launchReelPositionMs = 0L
+        }
+    }
 
     fun openReelsAt(reelId: String? = null, positionMs: Long = 0L) {
         launchReelId = reelId
@@ -356,8 +364,8 @@ fun PremiumFeedScreen(
             onLoadMoreReels = onLoadMoreReels,
             homeReselectSignal = homeReselectSignal,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
-            initialReelId = launchReelId,
-            initialReelPositionMs = launchReelPositionMs
+            initialReelId = routedReelId ?: launchReelId,
+            initialReelPositionMs = if (routedReelId != null) 0L else launchReelPositionMs
         )
 
         2 -> PremiumConnectHost(
