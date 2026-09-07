@@ -38,6 +38,14 @@ data class AdminUserSummary(
     val adminExpiresAt: String?
 )
 
+data class AdminFeature(
+    val featureId: Int,
+    val title: String,
+    val category: String,
+    val ownerOnly: Boolean,
+    val enabled: Boolean
+)
+
 class AdminSupabaseService {
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -107,6 +115,49 @@ class AdminSupabaseService {
             posts = json.optInt("posts", 0),
             ownerPosts = json.optInt("owner_posts", 0)
         )
+    }
+
+    suspend fun fetchFeatures(): Result<List<AdminFeature>> = runCatching {
+        val array = JSONArray(rpc("admin_list_features"))
+        buildList {
+            for (i in 0 until array.length()) {
+                val json = array.getJSONObject(i)
+                add(
+                    AdminFeature(
+                        featureId = json.optInt("feature_id"),
+                        title = json.optString("title"),
+                        category = json.optString("category"),
+                        ownerOnly = json.optBoolean("owner_only", false),
+                        enabled = json.optBoolean("enabled", true)
+                    )
+                )
+            }
+        }
+    }
+
+    suspend fun executeFeature(
+        featureId: Int,
+        targetId: String? = null,
+        text: String? = null,
+        amount: Long? = null,
+        durationHours: Int? = null,
+        extraJson: String = "{}"
+    ): Result<String> = runCatching {
+        require(featureId in 1..200) { "Feature ID must be between 1 and 200." }
+        val extra = try {
+            JSONObject(extraJson.ifBlank { "{}" })
+        } catch (_: Exception) {
+            throw IllegalArgumentException("Extra JSON must be a valid JSON object.")
+        }
+        val payload = JSONObject()
+            .put("p_feature_id", featureId)
+            .put("p_target_id", targetId?.trim()?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
+            .put("p_text", text?.trim()?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
+            .put("p_amount", amount ?: JSONObject.NULL)
+            .put("p_duration_hours", durationHours ?: JSONObject.NULL)
+            .put("p_extra", extra)
+        val raw = rpc("admin_execute_feature", payload)
+        runCatching { JSONObject(raw).toString(2) }.getOrElse { raw }
     }
 
     suspend fun searchUsers(query: String, limit: Int = 40): Result<List<AdminUserSummary>> = runCatching {
