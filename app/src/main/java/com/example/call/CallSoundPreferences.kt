@@ -17,10 +17,11 @@ object CallSoundPreferences {
     private const val KEY_VOICE_TONE = "voice_tone_uri"
     private const val KEY_VIDEO_TONE = "video_tone_uri"
     private const val KEY_VIBRATE = "call_vibrate"
-    private const val KEY_RING_ENABLED = "call_ring_enabled"
+    private const val KEY_VOICE_RING_ENABLED = "voice_ring_enabled"
+    private const val KEY_VIDEO_RING_ENABLED = "video_ring_enabled"
 
     fun ringtoneUri(context: Context, type: CallType): Uri? {
-        if (!ringEnabled(context)) return null
+        if (!ringEnabled(context, type)) return null
         val key = if (type == CallType.VIDEO) KEY_VIDEO_TONE else KEY_VOICE_TONE
         val stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(key, null)
@@ -37,6 +38,7 @@ object CallSoundPreferences {
     }
 
     fun ringtoneLabel(context: Context, type: CallType): String {
+        if (!ringEnabled(context, type)) return "Silent"
         val uri = ringtoneUri(context, type) ?: return "Silent"
         return runCatching {
             RingtoneManager.getRingtone(context, uri)?.getTitle(context)
@@ -54,20 +56,23 @@ object CallSoundPreferences {
             .apply()
     }
 
-    fun ringEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_RING_ENABLED, true)
+    fun ringEnabled(context: Context, type: CallType): Boolean {
+        val key = if (type == CallType.VIDEO) KEY_VIDEO_RING_ENABLED else KEY_VOICE_RING_ENABLED
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(key, true)
+    }
 
-    fun setRingEnabled(context: Context, enabled: Boolean) {
+    fun setRingEnabled(context: Context, type: CallType, enabled: Boolean) {
+        val key = if (type == CallType.VIDEO) KEY_VIDEO_RING_ENABLED else KEY_VOICE_RING_ENABLED
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .putBoolean(KEY_RING_ENABLED, enabled)
+            .putBoolean(key, enabled)
             .apply()
     }
 
     fun channelId(context: Context, type: CallType): String {
         val tone = ringtoneUri(context, type)?.toString().orEmpty()
-        val fingerprint = "$tone|${vibrateEnabled(context)}|${ringEnabled(context)}"
+        val fingerprint = "$tone|${vibrateEnabled(context)}|${ringEnabled(context, type)}"
             .hashCode()
             .toUInt()
             .toString(16)
