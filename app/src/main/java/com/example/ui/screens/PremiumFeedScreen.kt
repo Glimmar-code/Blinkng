@@ -138,6 +138,32 @@ private fun buildPremiumHomeRows(
 }
 
 /**
+ * Keeps the ranked feed order stable for the current browsing session.
+ *
+ * The server ranking algorithm still decides the ranked payload. Background/realtime
+ * updates may refresh the data of rows already on-screen/in-session, but they must not
+ * insert or reorder unseen rows while the user is scrolling. Only pagination appends new
+ * ranked rows; an explicit refresh is allowed to replace the whole ranked snapshot.
+ */
+private fun mergeStablePremiumFeed(
+    current: List<FeedPost>,
+    latest: List<FeedPost>,
+    appendNew: Boolean
+): List<FeedPost> {
+    if (current.isEmpty()) return latest
+    if (latest.isEmpty()) return current
+
+    val latestById = latest.associateBy { it.id }
+    val updatedInPlace = current.map { existing ->
+        latestById[existing.id] ?: existing
+    }
+    if (!appendNew) return updatedInPlace
+
+    val existingIds = current.asSequence().map { it.id }.toHashSet()
+    return updatedInPlace + latest.filter { it.id !in existingIds }
+}
+
+/**
  * Premium feed shell.
  *
  * For You -> Following -> Game is one horizontal gesture family. Reels remains
@@ -469,8 +495,54 @@ private fun PremiumHomeFeed(
     )
     var offlineEmptyConfirmed by remember { mutableStateOf(false) }
 
-    val filteredPosts = remember(posts, filter, laneIndex, followedAuthorKeys) {
-        val rankedNormalPosts = posts.filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
+    // Freeze positional order for this lane while keeping each existing post's live data
+    // fresh. This prevents realtime/background re-ranking from inserting a post ahead of
+    // the user's current scroll position. The ranking algorithm itself is untouched.
+    var stableRankedPosts by remember(laneResumeKey) { mutableStateOf(posts) }
+    var stableRankedReels by remember(laneResumeKey) { mutableStateOf(reels) }
+    var postRefreshWasRunning by remember(laneResumeKey) { mutableStateOf(isRefreshing) }
+    var reelRefreshWasRunning by remember(laneResumeKey) { mutableStateOf(isRefreshing) }
+    var postPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMorePosts) }
+    var reelPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMoreReels) }
+
+    LaunchedEffect(posts, isRefreshing, isLoadingMorePosts, laneResumeKey) {
+        val explicitRefreshCompleted = postRefreshWasRunning && !isRefreshing
+        val paginationCompleted = postPaginationWasRunning && !isLoadingMorePosts
+
+        stableRankedPosts = if (explicitRefreshCompleted) {
+            posts
+        } else {
+            mergeStablePremiumFeed(
+                current = stableRankedPosts,
+                latest = posts,
+                appendNew = paginationCompleted
+            )
+        }
+
+        postRefreshWasRunning = isRefreshing
+        postPaginationWasRunning = isLoadingMorePosts
+    }
+
+    LaunchedEffect(reels, isRefreshing, isLoadingMoreReels, laneResumeKey) {
+        val explicitRefreshCompleted = reelRefreshWasRunning && !isRefreshing
+        val paginationCompleted = reelPaginationWasRunning && !isLoadingMoreReels
+
+        stableRankedReels = if (explicitRefreshCompleted) {
+            reels
+        } else {
+            mergeStablePremiumFeed(
+                current = stableRankedReels,
+                latest = reels,
+                appendNew = paginationCompleted
+            )
+        }
+
+        reelRefreshWasRunning = isRefreshing
+        reelPaginationWasRunning = isLoadingMoreReels
+    }
+
+    val filteredPosts = remember(stableRankedPosts, filter, laneIndex, followedAuthorKeys) {
+        val rankedNormalPosts = stableRankedPosts.filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
         val lanePosts = if (laneIndex == 1) {
             // Preserve the exact ranking/order delivered by the normal feed algorithm;
             // Following is only an author-membership filter over that ranked list.
@@ -489,8 +561,8 @@ private fun PremiumHomeFeed(
         }
     }
 
-    val rankedInlineReels = remember(reels, laneIndex, followedAuthorKeys) {
-        reels.filter { reel ->
+    val rankedInlineReels = remember(stableRankedReels, laneIndex, followedAuthorKeys) {
+        stableRankedReels.filter { reel ->
             val hasPlayableVideo = reel.isReel && !reel.videoUrl.isNullOrBlank()
             val authorKey = reel.authorUsername
                 .ifBlank { reel.author }
@@ -508,12 +580,12 @@ private fun PremiumHomeFeed(
     }
     var activeInlineReelKey by remember(laneResumeKey) { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(isOnline, isLoading, posts.isEmpty(), filteredPosts.isEmpty(), filter, laneIndex) {
+    LaunchedEffect(isOnline, isLoading, stableRankedPosts.isEmpty(), filteredPosts.isEmpty(), filter, laneIndex) {
         offlineEmptyConfirmed = false
         if (
             !isOnline &&
             !isLoading &&
-            posts.isEmpty() &&
+            stableRankedPosts.isEmpty() &&
             filteredPosts.isEmpty() &&
             filter == PremiumFeedFilter.ALL &&
             laneIndex == 0
@@ -764,14 +836,14 @@ private fun PremiumHomeFeed(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(top = 6.dp, bottom = 170.dp)
                     ) {
-                        if (!errorMessage.isNullOrBlank() && posts.isNotEmpty()) {
+                        if (!errorMessage.isNullOrBlank() && stableRankedPosts.isNotEmpty()) {
                             item(key = "refresh_error") {
                                 PremiumFeedRefreshNotice(errorMessage, onRetry)
                             }
                         }
 
                         when {
-                            isLoading && posts.isEmpty() -> {
+                            isLoading && stableRankedPosts.isEmpty() -> {
                                 items(4, key = { "skeleton:$it" }) {
                                     PremiumFeedSkeleton()
                                 }
@@ -791,7 +863,7 @@ private fun PremiumHomeFeed(
                                         }
                                     }
 
-                                    !isOnline && posts.isEmpty() && !offlineEmptyConfirmed -> {
+                                    !isOnline && stableRankedPosts.isEmpty() && !offlineEmptyConfirmed -> {
                                         // Never flash an empty-feed message while disk cache may still hydrate.
                                         items(2, key = { "cache_wait:$it" }) {
                                             PremiumFeedSkeleton()
@@ -803,7 +875,7 @@ private fun PremiumHomeFeed(
                                             PremiumEmptyFeed(
                                                 isFiltered = false,
                                                 isFollowingLane = false,
-                                                offlineNoCache = !isOnline && posts.isEmpty() && offlineEmptyConfirmed,
+                                                offlineNoCache = !isOnline && stableRankedPosts.isEmpty() && offlineEmptyConfirmed,
                                                 onCreatePost = onOpenCreatePost,
                                                 onClearFilter = { filter = PremiumFeedFilter.ALL }
                                             )
