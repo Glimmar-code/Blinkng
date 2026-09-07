@@ -1,0 +1,11 @@
+-- Blinkng controlled development/test seed file.
+--
+-- IMPORTANT:
+-- 1. Do not copy production user rows, messages, posts, tokens, emails,
+--    payment records, private admin data, or other personal data here.
+-- 2. Keep deterministic reference/test data only.
+-- 3. Production configuration that is required for recovery is documented
+--    in RECOVERY.md and SUPABASE_ARCHITECTURE.md.
+--
+-- This file is intentionally empty until controlled seed fixtures are
+-- explicitly reviewed and added.

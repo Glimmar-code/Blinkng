@@ -16,6 +16,42 @@ A Supabase change must never exist only in the Supabase Dashboard without a matc
 
 ---
 
+## Mandatory version-bound Supabase fallback / rollback rule
+
+**A Blink Android/Git version and its compatible Supabase backend are one release unit.**
+
+Whenever any developer or AI agent checks out, restores, reverts, rolls back, rebuilds, or falls back to another Blink commit/tag/release/version, it MUST also identify the matching Supabase backend state for that version. Never consider an app rollback complete while leaving a mismatched backend behind.
+
+The matching backend recovery set includes all source-controlled Supabase definitions that can affect runtime behavior:
+
+- migrations and recovery baselines
+- schemas/tables/columns/enums/default/generated expressions
+- constraints and indexes
+- SQL functions/RPCs/procedures/views
+- triggers
+- RLS state, policies, grants and permissions
+- Storage bucket definitions and Storage policies
+- Realtime publication membership
+- cron/scheduled jobs
+- Edge Function source and non-secret function configuration, including `verify_jwt`
+- controlled reference/configuration seed data required by the app
+- non-secret Auth/client configuration
+- required secret/environment **names** and recovery instructions
+
+Before a fallback version is declared usable, test that exact Android version against the restored/compatible backend and run the relevant RLS/security, backend smoke, integration, regression, and Android build checks.
+
+### Never destroy production merely to match an older APK
+
+Do not blindly downgrade the live production schema, drop newer database objects, delete newer rows, remove newer user uploads, or otherwise destroy post-release data to force compatibility with an older app. If an older version requires an incompatible/destructive backend state, recover it in an isolated Supabase recovery/staging project or implement a forward-compatible compatibility layer. Preserve production data first.
+
+### Complete-code recovery requirement
+
+When a user asks to “restore everything,” “move everything,” “fallback to another version,” “recover another version,” or equivalent wording, interpret **everything** as the complete non-secret source-controlled app + Supabase code/configuration set. Never interpret it as permission to commit private production rows, Auth users, password hashes, messages, uploaded file bytes, service-role keys, database passwords, OAuth/SMTP/Firebase/payment secrets, or other private credentials/data.
+
+Consult `supabase/RECOVERY.md` and the matching snapshot/manifest under `supabase/recovery/` before carrying out a version recovery.
+
+---
+
 ## What counts as a Supabase change
 
 This includes, but is not limited to:
@@ -37,9 +73,11 @@ This includes, but is not limited to:
 - Storage buckets
 - Storage policies
 - Edge Functions
+- Edge Function non-secret configuration
 - Cron jobs
 - Queues
 - Webhooks
+- Controlled backend reference/configuration data
 - Coin/balance logic
 - Verification logic
 - Subscription/VIP logic
@@ -163,6 +201,7 @@ The next Blink release MUST be blocked if any of the following is true:
 
 - A Supabase Dashboard change is not represented in GitHub.
 - A required migration/recovery definition is missing.
+- The version being restored has no identifiable compatible Supabase state.
 - Android code still references an obsolete Supabase contract.
 - A schema change can break the currently supported app without a compatibility plan.
 - RLS/security behavior has not been checked for an affected exposed resource.
@@ -186,12 +225,14 @@ Whenever repository state and remote Supabase state differ, investigate the diff
 Whenever an AI agent or developer completes a task that changed Supabase, the final task summary must state:
 
 1. What changed in Supabase.
-2. Which migration/config/function files record the change.
+2. Which migration/config/function/recovery files record the change.
 3. Which Android files were updated because of it.
 4. What security/RLS checks were performed.
 5. What tests/build checks passed or failed.
 6. Whether the change is ready for the next Blink release.
 7. Any manual Supabase Dashboard configuration still required.
 8. Any backward-compatibility risk for users on an older APK.
+9. Which app version/commit the resulting backend state is compatible with or whether compatibility is intentionally broad.
+10. Whether recovery of this version would require any secret values/data backups that are intentionally kept outside Git.
 
-Do not claim a Supabase-related feature is fully complete if any required app integration, migration capture, security verification, testing, or release preparation remains outstanding.
+Do not claim a Supabase-related feature or recovery is fully complete if any required app integration, migration capture, recovery baseline, security verification, testing, or release preparation remains outstanding.
