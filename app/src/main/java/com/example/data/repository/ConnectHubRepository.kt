@@ -11,6 +11,8 @@ import com.example.data.models.MentorListing
 import com.example.data.models.ReadingMateListing
 import com.example.data.models.RoommateListing
 import com.example.data.models.SmartMatchCandidate
+import com.example.data.models.MatchSpinPreferences
+import com.example.data.models.MatchSpinResult
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.Dispatchers
@@ -251,6 +253,34 @@ class ConnectHubRepository(
                     .put("p_challenge_id", challengeId)
                     .put("p_score", score.coerceIn(0, 500))
             ).isNotBlank()
+        }
+
+    suspend fun spinMatch(preferences: MatchSpinPreferences): MatchSpinResult =
+        withContext(Dispatchers.IO) {
+            fun clean(value: String?): Any = value
+                ?.trim()
+                ?.takeIf { it.isNotBlank() && !it.equals("all", ignoreCase = true) }
+                ?: JSONObject.NULL
+
+            val body = JSONObject()
+                .put("p_university", clean(preferences.university))
+                .put("p_faculty", clean(preferences.faculty))
+                .put("p_department", clean(preferences.department))
+                .put("p_academic_level", clean(preferences.academicLevel))
+                .put("p_relationship_status", clean(preferences.relationshipStatus))
+                .put("p_type_prompt", clean(preferences.typePrompt.take(200)))
+                .put("p_online_only", preferences.onlineOnly)
+
+            val payload = JSONObject(rpc("spin_connect_match", body))
+            val candidateJson = payload.optJSONObject("candidate")
+                ?: throw IllegalStateException("No match was returned. Try widening your preferences.")
+
+            MatchSpinResult(
+                candidate = parseSmartMatch(candidateJson),
+                remainingCoins = payload.optLong("remaining_coins", 0L),
+                coinsSpent = payload.optInt("coins_spent", 10),
+                matchReasons = payload.optStringList("match_reasons")
+            )
         }
 
     suspend fun recordGameSession(gameType: String, score: Int): Boolean =

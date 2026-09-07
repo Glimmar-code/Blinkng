@@ -866,7 +866,7 @@ fun EditProfileScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        listOf("Single", "Taken", "Private").forEach { status ->
+                        listOf("Single", "Taken", "Married", "It's complicated", "Prefer not to say", "Private").forEach { status ->
                             FilterChip(
                                 selected = relationshipStatus == status,
                                 onClick = { relationshipStatus = status },

@@ -121,6 +121,23 @@ data class SmartMatchCandidate(
     val commonHobbies: List<String> = emptyList()
 )
 
+data class MatchSpinPreferences(
+    val university: String? = null,
+    val faculty: String? = null,
+    val department: String? = null,
+    val academicLevel: String? = null,
+    val relationshipStatus: String? = null,
+    val typePrompt: String = "",
+    val onlineOnly: Boolean = false
+)
+
+data class MatchSpinResult(
+    val candidate: SmartMatchCandidate,
+    val remainingCoins: Long,
+    val coinsSpent: Int = 10,
+    val matchReasons: List<String> = emptyList()
+)
+
 data class ConnectRequestItem(
     val kind: String,
     val requestId: String,

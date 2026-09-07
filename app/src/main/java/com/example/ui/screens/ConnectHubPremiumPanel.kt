@@ -26,6 +26,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +38,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -67,12 +69,15 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -101,7 +106,10 @@ import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.ConnectRequestItem
 import com.example.data.models.GameChallenge
+import com.example.data.models.MatchSpinPreferences
+import com.example.data.models.NigerianUniversities
 import com.example.data.models.UserProfile
+import com.example.data.repository.ConnectHubRepository
 import com.example.ui.components.shimmerBackground
 import com.example.ui.theme.BlinkOnlineGreen
 import com.example.ui.theme.BlinkPink
@@ -170,9 +178,14 @@ fun ConnectHubPremiumPanel(
     var form by rememberSaveable { mutableStateOf(HubForm.NONE) }
     var hubQuery by rememberSaveable { mutableStateOf("") }
     var isMatching by remember { mutableStateOf(false) }
+    var showMatchSpinDialog by rememberSaveable { mutableStateOf(false) }
+    var matchRemainingCoins by remember { mutableStateOf<Long?>(null) }
+    var matchReasons by remember { mutableStateOf<List<String>>(emptyList()) }
+    var matchError by remember { mutableStateOf<String?>(null) }
     var challengeTarget by remember { mutableStateOf<UserProfile?>(null) }
     var followingIds by remember { mutableStateOf(setOf<String>()) }
     val coroutineScope = rememberCoroutineScope()
+    val matchRepository = remember { ConnectHubRepository() }
 
     val toggleFollow: (String) -> Unit = { id ->
         followingIds = if (id in followingIds) followingIds - id else followingIds + id
@@ -296,20 +309,11 @@ fun ConnectHubPremiumPanel(
             current = current,
             match = match,
             isMatching = isMatching,
+            remainingCoins = matchRemainingCoins,
+            matchReasons = matchReasons,
+            errorMessage = matchError,
             onSpin = {
-                val pool = candidates.take(8)
-                if (pool.isNotEmpty() && !isMatching) {
-                    coroutineScope.launch {
-                        isMatching = true
-                        match = null
-                        delay(450)
-                        val weighted = pool.flatMap { candidate ->
-                            List((candidate.second / 10).coerceAtLeast(1)) { candidate }
-                        }
-                        match = weighted.random()
-                        isMatching = false
-                    }
-                }
+                if (!isMatching && current != null) showMatchSpinDialog = true
             },
             onProfileClick = onProfileClick,
             onMessage = { p -> onMessageUser(p.username, p.fullName, p.avatarUrl) },
@@ -727,6 +731,48 @@ fun ConnectHubPremiumPanel(
         )
     }
 
+    if (showMatchSpinDialog) {
+        MatchSpinDialog(
+            profiles = profiles,
+            isSubmitting = isMatching,
+            onDismiss = { showMatchSpinDialog = false },
+            onSpin = { preferences ->
+                showMatchSpinDialog = false
+                isMatching = true
+                match = null
+                matchError = null
+                matchReasons = emptyList()
+                coroutineScope.launch {
+                    runCatching { matchRepository.spinMatch(preferences) }
+                        .onSuccess { result ->
+                            val candidate = result.candidate
+                            match = UserProfile(
+                                id = candidate.userId,
+                                fullName = candidate.fullName,
+                                username = candidate.username,
+                                avatarUrl = candidate.avatarUrl,
+                                university = candidate.university,
+                                faculty = candidate.faculty,
+                                department = candidate.department,
+                                academicLevel = candidate.academicLevel,
+                                relationshipStatus = candidate.relationshipStatus,
+                                onlineNow = candidate.onlineNow,
+                                lastSeenAt = candidate.lastSeenAt,
+                                coreSkills = candidate.commonSkills.toMutableList(),
+                                hobbies = candidate.commonHobbies
+                            ) to candidate.compatibilityScore
+                            matchRemainingCoins = result.remainingCoins
+                            matchReasons = result.matchReasons
+                        }
+                        .onFailure { error ->
+                            matchError = error.message ?: "Unable to find a match right now."
+                        }
+                    isMatching = false
+                }
+            }
+        )
+    }
+
     challengeTarget?.let { target ->
         ChallengeModeDialog(
             targetName = target.fullName.ifBlank { target.username },
@@ -739,12 +785,297 @@ fun ConnectHubPremiumPanel(
     }
 }
 
+
+
+@Composable
+private fun MatchSpinDialog(
+    profiles: List<UserProfile>,
+    isSubmitting: Boolean,
+    onDismiss: () -> Unit,
+    onSpin: (MatchSpinPreferences) -> Unit
+) {
+    var universitySearch by rememberSaveable { mutableStateOf("") }
+    var selectedUniversity by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedFaculty by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedDepartment by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedLevel by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedRelationship by rememberSaveable { mutableStateOf<String?>(null) }
+    var typePrompt by rememberSaveable { mutableStateOf("") }
+    var onlineOnly by rememberSaveable { mutableStateOf(false) }
+
+    val universityOptions = remember(universitySearch) {
+        val q = universitySearch.trim()
+        NigerianUniversities.all
+            .asSequence()
+            .filter { q.isBlank() || it.contains(q, ignoreCase = true) }
+            .take(24)
+            .toList()
+    }
+    val campusProfiles = remember(profiles, selectedUniversity) {
+        profiles.filter { profile ->
+            selectedUniversity == null || profile.university.equals(selectedUniversity, ignoreCase = true)
+        }
+    }
+    val facultyOptions = remember(campusProfiles) {
+        campusProfiles.map { it.faculty.trim() }.filter { it.isNotBlank() }.distinct().sorted()
+    }
+    val departmentOptions = remember(campusProfiles, selectedFaculty) {
+        campusProfiles
+            .filter { selectedFaculty == null || it.faculty.equals(selectedFaculty, ignoreCase = true) }
+            .map { it.department.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+    }
+    val levelOptions = remember(profiles) {
+        (
+            listOf("100 Level", "200 Level", "300 Level", "400 Level", "500 Level", "600 Level", "Postgraduate") +
+                profiles.map { it.academicLevel.trim() }.filter { it.isNotBlank() }
+        ).distinct()
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!isSubmitting) onDismiss() },
+        title = {
+            Column {
+                Text("Match Spin", fontWeight = FontWeight.Black)
+                Text(
+                    "Choose who you want to meet",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "A successful spin costs 10 Blink Coins. If no eligible match is found, you are not charged.",
+                    fontSize = 10.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                SearchableUniversityMatchField(
+                    query = universitySearch,
+                    selected = selectedUniversity,
+                    options = universityOptions,
+                    onQueryChange = {
+                        universitySearch = it
+                        if (selectedUniversity != null && !selectedUniversity.equals(it, ignoreCase = true)) {
+                            selectedUniversity = null
+                            selectedFaculty = null
+                            selectedDepartment = null
+                        }
+                    },
+                    onSelect = { university ->
+                        selectedUniversity = university
+                        universitySearch = university.orEmpty()
+                        selectedFaculty = null
+                        selectedDepartment = null
+                    }
+                )
+
+                MatchChoiceDropdown(
+                    label = "Faculty",
+                    value = selectedFaculty,
+                    options = facultyOptions,
+                    allLabel = "All faculties",
+                    onSelect = {
+                        selectedFaculty = it
+                        selectedDepartment = null
+                    }
+                )
+                MatchChoiceDropdown(
+                    label = "Department",
+                    value = selectedDepartment,
+                    options = departmentOptions,
+                    allLabel = "All departments",
+                    onSelect = { selectedDepartment = it }
+                )
+                MatchChoiceDropdown(
+                    label = "Level",
+                    value = selectedLevel,
+                    options = levelOptions,
+                    allLabel = "All levels",
+                    onSelect = { selectedLevel = it }
+                )
+                MatchChoiceDropdown(
+                    label = "Connection status",
+                    value = selectedRelationship,
+                    options = listOf("Single", "Taken", "Married", "It's complicated", "Prefer not to say", "Private"),
+                    allLabel = "All statuses",
+                    onSelect = { selectedRelationship = it }
+                )
+
+                OutlinedTextField(
+                    value = typePrompt,
+                    onValueChange = { typePrompt = it.take(180) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Type your type (optional)") },
+                    placeholder = { Text("e.g. likes coding, cooking, social activities or football") },
+                    supportingText = {
+                        Text("Matches against public profile details and Everyone posts — never private messages.")
+                    },
+                    minLines = 2,
+                    maxLines = 4,
+                    shape = RoundedCornerShape(16.dp)
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onlineOnly = !onlineOnly }
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Online now only", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Optional — useful when you want someone available now.",
+                                fontSize = 9.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(checked = onlineOnly, onCheckedChange = { onlineOnly = it })
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSpin(
+                        MatchSpinPreferences(
+                            university = selectedUniversity,
+                            faculty = selectedFaculty,
+                            department = selectedDepartment,
+                            academicLevel = selectedLevel,
+                            relationshipStatus = selectedRelationship,
+                            typePrompt = typePrompt.trim(),
+                            onlineOnly = onlineOnly
+                        )
+                    )
+                },
+                enabled = !isSubmitting
+            ) {
+                Text("Spin for 10 coins")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSubmitting) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun SearchableUniversityMatchField(
+    query: String,
+    selected: String?,
+    options: List<String>,
+    onQueryChange: (String) -> Unit,
+    onSelect: (String?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = {
+                onQueryChange(it)
+                expanded = true
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("University") },
+            placeholder = { Text("All universities") },
+            leadingIcon = { Icon(Icons.Default.School, contentDescription = null) },
+            supportingText = {
+                Text(if (selected == null) "All universities" else "Selected university")
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp)
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("All universities") },
+                onClick = {
+                    onSelect(null)
+                    expanded = false
+                }
+            )
+            options.forEach { university ->
+                DropdownMenuItem(
+                    text = { Text(university, maxLines = 2) },
+                    onClick = {
+                        onSelect(university)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MatchChoiceDropdown(
+    label: String,
+    value: String?,
+    options: List<String>,
+    allLabel: String,
+    onSelect: (String?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxWidth()) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(label, fontSize = 9.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(value ?: allLabel, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(allLabel) },
+                onClick = {
+                    onSelect(null)
+                    expanded = false
+                }
+            )
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        onSelect(option)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun SmartMatchHero(
     candidates: List<Pair<UserProfile, Int>>,
     current: UserProfile?,
     match: Pair<UserProfile, Int>?,
     isMatching: Boolean,
+    remainingCoins: Long?,
+    matchReasons: List<String>,
+    errorMessage: String?,
     onSpin: () -> Unit,
     onProfileClick: (String) -> Unit,
     onMessage: (UserProfile) -> Unit,
@@ -804,17 +1135,17 @@ private fun SmartMatchHero(
                 Column(Modifier.weight(1f)) {
                     Text("Smart Match Spin", fontSize = 17.sp, fontWeight = FontWeight.Black)
                     Text(
-                        "Find someone based on what you have most in common.",
+                        "Set your preferences, then search profiles and public interests. Each successful spin costs 10 Blink Coins.",
                         fontSize = 11.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Button(
                     onClick = onSpin,
-                    enabled = candidates.isNotEmpty() && !isMatching,
+                    enabled = current != null && !isMatching,
                     shape = RoundedCornerShape(100.dp)
                 ) {
-                    Text(if (isMatching) "Matching…" else "Spin")
+                    Text(if (isMatching) "Matching…" else "Spin · 10")
                 }
             }
 
@@ -839,15 +1170,41 @@ private fun SmartMatchHero(
                             onMessage = { onMessage(person) },
                             onChallenge = { onChallenge(person) }
                         )
+                        if (matchReasons.isNotEmpty()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Why this match: ${matchReasons.joinToString(" • ")}",
+                                fontSize = 10.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        remainingCoins?.let { balance ->
+                            Spacer(Modifier.height(5.dp))
+                            Text(
+                                "$balance Blink Coins remaining",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 } else if (isMatching) {
                     Text(
-                        "Finding your strongest campus match…",
+                        "Searching profiles, campus details and public interests…",
                         modifier = Modifier.padding(top = 14.dp),
                         fontSize = 11.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+            if (!errorMessage.isNullOrBlank()) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    errorMessage,
+                    fontSize = 10.5.sp,
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }
