@@ -224,22 +224,22 @@ fun ProfileScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         Surface(
             modifier = Modifier
-                .align(Alignment.CenterEnd)
+                .align(Alignment.CenterStart)
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight()
                 .offset { IntOffset(overlayOffset.value.roundToInt(), 0) }
-                .shadow(24.dp, RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp), clip = false)
+                .shadow(24.dp, RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp), clip = false)
                 .pointerInput(profile.id) {
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { change, dragAmount ->
                             change.consume()
                             overlayScope.launch {
-                                overlayOffset.snapTo((overlayOffset.value + dragAmount).coerceAtLeast(0f))
+                                overlayOffset.snapTo((overlayOffset.value + dragAmount).coerceAtMost(0f))
                             }
                         },
                         onDragEnd = {
                             overlayScope.launch {
-                                if (overlayOffset.value >= overlayThresholdPx) {
+                                if (overlayOffset.value <= -overlayThresholdPx) {
                                     onBack()
                                 } else {
                                     overlayOffset.animateTo(
@@ -260,7 +260,7 @@ fun ProfileScreen(
                     )
                 }
                 .testTag("profile_screen"),
-            shape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),
+            shape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
             color = bgColor
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
