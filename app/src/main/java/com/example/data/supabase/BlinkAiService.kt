@@ -190,7 +190,7 @@ class BlinkAiService {
         }
     }
 
-    private fun execute(payload: JSONObject): BlinkAiReply {
+    private suspend fun execute(payload: JSONObject): BlinkAiReply {
         val session = SupabaseService()
         if (!session.restoreSession()) {
             throw IllegalStateException("Your Blink session has expired. Please sign in again.")
