@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/apply-auth-professionalization.yml'
+      - '.github/scripts/run_auth_professionalization_v2.py'
 
 permissions:
   contents: write
@@ -33,7 +34,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Apply auth professionalization patch
-        run: python .github/scripts/apply_auth_professionalization.py
+        run: python .github/scripts/run_auth_professionalization_v2.py
 
       - name: Compile Kotlin
         run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
@@ -53,7 +54,7 @@ jobs:
       - name: Commit verified auth changes
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "4189828+github-actions[bot]@users.noreply.github.com"
           git add app/src/main app/src/test/java
           if git diff --cached --quiet; then
             echo "No auth source changes to commit"
