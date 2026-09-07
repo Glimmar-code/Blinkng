@@ -35,18 +35,18 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # The repository currently contains Gradle wrapper properties but not the
+      # wrapper launch scripts. Pin Gradle explicitly so the desktop build is
+      # deterministic and does not depend on the runner's preinstalled version.
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.12.1'
 
-      # The repository intentionally has one Gradle wrapper at the root. Git Bash is
-      # available on GitHub's Windows runner, so use the checked-in wrapper instead
-      # of relying on a machine-installed Gradle or a missing gradlew.bat file.
       - name: Compile and test desktop app
-        shell: bash
-        run: ./gradlew -p desktopApp build --stacktrace --no-daemon
+        run: gradle -p desktopApp build --stacktrace --no-daemon
 
       - name: Build Windows EXE and MSI
-        shell: bash
-        run: ./gradlew -p desktopApp packageExe packageMsi --stacktrace --no-daemon
+        run: gradle -p desktopApp packageExe packageMsi --stacktrace --no-daemon
 
       - name: Upload Windows installers
         uses: actions/upload-artifact@v4
