@@ -27,6 +27,7 @@ import coil.compose.AsyncImage
 import com.example.data.models.LeaderboardUser
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
+import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.theme.BlinkGold
 import com.example.ui.theme.BlinkPink
 
@@ -240,6 +241,11 @@ fun LeaderboardScreen(
                                         modifier = Modifier.size(14.dp)
                                     )
                                 }
+                                BlinkVipMarkForUsername(
+                                    username = user.username,
+                                    knownVip = if (user.isVip) true else null,
+                                    modifier = Modifier.padding(start = 4.dp)
+                                )
                             }
                             Text(
                                 "@${user.username}",

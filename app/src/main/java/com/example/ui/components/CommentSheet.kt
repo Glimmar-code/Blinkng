@@ -261,6 +261,7 @@ fun CommentSheet(
                                     likes = comment.likes,
                                     isLiked = comment.isLiked,
                                     verificationBadge = comment.verificationBadge,
+                                    isVip = comment.isVip,
                                     avatarSize = 38.dp,
                                     onProfileClick = onProfileClick,
                                     onReply = { startReply(comment.id, comment.user) },
@@ -280,6 +281,7 @@ fun CommentSheet(
                                         likes = reply.likes,
                                         isLiked = reply.isLiked,
                                         verificationBadge = reply.verificationBadge,
+                                        isVip = reply.isVip,
                                         avatarSize = 30.dp,
                                         modifier = Modifier.padding(start = 48.dp, top = 12.dp),
                                         onProfileClick = onProfileClick,
@@ -442,6 +444,7 @@ private fun CommentRow(
     likes: Int,
     isLiked: Boolean,
     verificationBadge: VerificationBadge,
+    isVip: Boolean,
     avatarSize: Dp,
     onProfileClick: (String) -> Unit,
     onReply: () -> Unit,
@@ -484,6 +487,10 @@ private fun CommentRow(
                 if (verificationBadge != VerificationBadge.NONE) {
                     VerifiedMark(badge = verificationBadge, size = 12.dp)
                 }
+                BlinkVipMarkForUsername(
+                    username = username,
+                    knownVip = if (isVip) true else null
+                )
                 if (username.isNotBlank()) {
                     Text(
                         text = "@${username.removePrefix("@")}",
