@@ -29,6 +29,13 @@
             android:exported="false"
             android:theme="@style/Theme.MyApplication" />
         <activity
+            android:name=".call.IncomingCallBannerActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:noHistory="true"
+            android:theme="@style/Theme.Blink.IncomingCallBanner" />
+        <activity
             android:name=".auth.GoogleAuthCallbackActivity"
             android:exported="false"
             android:noHistory="true"

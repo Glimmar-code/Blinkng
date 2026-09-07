@@ -2,6 +2,8 @@ package com.example.call
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.ActivityManager
+import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -11,6 +13,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.os.Build
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
@@ -46,6 +49,25 @@ object IncomingCallNotification {
         conversationId: String
     ) {
         if (callId.isBlank()) return
+
+        // When Blink already has a visible, unlocked window, use Blink's own call banner.
+        // This guarantees an Answer/Decline surface even when notification permission or
+        // heads-up presentation is disabled. Background and lock-screen calls continue to
+        // use Android CallStyle/full-screen notifications, which is the platform-safe path.
+        if (shouldUseInAppBanner(context)) {
+            IncomingCallBannerActivity.show(
+                context = context.applicationContext,
+                callId = callId,
+                callType = callType,
+                peerId = peerId,
+                peerUsername = peerUsername,
+                peerName = peerName,
+                peerAvatar = peerAvatar,
+                conversationId = conversationId
+            )
+            return
+        }
+
         createChannels(context)
         if (!hasNotificationPermission(context)) return
 
@@ -193,10 +215,12 @@ object IncomingCallNotification {
         val normalized = event.lowercase()
         if (normalized == "answered") {
             cancel(context, callId)
+            IncomingCallBannerActivity.dismiss(callId)
             return
         }
         if (normalized in setOf("cancelled", "declined", "ended", "missed", "failed")) {
             cancel(context, callId)
+            IncomingCallBannerActivity.dismiss(callId)
             if (BlinkCallForegroundService.activeCallId == callId) {
                 context.stopService(Intent(context, BlinkCallForegroundService::class.java))
             }
@@ -287,6 +311,20 @@ object IncomingCallNotification {
             lockscreenVisibility = Notification.VISIBILITY_PRIVATE
         }
         manager.createNotificationChannels(listOf(voice, video, ongoing, missed))
+    }
+
+    private fun shouldUseInAppBanner(context: Context): Boolean {
+        val process = ActivityManager.RunningAppProcessInfo()
+        ActivityManager.getMyMemoryState(process)
+        if (process.importance != ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND) return false
+
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        if (powerManager?.isInteractive == false) return false
+
+        val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+        if (keyguardManager?.isKeyguardLocked == true) return false
+
+        return true
     }
 
     private fun hasNotificationPermission(context: Context): Boolean {
