@@ -117,6 +117,9 @@ android {
   }
   compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
   buildFeatures { compose = true; buildConfig = true }
+  // Shared Blinkng contracts/business logic are compiled into the APK and Windows app.
+  // Keep this source set platform-neutral: no android.* or desktop-only imports.
+  sourceSets.getByName("main").java.srcDir("../shared/src/main/kotlin")
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo { includeInApk = false; includeInBundle = true }
 }
