@@ -22,47 +22,52 @@ object SupabaseSessionRefresher {
         val sessionExpired: Boolean
     ) : Exception(message)
 
-    fun refresh(refreshToken: String): Result<Session> = try {
+    fun refresh(refreshToken: String): Result<Session> {
         if (refreshToken.isBlank()) {
-            return Result.failure(RefreshFailure("Saved session has no refresh token.", sessionExpired = true))
+            return Result.failure(
+                RefreshFailure("Saved session has no refresh token.", sessionExpired = true)
+            )
         }
 
-        val body = JSONObject()
-            .put("refresh_token", refreshToken)
-            .toString()
-            .toRequestBody(jsonType)
-        val request = Request.Builder()
-            .url("${SupabaseConfig.url.trimEnd('/')}/auth/v1/token?grant_type=refresh_token")
-            .addHeader("apikey", SupabaseConfig.anonKey)
-            .addHeader("Authorization", "Bearer ${SupabaseConfig.anonKey}")
-            .addHeader("Content-Type", "application/json")
-            .post(body)
-            .build()
+        return try {
+            val body = JSONObject()
+                .put("refresh_token", refreshToken)
+                .toString()
+                .toRequestBody(jsonType)
+            val request = Request.Builder()
+                .url("${SupabaseConfig.url.trimEnd('/')}/auth/v1/token?grant_type=refresh_token")
+                .addHeader("apikey", SupabaseConfig.anonKey)
+                .addHeader("Authorization", "Bearer ${SupabaseConfig.anonKey}")
+                .addHeader("Content-Type", "application/json")
+                .post(body)
+                .build()
 
-        client.newCall(request).execute().use { response ->
-            val raw = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                val expired = isExpiredRefreshResponse(response.code, raw)
-                return Result.failure(
-                    RefreshFailure(
-                        message = if (expired) "Saved session expired." else "Session refresh failed (${response.code}).",
-                        sessionExpired = expired
+            client.newCall(request).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    val expired = isExpiredRefreshResponse(response.code, raw)
+                    Result.failure(
+                        RefreshFailure(
+                            message = if (expired) "Saved session expired." else "Session refresh failed (${response.code}).",
+                            sessionExpired = expired
+                        )
                     )
-                )
+                } else {
+                    val json = JSONObject(raw)
+                    val access = json.optString("access_token")
+                    val refresh = json.optString("refresh_token", refreshToken)
+                    if (access.isBlank()) {
+                        Result.failure(
+                            RefreshFailure("Session refresh returned no access token.", sessionExpired = false)
+                        )
+                    } else {
+                        Result.success(Session(access, refresh.ifBlank { refreshToken }))
+                    }
+                }
             }
-
-            val json = JSONObject(raw)
-            val access = json.optString("access_token")
-            val refresh = json.optString("refresh_token", refreshToken)
-            if (access.isBlank()) {
-                return Result.failure(
-                    RefreshFailure("Session refresh returned no access token.", sessionExpired = false)
-                )
-            }
-            Result.success(Session(access, refresh.ifBlank { refreshToken }))
+        } catch (e: Exception) {
+            Result.failure(e)
         }
-    } catch (e: Exception) {
-        Result.failure(e)
     }
 
     internal fun isExpiredRefreshResponse(statusCode: Int, responseBody: String): Boolean {
