@@ -5,7 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,11 +21,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.example.data.models.NigerianUniversities
 import com.example.data.supabase.*
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 
 class AdminControlCenterActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -39,14 +43,6 @@ class AdminControlCenterActivity : ComponentActivity() {
     }
 }
 
-private enum class AdminTab(val label: String) {
-    OVERVIEW("Overview"),
-    USERS("Users"),
-    MESSAGE("Message"),
-    POSTS("Posts"),
-    FEATURES("200 Features")
-}
-
 @Composable
 private fun AdminControlCenter(onExit: () -> Unit) {
     val service = remember { AdminSupabaseService() }
@@ -55,52 +51,51 @@ private fun AdminControlCenter(onExit: () -> Unit) {
     var leaving by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        val result = service.fetchCapability()
-        delay(650)
-        result.onSuccess { capability = it }
+        service.fetchCapability()
+            .onSuccess { capability = it }
             .onFailure { error = it.message ?: "Unable to verify admin access." }
     }
     LaunchedEffect(leaving) {
         if (leaving) {
-            delay(650)
+            delay(350)
             onExit()
         }
     }
 
     when {
-        leaving -> SwitchingScreen("Switching to personal account")
-        capability == null && error == null -> SwitchingScreen("Switching to admin account")
-        error != null -> AccessError(error!!, onExit)
-        capability?.isAdmin != true -> AccessError("This account does not have active admin access.", onExit)
-        else -> AdminDashboard(capability!!, service) { leaving = true }
+        leaving -> LoadingAdminScreen("Switching to personal account")
+        capability == null && error == null -> LoadingAdminScreen("Opening Blink Admin")
+        error != null -> AdminAccessError(error!!, onExit)
+        capability?.isAdmin != true -> AdminAccessError("This account does not have active admin access.", onExit)
+        else -> AdminDashboardV3(capability!!, service) { leaving = true }
     }
 }
 
 @Composable
-private fun SwitchingScreen(text: String) {
+private fun LoadingAdminScreen(text: String) {
     Box(
         Modifier.fillMaxSize().background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(Modifier.size(30.dp), color = Color.White, strokeWidth = 2.dp)
-            Spacer(Modifier.height(16.dp))
+            CircularProgressIndicator(Modifier.size(30.dp), color = BlinkPink, strokeWidth = 2.dp)
+            Spacer(Modifier.height(14.dp))
             Text(text, color = Color.White, fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
 @Composable
-private fun AccessError(text: String, onExit: () -> Unit) {
+private fun AdminAccessError(text: String, onExit: () -> Unit) {
     Box(
         Modifier.fillMaxSize().background(Color.Black).padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Blink Admin", color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp)
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
             Text(text, color = Color.LightGray)
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(18.dp))
             Button(onClick = onExit) { Text("Back to personal account") }
         }
     }
@@ -108,14 +103,27 @@ private fun AccessError(text: String, onExit: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AdminDashboard(
+private fun AdminDashboardV3(
     capability: AdminCapability,
     service: AdminSupabaseService,
     onExit: () -> Unit
 ) {
-    var tab by rememberSaveable { mutableStateOf(AdminTab.OVERVIEW) }
+    var sections by remember { mutableStateOf<List<AdminSection>>(emptyList()) }
+    var selectedKey by rememberSaveable { mutableStateOf("dashboard") }
     var status by remember { mutableStateOf<String?>(null) }
+    var showHistory by remember { mutableStateOf(false) }
+    var showGlobalSearch by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(true) }
+
     BackHandler(onBack = onExit)
+
+    LaunchedEffect(Unit) {
+        loading = true
+        service.fetchSectionsV3()
+            .onSuccess { sections = it }
+            .onFailure { status = it.message ?: "Could not load admin sections." }
+        loading = false
+    }
 
     Scaffold(
         containerColor = Color.Black,
@@ -123,16 +131,24 @@ private fun AdminDashboard(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Blink Admin", fontWeight = FontWeight.Black)
+                        Text("Blink Admin", fontWeight = FontWeight.Black, fontSize = 18.sp)
                         Text(
-                            if (capability.isOwner) "Overall owner • permanent" else "Admin • temporary",
-                            fontSize = 10.sp,
+                            if (capability.isOwner) "Overall owner • permanent" else "${capability.role} • backend protected",
+                            fontSize = 9.sp,
                             color = Color.LightGray
                         )
                     }
                 },
                 actions = {
-                    TextButton(onClick = onExit) { Text("Switch to Personal Account") }
+                    TextButton(onClick = { showGlobalSearch = true }) {
+                        Text("Search", fontSize = 10.sp)
+                    }
+                    TextButton(onClick = { showHistory = true }) {
+                        Text("History", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                    TextButton(onClick = onExit) {
+                        Text("Personal", fontSize = 10.sp)
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Black,
@@ -141,46 +157,126 @@ private fun AdminDashboard(
             )
         }
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).background(Color.Black)) {
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                AdminTab.entries.forEach {
-                    FilterChip(
-                        selected = tab == it,
-                        onClick = { tab = it },
-                        label = { Text(it.label) }
-                    )
-                }
-            }
+        Column(
+            Modifier.fillMaxSize().padding(padding).background(Color.Black)
+        ) {
             status?.let {
-                Surface(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(it, Modifier.weight(1f), fontSize = 12.sp)
-                        TextButton(onClick = { status = null }) { Text("Dismiss") }
+                Surface(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(it, Modifier.weight(1f), fontSize = 11.sp)
+                        TextButton(onClick = { status = null }) { Text("Dismiss", fontSize = 10.sp) }
                     }
                 }
             }
-            when (tab) {
-                AdminTab.OVERVIEW -> Overview(service, capability) { status = it }
-                AdminTab.USERS -> Users(service, capability) { status = it }
-                AdminTab.MESSAGE -> MessageCenter(service) { status = it }
-                AdminTab.POSTS -> PostTools(service) { status = it }
-                AdminTab.FEATURES -> FeatureCenter(service) { status = it }
+
+            if (loading && sections.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = BlinkPink)
+                }
+            } else {
+                Row(Modifier.fillMaxSize()) {
+                    AdminSidebar(
+                        sections = sections.filter { it.showInSidebar },
+                        selectedKey = selectedKey,
+                        onSelect = { selectedKey = it }
+                    )
+                    Divider(
+                        modifier = Modifier.fillMaxHeight().width(1.dp),
+                        color = Color(0xFF242424)
+                    )
+                    Box(Modifier.weight(1f).fillMaxHeight()) {
+                        val selected = sections.firstOrNull { it.key == selectedKey }
+                        if (selectedKey == "dashboard") {
+                            AdminOverviewV3(service, capability, sections) { status = it }
+                        } else if (selected != null) {
+                            AdminSectionScreen(
+                                section = selected,
+                                capability = capability,
+                                service = service,
+                                status = { status = it },
+                                openHistory = { showHistory = true }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showHistory) {
+        AdminHistoryDialog(
+            service = service,
+            onDismiss = { showHistory = false },
+            status = { status = it }
+        )
+    }
+
+    if (showGlobalSearch) {
+        AdminGlobalSearchDialog(
+            service = service,
+            onDismiss = { showGlobalSearch = false },
+            status = { status = it }
+        )
+    }
+}
+
+@Composable
+private fun AdminSidebar(
+    sections: List<AdminSection>,
+    selectedKey: String,
+    onSelect: (String) -> Unit
+) {
+    LazyColumn(
+        Modifier.width(122.dp).fillMaxHeight().background(Color(0xFF090909)),
+        contentPadding = PaddingValues(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        items(sections, key = { it.key }) { section ->
+            val selected = section.key == selectedKey
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 5.dp)
+                    .clickable { onSelect(section.key) },
+                color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                shape = MaterialTheme.shapes.small
+            ) {
+                Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
+                    Text(
+                        section.title,
+                        fontSize = 10.sp,
+                        fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else Color.LightGray,
+                        maxLines = 2
+                    )
+                    if (section.featureCount > 0) {
+                        Text(
+                            "${section.featureCount} tools",
+                            fontSize = 8.sp,
+                            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .7f) else Color.Gray
+                        )
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun Overview(
+private fun AdminOverviewV3(
     service: AdminSupabaseService,
     capability: AdminCapability,
+    sections: List<AdminSection>,
     status: (String) -> Unit
 ) {
     var stats by remember { mutableStateOf<AdminDashboardStats?>(null) }
+
     LaunchedEffect(Unit) {
         service.fetchStats()
             .onSuccess { stats = it }
@@ -193,608 +289,945 @@ private fun Overview(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Text("Control Center", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Black)
+            Text("Control Center", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black)
             Text(
-                if (capability.isOwner)
-                    "Blink is the immutable overall owner. Owner access cannot expire or be removed."
-                else "Your admin role is backend-enforced and expires automatically.",
+                "700 backend-routed admin tools • ${sections.count { it.showInSidebar }} vertical sections • searchable resources • reversible audit history",
                 color = Color.LightGray,
-                fontSize = 12.sp
+                fontSize = 11.sp
             )
         }
         stats?.let { s ->
-            item { StatCard("Users", s.users) }
-            item { StatCard("Verified", s.verified) }
-            item { StatCard("Active admins", s.activeAdmins) }
-            item { StatCard("Live posts", s.posts) }
-            item { StatCard("Blink owner posts", s.ownerPosts) }
-        } ?: item { CircularProgressIndicator(Modifier.size(28.dp)) }
+            item { AdminStatCard("Users", s.users) }
+            item { AdminStatCard("Verified", s.verified) }
+            item { AdminStatCard("Active admins", s.activeAdmins) }
+            item { AdminStatCard("Live posts", s.posts) }
+            item { AdminStatCard("Blink owner posts", s.ownerPosts) }
+        } ?: item { CircularProgressIndicator(Modifier.size(28.dp), color = BlinkPink) }
         item {
-            Text(
-                "Blink-owner posts receive global first-feed priority. Sponsored admin posts stay inside normal discovery ranking.",
-                color = Color.Gray,
-                fontSize = 12.sp
-            )
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(13.dp)) {
+                    Text("How targeting works", fontWeight = FontWeight.Black)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Users are selected by name, @username, email or user ID. Posts and reels can be found by pasting a Blink link or searching their content. Universities use the full searchable NigerianUniversities catalogue plus live profile values.",
+                        fontSize = 11.sp,
+                        color = Color.LightGray
+                    )
+                }
+            }
+        }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(13.dp)) {
+                    Text("History stays global", fontWeight = FontWeight.Black)
+                    Text(
+                        "History is in the top bar, not inside a section. Reversible actions can be revoked from the audit timeline without deleting their original record.",
+                        fontSize = 11.sp,
+                        color = Color.LightGray
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun StatCard(label: String, value: Int) {
+private fun AdminStatCard(label: String, value: Int) {
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp)) {
-            Text(value.toString(), color = BlinkPink, fontSize = 27.sp, fontWeight = FontWeight.Black)
-            Text(label, fontWeight = FontWeight.Bold)
+        Column(Modifier.padding(13.dp)) {
+            Text(value.toString(), color = BlinkPink, fontSize = 25.sp, fontWeight = FontWeight.Black)
+            Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp)
         }
     }
 }
 
 @Composable
-private fun Users(
-    service: AdminSupabaseService,
+private fun AdminSectionScreen(
+    section: AdminSection,
     capability: AdminCapability,
-    status: (String) -> Unit
+    service: AdminSupabaseService,
+    status: (String) -> Unit,
+    openHistory: () -> Unit
 ) {
+    var query by rememberSaveable(section.key) { mutableStateOf("") }
+    var features by remember(section.key) { mutableStateOf<List<AdminFeatureV3>>(emptyList()) }
+    var loading by remember(section.key) { mutableStateOf(true) }
+    var selectedFeature by remember { mutableStateOf<AdminFeatureV3?>(null) }
+    var resultByFeature by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
     val scope = rememberCoroutineScope()
-    var query by rememberSaveable { mutableStateOf("") }
-    var users by remember { mutableStateOf<List<AdminUserSummary>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
 
     fun load() {
         scope.launch {
             loading = true
-            service.searchUsers(query)
-                .onSuccess { users = it }
-                .onFailure { status(it.message ?: "Could not load users.") }
+            service.fetchFeaturesV3(section.key, query)
+                .onSuccess { features = it }
+                .onFailure { status(it.message ?: "Could not load ${section.title}.") }
             loading = false
         }
     }
-    LaunchedEffect(Unit) { load() }
+
+    LaunchedEffect(section.key) { load() }
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                query,
-                { query = it },
-                Modifier.weight(1f),
-                label = { Text("Search users") },
-                singleLine = true
-            )
-            Spacer(Modifier.width(8.dp))
-            Button(onClick = ::load, enabled = !loading) { Text("Search") }
-        }
-        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(users, key = { it.id }) { user ->
-                UserAdminCard(user, capability, service, status, ::load)
-            }
-        }
-    }
-}
-
-@Composable
-private fun UserAdminCard(
-    user: AdminUserSummary,
-    capability: AdminCapability,
-    service: AdminSupabaseService,
-    status: (String) -> Unit,
-    refresh: () -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    var coins by remember(user.id) { mutableStateOf("100") }
-    var hours by remember(user.id) { mutableStateOf("720") }
-    var busy by remember(user.id) { mutableStateOf(false) }
-
-    fun duration() = hours.toIntOrNull()?.coerceIn(1, 8760) ?: 720
-    fun act(call: suspend () -> Result<*>, success: String) {
-        if (busy) return
-        scope.launch {
-            busy = true
-            call().onSuccess { status(success); refresh() }
-                .onFailure { status(it.message ?: "Admin action failed.") }
-            busy = false
-        }
-    }
-
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp)) {
+        Column(Modifier.fillMaxWidth().padding(12.dp)) {
+            Text(section.title, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Black)
+            Text(section.description, color = Color.Gray, fontSize = 10.sp)
+            Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(user.fullName.ifBlank { user.username }, fontWeight = FontWeight.Black)
-                    Text("@${user.username} • ${user.university.ifBlank { "No university" }}", fontSize = 11.sp)
-                }
-                Text(
-                    when (user.adminRole) {
-                        "owner" -> "OWNER"
-                        "admin" -> "ADMIN"
-                        else -> user.verificationBadge.uppercase()
-                    },
-                    color = BlinkPink,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Text("Coins: ${user.coins}", fontSize = 12.sp, color = Color.Gray)
-            Row(
-                Modifier.fillMaxWidth().padding(top = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
                 OutlinedTextField(
-                    coins,
-                    { coins = it.filter { c -> c.isDigit() }.take(7) },
-                    Modifier.weight(1f),
-                    label = { Text("Coins") },
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("Search ${section.title} tools", fontSize = 10.sp) },
                     singleLine = true
                 )
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    enabled = !busy,
-                    onClick = {
-                        val amount = coins.toLongOrNull()
-                        if (amount == null) status("Enter a valid coin amount.")
-                        else act({ service.grantCoins(user.id, amount) }, "Coins granted to @${user.username}.")
-                    }
-                ) { Text("Give") }
-            }
-            OutlinedTextField(
-                hours,
-                { hours = it.filter { c -> c.isDigit() }.take(4) },
-                Modifier.fillMaxWidth().padding(top = 8.dp),
-                label = { Text("Duration hours (max 8760)") },
-                singleLine = true
-            )
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    enabled = !busy,
-                    onClick = { act({ service.setVerification(user.id, "BLUE", duration()) }, "Blue tick set.") }
-                ) { Text("Blue tick") }
-                OutlinedButton(
-                    enabled = !busy,
-                    onClick = { act({ service.setVerification(user.id, "GOLD", duration()) }, "Gold tick set.") }
-                ) { Text("Gold tick") }
-                OutlinedButton(
-                    enabled = !busy,
-                    onClick = { act({ service.setVerification(user.id, "NONE", 1) }, "Verification removed.") }
-                ) { Text("Remove tick") }
-            }
-            if (capability.isOwner) {
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (user.adminRole == "owner") {
-                        Text("Overall owner cannot be removed.", color = Color.Gray, fontSize = 11.sp)
-                    } else {
-                        Button(
-                            enabled = !busy,
-                            onClick = { act({ service.grantAdmin(user.id, duration()) }, "Admin access granted.") }
-                        ) { Text("Make admin") }
-                        OutlinedButton(
-                            enabled = !busy && user.adminRole == "admin",
-                            onClick = { act({ service.revokeAdmin(user.id) }, "Admin access removed.") }
-                        ) { Text("Remove admin") }
-                    }
-                }
+                Spacer(Modifier.width(6.dp))
+                Button(onClick = ::load, enabled = !loading) { Text("Find", fontSize = 10.sp) }
             }
         }
-    }
-}
-
-@Composable
-private fun MessageCenter(service: AdminSupabaseService, status: (String) -> Unit) {
-    val scope = rememberCoroutineScope()
-    var audience by rememberSaveable { mutableStateOf("everyone") }
-    var verification by rememberSaveable { mutableStateOf("all") }
-    var message by rememberSaveable { mutableStateOf("") }
-    var universities by remember { mutableStateOf<List<String>>(emptyList()) }
-    var university by rememberSaveable { mutableStateOf("All universities") }
-    var universityMenu by remember { mutableStateOf(false) }
-    var query by rememberSaveable { mutableStateOf("") }
-    var matches by remember { mutableStateOf<List<AdminUserSummary>>(emptyList()) }
-    var selected by remember { mutableStateOf<AdminUserSummary?>(null) }
-    var busy by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        service.fetchUniversities().onSuccess { universities = it }
-    }
-
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text("Send from Blink", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
-            Text("Messages appear in the recipient notification/activity panel from Blink.", color = Color.LightGray, fontSize = 12.sp)
-        }
-        item {
-            Text("Audience", fontWeight = FontWeight.Bold)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("everyone" to "Everyone", "university" to "University", "user" to "Specific user").forEach { (k, v) ->
-                    FilterChip(selected = audience == k, onClick = { audience = k }, label = { Text(v) })
-                }
-            }
-        }
-        if (audience == "university") {
-            item {
-                Box {
-                    Button(onClick = { universityMenu = true }) { Text(university) }
-                    DropdownMenu(universityMenu, { universityMenu = false }) {
-                        DropdownMenuItem(
-                            text = { Text("All universities") },
-                            onClick = { university = "All universities"; universityMenu = false }
-                        )
-                        universities.forEach { name ->
-                            DropdownMenuItem(
-                                text = { Text(name) },
-                                onClick = { university = name; universityMenu = false }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        if (audience == "user") {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        query,
-                        { query = it; selected = null },
-                        Modifier.weight(1f),
-                        label = { Text("Find user") },
-                        singleLine = true
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Button(onClick = {
+        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth(), color = BlinkPink)
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(features, key = { it.featureId }) { feature ->
+                AdminFeatureCard(
+                    feature = feature,
+                    capability = capability,
+                    result = resultByFeature[feature.featureId],
+                    onRunInsight = {
                         scope.launch {
-                            service.searchUsers(query, 8)
-                                .onSuccess { matches = it }
-                                .onFailure { status(it.message ?: "User search failed.") }
+                            service.executeFeatureV3(feature.featureId)
+                                .onSuccess {
+                                    resultByFeature = resultByFeature + (feature.featureId to friendlyResult(it))
+                                }
+                                .onFailure { status(it.message ?: "Admin tool failed.") }
                         }
-                    }) { Text("Find") }
-                }
-                selected?.let { Text("Selected: @${it.username}", color = BlinkPink, fontWeight = FontWeight.Bold) }
-                matches.take(5).forEach { u ->
-                    TextButton(onClick = { selected = u; matches = emptyList() }) {
-                        Text("@${u.username} • ${u.fullName}")
-                    }
-                }
+                    },
+                    onOpen = { selectedFeature = feature },
+                    openHistory = openHistory
+                )
             }
-        }
-        item {
-            Text("Verification filter", fontWeight = FontWeight.Bold)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("all" to "Everybody", "blue" to "Blue tick", "gold" to "Gold tick").forEach { (k, v) ->
-                    FilterChip(selected = verification == k, onClick = { verification = k }, label = { Text(v) })
-                }
-            }
-        }
-        item {
-            OutlinedTextField(
-                message,
-                { message = it.take(2000) },
-                Modifier.fillMaxWidth(),
-                label = { Text("Message") },
-                minLines = 5
-            )
-        }
-        item {
-            Button(
-                enabled = !busy && message.isNotBlank() && (audience != "user" || selected != null),
-                onClick = {
-                    scope.launch {
-                        busy = true
-                        service.sendAnnouncement(
-                            message,
-                            if (audience == "user") selected?.id else null,
-                            if (audience == "university") university else null,
-                            verification
-                        ).onSuccess { count ->
-                            status("Blink message delivered to $count user${if (count == 1) "" else "s"}.")
-                            message = ""
-                        }.onFailure { status(it.message ?: "Message failed.") }
-                        busy = false
-                    }
-                }
-            ) {
-                if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                else Text("Send Blink message")
-            }
-        }
-    }
-}
-
-@Composable
-private fun PostTools(service: AdminSupabaseService, status: (String) -> Unit) {
-    val scope = rememberCoroutineScope()
-    var postId by rememberSaveable { mutableStateOf("") }
-    var weight by rememberSaveable { mutableStateOf("12") }
-    var busy by remember { mutableStateOf(false) }
-
-    fun action(name: String) {
-        if (postId.isBlank()) {
-            status("Enter a post ID first.")
-            return
-        }
-        scope.launch {
-            busy = true
-            service.postAction(postId, name, weight.toDoubleOrNull() ?: 12.0)
-                .onSuccess { status("Post action completed: $name.") }
-                .onFailure { status(it.message ?: "Post moderation failed.") }
-            busy = false
-        }
-    }
-
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text("Post moderation", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
-            Text(
-                "Hide, restore, pin, or promote posts. Sponsored promotion stays inside the normal discovery ranking.",
-                color = Color.LightGray,
-                fontSize = 12.sp
-            )
-        }
-        item {
-            OutlinedTextField(postId, { postId = it.trim() }, Modifier.fillMaxWidth(), label = { Text("Post UUID") }, singleLine = true)
-        }
-        item {
-            OutlinedTextField(
-                weight,
-                { weight = it.filter { c -> c.isDigit() || c == '.' }.take(6) },
-                Modifier.fillMaxWidth(),
-                label = { Text("Promotion weight") },
-                singleLine = true
-            )
-        }
-        item {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(enabled = !busy, onClick = { action("hide") }) { Text("Hide") }
-                OutlinedButton(enabled = !busy, onClick = { action("restore") }) { Text("Restore") }
-                OutlinedButton(enabled = !busy, onClick = { action("pin") }) { Text("Pin") }
-                OutlinedButton(enabled = !busy, onClick = { action("unpin") }) { Text("Unpin") }
-            }
-        }
-        item {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(enabled = !busy, onClick = { action("promote") }) { Text("Promote Sponsored") }
-                OutlinedButton(enabled = !busy, onClick = { action("unpromote") }) { Text("Stop promotion") }
-            }
-        }
-    }
-}
-
-@Composable
-private fun FeatureCenter(service: AdminSupabaseService, status: (String) -> Unit) {
-    var allFeatures by remember { mutableStateOf<List<AdminFeature>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
-    var query by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable { mutableStateOf("all") }
-    var selected by remember { mutableStateOf<AdminFeature?>(null) }
-
-    LaunchedEffect(Unit) {
-        service.fetchFeatures()
-            .onSuccess { allFeatures = it }
-            .onFailure { status(it.message ?: "Could not load the 200 admin features.") }
-        loading = false
-    }
-
-    val visible = remember(allFeatures, query, category) {
-        allFeatures.filter { feature ->
-            (category == "all" || feature.category == category) &&
-                (query.isBlank() || feature.title.contains(query, ignoreCase = true) || feature.featureId.toString() == query.trim())
-        }
-    }
-
-    Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Text("200 Admin Features", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
-            Text(
-                "Every item is loaded from Supabase and runs a backend-enforced admin function. Owner-only controls are hidden from ordinary admins.",
-                color = Color.LightGray,
-                fontSize = 12.sp
-            )
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Search feature name or number") },
-                singleLine = true
-            )
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf("all", "users", "admins", "coins", "verification", "content", "messages", "analytics", "system").forEach { key ->
-                    FilterChip(
-                        selected = category == key,
-                        onClick = { category = key },
-                        label = { Text(if (key == "all") "All" else key.replaceFirstChar { it.uppercase() }) }
-                    )
-                }
-            }
-            Text(
-                "${visible.size} available • ${allFeatures.size} loaded",
-                color = Color.Gray,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(top = 6.dp)
-            )
-        }
-
-        if (loading) {
-            LinearProgressIndicator(Modifier.fillMaxWidth())
-        } else {
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(visible, key = { it.featureId }) { feature ->
-                    Card(Modifier.fillMaxWidth()) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    "#${feature.featureId}  ${feature.title}",
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    buildString {
-                                        append(feature.category.uppercase())
-                                        if (feature.ownerOnly) append(" • OWNER ONLY")
-                                    },
-                                    color = if (feature.ownerOnly) BlinkPink else Color.Gray,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            OutlinedButton(onClick = { selected = feature }) { Text("Open") }
-                        }
-                    }
+            if (!loading && features.isEmpty()) {
+                item {
+                    Text("No tools match this search.", color = Color.Gray, modifier = Modifier.padding(14.dp))
                 }
             }
         }
     }
 
-    selected?.let { feature ->
-        FeatureExecuteDialog(
+    selectedFeature?.let { feature ->
+        FeatureActionDialog(
             feature = feature,
+            capability = capability,
             service = service,
-            onDismiss = { selected = null },
-            status = status
+            onDismiss = { selectedFeature = null },
+            onCompleted = { text ->
+                resultByFeature = resultByFeature + (feature.featureId to text)
+                status("${feature.title}: completed.")
+            }
         )
     }
 }
 
 @Composable
-private fun FeatureExecuteDialog(
-    feature: AdminFeature,
+private fun AdminFeatureCard(
+    feature: AdminFeatureV3,
+    capability: AdminCapability,
+    result: String?,
+    onRunInsight: () -> Unit,
+    onOpen: () -> Unit,
+    openHistory: () -> Unit
+) {
+    val blocked = feature.ownerOnly && !capability.isOwner
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text(feature.title, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                    Text(feature.description, fontSize = 10.sp, color = Color.Gray)
+                }
+                Text("#${feature.featureId}", color = BlinkPink, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(5.dp))
+            Text(
+                buildString {
+                    append(feature.riskLevel.uppercase())
+                    if (feature.reversible) append(" • REVERSIBLE")
+                    if (feature.ownerOnly) append(" • OWNER ONLY")
+                },
+                fontSize = 8.sp,
+                color = if (feature.riskLevel == "critical" || feature.riskLevel == "high") MaterialTheme.colorScheme.error else Color.Gray
+            )
+            if (result != null) {
+                Spacer(Modifier.height(7.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(result, Modifier.fillMaxWidth().padding(8.dp), fontSize = 10.sp)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(
+                    enabled = !blocked,
+                    onClick = if (feature.inputKind == "insight") onRunInsight else onOpen
+                ) {
+                    Text(if (feature.inputKind == "insight") "Run insight" else "Open tool", fontSize = 10.sp)
+                }
+                if (feature.reversible) {
+                    TextButton(onClick = openHistory) { Text("History", fontSize = 10.sp) }
+                }
+            }
+            if (blocked) {
+                Text("This tool requires overall-owner access.", color = MaterialTheme.colorScheme.error, fontSize = 9.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeatureActionDialog(
+    feature: AdminFeatureV3,
+    capability: AdminCapability,
+    service: AdminSupabaseService,
+    onDismiss: () -> Unit,
+    onCompleted: (String) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val kind = feature.inputKind.lowercase()
+    val targetType = feature.targetType.lowercase()
+
+    var userQuery by remember { mutableStateOf("") }
+    var userResults by remember { mutableStateOf<List<AdminUserSummary>>(emptyList()) }
+    var selectedUsers by remember { mutableStateOf<List<AdminUserSummary>>(emptyList()) }
+    var postQuery by remember { mutableStateOf("") }
+    var postResults by remember { mutableStateOf<List<AdminPostSummary>>(emptyList()) }
+    var selectedPost by remember { mutableStateOf<AdminPostSummary?>(null) }
+    var genericRef by remember { mutableStateOf("") }
+    var universityQuery by remember { mutableStateOf("") }
+    var serverUniversities by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedUniversities by remember { mutableStateOf<List<String>>(emptyList()) }
+    var textInput by remember { mutableStateOf("") }
+    var amountInput by remember { mutableStateOf("") }
+    var durationInput by remember { mutableStateOf("24") }
+    var reasonInput by remember { mutableStateOf("") }
+    var badge by remember { mutableStateOf("BLUE") }
+    var enabled by remember { mutableStateOf(true) }
+    var permissionsInput by remember { mutableStateOf("") }
+    var scheduledAt by remember { mutableStateOf("") }
+    var fromValue by remember { mutableStateOf("") }
+    var toValue by remember { mutableStateOf("") }
+    var actionLabel by remember { mutableStateOf("") }
+    var actionUrl by remember { mutableStateOf("") }
+    var linkRef by remember { mutableStateOf("") }
+    var confirmText by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var targetBusy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val isBulkUsers = kind.contains("bulk_users")
+    val needsUser = targetType == "user" || isBulkUsers
+    val needsPost = targetType == "post" || targetType == "reel"
+    val needsGenericTarget = targetType in setOf("comment", "report", "campaign", "verification_request")
+    val needsUniversity = kind.contains("university") || kind.contains("universities")
+    val needsAmount = kind.contains("amount") || feature.featureId in setOf(96, 98)
+    val needsDuration = kind.contains("duration") || feature.featureId == 98
+    val needsReason = kind.contains("reason") || feature.riskLevel in setOf("high", "critical")
+    val needsBadge = kind.contains("badge")
+    val needsPermissions = kind.contains("permissions") || kind == "role_template"
+    val needsToggle = kind == "toggle" || kind == "feature_toggle"
+    val needsDateRange = kind == "date_range"
+    val needsScheduledAt = kind == "scheduled_message"
+    val needsText = kind in setOf(
+        "query", "message", "user_message", "user_message_reason", "bulk_users_message",
+        "university_message", "universities_message", "scheduled_message", "campaign_message",
+        "user_note", "report_note", "role_template", "bonus_config", "event_config",
+        "version", "emergency", "feature_toggle", "report_assignee"
+    )
+
+    val mergedUniversities = remember(universityQuery, serverUniversities) {
+        val local = NigerianUniversities.all
+        (local + serverUniversities)
+            .distinct()
+            .filter { universityQuery.isBlank() || it.contains(universityQuery, ignoreCase = true) }
+            .take(20)
+    }
+
+    LaunchedEffect(needsUniversity) {
+        if (needsUniversity) {
+            service.searchUniversitiesV3("", 300).onSuccess { serverUniversities = it }
+        }
+    }
+
+    fun searchUsers() {
+        scope.launch {
+            targetBusy = true
+            service.searchUsersV2(userQuery, 20)
+                .onSuccess { userResults = it }
+                .onFailure { error = it.message }
+            targetBusy = false
+        }
+    }
+
+    fun searchPosts() {
+        scope.launch {
+            targetBusy = true
+            service.searchPostsV2(postQuery, 20)
+                .onSuccess {
+                    postResults = if (targetType == "reel") it.filter { p -> p.isReel } else it
+                }
+                .onFailure { error = it.message }
+            targetBusy = false
+        }
+    }
+
+    fun runFeature() {
+        if (feature.ownerOnly && !capability.isOwner) {
+            error = "Overall-owner access is required."
+            return
+        }
+        if (needsUser && selectedUsers.isEmpty() && kind != "user_optional") {
+            error = "Select at least one user."
+            return
+        }
+        if (needsPost && selectedPost == null) {
+            error = "Select a post or reel."
+            return
+        }
+        if (needsGenericTarget && genericRef.isBlank()) {
+            error = "Enter or paste the ${targetType.replace('_', ' ')} reference."
+            return
+        }
+        if (needsUniversity && selectedUniversities.isEmpty()) {
+            error = "Select a university."
+            return
+        }
+        if (needsReason && reasonInput.isBlank()) {
+            error = "Add a reason for this admin action."
+            return
+        }
+        if (feature.confirmationKind == "typed" && confirmText.trim() != "CONFIRM") {
+            error = "Type CONFIRM to run this high-risk action."
+            return
+        }
+
+        val amount = if (needsAmount) amountInput.toLongOrNull() else null
+        if (needsAmount && amount == null) {
+            error = "Enter a valid numeric amount."
+            return
+        }
+        val duration = if (needsDuration) durationInput.toIntOrNull() else null
+        if (needsDuration && duration == null) {
+            error = "Enter a valid duration in hours."
+            return
+        }
+
+        val options = JSONObject()
+        if (reasonInput.isNotBlank()) options.put("reason", reasonInput.trim())
+        if (needsBadge) options.put("badge", badge)
+        if (needsUniversity && selectedUniversities.isNotEmpty()) {
+            options.put("university", selectedUniversities.first())
+            options.put("universities", JSONArray(selectedUniversities))
+        }
+        if (isBulkUsers) options.put("user_ids", JSONArray(selectedUsers.map { it.id }))
+        if (needsPermissions) {
+            val values = permissionsInput.split(',').map { it.trim() }.filter { it.isNotBlank() }
+            options.put("permissions", JSONArray(values))
+        }
+        if (needsToggle) options.put("enabled", enabled)
+        if (needsDateRange) {
+            options.put("from", fromValue.trim())
+            options.put("to", toValue.trim())
+        }
+        if (needsScheduledAt) options.put("scheduled_at", scheduledAt.trim())
+        when (feature.featureId) {
+            153 -> options.put("admin_id", textInput.trim())
+            173 -> options.put("title", textInput.trim())
+            174 -> options.put("image_url", textInput.trim())
+            175 -> {
+                options.put("action_label", actionLabel.trim())
+                options.put("action_url", actionUrl.trim())
+            }
+            176 -> {
+                options.put("link_type", "post")
+                options.put("link_id", linkRef.trim())
+            }
+            177 -> {
+                options.put("link_type", "profile")
+                options.put("link_id", linkRef.trim())
+            }
+            178 -> {
+                options.put("link_type", "marketplace")
+                options.put("link_id", linkRef.trim())
+            }
+        }
+
+        val entityRef = when {
+            needsPost -> selectedPost?.id
+            needsUser -> selectedUsers.firstOrNull()?.id
+            needsGenericTarget -> genericRef.trim()
+            else -> null
+        }
+
+        busy = true
+        error = null
+        scope.launch {
+            service.executeFeatureV3(
+                featureId = feature.featureId,
+                entityRef = entityRef,
+                text = textInput.takeIf { it.isNotBlank() },
+                amount = amount,
+                durationHours = duration,
+                options = options
+            ).onSuccess {
+                busy = false
+                onCompleted(friendlyResult(it))
+                onDismiss()
+            }.onFailure {
+                busy = false
+                error = it.message ?: "Admin action failed."
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            Modifier.fillMaxWidth().padding(18.dp).heightIn(max = 760.dp),
+            shape = MaterialTheme.shapes.large,
+            color = Color(0xFF171521)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(18.dp).verticalScroll(rememberScrollState())) {
+                Text(feature.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                Text(feature.description, color = Color.LightGray, fontSize = 10.sp)
+                Text(feature.routeKey, color = BlinkPink, fontSize = 8.sp)
+                Spacer(Modifier.height(12.dp))
+
+                if (needsUser) {
+                    Text("Select user", fontWeight = FontWeight.Bold)
+                    OutlinedTextField(
+                        userQuery,
+                        { userQuery = it },
+                        Modifier.fillMaxWidth(),
+                        label = { Text("Search name, @username, email or user ID") },
+                        singleLine = true
+                    )
+                    Button(onClick = ::searchUsers, enabled = !targetBusy, modifier = Modifier.padding(top = 6.dp)) {
+                        Text("Search users")
+                    }
+                    selectedUsers.forEach { user ->
+                        SelectedUserRow(user) {
+                            selectedUsers = selectedUsers.filterNot { it.id == user.id }
+                        }
+                    }
+                    userResults.take(8).forEach { user ->
+                        UserSearchRow(
+                            user = user,
+                            selected = selectedUsers.any { it.id == user.id },
+                            onClick = {
+                                selectedUsers = if (isBulkUsers) {
+                                    if (selectedUsers.any { it.id == user.id }) selectedUsers.filterNot { it.id == user.id }
+                                    else selectedUsers + user
+                                } else listOf(user)
+                            }
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (needsPost) {
+                    Text("Select ${if (targetType == "reel") "reel" else "post"}", fontWeight = FontWeight.Bold)
+                    OutlinedTextField(
+                        postQuery,
+                        { postQuery = it },
+                        Modifier.fillMaxWidth(),
+                        label = { Text("Paste Blink link, post ID, @username or search text") },
+                        singleLine = true
+                    )
+                    Button(onClick = ::searchPosts, enabled = !targetBusy, modifier = Modifier.padding(top = 6.dp)) {
+                        Text("Find content")
+                    }
+                    selectedPost?.let { AdminPostSearchRow(it, true) { selectedPost = null } }
+                    postResults.take(8).forEach { post ->
+                        AdminPostSearchRow(post, selectedPost?.id == post.id) { selectedPost = post }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (needsGenericTarget) {
+                    OutlinedTextField(
+                        genericRef,
+                        { genericRef = it },
+                        Modifier.fillMaxWidth(),
+                        label = { Text("Search or paste ${targetType.replace('_', ' ')} reference") },
+                        singleLine = true
+                    )
+                    Text("Blink resolves the matching record securely on the backend.", color = Color.Gray, fontSize = 9.sp)
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (needsUniversity) {
+                    Text("University", fontWeight = FontWeight.Bold)
+                    OutlinedTextField(
+                        universityQuery,
+                        { universityQuery = it },
+                        Modifier.fillMaxWidth(),
+                        label = { Text("Search university") },
+                        singleLine = true
+                    )
+                    mergedUniversities.forEach { name ->
+                        val chosen = selectedUniversities.contains(name)
+                        Surface(
+                            Modifier.fillMaxWidth().padding(top = 3.dp).clickable {
+                                selectedUniversities = if (kind.contains("universities")) {
+                                    if (chosen) selectedUniversities - name else selectedUniversities + name
+                                } else listOf(name)
+                            },
+                            color = if (chosen) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Text(name, Modifier.padding(8.dp), fontSize = 10.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (needsText) {
+                    val label = when (kind) {
+                        "query" -> "Search query"
+                        "user_note", "report_note" -> "Internal note"
+                        "role_template" -> "Role template name"
+                        "version" -> "Required app version"
+                        "feature_toggle" -> "Feature key"
+                        "report_assignee" -> "Admin user ID"
+                        "bonus_config" -> "Bonus name / configuration"
+                        "event_config" -> "Event name / configuration"
+                        "emergency" -> "Emergency command"
+                        else -> "Message / value"
+                    }
+                    OutlinedTextField(
+                        textInput,
+                        { textInput = it },
+                        Modifier.fillMaxWidth(),
+                        label = { Text(label) },
+                        minLines = if (kind.contains("message") || kind.contains("note")) 3 else 1
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (needsAmount) {
+                    OutlinedTextField(
+                        amountInput,
+                        { amountInput = it.filter { c -> c.isDigit() || c == '-' }.take(12) },
+                        Modifier.fillMaxWidth(),
+                        label = { Text("Amount / numeric value") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (needsDuration) {
+                    OutlinedTextField(
+                        durationInput,
+                        { durationInput = it.filter(Char::isDigit).take(5) },
+                        Modifier.fillMaxWidth(),
+                        label = { Text("Duration in hours") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (needsBadge) {
+                    Text("Verification badge", fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        listOf("BLUE", "GOLD", "NONE").forEach { option ->
+                            FilterChip(
+                                selected = badge == option,
+                                onClick = { badge = option },
+                                label = { Text(option, fontSize = 9.sp) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (needsPermissions) {
+                    OutlinedTextField(
+                        permissionsInput,
+                        { permissionsInput = it },
+                        Modifier.fillMaxWidth(),
+                        label = { Text("Permissions (comma separated)") }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (needsToggle) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Enabled", Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                        Switch(checked = enabled, onCheckedChange = { enabled = it })
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (needsDateRange) {
+                    OutlinedTextField(fromValue, { fromValue = it }, Modifier.fillMaxWidth(), label = { Text("From (ISO date/time)") })
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(toValue, { toValue = it }, Modifier.fillMaxWidth(), label = { Text("To (ISO date/time)") })
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (needsScheduledAt) {
+                    OutlinedTextField(
+                        scheduledAt,
+                        { scheduledAt = it },
+                        Modifier.fillMaxWidth(),
+                        label = { Text("Schedule time (ISO date/time)") }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (feature.featureId == 175) {
+                    OutlinedTextField(actionLabel, { actionLabel = it }, Modifier.fillMaxWidth(), label = { Text("Action button label") })
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedTextField(actionUrl, { actionUrl = it }, Modifier.fillMaxWidth(), label = { Text("Action URL") })
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (feature.featureId in 176..178) {
+                    OutlinedTextField(
+                        linkRef,
+                        { linkRef = it },
+                        Modifier.fillMaxWidth(),
+                        label = { Text("Linked Blink reference / link") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (needsReason) {
+                    OutlinedTextField(
+                        reasonInput,
+                        { reasonInput = it },
+                        Modifier.fillMaxWidth(),
+                        label = { Text("Reason / audit note") },
+                        minLines = 2
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                if (feature.confirmationKind == "typed") {
+                    Text("High-risk action", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Black)
+                    Text("Type CONFIRM to continue.", color = Color.LightGray, fontSize = 10.sp)
+                    OutlinedTextField(confirmText, { confirmText = it }, Modifier.fillMaxWidth(), label = { Text("CONFIRM") })
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                error?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                    Spacer(Modifier.height(8.dp))
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = ::runFeature, enabled = !busy && !targetBusy) {
+                        if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        else Text("Run tool")
+                    }
+                    OutlinedButton(onClick = onDismiss, enabled = !busy) { Text("Close") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UserSearchRow(
+    user: AdminUserSummary,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        Modifier.fillMaxWidth().padding(top = 4.dp).clickable(onClick = onClick),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.small
+    ) {
+        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(user.fullName.ifBlank { user.username }, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                Text("@${user.username} • ${user.university.ifBlank { "No university" }}", fontSize = 9.sp, color = Color.Gray)
+                if (user.email.isNotBlank()) Text(user.email, fontSize = 8.sp, color = Color.Gray)
+            }
+            Text(if (selected) "Selected" else "Select", color = BlinkPink, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun SelectedUserRow(user: AdminUserSummary, remove: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("Selected: @${user.username}", Modifier.weight(1f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+        TextButton(onClick = remove) { Text("Remove", fontSize = 9.sp) }
+    }
+}
+
+@Composable
+private fun AdminPostSearchRow(
+    post: AdminPostSummary,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        Modifier.fillMaxWidth().padding(top = 4.dp).clickable(onClick = onClick),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.small
+    ) {
+        Column(Modifier.padding(8.dp)) {
+            Text("@${post.username} • ${if (post.isReel) "Reel" else "Post"}", fontWeight = FontWeight.Black, fontSize = 10.sp)
+            Text((post.caption.ifBlank { post.text }).ifBlank { "Media post" }, maxLines = 2, fontSize = 10.sp)
+            Text(
+                "${post.viewCount} views • ${post.likeCount} likes • ${post.commentCount} comments • ${post.shareCount} shares",
+                fontSize = 8.sp,
+                color = Color.Gray
+            )
+            Text(if (selected) "Selected" else "Tap to select", color = BlinkPink, fontSize = 8.sp)
+        }
+    }
+}
+
+@Composable
+private fun AdminHistoryDialog(
     service: AdminSupabaseService,
     onDismiss: () -> Unit,
     status: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    var targetId by remember(feature.featureId) { mutableStateOf("") }
-    var text by remember(feature.featureId) { mutableStateOf("") }
-    var amount by remember(feature.featureId) { mutableStateOf("") }
-    var duration by remember(feature.featureId) { mutableStateOf("") }
-    var extraJson by remember(feature.featureId) { mutableStateOf("{}") }
-    var result by remember(feature.featureId) { mutableStateOf("") }
-    var busy by remember(feature.featureId) { mutableStateOf(false) }
-    val scroll = rememberScrollState()
+    var items by remember { mutableStateOf<List<AdminHistoryItem>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var revertingId by remember { mutableStateOf<String?>(null) }
 
-    Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
+    fun load() {
+        scope.launch {
+            loading = true
+            service.fetchHistoryV2(150, 0)
+                .onSuccess { items = it }
+                .onFailure { status(it.message ?: "Could not load admin history.") }
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { load() }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Surface(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f),
-            shape = MaterialTheme.shapes.large,
-            tonalElevation = 6.dp
+            Modifier.fillMaxSize().padding(10.dp),
+            color = Color(0xFF101014),
+            shape = MaterialTheme.shapes.large
         ) {
-            Column(
-                Modifier.fillMaxSize().padding(16.dp).verticalScroll(scroll),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text("#${feature.featureId}", color = BlinkPink, fontWeight = FontWeight.Black, fontSize = 13.sp)
-                Text(feature.title, fontWeight = FontWeight.Black, fontSize = 21.sp)
-                Text(
-                    "${feature.category.uppercase()}${if (feature.ownerOnly) " • OWNER ONLY" else ""}",
-                    color = Color.Gray,
-                    fontSize = 11.sp
-                )
-                Text(
-                    "Fill only the inputs this feature needs. The backend validates permissions, UUIDs, limits, and required values.",
-                    fontSize = 11.sp,
-                    color = Color.Gray
-                )
-
-                OutlinedTextField(
-                    targetId,
-                    { targetId = it.trim() },
-                    Modifier.fillMaxWidth(),
-                    label = { Text("Target UUID (optional)") },
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    text,
-                    { text = it },
-                    Modifier.fillMaxWidth(),
-                    label = { Text("Text / query / message (optional)") },
-                    minLines = 2,
-                    maxLines = 5
-                )
-                OutlinedTextField(
-                    amount,
-                    { value -> amount = value.filter { it.isDigit() || it == '-' }.take(12) },
-                    Modifier.fillMaxWidth(),
-                    label = { Text("Amount / numeric value (optional)") },
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    duration,
-                    { value -> duration = value.filter { it.isDigit() }.take(5) },
-                    Modifier.fillMaxWidth(),
-                    label = { Text("Duration hours (optional)") },
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    extraJson,
-                    { extraJson = it },
-                    Modifier.fillMaxWidth(),
-                    label = { Text("Extra JSON") },
-                    supportingText = { Text("Example: {\"reason\":\"Policy violation\"}") },
-                    minLines = 3,
-                    maxLines = 8
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        enabled = !busy,
-                        onClick = {
-                            scope.launch {
-                                busy = true
-                                result = ""
-                                service.executeFeature(
-                                    featureId = feature.featureId,
-                                    targetId = targetId.ifBlank { null },
-                                    text = text.ifBlank { null },
-                                    amount = amount.toLongOrNull(),
-                                    durationHours = duration.toIntOrNull(),
-                                    extraJson = extraJson
-                                ).onSuccess {
-                                    result = it
-                                    status("Feature #${feature.featureId} completed.")
-                                }.onFailure {
-                                    result = it.message ?: "Admin feature failed."
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Admin History", fontWeight = FontWeight.Black, fontSize = 21.sp)
+                        Text("Every action stays auditable. Revoke creates a linked reversal instead of erasing history.", fontSize = 9.sp, color = Color.Gray)
+                    }
+                    TextButton(onClick = onDismiss) { Text("Close") }
+                }
+                if (loading) LinearProgressIndicator(Modifier.fillMaxWidth(), color = BlinkPink)
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(items, key = { it.id }) { item ->
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(11.dp)) {
+                                Text(humanizeAction(item.action), fontWeight = FontWeight.Black, fontSize = 12.sp)
+                                Text(
+                                    buildString {
+                                        append("@${item.actorUsername}")
+                                        item.targetUsername?.takeIf { it.isNotBlank() }?.let { append(" → @$it") }
+                                        if (item.targetPostId != null) append(" → post")
+                                    },
+                                    fontSize = 9.sp,
+                                    color = Color.Gray
+                                )
+                                item.createdAt?.let { Text(it, fontSize = 8.sp, color = Color.Gray) }
+                                val detail = summarizeAuditDetails(item.details)
+                                if (detail.isNotBlank()) {
+                                    Text(detail, fontSize = 9.sp, modifier = Modifier.padding(top = 5.dp))
                                 }
-                                busy = false
+                                Spacer(Modifier.height(5.dp))
+                                when {
+                                    item.reversed -> Text("REVOKED", color = BlinkPink, fontWeight = FontWeight.Black, fontSize = 9.sp)
+                                    item.canRevert -> Button(
+                                        onClick = {
+                                            revertingId = item.id
+                                            scope.launch {
+                                                service.revertActionV2(item.id, "Revoked from Blink Admin history")
+                                                    .onSuccess {
+                                                        status("Admin action revoked successfully.")
+                                                        load()
+                                                    }
+                                                    .onFailure { status(it.message ?: "Could not revoke action.") }
+                                                revertingId = null
+                                            }
+                                        },
+                                        enabled = revertingId == null
+                                    ) {
+                                        if (revertingId == item.id) CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp)
+                                        else Text("Revoke", fontSize = 9.sp)
+                                    }
+                                    else -> Text("Not reversible", color = Color.Gray, fontSize = 8.sp)
+                                }
                             }
                         }
-                    ) {
-                        if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                        else Text("Run feature")
                     }
-                    OutlinedButton(enabled = !busy, onClick = onDismiss) { Text("Close") }
-                }
-
-                if (result.isNotBlank()) {
-                    HorizontalDivider()
-                    Text("Backend result", fontWeight = FontWeight.Bold)
-                    Text(result, fontSize = 11.sp)
                 }
             }
         }
     }
+}
+
+@Composable
+private fun AdminGlobalSearchDialog(
+    service: AdminSupabaseService,
+    onDismiss: () -> Unit,
+    status: (String) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var query by remember { mutableStateOf("") }
+    var users by remember { mutableStateOf<List<AdminUserSummary>>(emptyList()) }
+    var posts by remember { mutableStateOf<List<AdminPostSummary>>(emptyList()) }
+    var universities by remember { mutableStateOf<List<String>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+
+    fun search() {
+        if (query.isBlank()) return
+        scope.launch {
+            loading = true
+            service.searchUsersV2(query, 8).onSuccess { users = it }.onFailure { status(it.message ?: "User search failed.") }
+            service.searchPostsV2(query, 8).onSuccess { posts = it }.onFailure { status(it.message ?: "Post search failed.") }
+            service.searchUniversitiesV3(query, 20).onSuccess { universities = it }.onFailure { status(it.message ?: "University search failed.") }
+            loading = false
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            Modifier.fillMaxSize().padding(12.dp),
+            color = Color(0xFF101014),
+            shape = MaterialTheme.shapes.large
+        ) {
+            Column(Modifier.fillMaxSize().padding(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Global Search", Modifier.weight(1f), fontSize = 21.sp, fontWeight = FontWeight.Black)
+                    TextButton(onClick = onDismiss) { Text("Close") }
+                }
+                Text("Search users, paste post links, or search universities without hunting for database IDs.", color = Color.Gray, fontSize = 10.sp)
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        query,
+                        { query = it },
+                        Modifier.weight(1f),
+                        label = { Text("Name, @username, email, user ID, post link or university") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Button(onClick = ::search, enabled = !loading) { Text("Search") }
+                }
+                if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 5.dp), color = BlinkPink)
+                LazyColumn(
+                    Modifier.fillMaxSize().padding(top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (users.isNotEmpty()) {
+                        item { Text("Users", color = BlinkPink, fontWeight = FontWeight.Black) }
+                        items(users, key = { "user-${it.id}" }) { UserSearchRow(it, false) {} }
+                    }
+                    if (posts.isNotEmpty()) {
+                        item { Text("Posts & Reels", color = BlinkPink, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 6.dp)) }
+                        items(posts, key = { "post-${it.id}" }) { AdminPostSearchRow(it, false) {} }
+                    }
+                    if (universities.isNotEmpty()) {
+                        item { Text("Universities", color = BlinkPink, fontWeight = FontWeight.Black, modifier = Modifier.padding(top = 6.dp)) }
+                        items(universities, key = { "uni-$it" }) { name ->
+                            Card(Modifier.fillMaxWidth()) { Text(name, Modifier.padding(10.dp), fontSize = 10.sp) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun humanizeAction(action: String): String =
+    action.replace('_', ' ').trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+private fun summarizeAuditDetails(raw: String): String {
+    if (raw.isBlank()) return ""
+    return runCatching {
+        val json = JSONObject(raw)
+        buildList {
+            json.opt("amount")?.takeUnless { it == JSONObject.NULL }?.let { add("Amount: $it") }
+            json.optString("badge").takeIf { it.isNotBlank() }?.let { add("Badge: $it") }
+            json.optString("reason").takeIf { it.isNotBlank() }?.let { add("Reason: $it") }
+            json.opt("duration_hours")?.takeUnless { it == JSONObject.NULL }?.let { add("Duration: $it hours") }
+            json.optString("text").takeIf { it.isNotBlank() && it.length < 120 }?.let { add(it) }
+        }.joinToString(" • ")
+    }.getOrDefault("")
+}
+
+private fun friendlyResult(json: JSONObject): String {
+    val result = json.opt("result")
+    if (result is JSONObject && result.has("value")) {
+        return "Result: ${result.opt("value")}"
+    }
+    if (result is JSONArray) {
+        if (result.length() == 0) return "No matching records."
+        val lines = buildList {
+            val limit = minOf(result.length(), 5)
+            for (i in 0 until limit) {
+                val item = result.optJSONObject(i)
+                if (item != null) {
+                    val username = item.optString("username")
+                    val fullName = item.optString("full_name")
+                    val text = item.optString("text").ifBlank { item.optString("caption") }
+                    add(
+                        when {
+                            username.isNotBlank() -> listOf(fullName, "@$username").filter { it.isNotBlank() }.joinToString(" • ")
+                            text.isNotBlank() -> text.take(100)
+                            else -> "Record ${i + 1}"
+                        }
+                    )
+                }
+            }
+        }
+        return "${result.length()} record(s)" + if (lines.isNotEmpty()) "\n" + lines.joinToString("\n") else ""
+    }
+    if (result is JSONObject) {
+        val lines = mutableListOf<String>()
+        val keys = result.keys()
+        while (keys.hasNext() && lines.size < 10) {
+            val key = keys.next()
+            val value = result.opt(key)
+            if (value != JSONObject.NULL && value !is JSONObject && value !is JSONArray) {
+                lines += "${key.replace('_', ' ')}: $value"
+            }
+        }
+        if (lines.isNotEmpty()) return lines.joinToString("\n")
+    }
+    return if (json.optBoolean("ok", false)) "Completed successfully." else "Request completed."
 }
