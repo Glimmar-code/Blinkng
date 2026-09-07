@@ -262,13 +262,21 @@ class ConnectHubRepository(
                 ?.takeIf { it.isNotBlank() && !it.equals("all", ignoreCase = true) }
                 ?: JSONObject.NULL
 
+            val semanticPrompt = listOfNotNull(
+                preferences.connectionIntent
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() && !it.equals("Any", ignoreCase = true) }
+                    ?.let { "Connection intent: $it" },
+                preferences.typePrompt.trim().takeIf { it.isNotBlank() }
+            ).joinToString(". ").take(200)
+
             val body = JSONObject()
                 .put("p_university", clean(preferences.university))
                 .put("p_faculty", clean(preferences.faculty))
                 .put("p_department", clean(preferences.department))
                 .put("p_academic_level", clean(preferences.academicLevel))
                 .put("p_relationship_status", clean(preferences.relationshipStatus))
-                .put("p_type_prompt", clean(preferences.typePrompt.take(200)))
+                .put("p_type_prompt", clean(semanticPrompt))
                 .put("p_online_only", preferences.onlineOnly)
 
             val payload = JSONObject(rpc("spin_connect_match", body))
