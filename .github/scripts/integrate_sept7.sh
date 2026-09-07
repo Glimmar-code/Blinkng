@@ -14,7 +14,7 @@ report_conflict() {
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     echo "----- $file -----"
-    git diff --cc -- "$file" | sed -n '1,560p' || true
+    git diff --cc -- "$file" | sed -n '1,600p' || true
   done < <(git diff --name-only --diff-filter=U)
 }
 
@@ -141,21 +141,18 @@ from pathlib import Path
 import re
 p=Path('app/src/main/java/com/example/ui/screens/ActivityScreen.kt')
 s=p.read_text()
-if s.count('<<<<<<< HEAD') != 2:
-    raise SystemExit(f'Unexpected notification conflict count: {s.count("<<<<<<< HEAD")}')
+if s.count('<<<<<<< HEAD') != 2: raise SystemExit('Unexpected notification conflicts')
 pattern=r'''<<<<<<< HEAD\n\s*val accent = if \(item\.vipPriority\) \{\n\s*Color\(0xFFF59E0B\)\n\s*\} else when \(category\) \{\n\s*NotificationFilter\.LIKES -> BlinkPink\n\s*NotificationFilter\.COMMENTS -> BlinkPurple\n\s*NotificationFilter\.MARKET -> Color\(0xFF22C55E\)\n\s*NotificationFilter\.ALL -> BlinkPink\n\s*\}\n=======\n\s*val isOfficial = item\.targetType\.equals\("notification", ignoreCase = true\)\n\s*val accent = notificationAccent\(category, isOfficial\)\n>>>>>>> origin/fix/professional-notifications-20260907'''
 repl='''    val isOfficial = item.targetType.equals("notification", ignoreCase = true)
     val accent = if (item.vipPriority) Color(0xFFF59E0B) else notificationAccent(category, isOfficial)'''
 s,n=re.subn(pattern,repl,s,count=1)
-if n != 1: raise SystemExit('Could not resolve notification accent conflict')
-start=s.index('<<<<<<< HEAD')
-end=s.index('>>>>>>> origin/fix/professional-notifications-20260907',start)+len('>>>>>>> origin/fix/professional-notifications-20260907')
+if n != 1: raise SystemExit('Could not resolve notification accent')
+start=s.index('<<<<<<< HEAD'); marker='>>>>>>> origin/fix/professional-notifications-20260907'; end=s.index(marker,start)+len(marker)
 block=s[start:end]
 ours=block.split('=======',1)[0].split('<<<<<<< HEAD\n',1)[1]
-theirs=block.split('=======\n',1)[1].rsplit('\n>>>>>>> origin/fix/professional-notifications-20260907',1)[0]
+theirs=block.split('=======\n',1)[1].rsplit('\n'+marker,1)[0]
 s=s[:start]+ours+theirs+'\n'+s[end:]
-if '<<<<<<<' in s or '>>>>>>>' in s or '=======' in s:
-    raise SystemExit('Unresolved notification conflict markers remain')
+if any(x in s for x in ('<<<<<<<','>>>>>>>','=======')): raise SystemExit('Notification markers remain')
 p.write_text(s)
 PY
   git add "$file"
@@ -184,10 +181,8 @@ merge_leaderboard() {
   git checkout --theirs -- "$file"
   python - <<'PY'
 from pathlib import Path
-p=Path('app/src/main/java/com/example/ui/screens/LeaderboardScreen.kt')
-s=p.read_text()
-anchor='import com.example.data.models.VerificationBadge\n'
-addition='import com.example.ui.components.BlinkVipMarkForUsername\nimport com.example.ui.components.VerifiedMark\n'
+p=Path('app/src/main/java/com/example/ui/screens/LeaderboardScreen.kt'); s=p.read_text()
+anchor='import com.example.data.models.VerificationBadge\n'; addition='import com.example.ui.components.BlinkVipMarkForUsername\nimport com.example.ui.components.VerifiedMark\n'
 if 'import com.example.ui.components.VerifiedMark' not in s:
     if anchor not in s: raise SystemExit('Leaderboard import anchor missing')
     s=s.replace(anchor,anchor+addition,1)
@@ -239,6 +234,54 @@ PY
   git commit --no-edit
 }
 
+merge_verified() {
+  local branch="fix/verified-name-consistency"
+  local leaderboard="app/src/main/java/com/example/ui/screens/LeaderboardScreen.kt"
+  local search="app/src/main/java/com/example/ui/screens/SearchScreen.kt"
+  local professional="app/src/main/java/com/example/ui/screens/ProfessionalSearchScreen.kt"
+  echo "===== MERGE $branch ====="
+  if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
+  mapfile -t c < <(git diff --name-only --diff-filter=U)
+  [ "${#c[@]}" -eq 2 ] || { report_conflict "$branch"; exit 10; }
+  printf '%s\n' "${c[@]}" | grep -Fxq "$leaderboard" || { report_conflict "$branch"; exit 10; }
+  printf '%s\n' "${c[@]}" | grep -Fxq "$search" || { report_conflict "$branch"; exit 10; }
+  # Keep the newer professional Search wrapper and Top-10 leaderboard. Their verified
+  # name behavior supersedes the older copies from this branch. Reel changes auto-merge.
+  git checkout --ours -- "$leaderboard" "$search"
+  python - <<'PY'
+from pathlib import Path
+p=Path('app/src/main/java/com/example/ui/screens/ProfessionalSearchScreen.kt'); s=p.read_text()
+anchor='import com.example.ui.components.PostCard\n'
+if 'import com.example.ui.components.VerifiedMark' not in s:
+    if anchor not in s: raise SystemExit('Professional Search component import anchor missing')
+    s=s.replace(anchor,anchor+'import com.example.ui.components.VerifiedMark\n',1)
+old='''        if (person.verificationBadge != VerificationBadge.NONE) {
+            Spacer(Modifier.width(3.dp))
+            Icon(
+                Icons.Default.Verified,
+                contentDescription = when (person.verificationBadge) {
+                    VerificationBadge.GOLD -> "Gold verified account"
+                    VerificationBadge.BLUE -> "Verified account"
+                    VerificationBadge.NONE -> null
+                },
+                tint = BlinkPink,
+                modifier = Modifier.size((fontSize + 2).dp)
+            )
+        }
+'''
+new='''        if (person.verificationBadge != VerificationBadge.NONE) {
+            Spacer(Modifier.width(3.dp))
+            VerifiedMark(person.verificationBadge, size = (fontSize + 2).dp)
+        }
+'''
+if old not in s: raise SystemExit('Professional Search verified-name anchor missing')
+s=s.replace(old,new,1)
+p.write_text(s)
+PY
+  git add "$leaderboard" "$search" "$professional"
+  git commit --no-edit
+}
+
 # Already merged to main: fix/post-like-speed-reliability, game-professional-overhaul.
 merge_auth
 merge_admin
@@ -247,7 +290,7 @@ merge_notifications
 merge_one fix/reel-route-target-20260907
 merge_search
 merge_leaderboard
-merge_one fix/verified-name-consistency
+merge_verified
 merge_one feature/windows-desktop-foundation
 merge_one supabase-recovery-20260907
 
