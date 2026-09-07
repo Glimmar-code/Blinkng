@@ -1,0 +1,24 @@
+-- Blink Supabase recovery snapshot: private/private_ranking non-constraint indexes
+CREATE INDEX admin_announcements_sender_created_idx ON private.admin_announcements USING btree (sender_id, created_at DESC);
+CREATE INDEX admin_announcements_target_user_idx ON private.admin_announcements USING btree (target_user_id) WHERE (target_user_id IS NOT NULL);
+CREATE INDEX admin_audit_log_actor_created_idx ON private.admin_audit_log USING btree (actor_id, created_at DESC);
+CREATE INDEX admin_audit_log_target_post_idx ON private.admin_audit_log USING btree (target_post_id) WHERE (target_post_id IS NOT NULL);
+CREATE INDEX admin_audit_log_target_user_idx ON private.admin_audit_log USING btree (target_user_id) WHERE (target_user_id IS NOT NULL);
+CREATE INDEX admin_coin_transactions_type_idx ON private.admin_coin_transactions USING btree (transaction_type, created_at DESC);
+CREATE INDEX admin_coin_transactions_user_idx ON private.admin_coin_transactions USING btree (user_id, created_at DESC);
+CREATE INDEX idx_admin_feature_registry_v2_section ON private.admin_feature_registry_v2 USING btree (section_key, feature_id);
+CREATE INDEX admin_notes_target_admin_idx ON private.admin_notes USING btree (target_admin_id, created_at DESC);
+CREATE INDEX admin_notes_target_user_idx ON private.admin_notes USING btree (target_user_id, created_at DESC);
+CREATE INDEX admin_campaign_schedule_idx ON private.admin_notification_campaigns USING btree (status, scheduled_at);
+CREATE INDEX admin_delivery_notification_idx ON private.admin_notification_deliveries USING btree (notification_id);
+CREATE INDEX admin_notification_deliveries_notification_id_idx ON private.admin_notification_deliveries USING btree (notification_id) WHERE (notification_id IS NOT NULL);
+CREATE INDEX admin_report_state_assignment_idx ON private.admin_report_state USING btree (assigned_to, severity, updated_at DESC);
+CREATE INDEX admin_roles_active_idx ON private.admin_roles USING btree (role, expires_at);
+CREATE INDEX admin_roles_granted_by_idx ON private.admin_roles USING btree (granted_by) WHERE (granted_by IS NOT NULL);
+CREATE INDEX admin_roles_permissions_gin_idx ON private.admin_roles USING gin (permissions);
+CREATE INDEX admin_roles_scope_universities_gin_idx ON private.admin_roles USING gin (scope_universities);
+CREATE INDEX admin_user_controls_status_idx ON private.admin_user_controls USING btree (is_banned, suspended_until, account_disabled_until, account_locked_until);
+CREATE INDEX idx_content_view_events_post_created ON private.content_view_events USING btree (post_id, created_at DESC);
+CREATE INDEX idx_content_view_events_viewer_post_created ON private.content_view_events USING btree (viewer_id, post_id, created_at DESC);
+CREATE INDEX idx_web_content_views_last_viewed ON private.web_content_views USING btree (last_viewed_at DESC);
+CREATE INDEX discovery_user_geo_gix ON private_ranking.discovery_user_geo USING gist (location);
