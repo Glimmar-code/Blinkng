@@ -181,11 +181,21 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             }
 
             type.equals("call_update", ignoreCase = true) -> {
+                val callId = data["call_id"].orEmpty()
+                val event = data["call_event"].orEmpty()
                 IncomingCallNotification.handleCallUpdate(
                     context = this,
-                    callId = data["call_id"].orEmpty(),
-                    event = data["call_event"].orEmpty()
+                    callId = callId,
+                    event = event
                 )
+                if (event.equals("missed", ignoreCase = true)) {
+                    IncomingCallNotification.showMissed(
+                        context = this,
+                        callId = callId,
+                        callType = CallType.fromWire(data["call_type"]),
+                        peerName = senderName
+                    )
+                }
             }
 
             type.equals("message", ignoreCase = true) && sender.isNotBlank() -> {
