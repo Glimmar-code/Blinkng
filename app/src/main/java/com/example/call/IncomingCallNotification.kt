@@ -10,7 +10,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
-import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -18,12 +17,16 @@ import androidx.core.app.Person
 import androidx.core.content.ContextCompat
 
 object IncomingCallNotification {
+    /** Legacy channel id retained for compatibility with old installs/settings links. */
     const val CHANNEL_INCOMING_CALLS = "blink_incoming_calls"
     const val CHANNEL_ONGOING_CALLS = "blink_ongoing_calls"
     const val CHANNEL_MISSED_CALLS = "blink_missed_calls"
     const val FOREGROUND_NOTIFICATION_ID = 8701
 
     private val incomingVibrationPattern = longArrayOf(0, 500, 350, 500, 350, 500)
+
+    fun incomingChannelId(context: Context, callType: CallType): String =
+        CallSoundPreferences.channelId(context, callType)
 
     private fun notificationId(callId: String): Int =
         70_000 + (callId.hashCode() and 0x7fffffff) % 20_000
@@ -44,8 +47,6 @@ object IncomingCallNotification {
     ) {
         if (callId.isBlank()) return
         createChannels(context)
-        // Android 13+ requires POST_NOTIFICATIONS before the operating system may show
-        // the incoming-call heads-up/full-screen UI. The app requests it after sign-in.
         if (!hasNotificationPermission(context)) return
 
         val answerIntent = CallActivity.incomingIntent(
@@ -105,14 +106,10 @@ object IncomingCallNotification {
             .setImportant(true)
             .build()
         val label = if (callType == CallType.VIDEO) "Incoming video call" else "Incoming voice call"
-        val ringtone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+        val ringtone = CallSoundPreferences.ringtoneUri(context, callType)
+        val vibrate = CallSoundPreferences.vibrateEnabled(context)
 
-        // CallStyle gives Android a real incoming-call surface with system Answer/Decline
-        // affordances. The full-screen intent is used when Android permits it (for example
-        // on a locked device); otherwise the same notification degrades to a heads-up banner.
-        // setSound()/setVibrate() are also applied directly so Android 7.x devices, which do
-        // not support notification channels, still audibly ring and vibrate.
-        val notification = NotificationCompat.Builder(context, CHANNEL_INCOMING_CALLS)
+        val builder = NotificationCompat.Builder(context, incomingChannelId(context, callType))
             .setSmallIcon(android.R.drawable.ic_menu_call)
             .setContentTitle(peerName.ifBlank { "Blink user" })
             .setContentText(label)
@@ -126,19 +123,25 @@ object IncomingCallNotification {
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setSound(ringtone)
-            .setVibrate(incomingVibrationPattern)
             .setOngoing(true)
             .setAutoCancel(false)
             .setTimeoutAfter(50_000L)
             .setContentIntent(openPendingIntent)
             .setFullScreenIntent(openPendingIntent, true)
-            .build()
-            .apply {
-                // Keep the ringtone repeating until Answer/Decline/cancel/timeout, rather than
-                // behaving like a one-shot message notification.
+
+        // Android 7.x has no notification channels, so attach the selected sound/vibration
+        // directly. Android 8+ gets the same behavior from the versioned channel below.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            if (ringtone != null) builder.setSound(ringtone) else builder.setSilent(true)
+            if (vibrate) builder.setVibrate(incomingVibrationPattern) else builder.setVibrate(longArrayOf(0L))
+        }
+
+        val notification = builder.build().apply {
+            if (ringtone != null) {
+                // Repeat the selected ringtone until Answer/Decline/cancel/timeout.
                 flags = flags or Notification.FLAG_INSISTENT
             }
+        }
 
         runCatching {
             NotificationManagerCompat.from(context).notify(notificationId(callId), notification)
@@ -160,7 +163,9 @@ object IncomingCallNotification {
         val openPendingIntent = PendingIntent.getActivity(
             context,
             missedNotificationId(callId) + 1,
-            CallActivity.restoreIntent(context, callId),
+            Intent(context, CallHistoryActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val kind = if (callType == CallType.VIDEO) "video" else "voice"
@@ -187,8 +192,6 @@ object IncomingCallNotification {
     fun handleCallUpdate(context: Context, callId: String, event: String) {
         val normalized = event.lowercase()
         if (normalized == "answered") {
-            // Another device on the same receiver account answered. Remove only the stale
-            // incoming notification; never stop an already-running call foreground service.
             cancel(context, callId)
             return
         }
@@ -242,23 +245,29 @@ object IncomingCallNotification {
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
-        val ringtone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
         val callAudioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
 
-        val incoming = NotificationChannel(
-            CHANNEL_INCOMING_CALLS,
-            "Incoming calls",
-            NotificationManager.IMPORTANCE_HIGH
-        ).apply {
-            description = "Incoming Blink voice and video calls"
-            enableVibration(true)
-            vibrationPattern = incomingVibrationPattern
-            setSound(ringtone, callAudioAttributes)
-            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+        fun incomingChannel(type: CallType, name: String): NotificationChannel {
+            val ringtone = CallSoundPreferences.ringtoneUri(context, type)
+            val vibrate = CallSoundPreferences.vibrateEnabled(context)
+            return NotificationChannel(
+                incomingChannelId(context, type),
+                name,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Incoming Blink ${if (type == CallType.VIDEO) "video" else "voice"} calls"
+                enableVibration(vibrate)
+                if (vibrate) vibrationPattern = incomingVibrationPattern
+                if (ringtone != null) setSound(ringtone, callAudioAttributes) else setSound(null, null)
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+            }
         }
+
+        val voice = incomingChannel(CallType.AUDIO, "Incoming voice calls")
+        val video = incomingChannel(CallType.VIDEO, "Incoming video calls")
         val ongoing = NotificationChannel(
             CHANNEL_ONGOING_CALLS,
             "Active calls",
@@ -277,7 +286,7 @@ object IncomingCallNotification {
             description = "Missed Blink voice and video calls"
             lockscreenVisibility = Notification.VISIBILITY_PRIVATE
         }
-        manager.createNotificationChannels(listOf(incoming, ongoing, missed))
+        manager.createNotificationChannels(listOf(voice, video, ongoing, missed))
     }
 
     private fun hasNotificationPermission(context: Context): Boolean {
