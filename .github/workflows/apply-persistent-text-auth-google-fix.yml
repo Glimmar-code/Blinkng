@@ -30,6 +30,67 @@ jobs:
       - name: Apply persistent input and auth fixes
         run: python .github/scripts/apply_persistent_text_auth_google_fix.py
 
+      - name: Repair Compose MutableState adapters
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          targets = [
+              Path('app/src/main/java/com/example/data/local/PersistentTextDraftStore.kt'),
+              Path('.github/scripts/apply_persistent_text_auth_google_fix.py'),
+          ]
+
+          old_string = '''            override var value: String
+              get() = backing.value
+              set(newValue) {
+                  backing.value = newValue
+                  PersistentTextDraftStore.writeStorageKey(context, storageKey, newValue)
+              }
+          '''
+          new_string = old_string + '''            override fun component1(): String = value
+              override fun component2(): (String) -> Unit = { value = it }
+          '''
+
+          old_list = '''            override var value: List<String>
+              get() = backing.value
+              set(newValue) {
+                  backing.value = newValue
+                  val hasTypedContent = newValue.any { it.isNotBlank() }
+                  PersistentTextDraftStore.writeStorageKey(
+                      context,
+                      storageKey,
+                      if (hasTypedContent) encode(newValue) else ""
+                  )
+              }
+          '''
+          new_list = old_list + '''            override fun component1(): List<String> = value
+              override fun component2(): (List<String>) -> Unit = { value = it }
+          '''
+
+          for path in targets:
+              text = path.read_text()
+              if 'override fun component1(): String = value' not in text:
+                  if text.count(old_string) != 1:
+                      raise RuntimeError(f'{path}: String MutableState adapter not found exactly once')
+                  text = text.replace(old_string, new_string, 1)
+              if 'override fun component1(): List<String> = value' not in text:
+                  if text.count(old_list) != 1:
+                      raise RuntimeError(f'{path}: list MutableState adapter not found exactly once')
+                  text = text.replace(old_list, new_list, 1)
+              text = text.replace(
+                  'mutableStateOf(rememberedLogin != null || true)',
+                  'mutableStateOf(true)'
+              )
+              path.write_text(text)
+
+          auth = Path('app/src/main/java/com/example/ui/screens/AuthScreens.kt')
+          auth_text = auth.read_text().replace(
+              'mutableStateOf(rememberedLogin != null || true)',
+              'mutableStateOf(true)'
+          )
+          auth.write_text(auth_text)
+          PY
+
       - name: Compile Kotlin
         run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
 
@@ -49,7 +110,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java app/src/test/java
+          git add .github/scripts/apply_persistent_text_auth_google_fix.py app/src/main/java app/src/test/java
           if git diff --cached --quiet; then
             echo "No source changes to commit"
           else
