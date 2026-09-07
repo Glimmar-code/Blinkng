@@ -35,16 +35,27 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Public HTTPS links. sharePathPrefix is /Blinkng for the temporary
+                 GitHub Pages preview and becomes empty when the final root domain is set. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/@" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/profile/" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/post/" />
+                <data android:scheme="https" android:host="${shareHost}" android:pathPrefix="${sharePathPrefix}/reel/" />
+            </intent-filter>
 
-                <data android:scheme="https" />
-                <data android:host="${shareHost}" />
-                <data android:pathPrefix="/profile/" />
-                <data android:pathPrefix="/post/" />
-                <data android:pathPrefix="/reel/" />
+            <!-- Temporary/fallback app-only links let the web preview hand an
+                 interaction to Blink before the production domain is available. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="blink" android:host="profile" />
+                <data android:scheme="blink" android:host="post" />
+                <data android:scheme="blink" android:host="reel" />
             </intent-filter>
         </activity>
     </application>
