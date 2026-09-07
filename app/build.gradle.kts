@@ -39,16 +39,16 @@ val resolvedVersionName = providers.environmentVariable("VERSION_NAME").orNull
   ?.takeIf { it.isNotEmpty() }
   ?: "1.0.$resolvedVersionCode"
 
-// Until the production domain is supplied, public shares use the GitHub Pages preview.
-// Override with -PBLINK_SHARE_BASE_URL=https://blink.ng or the matching environment
-// variable later; no Kotlin source or manifest edit is required.
+// Until the production domain is supplied, public shares use the live Supabase
+// web-preview function. Override later with -PBLINK_SHARE_BASE_URL=https://blink.ng
+// or the matching environment variable; no Kotlin source edit is required.
 val configuredShareBaseUrl = providers.gradleProperty("BLINK_SHARE_BASE_URL").orNull
   ?: providers.environmentVariable("BLINK_SHARE_BASE_URL").orNull
 val resolvedShareBaseUrl = configuredShareBaseUrl
   ?.trim()
   ?.trimEnd('/')
   ?.takeIf { it.startsWith("https://") }
-  ?: "https://glimmar-code.github.io/Blinkng"
+  ?: "https://jhwgifrlxwspoedxjaly.supabase.co/functions/v1/blink-web"
 val resolvedShareUri = java.net.URI(resolvedShareBaseUrl)
 val resolvedShareHost = resolvedShareUri.host
   ?: throw GradleException("BLINK_SHARE_BASE_URL must contain a valid HTTPS host")
