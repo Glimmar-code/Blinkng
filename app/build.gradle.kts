@@ -56,6 +56,25 @@ val resolvedShareHost = resolvedShareUri.host
   ?: throw GradleException("BLINK_SHARE_BASE_URL must contain a valid HTTPS host")
 val resolvedSharePathPrefix = resolvedShareUri.path.orEmpty().trimEnd('/')
 
+// WebRTC can connect peer-to-peer through STUN. Production calls also need a TURN relay
+// for carrier-grade NAT/firewalls. Keep credentials out of source control and inject them
+// with Gradle properties or environment variables in CI/release environments.
+fun buildConfigString(value: String): String =
+  "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+val resolvedTurnUrl = (
+  providers.gradleProperty("BLINK_TURN_URL").orNull
+    ?: providers.environmentVariable("BLINK_TURN_URL").orNull
+).orEmpty().trim()
+val resolvedTurnUsername = (
+  providers.gradleProperty("BLINK_TURN_USERNAME").orNull
+    ?: providers.environmentVariable("BLINK_TURN_USERNAME").orNull
+).orEmpty().trim()
+val resolvedTurnCredential = (
+  providers.gradleProperty("BLINK_TURN_CREDENTIAL").orNull
+    ?: providers.environmentVariable("BLINK_TURN_CREDENTIAL").orNull
+).orEmpty().trim()
+
 val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
 val releaseStorePassword = System.getenv("STORE_PASSWORD")
 val releaseKeyAlias = System.getenv("KEY_ALIAS")
@@ -90,6 +109,9 @@ android {
     manifestPlaceholders["shareHost"] = resolvedShareHost
     manifestPlaceholders["sharePathPrefix"] = resolvedSharePathPrefix
     buildConfigField("String", "SHARE_BASE_URL", "\"$resolvedShareBaseUrl\"")
+    buildConfigField("String", "BLINK_TURN_URL", buildConfigString(resolvedTurnUrl))
+    buildConfigField("String", "BLINK_TURN_USERNAME", buildConfigString(resolvedTurnUsername))
+    buildConfigField("String", "BLINK_TURN_CREDENTIAL", buildConfigString(resolvedTurnCredential))
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
   signingConfigs {
@@ -171,6 +193,7 @@ dependencies {
   implementation(libs.androidx.camera.lifecycle)
   implementation(libs.androidx.camera.view)
   implementation(libs.androidx.camera.core)
+  implementation("io.github.webrtc-sdk:android:150.7871.01")
 
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
