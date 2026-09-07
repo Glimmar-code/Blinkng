@@ -20,6 +20,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Enforce Android-Windows feature parity
         run: python3 scripts/check_windows_parity.py
 
@@ -36,13 +37,16 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # The repository intentionally has one Gradle wrapper at the root. Git Bash is
+      # available on GitHub's Windows runner, so use the checked-in wrapper instead
+      # of relying on a machine-installed Gradle or a missing gradlew.bat file.
       - name: Compile and test desktop app
-        shell: pwsh
-        run: .\gradlew.bat -p desktopApp build --stacktrace --no-daemon
+        shell: bash
+        run: ./gradlew -p desktopApp build --stacktrace --no-daemon
 
       - name: Build Windows EXE and MSI
-        shell: pwsh
-        run: .\gradlew.bat -p desktopApp packageExe packageMsi --stacktrace --no-daemon
+        shell: bash
+        run: ./gradlew -p desktopApp packageExe packageMsi --stacktrace --no-daemon
 
       - name: Upload Windows installers
         uses: actions/upload-artifact@v4
