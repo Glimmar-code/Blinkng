@@ -2881,7 +2881,8 @@ private suspend fun restoreSupabaseSession() {
                         partner,
                         displayName,
                         enriched.text,
-                        avatar
+                        avatar,
+                        enriched.id
                     )
                 }
             }

@@ -1011,8 +1011,8 @@ fun MainAppContent(
                 scheduledPosts = uiState.scheduledPosts,
                 onDismiss = { viewModel.openCreatePost(false) },
                 onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText, textStyle ->
-                    // Dismiss immediately; publishing stays in the ViewModel/background flow.
-                    viewModel.openCreatePost(false)
+                    // Keep the composer alive until Supabase confirms the save. The ViewModel
+                    // closes it only after success, so a failed publish keeps the user's draft.
                     viewModel.addPost(
                         text = text,
                         faculty = faculty,

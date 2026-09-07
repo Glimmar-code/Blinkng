@@ -161,6 +161,7 @@ fun CreatePostSheet(
     var categoryMenuOpen by rememberSaveable { mutableStateOf(false) }
     var showDiscardDialog by rememberSaveable { mutableStateOf(false) }
     var selectedTextStyle by rememberSaveable { mutableStateOf("aurora") }
+    var textPresentation by rememberSaveable { mutableStateOf("plain") }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = listOf(
@@ -266,7 +267,13 @@ fun CreatePostSheet(
             false,
             null,
             null,
-            selectedTextStyle.takeIf { cleanText.isNotBlank() && selectedImages.isEmpty() && selectedVideo == null && !pollValid }
+            selectedTextStyle.takeIf {
+                textPresentation == "color" &&
+                    cleanText.isNotBlank() &&
+                    selectedImages.isEmpty() &&
+                    selectedVideo == null &&
+                    !pollValid
+            }
         )
     }
 
@@ -285,7 +292,13 @@ fun CreatePostSheet(
                 isReel = selectedVideo != null,
                 category = category,
                 audience = audience,
-                textStyle = selectedTextStyle.takeIf { text.isNotBlank() && selectedImages.isEmpty() && selectedVideo == null && !pollValid }
+                textStyle = selectedTextStyle.takeIf {
+                    textPresentation == "color" &&
+                        text.isNotBlank() &&
+                        selectedImages.isEmpty() &&
+                        selectedVideo == null &&
+                        !pollValid
+                }
             )
         )
         Toast.makeText(context, "Draft saved.", Toast.LENGTH_SHORT).show()
@@ -406,13 +419,58 @@ fun CreatePostSheet(
 
                 val textOnlyComposer = selectedImages.isEmpty() && selectedVideo == null && !showPoll
                 if (textOnlyComposer) {
-                    ColoredTextComposer(
-                        text = text,
-                        onTextChanged = { if (it.length <= 5000) text = it },
-                        selectedStyleKey = selectedTextStyle,
-                        onStyleSelected = { selectedTextStyle = it },
-                        enabled = !isSubmitting
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 7.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = textPresentation == "plain",
+                            onClick = { textPresentation = "plain" },
+                            enabled = !isSubmitting,
+                            label = { Text("Plain text") }
+                        )
+                        FilterChip(
+                            selected = textPresentation == "color",
+                            onClick = { textPresentation = "color" },
+                            enabled = !isSubmitting,
+                            label = { Text("Color text") }
+                        )
+                    }
+
+                    if (textPresentation == "color") {
+                        ColoredTextComposer(
+                            text = text,
+                            onTextChanged = { if (it.length <= 5000) text = it },
+                            selectedStyleKey = selectedTextStyle,
+                            onStyleSelected = { selectedTextStyle = it },
+                            enabled = !isSubmitting
+                        )
+                    } else {
+                        OutlinedTextField(
+                            value = text,
+                            onValueChange = { if (it.length <= 5000) text = it },
+                            enabled = !isSubmitting,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            minLines = 7,
+                            maxLines = 14,
+                            placeholder = { Text("What's on your mind?") },
+                            supportingText = {
+                                Row(Modifier.fillMaxWidth()) {
+                                    Text(
+                                        "Plain text post",
+                                        modifier = Modifier.weight(1f),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text("${text.length}/5000")
+                                }
+                            },
+                            shape = RoundedCornerShape(20.dp)
+                        )
+                    }
                 } else {
                     OutlinedTextField(
                         value = text,
@@ -631,6 +689,7 @@ fun CreatePostSheet(
                                     mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
                                     audience = draft.audience
                                     category = draft.category
+                                    textPresentation = if (draft.textStyle.isNullOrBlank()) "plain" else "color"
                                     selectedTextStyle = draft.textStyle ?: "aurora"
                                     showPoll = false
                                 },

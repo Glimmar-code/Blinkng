@@ -634,9 +634,11 @@ object BlinkNotificationHelper {
         senderUsername: String,
         senderName: String,
         messageText: String,
-        senderAvatar: String = ""
+        senderAvatar: String = "",
+        messageId: String = ""
     ) {
         if (!hasNotificationPermission(context)) return
+        if (!MessageNotificationLedger.claim(context, messageId)) return
         createNotificationChannels(context)
 
         val avatarBitmap = loadAvatarBitmap(senderAvatar)

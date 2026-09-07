@@ -42,6 +42,7 @@ object InstantChatNotification {
         messageId: String = ""
     ) {
         if (!BlinkNotificationHelper.hasNotificationPermission(context)) return
+        if (!MessageNotificationLedger.claim(context, messageId)) return
         BlinkNotificationHelper.createNotificationChannels(context)
 
         val stableConversationKey = conversationId.ifBlank { senderUsername }

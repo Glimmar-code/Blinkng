@@ -56,6 +56,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                     CoroutineScope(Dispatchers.IO).launch {
                         syncTokenNow(appContext, token)
                     }
+                    enqueueGapSync(appContext)
                 }
                 .addOnFailureListener { error ->
                     Log.w(TAG, "Unable to obtain FCM token", error)
@@ -136,6 +137,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         CoroutineScope(Dispatchers.IO).launch {
             syncTokenNow(applicationContext, token)
         }
+        enqueueGapSync(applicationContext)
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
