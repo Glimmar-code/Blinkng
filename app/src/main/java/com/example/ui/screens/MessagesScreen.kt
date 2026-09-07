@@ -3798,7 +3798,6 @@ private fun ChatTopBar(
 ) {
 
     val callContext = LocalContext.current
-    val callRoom = "https://meet.jit.si/Blink-${convo.id}"
 
     TopAppBar(
         title = {
@@ -3938,7 +3937,15 @@ private fun ChatTopBar(
 
             IconButton(
                 onClick = {
-                    callContext.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("$callRoom#config.startWithVideoMuted=true")))
+                    com.example.call.BlinkCallLauncher.startOutgoing(
+                        context = callContext,
+                        conversationId = convo.id,
+                        calleeId = convo.partnerId,
+                        calleeUsername = convo.partnerUsername,
+                        calleeName = convo.partnerName,
+                        calleeAvatar = convo.partnerAvatar,
+                        type = com.example.call.CallType.AUDIO
+                    )
                 }
             ) {
 
@@ -3951,7 +3958,15 @@ private fun ChatTopBar(
 
             IconButton(
                 onClick = {
-                    callContext.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(callRoom)))
+                    com.example.call.BlinkCallLauncher.startOutgoing(
+                        context = callContext,
+                        conversationId = convo.id,
+                        calleeId = convo.partnerId,
+                        calleeUsername = convo.partnerUsername,
+                        calleeName = convo.partnerName,
+                        calleeAvatar = convo.partnerAvatar,
+                        type = com.example.call.CallType.VIDEO
+                    )
                 }
             ) {
 

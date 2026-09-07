@@ -10,6 +10,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import com.example.auth.AccountSessionStore
+import com.example.call.IncomingCallNotification
 import com.example.data.supabase.SupabaseService
 import com.example.notification.BlinkFirebaseMessagingService
 import com.example.notification.BlinkNotificationHelper
@@ -26,6 +27,9 @@ class BlinkApplication : Application(), ImageLoaderFactory {
 
         SupabaseService.initialize(this)
         BlinkNotificationHelper.createNotificationChannels(this)
+        // Create voice/video/missed-call channels on cold start as well, so users can tune
+        // call sounds and lock-screen behavior before their first incoming Blink call.
+        IncomingCallNotification.createChannels(this)
 
         // Fetch/log the current token on every cold start. If a Supabase session already
         // exists it is also registered immediately; otherwise MainActivity re-syncs after login.

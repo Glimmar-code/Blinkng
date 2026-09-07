@@ -97,9 +97,11 @@ import coil.compose.AsyncImage
 import com.example.AdminControlCenterActivity
 import com.example.ProfessionalCenterActivity
 import com.example.auth.AccountSwitcherActivity
+import com.example.call.CallHistoryActivity
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.supabase.AdminSupabaseService
+import com.example.notification.NotificationAndCallSettingsActivity
 import com.example.ui.theme.BlinkPink
 import kotlinx.coroutines.delay
 
@@ -205,6 +207,22 @@ fun AppMenuSheet(
                 onToggle = { toggle("Settings and privacy") }
             ) {
                 ThemeToggleRow(isDark = isDark, onToggleTheme = onToggleTheme)
+                MenuItemRow(
+                    Icons.Outlined.Notifications,
+                    "Calls & notification sounds",
+                    "Ringtones, message sounds, vibration and Android call alerts"
+                ) {
+                    onDismiss()
+                    context.startActivity(Intent(context, NotificationAndCallSettingsActivity::class.java))
+                }
+                MenuItemRow(
+                    Icons.Outlined.Notifications,
+                    "Call history",
+                    "Missed, incoming and outgoing Blink calls"
+                ) {
+                    onDismiss()
+                    context.startActivity(Intent(context, CallHistoryActivity::class.java))
+                }
                 MenuItemRow(Icons.Outlined.Lock, "Privacy & DM settings", "Private account and messaging controls") {
                     openProfessional("privacy")
                 }

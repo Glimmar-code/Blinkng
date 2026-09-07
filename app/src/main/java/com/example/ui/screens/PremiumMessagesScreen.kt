@@ -312,7 +312,6 @@ fun PremiumMessagesScreen(
                         interactionActions = interactionActions,
                         onProfileClick = onProfileClick,
                         onStartCall = { conversation, kind ->
-                            activeCall = MessageCallState(conversation, kind)
                             launchSecureCall(context, conversation, kind)
                         },
                         isConnected = isConnected
@@ -2588,15 +2587,19 @@ private fun launchSecureCall(
     conversation: ChatConversation,
     kind: MessageCallKind
 ) {
-    val roomId = conversation.id.ifBlank { conversation.partnerUsername }
-        .replace(Regex("[^A-Za-z0-9_-]"), "-")
-    val base = "https://meet.jit.si/Blink-$roomId"
-    val target = if (kind == MessageCallKind.AUDIO) {
-        "$base#config.startWithVideoMuted=true"
-    } else {
-        base
-    }
-    openExternalUri(context, Uri.parse(target), "Open secure call")
+    com.example.call.BlinkCallLauncher.startOutgoing(
+        context = context,
+        conversationId = conversation.id,
+        calleeId = conversation.partnerId,
+        calleeUsername = conversation.partnerUsername,
+        calleeName = conversation.partnerName,
+        calleeAvatar = conversation.partnerAvatar,
+        type = if (kind == MessageCallKind.AUDIO) {
+            com.example.call.CallType.AUDIO
+        } else {
+            com.example.call.CallType.VIDEO
+        }
+    )
 }
 
 private fun openExternalUri(context: Context, uri: Uri, chooserTitle: String? = null) {
