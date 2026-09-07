@@ -36,6 +36,14 @@ sealed class RealtimeEvent {
     data class ConversationEvent(val eventType: String, val conversationId: String, val lastMessage: String, val updatedAt: String) : RealtimeEvent()
     data class NotificationEvent(val eventType: String, val id: String, val userId: String, val username: String, val type: String, val title: String, val content: String) : RealtimeEvent()
     data class FeedPostEvent(val eventType: String, val postId: String) : RealtimeEvent()
+    data class IncomingCallEvent(
+        val eventType: String,
+        val callId: String,
+        val callerId: String,
+        val calleeId: String,
+        val callType: String,
+        val conversationId: String
+    ) : RealtimeEvent()
     data class ConnectHubEvent(val eventType: String, val table: String) : RealtimeEvent()
 }
 
@@ -141,7 +149,7 @@ class SupabaseRealtimeManager private constructor() {
         if (sent) lastAccessTokenSent = token
     }
     private fun subscribeToTables() {
-        val tables = listOf("messages","conversations","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","roommate_profiles","roommate_applications","mentor_profiles","mentor_requests","reading_mate_profiles","reading_mate_requests","housing_agent_profiles","housing_requests","housing_request_applications","game_challenges","skill_endorsements","poll_votes")
+        val tables = listOf("messages","conversations","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","calls","roommate_profiles","roommate_applications","mentor_profiles","mentor_requests","reading_mate_profiles","reading_mate_requests","housing_agent_profiles","housing_requests","housing_request_applications","game_challenges","skill_endorsements","poll_votes")
         tables.forEach { table -> val join = JSONObject().apply { put("topic", "realtime:public:$table"); put("event", "phx_join"); put("payload", JSONObject().apply { put("config", JSONObject().apply { put("postgres_changes", org.json.JSONArray().apply { put(JSONObject().apply { put("event", "*"); put("schema", "public"); put("table", table) }) }) }) }); put("ref", refCounter.getAndIncrement().toString()) }; webSocket?.send(join.toString()) }
     }
     private fun handleIncomingMessage(text: String) {
@@ -219,6 +227,22 @@ class SupabaseRealtimeManager private constructor() {
                 "conversations" -> publishEvent(RealtimeEvent.ConversationEvent(type, record.optString("id"), record.optString("last_message"), record.optString("updated_at", record.optString("last_message_at"))))
                 "notifications" -> publishEvent(RealtimeEvent.NotificationEvent(type, record.optString("id"), record.optString("user_id"), record.optString("username"), record.optString("type"), record.optString("title"), record.optString("content")))
                 "feed_posts" -> publishEvent(RealtimeEvent.FeedPostEvent(type, record.optString("id")))
+                "calls" -> {
+                    val calleeId = record.optString("callee_id")
+                    val status = record.optString("status")
+                    if (calleeId == activeUserId && status.equals("ringing", true)) {
+                        publishEvent(
+                            RealtimeEvent.IncomingCallEvent(
+                                eventType = type,
+                                callId = record.optString("id"),
+                                callerId = record.optString("caller_id"),
+                                calleeId = calleeId,
+                                callType = record.optString("call_type", "audio"),
+                                conversationId = record.optString("conversation_id")
+                            )
+                        )
+                    }
+                }
                 "roommate_profiles", "roommate_applications", "mentor_profiles", "mentor_requests",
                 "reading_mate_profiles", "reading_mate_requests", "housing_agent_profiles",
                 "housing_requests", "housing_request_applications", "game_challenges", "study_circles", "study_circle_members" ->

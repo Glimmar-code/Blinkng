@@ -10,6 +10,9 @@ import androidx.lifecycle.viewModelScope
 import com.example.auth.AccountSessionStore
 import com.example.auth.AuthErrorMapper
 import com.example.auth.PasswordRecoveryLinkParser
+import com.example.call.CallRepository
+import com.example.call.CallType
+import com.example.call.IncomingCallNotification
 import com.example.data.local.CachedAppSnapshot
 import com.example.data.local.OfflineContentStore
 import com.example.data.models.*
@@ -2907,6 +2910,27 @@ private suspend fun restoreSupabaseSession() {
                     .onFailure { Log.w(TAG, "Conversation summary refresh failed", it) }
             }
             is RealtimeEvent.NotificationEvent -> fetchSupabaseData()
+            is RealtimeEvent.IncomingCallEvent -> viewModelScope.launch {
+                val currentUserId = _uiState.value.myProfile.id
+                if (
+                    currentUserId.isBlank() ||
+                    event.calleeId != currentUserId ||
+                    event.callId.isBlank() ||
+                    event.callerId.isBlank()
+                ) return@launch
+
+                val peer = CallRepository().fetchPeer(event.callerId).getOrNull()
+                IncomingCallNotification.showIncoming(
+                    context = appContext,
+                    callId = event.callId,
+                    callType = CallType.fromWire(event.callType),
+                    peerId = event.callerId,
+                    peerUsername = peer?.username.orEmpty(),
+                    peerName = peer?.name.orEmpty().ifBlank { "Blink user" },
+                    peerAvatar = peer?.avatar.orEmpty(),
+                    conversationId = event.conversationId
+                )
+            }
             is RealtimeEvent.ConnectHubEvent -> refreshConnectHub()
             is RealtimeEvent.FeedPostEvent -> viewModelScope.launch {
                 val fresh = postRepository.fetchFeed()

@@ -150,6 +150,7 @@ class CallActivity : ComponentActivity() {
     private var mediaRequestedForIncomingAnswer = false
     private var mediaStarted = false
     private var connectedMarked = false
+    private var answerRequested = false
     private var isCaller = false
     private var connectingSinceMillis = 0L
 
@@ -233,7 +234,13 @@ class CallActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.action == ACTION_ANSWER && incomingRinging) answerIncoming()
+        if (intent.action == ACTION_ANSWER) {
+            // The notification Answer action can arrive before loadCall() has populated
+            // incomingRinging. Remember the user's tap and consume it as soon as the
+            // authoritative call row finishes loading instead of silently dropping it.
+            answerRequested = true
+            if (incomingRinging) answerIncoming()
+        }
     }
 
     override fun onDestroy() {
@@ -298,6 +305,7 @@ class CallActivity : ComponentActivity() {
         }
 
         incomingRinging = !isCaller && loaded.status == CallStatus.RINGING
+        if (sourceIntent.action == ACTION_ANSWER) answerRequested = true
         statusText = when {
             incomingRinging -> if (callType == CallType.VIDEO) "Incoming video call" else "Incoming voice call"
             loaded.status == CallStatus.CONNECTED -> "Connected"
@@ -312,7 +320,7 @@ class CallActivity : ComponentActivity() {
         synchronizeSignals()
 
         when {
-            sourceIntent.action == ACTION_ANSWER && incomingRinging -> answerIncoming()
+            answerRequested && incomingRinging -> answerIncoming()
             isCaller -> requestMediaPermissions(incomingAnswer = false)
             loaded.status in setOf(CallStatus.CONNECTING, CallStatus.CONNECTED) -> {
                 mediaRequestedForIncomingAnswer = true
@@ -336,6 +344,7 @@ class CallActivity : ComponentActivity() {
 
     private fun answerIncoming() {
         if (!incomingRinging || ending.get()) return
+        answerRequested = false
         statusText = "Connecting…"
         requestMediaPermissions(incomingAnswer = true)
     }
