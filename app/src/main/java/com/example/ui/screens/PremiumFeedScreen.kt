@@ -221,7 +221,8 @@ fun PremiumFeedScreen(
     onLoadMoreReels: () -> Unit = {},
     homeReselectSignal: Int = 0,
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
-    hasUnreadNotifications: Boolean = false
+    hasUnreadNotifications: Boolean = false,
+    routedReelId: String? = null
 ) {
     val context = LocalContext.current
     val resumePrefs = remember(context) {
@@ -243,6 +244,13 @@ fun PremiumFeedScreen(
     val followingIds by FollowStateStore.followingIds.collectAsState()
     var launchReelId by rememberSaveable(resumeUserKey) { mutableStateOf<String?>(null) }
     var launchReelPositionMs by rememberSaveable(resumeUserKey) { mutableStateOf(0L) }
+
+    LaunchedEffect(currentSubTab) {
+        if (currentSubTab != 1 && launchReelId != null) {
+            launchReelId = null
+            launchReelPositionMs = 0L
+        }
+    }
 
     fun openReelsAt(reelId: String? = null, positionMs: Long = 0L) {
         launchReelId = reelId
@@ -356,8 +364,8 @@ fun PremiumFeedScreen(
             onLoadMoreReels = onLoadMoreReels,
             homeReselectSignal = homeReselectSignal,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
-            initialReelId = launchReelId,
-            initialReelPositionMs = launchReelPositionMs
+            initialReelId = routedReelId ?: launchReelId,
+            initialReelPositionMs = if (routedReelId != null) 0L else launchReelPositionMs
         )
 
         2 -> PremiumConnectHost(
@@ -485,8 +493,12 @@ private fun PremiumHomeFeed(
     var screenVisible by remember { mutableStateOf(false) }
     var horizontalDrag by remember { mutableStateOf(0f) }
     val swipeThreshold = with(density) { 64.dp.toPx() }
-    val chromeScrollThreshold = with(density) { 20.dp.toPx() }
+    val primaryCollapseThreshold = with(density) { 20.dp.toPx() }
+    val immersiveCollapseThreshold = with(density) { 56.dp.toPx() }
     val scrollAccumulator = remember { floatArrayOf(0f) }
+    var chromeStage by remember(laneResumeKey) { mutableIntStateOf(0) }
+    var primaryHeaderVisible by remember(laneResumeKey) { mutableStateOf(true) }
+    var secondaryChromeVisible by remember(laneResumeKey) { mutableStateOf(true) }
     var bottomChromeVisible by remember { mutableStateOf(true) }
 
     val networkMonitor = remember(context) { NetworkMonitor(context) }
@@ -604,27 +616,57 @@ private fun PremiumHomeFeed(
         }
     }
 
-    val scrollConnection = remember(onBottomBarVisibilityChange, chromeScrollThreshold) {
+    val scrollConnection = remember(
+        onBottomBarVisibilityChange,
+        primaryCollapseThreshold,
+        immersiveCollapseThreshold
+    ) {
         object : NestedScrollConnection {
             override fun onPreScroll(
                 available: androidx.compose.ui.geometry.Offset,
                 source: NestedScrollSource
             ): androidx.compose.ui.geometry.Offset {
-                scrollAccumulator[0] = (scrollAccumulator[0] + available.y)
-                    .coerceIn(-chromeScrollThreshold * 2f, chromeScrollThreshold * 2f)
-
                 when {
-                    scrollAccumulator[0] <= -chromeScrollThreshold && bottomChromeVisible -> {
-                        bottomChromeVisible = false
-                        fabExpanded = false
-                        scrollAccumulator[0] = 0f
-                        onBottomBarVisibilityChange(false)
+                    available.y < 0f -> {
+                        // Moving deeper into the feed. Collapse the primary header first,
+                        // then require a second deliberate scroll distance before entering
+                        // immersive mode. This hysteresis avoids tiny-movement flicker.
+                        scrollAccumulator[0] += -available.y
+                        when {
+                            chromeStage == 0 && scrollAccumulator[0] >= primaryCollapseThreshold -> {
+                                chromeStage = 1
+                                primaryHeaderVisible = false
+                                secondaryChromeVisible = true
+                                bottomChromeVisible = true
+                                fabExpanded = true
+                                scrollAccumulator[0] = 0f
+                                onBottomBarVisibilityChange(true)
+                            }
+                            chromeStage == 1 && scrollAccumulator[0] >= immersiveCollapseThreshold -> {
+                                chromeStage = 2
+                                primaryHeaderVisible = false
+                                secondaryChromeVisible = false
+                                bottomChromeVisible = false
+                                fabExpanded = false
+                                scrollAccumulator[0] = 0f
+                                onBottomBarVisibilityChange(false)
+                            }
+                        }
                     }
-                    scrollAccumulator[0] >= chromeScrollThreshold && !bottomChromeVisible -> {
-                        bottomChromeVisible = true
-                        fabExpanded = true
+
+                    available.y > 0f -> {
+                        // Any meaningful reverse scroll leaves immersive mode immediately.
+                        // The primary header intentionally stays hidden until the list is
+                        // genuinely back at the first post.
                         scrollAccumulator[0] = 0f
-                        onBottomBarVisibilityChange(true)
+                        if (chromeStage == 2) {
+                            chromeStage = 1
+                            primaryHeaderVisible = false
+                            secondaryChromeVisible = true
+                            bottomChromeVisible = true
+                            fabExpanded = true
+                            onBottomBarVisibilityChange(true)
+                        }
                     }
                 }
                 return androidx.compose.ui.geometry.Offset.Zero
@@ -661,6 +703,14 @@ private fun PremiumHomeFeed(
         }
 
         scrollAccumulator[0] = 0f
+        if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 1) {
+            chromeStage = 0
+            primaryHeaderVisible = true
+        } else {
+            chromeStage = 1
+            primaryHeaderVisible = false
+        }
+        secondaryChromeVisible = true
         bottomChromeVisible = true
         fabExpanded = true
         onBottomBarVisibilityChange(true)
@@ -676,6 +726,18 @@ private fun PremiumHomeFeed(
                     .putInt("home_scroll_offset:$laneResumeKey", offset)
                     .apply()
             }
+
+            // The primary header is special: reverse scrolling never restores it.
+            // Only the actual top of the feed (first item, zero offset) can do that.
+            if (index == 0 && offset <= 1 && chromeStage != 0) {
+                chromeStage = 0
+                primaryHeaderVisible = true
+                secondaryChromeVisible = true
+                bottomChromeVisible = true
+                fabExpanded = true
+                scrollAccumulator[0] = 0f
+                onBottomBarVisibilityChange(true)
+            }
         }
     }
 
@@ -685,12 +747,15 @@ private fun PremiumHomeFeed(
             // - about ten posts deep or farther: return to the first post instantly;
             // - still within the first ten posts: keep position and refresh in place.
             // Do not reset the user's For You/Following lane or active feed filter.
-            if (listState.firstVisibleItemIndex >= 10) {
+            if (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset > 1) {
                 listState.scrollToItem(0)
             } else {
                 onRefresh()
             }
             scrollAccumulator[0] = 0f
+            chromeStage = 0
+            primaryHeaderVisible = true
+            secondaryChromeVisible = true
             bottomChromeVisible = true
             fabExpanded = true
             onBottomBarVisibilityChange(true)
@@ -778,44 +843,58 @@ private fun PremiumHomeFeed(
                 }
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                FeedTopBar(
-                    userAvatar = userAvatar,
-                    hasUnreadNotifications = hasUnreadNotifications,
-                    onSearchClick = onSearchClick,
-                    onNotificationClick = onOpenActivity,
-                    onMenuClick = onOpenMenu,
-                    onProfileClick = { onProfileClick(currentUsername) }
-                )
-
-                Box {
-                    FeedTabs(
-                        selectedIndex = laneIndex,
-                        onForYouClick = { onLaneChanged(0) },
-                        onFollowingClick = { onLaneChanged(1) },
-                        onGameClick = onGameClick,
-                        onReelClick = onReelClick,
-                        onFilterClick = { filterMenuVisible = true }
+                AnimatedVisibility(
+                    visible = primaryHeaderVisible,
+                    enter = fadeIn(tween(120)) + slideInVertically(tween(140)) { -it / 2 },
+                    exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it / 2 }
+                ) {
+                    FeedTopBar(
+                        userAvatar = userAvatar,
+                        hasUnreadNotifications = hasUnreadNotifications,
+                        onSearchClick = onSearchClick,
+                        onNotificationClick = onOpenActivity,
+                        onMenuClick = onOpenMenu,
+                        onProfileClick = { onProfileClick(currentUsername) }
                     )
-                    DropdownMenu(
-                        expanded = filterMenuVisible,
-                        onDismissRequest = { filterMenuVisible = false },
-                        modifier = Modifier.background(FeedElevatedSurface)
-                    ) {
-                        PremiumFilterItem("All posts", Icons.Default.Tune, filter == PremiumFeedFilter.ALL) {
-                            filter = PremiumFeedFilter.ALL
-                            filterMenuVisible = false
+                }
+
+                AnimatedVisibility(
+                    visible = secondaryChromeVisible,
+                    enter = fadeIn(tween(110)) + slideInVertically(tween(130)) { -it / 3 },
+                    exit = fadeOut(tween(90)) + slideOutVertically(tween(110)) { -it / 3 }
+                ) {
+                    Column {
+                        Box {
+                            FeedTabs(
+                                selectedIndex = laneIndex,
+                                onForYouClick = { onLaneChanged(0) },
+                                onFollowingClick = { onLaneChanged(1) },
+                                onGameClick = onGameClick,
+                                onReelClick = onReelClick,
+                                onFilterClick = { filterMenuVisible = true }
+                            )
+                            DropdownMenu(
+                                expanded = filterMenuVisible,
+                                onDismissRequest = { filterMenuVisible = false },
+                                modifier = Modifier.background(FeedElevatedSurface)
+                            ) {
+                                PremiumFilterItem("All posts", Icons.Default.Tune, filter == PremiumFeedFilter.ALL) {
+                                    filter = PremiumFeedFilter.ALL
+                                    filterMenuVisible = false
+                                }
+                                PremiumFilterItem("Photos", Icons.Default.Image, filter == PremiumFeedFilter.PHOTOS) {
+                                    filter = PremiumFeedFilter.PHOTOS
+                                    filterMenuVisible = false
+                                }
+                                PremiumFilterItem("Polls", Icons.Default.Poll, filter == PremiumFeedFilter.POLLS) {
+                                    filter = PremiumFeedFilter.POLLS
+                                    filterMenuVisible = false
+                                }
+                            }
                         }
-                        PremiumFilterItem("Photos", Icons.Default.Image, filter == PremiumFeedFilter.PHOTOS) {
-                            filter = PremiumFeedFilter.PHOTOS
-                            filterMenuVisible = false
-                        }
-                        PremiumFilterItem("Polls", Icons.Default.Poll, filter == PremiumFeedFilter.POLLS) {
-                            filter = PremiumFeedFilter.POLLS
-                            filterMenuVisible = false
-                        }
+                        HorizontalDivider(color = FeedBorder.copy(alpha = 0.72f))
                     }
                 }
-                HorizontalDivider(color = FeedBorder.copy(alpha = 0.72f))
 
                 PullToRefreshBox(
                     isRefreshing = isRefreshing,
@@ -957,14 +1036,20 @@ private fun PremiumHomeFeed(
                 }
             }
 
-            CreatePostFab(
-                expanded = fabExpanded,
-                onClick = onOpenCreatePost,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
-                    .padding(end = 18.dp, bottom = 94.dp)
-            )
+            AnimatedVisibility(
+                visible = secondaryChromeVisible,
+                enter = fadeIn(tween(110)) + slideInVertically(tween(130)) { it / 2 },
+                exit = fadeOut(tween(90)) + slideOutVertically(tween(110)) { it / 2 },
+                modifier = Modifier.align(Alignment.BottomEnd)
+            ) {
+                CreatePostFab(
+                    expanded = fabExpanded,
+                    onClick = onOpenCreatePost,
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(end = 18.dp, bottom = 72.dp)
+                )
+            }
         }
     }
 }

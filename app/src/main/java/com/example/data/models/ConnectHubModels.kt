@@ -127,6 +127,7 @@ data class MatchSpinPreferences(
     val department: String? = null,
     val academicLevel: String? = null,
     val relationshipStatus: String? = null,
+    val connectionIntent: String? = null,
     val typePrompt: String = "",
     val onlineOnly: Boolean = false
 )

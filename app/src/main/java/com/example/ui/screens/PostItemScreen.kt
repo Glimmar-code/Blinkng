@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -37,13 +38,13 @@ fun PostItemScreen(
     onSubmit: (title: String, price: Long, category: String, condition: String, description: String, imageUrl: String) -> Unit,
     isDark: Boolean
 ) {
-    var title by remember { mutableStateOf("") }
-    var priceText by remember { mutableStateOf("") }
+    var title by rememberPersistentTextState(key = "com/example/ui/screens/PostItemScreen.kt:title:1")
+    var priceText by rememberPersistentTextState(key = "com/example/ui/screens/PostItemScreen.kt:priceText:2")
     var category by remember { mutableStateOf(kMarketCategoriesList[1].name) }
     var condition by remember { mutableStateOf("Brand New") }
-    var description by remember { mutableStateOf("") }
+    var description by rememberPersistentTextState(key = "com/example/ui/screens/PostItemScreen.kt:description:3")
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
-    var imageUrl by remember { mutableStateOf("") }
+    var imageUrl by rememberPersistentTextState(key = "com/example/ui/screens/PostItemScreen.kt:imageUrl:4")
     var categoryDropdownOpen by remember { mutableStateOf(false) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(

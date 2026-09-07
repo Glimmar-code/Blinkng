@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.BorderStroke
@@ -94,7 +95,7 @@ fun ConnectSection(
     onGameClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
+    var query by rememberPersistentTextState(key = "com/example/ui/screens/ConnectSection.kt:query:1")
     var filter by rememberSaveable { mutableStateOf(LivePeopleFilter.ALL) }
     val pullToRefreshState = rememberPullToRefreshState()
 

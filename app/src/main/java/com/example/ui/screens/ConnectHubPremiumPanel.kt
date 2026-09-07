@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedContent
@@ -176,12 +177,14 @@ fun ConnectHubPremiumPanel(
 ) {
     var match by remember { mutableStateOf<Pair<UserProfile, Int>?>(null) }
     var form by rememberSaveable { mutableStateOf(HubForm.NONE) }
-    var hubQuery by rememberSaveable { mutableStateOf("") }
+    var hubQuery by rememberPersistentTextState(key = "com/example/ui/screens/ConnectHubPremiumPanel.kt:hubQuery:1")
     var isMatching by remember { mutableStateOf(false) }
     var showMatchSpinDialog by rememberSaveable { mutableStateOf(false) }
     var matchRemainingCoins by remember { mutableStateOf<Long?>(null) }
     var matchReasons by remember { mutableStateOf<List<String>>(emptyList()) }
     var matchError by remember { mutableStateOf<String?>(null) }
+    var savedMatchPreferences by remember { mutableStateOf<MatchSpinPreferences?>(null) }
+    var recentMatches by remember { mutableStateOf<List<Pair<UserProfile, Int>>>(emptyList()) }
     var challengeTarget by remember { mutableStateOf<UserProfile?>(null) }
     var followingIds by remember { mutableStateOf(setOf<String>()) }
     val coroutineScope = rememberCoroutineScope()
@@ -312,6 +315,8 @@ fun ConnectHubPremiumPanel(
             remainingCoins = matchRemainingCoins,
             matchReasons = matchReasons,
             errorMessage = matchError,
+            recentMatches = recentMatches,
+            hasSavedPreferences = savedMatchPreferences != null,
             onSpin = {
                 if (!isMatching && current != null) showMatchSpinDialog = true
             },
@@ -735,6 +740,8 @@ fun ConnectHubPremiumPanel(
         MatchSpinDialog(
             profiles = profiles,
             isSubmitting = isMatching,
+            initialPreferences = savedMatchPreferences,
+            onSavePreferences = { savedMatchPreferences = it },
             onDismiss = { showMatchSpinDialog = false },
             onSpin = { preferences ->
                 showMatchSpinDialog = false
@@ -746,7 +753,7 @@ fun ConnectHubPremiumPanel(
                     runCatching { matchRepository.spinMatch(preferences) }
                         .onSuccess { result ->
                             val candidate = result.candidate
-                            match = UserProfile(
+                            val scoredMatch = UserProfile(
                                 id = candidate.userId,
                                 fullName = candidate.fullName,
                                 username = candidate.username,
@@ -761,8 +768,15 @@ fun ConnectHubPremiumPanel(
                                 coreSkills = candidate.commonSkills.toMutableList(),
                                 hobbies = candidate.commonHobbies
                             ) to candidate.compatibilityScore
+                            match = scoredMatch
+                            recentMatches = (listOf(scoredMatch) + recentMatches.filterNot { it.first.id == candidate.userId })
+                                .take(5)
+                            savedMatchPreferences = preferences
                             matchRemainingCoins = result.remainingCoins
-                            matchReasons = result.matchReasons
+                            val intentReason = preferences.connectionIntent
+                                ?.takeIf { it.isNotBlank() && !it.equals("Any", ignoreCase = true) }
+                                ?.let { "Good fit for $it" }
+                            matchReasons = (result.matchReasons + listOfNotNull(intentReason)).distinct().take(6)
                         }
                         .onFailure { error ->
                             matchError = error.message ?: "Unable to find a match right now."
@@ -791,17 +805,30 @@ fun ConnectHubPremiumPanel(
 private fun MatchSpinDialog(
     profiles: List<UserProfile>,
     isSubmitting: Boolean,
+    initialPreferences: MatchSpinPreferences?,
+    onSavePreferences: (MatchSpinPreferences) -> Unit,
     onDismiss: () -> Unit,
     onSpin: (MatchSpinPreferences) -> Unit
 ) {
-    var universitySearch by rememberSaveable { mutableStateOf("") }
-    var selectedUniversity by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedFaculty by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedDepartment by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedLevel by rememberSaveable { mutableStateOf<String?>(null) }
-    var selectedRelationship by rememberSaveable { mutableStateOf<String?>(null) }
-    var typePrompt by rememberSaveable { mutableStateOf("") }
-    var onlineOnly by rememberSaveable { mutableStateOf(false) }
+    var universitySearch by rememberSaveable(initialPreferences?.university) {
+        mutableStateOf(initialPreferences?.university.orEmpty())
+    }
+    var selectedUniversity by remember(initialPreferences?.university) { mutableStateOf(initialPreferences?.university) }
+    var selectedFaculty by remember(initialPreferences?.faculty) { mutableStateOf(initialPreferences?.faculty) }
+    var selectedDepartment by remember(initialPreferences?.department) { mutableStateOf(initialPreferences?.department) }
+    var selectedLevel by remember(initialPreferences?.academicLevel) { mutableStateOf(initialPreferences?.academicLevel) }
+    var selectedRelationship by remember(initialPreferences?.relationshipStatus) {
+        mutableStateOf(initialPreferences?.relationshipStatus)
+    }
+    var connectionIntent by rememberSaveable(initialPreferences?.connectionIntent) {
+        mutableStateOf(initialPreferences?.connectionIntent ?: "Any")
+    }
+    var typePrompt by rememberSaveable(initialPreferences?.typePrompt) {
+        mutableStateOf(initialPreferences?.typePrompt.orEmpty())
+    }
+    var onlineOnly by rememberSaveable(initialPreferences?.onlineOnly) {
+        mutableStateOf(initialPreferences?.onlineOnly ?: false)
+    }
 
     val universityOptions = remember(universitySearch) {
         val q = universitySearch.trim()
@@ -833,14 +860,41 @@ private fun MatchSpinDialog(
                 profiles.map { it.academicLevel.trim() }.filter { it.isNotBlank() }
         ).distinct()
     }
+    val intentOptions = remember {
+        listOf("Any", "Friends", "Study partner", "Project teammate", "Networking", "Mentor", "Gaming buddy")
+    }
+    val interestSuggestions = remember {
+        listOf("Coding", "Music", "Football", "Business", "Gaming", "Reading", "Design", "Cooking", "Photography", "Entrepreneurship")
+    }
+
+    fun currentPreferences(): MatchSpinPreferences = MatchSpinPreferences(
+        university = selectedUniversity,
+        faculty = selectedFaculty,
+        department = selectedDepartment,
+        academicLevel = selectedLevel,
+        relationshipStatus = selectedRelationship,
+        connectionIntent = connectionIntent,
+        typePrompt = typePrompt.trim(),
+        onlineOnly = onlineOnly
+    )
+
+    val activeFilters = listOfNotNull(
+        selectedUniversity,
+        selectedFaculty,
+        selectedDepartment,
+        selectedLevel,
+        connectionIntent.takeUnless { it == "Any" },
+        selectedRelationship,
+        "Online".takeIf { onlineOnly }
+    )
 
     AlertDialog(
         onDismissRequest = { if (!isSubmitting) onDismiss() },
         title = {
             Column {
-                Text("Match Spin", fontWeight = FontWeight.Black)
+                Text("Smart Match", fontWeight = FontWeight.Black)
                 Text(
-                    "Choose who you want to meet",
+                    "Build a precise discovery profile",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -850,15 +904,36 @@ private fun MatchSpinDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 520.dp)
+                    .heightIn(max = 560.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(11.dp)
             ) {
-                Text(
-                    "A successful spin costs 10 Blink Coins. If no eligible match is found, you are not charged.",
-                    fontSize = 10.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .38f)
+                ) {
+                    Text(
+                        "A successful spin costs 10 Blink Coins. No eligible result means no charge.",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+
+                Text("I'm looking for", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    intentOptions.forEach { intent ->
+                        PremiumChoicePill(
+                            label = intent,
+                            selected = connectionIntent == intent,
+                            onClick = { connectionIntent = intent }
+                        )
+                    }
+                }
 
                 SearchableUniversityMatchField(
                     query = universitySearch,
@@ -916,15 +991,37 @@ private fun MatchSpinDialog(
                     value = typePrompt,
                     onValueChange = { typePrompt = it.take(180) },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Type your type (optional)") },
+                    label = { Text("Describe your ideal connection (optional)") },
                     placeholder = { Text("e.g. likes coding, cooking, social activities or football") },
                     supportingText = {
-                        Text("Matches against public profile details and Everyone posts — never private messages.")
+                        Text("Uses public profile details and Everyone posts — never private messages.")
                     },
                     minLines = 2,
                     maxLines = 4,
                     shape = RoundedCornerShape(16.dp)
                 )
+
+                Text("Quick interests", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    interestSuggestions.forEach { interest ->
+                        val selected = typePrompt.contains(interest, ignoreCase = true)
+                        PremiumChoicePill(
+                            label = interest,
+                            selected = selected,
+                            onClick = {
+                                if (!selected) {
+                                    typePrompt = listOf(typePrompt.trim().trimEnd(','), interest)
+                                        .filter { it.isNotBlank() }
+                                        .joinToString(", ")
+                                        .take(180)
+                                }
+                            }
+                        )
+                    }
+                }
 
                 Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -940,7 +1037,7 @@ private fun MatchSpinDialog(
                         Column(Modifier.weight(1f)) {
                             Text("Online now only", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             Text(
-                                "Optional — useful when you want someone available now.",
+                                "Prioritize people currently available in Blink.",
                                 fontSize = 9.5.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -948,32 +1045,81 @@ private fun MatchSpinDialog(
                         Switch(checked = onlineOnly, onCheckedChange = { onlineOnly = it })
                     }
                 }
+
+                if (activeFilters.isNotEmpty()) {
+                    Text("Active preferences", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        activeFilters.take(8).forEach { filter ->
+                            Surface(
+                                shape = RoundedCornerShape(100.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = .10f)
+                            ) {
+                                Text(
+                                    filter,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = {
-                    onSpin(
-                        MatchSpinPreferences(
-                            university = selectedUniversity,
-                            faculty = selectedFaculty,
-                            department = selectedDepartment,
-                            academicLevel = selectedLevel,
-                            relationshipStatus = selectedRelationship,
-                            typePrompt = typePrompt.trim(),
-                            onlineOnly = onlineOnly
-                        )
-                    )
-                },
-                enabled = !isSubmitting
+                onClick = { onSpin(currentPreferences()) },
+                enabled = !isSubmitting,
+                shape = RoundedCornerShape(100.dp)
             ) {
-                Text("Spin for 10 coins")
+                Text("Find match · 10")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isSubmitting) { Text("Cancel") }
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                TextButton(
+                    onClick = { onSavePreferences(currentPreferences()) },
+                    enabled = !isSubmitting
+                ) { Text("Save") }
+                TextButton(onClick = onDismiss, enabled = !isSubmitting) { Text("Cancel") }
+            }
         }
     )
+}
+
+@Composable
+private fun PremiumChoicePill(label: String, selected: Boolean, onClick: () -> Unit) {
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1f else .97f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "premiumChoiceScale"
+    )
+    val background by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .65f),
+        animationSpec = tween(180),
+        label = "premiumChoiceColor"
+    )
+    Surface(
+        modifier = Modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(100.dp),
+        color = background
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+            fontSize = 10.5.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary
+            else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
 }
 
 @Composable
@@ -1076,6 +1222,8 @@ private fun SmartMatchHero(
     remainingCoins: Long?,
     matchReasons: List<String>,
     errorMessage: String?,
+    recentMatches: List<Pair<UserProfile, Int>>,
+    hasSavedPreferences: Boolean,
     onSpin: () -> Unit,
     onProfileClick: (String) -> Unit,
     onMessage: (UserProfile) -> Unit,
@@ -1097,6 +1245,25 @@ private fun SmartMatchHero(
         animationSpec = infiniteRepeatable(animation = tween(900, easing = LinearEasing)),
         label = "spinAngle"
     )
+    val stages = remember {
+        listOf(
+            "Reading your preferences",
+            "Comparing public interests",
+            "Ranking compatible profiles",
+            "Selecting the strongest fit"
+        )
+    }
+    var searchStage by remember(isMatching) { mutableStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(isMatching) {
+        if (isMatching) {
+            while (true) {
+                delay(620)
+                searchStage = (searchStage + 1) % stages.size
+            }
+        } else {
+            searchStage = 0
+        }
+    }
 
     Surface(
         shape = RoundedCornerShape(26.dp),
@@ -1133,9 +1300,26 @@ private fun SmartMatchHero(
                 }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Smart Match Spin", fontSize = 17.sp, fontWeight = FontWeight.Black)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Smart Match", fontSize = 17.sp, fontWeight = FontWeight.Black)
+                        if (hasSavedPreferences) {
+                            Spacer(Modifier.width(7.dp))
+                            Surface(
+                                shape = RoundedCornerShape(100.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = .10f)
+                            ) {
+                                Text(
+                                    "Saved",
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
                     Text(
-                        "Set your preferences, then search profiles and public interests. Each successful spin costs 10 Blink Coins.",
+                        "Preference-based discovery using public profile and activity signals.",
                         fontSize = 11.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1150,61 +1334,213 @@ private fun SmartMatchHero(
             }
 
             AnimatedContent(
-                targetState = match,
+                targetState = Triple(match, isMatching, errorMessage),
                 transitionSpec = {
-                    (fadeIn() + scaleIn(initialScale = .94f)) togetherWith (fadeOut() + scaleOut(targetScale = .96f))
+                    (fadeIn(tween(300)) + scaleIn(initialScale = .95f) + slideInVertically { it / 8 }) togetherWith
+                        (fadeOut(tween(180)) + scaleOut(targetScale = .97f))
                 },
-                label = "smartMatchResult"
-            ) { result ->
-                if (result != null) {
-                    val (person, serverScore) = result
-                    Column {
-                        Spacer(Modifier.height(14.dp))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        Spacer(Modifier.height(12.dp))
-                        MatchResultCard(
-                            current = current,
-                            person = person,
-                            compatibilityOverride = serverScore,
-                            onProfileClick = { onProfileClick(person.username) },
-                            onMessage = { onMessage(person) },
-                            onChallenge = { onChallenge(person) }
-                        )
-                        if (matchReasons.isNotEmpty()) {
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                "Why this match: ${matchReasons.joinToString(" • ")}",
-                                fontSize = 10.5.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                label = "premiumSmartMatchState"
+            ) { state ->
+                val result = state.first
+                val matching = state.second
+                val error = state.third
+                when {
+                    result != null -> {
+                        val (person, serverScore) = result
+                        Column {
+                            Spacer(Modifier.height(14.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Spacer(Modifier.height(12.dp))
+                            MatchResultCard(
+                                current = current,
+                                person = person,
+                                compatibilityOverride = serverScore,
+                                onProfileClick = { onProfileClick(person.username) },
+                                onMessage = { onMessage(person) },
+                                onChallenge = { onChallenge(person) }
                             )
-                        }
-                        remainingCoins?.let { balance ->
-                            Spacer(Modifier.height(5.dp))
-                            Text(
-                                "$balance Blink Coins remaining",
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            if (matchReasons.isNotEmpty()) {
+                                Spacer(Modifier.height(10.dp))
+                                Text("Why this match", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(6.dp))
+                                MatchReasonPills(matchReasons)
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                remainingCoins?.let { balance ->
+                                    Text(
+                                        "$balance Blink Coins remaining",
+                                        modifier = Modifier.weight(1f),
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                } ?: Spacer(Modifier.weight(1f))
+                                TextButton(onClick = onSpin, enabled = !isMatching) {
+                                    Text("Spin again · 10")
+                                }
+                            }
                         }
                     }
-                } else if (isMatching) {
+                    matching -> PremiumMatchSearchProgress(stages = stages, stageIndex = searchStage)
+                    !error.isNullOrBlank() -> {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = .55f)
+                        ) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(
+                                    error,
+                                    fontSize = 10.5.sp,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                TextButton(onClick = onSpin) { Text("Adjust preferences") }
+                            }
+                        }
+                    }
+                    else -> {
+                        Text(
+                            "Choose your intent, campus preferences and interests to get a more useful match.",
+                            modifier = Modifier.padding(top = 12.dp),
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            if (recentMatches.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .7f))
+                Spacer(Modifier.height(10.dp))
+                Text("Recent matches", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(7.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    recentMatches.forEach { (person, score) ->
+                        Surface(
+                            modifier = Modifier.clickable { onProfileClick(person.username) },
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = .72f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AsyncImage(
+                                    model = person.avatarUrl,
+                                    error = painterResource(R.drawable.ic_default_profile),
+                                    fallback = painterResource(R.drawable.ic_default_profile),
+                                    contentDescription = person.fullName,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.size(28.dp).clip(CircleShape)
+                                )
+                                Spacer(Modifier.width(7.dp))
+                                Column {
+                                    Text(
+                                        person.fullName.ifBlank { person.username },
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text("$score% match", fontSize = 8.5.sp, color = BlinkPink, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PremiumMatchSearchProgress(stages: List<String>, stageIndex: Int) {
+    Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+        AnimatedContent(
+            targetState = stageIndex,
+            transitionSpec = {
+                (fadeIn(tween(220)) + slideInVertically { it / 3 }) togetherWith fadeOut(tween(140))
+            },
+            label = "matchSearchStage"
+        ) { index ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(17.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(stages[index], fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "Searching profiles, campus details and public interests…",
-                        modifier = Modifier.padding(top = 14.dp),
-                        fontSize = 11.5.sp,
+                        "Matching securely against eligible public signals…",
+                        fontSize = 9.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-            if (!errorMessage.isNullOrBlank()) {
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    errorMessage,
-                    fontSize = 10.5.sp,
-                    color = MaterialTheme.colorScheme.error,
-                    fontWeight = FontWeight.SemiBold
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            stages.indices.forEach { index ->
+                val width by animateDpAsState(
+                    targetValue = if (index == stageIndex) 24.dp else 7.dp,
+                    animationSpec = tween(220),
+                    label = "matchStageWidth"
                 )
+                Box(
+                    Modifier
+                        .width(width)
+                        .height(7.dp)
+                        .background(
+                            if (index == stageIndex) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.outlineVariant,
+                            RoundedCornerShape(100.dp)
+                        )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MatchReasonPills(reasons: List<String>) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        reasons.take(6).forEachIndexed { index, reason ->
+            var visible by remember(reason) { mutableStateOf(false) }
+            androidx.compose.runtime.LaunchedEffect(reason) {
+                delay(index * 55L)
+                visible = true
+            }
+            AnimatedVisibility(
+                visible = visible,
+                enter = fadeIn(tween(220)) + scaleIn(initialScale = .90f)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(100.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = .10f)
+                ) {
+                    Text(
+                        reason,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import com.example.data.local.rememberPersistentTextState
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -64,7 +65,7 @@ fun StudyCirclesPanel(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var query by rememberSaveable { mutableStateOf("") }
+    var query by rememberPersistentTextState(key = "com/example/ui/components/StudyCirclesPanel.kt:query:1")
     var circles by remember { mutableStateOf<List<StudyCircleSummary>>(emptyList()) }
     var ownerRequests by remember { mutableStateOf<List<StudyCircleJoinRequest>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }

@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.data.local.rememberPersistentStringListState
+import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import android.net.Uri
@@ -151,12 +153,22 @@ fun CreatePostSheet(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
-    var text by rememberSaveable { mutableStateOf("") }
+    var text by rememberPersistentTextState(
+        key = "create_post_text",
+        scope = profile.id.ifBlank { profile.username }
+    )
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
     var mode by rememberSaveable { mutableStateOf("post") }
-    var pollQuestion by rememberSaveable { mutableStateOf("") }
-    var pollOptions by rememberSaveable { mutableStateOf(listOf("", "")) }
+    var pollQuestion by rememberPersistentTextState(
+        key = "create_post_poll_question",
+        scope = profile.id.ifBlank { profile.username }
+    )
+    var pollOptions by rememberPersistentStringListState(
+        key = "create_post_poll_options",
+        initialValue = listOf("", ""),
+        scope = profile.id.ifBlank { profile.username }
+    )
     var audience by rememberSaveable { mutableStateOf("Everyone") }
     var category by rememberSaveable { mutableStateOf("Campus Life") }
     var allowComments by rememberSaveable { mutableStateOf(true) }

@@ -76,6 +76,10 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIncomingIntent(intent: Intent?) {
         handleNotificationIntent(intent)
+        if (viewModel.handleAuthDeepLink(intent?.data)) {
+            intent?.data = null
+            return
+        }
         DeepLinkRouter.parse(intent?.data)?.let { deepLink ->
             viewModel.handleDeepLink(deepLink)
             intent?.data = null
@@ -266,6 +270,15 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
 
+                                AppDestination.RESET_PASSWORD -> {
+                                    ResetPasswordScreen(
+                                        onSubmit = { password, onResult ->
+                                            viewModel.updateRecoveredPassword(password, onResult)
+                                        },
+                                        onCancel = { viewModel.cancelPasswordRecovery() }
+                                    )
+                                }
+
                                 AppDestination.PROFILE_SETUP -> {
                                     ProfileSetupOnboardingScreen(
                                         studentName = uiState.myProfile.fullName,
@@ -341,7 +354,8 @@ fun MainAppContent(
                 uiState.isCreateStoryOpen ||
                 uiState.activeViewingStory != null ||
                 uiState.showSellerCongratulationsDialog ||
-                uiState.deepLinkedPost != null
+                uiState.deepLinkedPost != null ||
+                (uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1)
     ) {
         when {
             uiState.deepLinkedPost != null -> viewModel.closeDeepLinkedPost()
@@ -359,6 +373,10 @@ fun MainAppContent(
             uiState.isCreateStoryOpen -> viewModel.openCreateStory(false)
             uiState.activeViewingStory != null -> viewModel.closeStory()
             uiState.showSellerCongratulationsDialog -> viewModel.dismissSellerCongratulations()
+            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1 -> {
+                isBottomBarVisibleByScroll = true
+                viewModel.setFeedSubTab(0)
+            }
         }
     }
 
@@ -424,6 +442,7 @@ fun MainAppContent(
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
                         currentSubTab = uiState.feedSubTab,
+                        routedReelId = uiState.routedReelId,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
                         isDark = uiState.isDarkMode,
                         onLikePost = { viewModel.togglePostLike(it) },
@@ -874,6 +893,7 @@ fun MainAppContent(
                 isLoading = uiState.isCommentsLoading,
                 isPosting = uiState.isPostingComment,
                 currentUserId = uiState.myProfile.id,
+                draftKey = uiState.activeCommentsPostId.orEmpty(),
                 mentionCandidates = (listOf(uiState.myProfile) + uiState.profiles)
                     .filter { it.username.isNotBlank() }
                     .distinctBy { it.username.trim().removePrefix("@").lowercase() },

@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.animateContentSize
@@ -59,10 +60,18 @@ fun MarketScreen(
     isDark: Boolean
 ) {
     var selectedCategory by remember { mutableStateOf("All Categories") }
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by rememberPersistentTextState(key = "com/example/ui/screens/MarketScreen.kt:searchQuery:1")
     var showVerificationRequiredDialog by remember { mutableStateOf(false) }
 
-    val searchSuggestions = listOf("iPhone", "MacBook", "Lab Coat", "Calculators", "Hostel Space", "JBL Speaker", "Textbooks")
+    val searchSuggestions = remember(items) {
+        items.asSequence()
+            .flatMap { item -> sequenceOf(item.title, item.category) }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(7)
+            .toList()
+    }
 
     val filteredItems = remember(selectedCategory, searchQuery, items) {
         items.filter { item ->
@@ -75,6 +84,7 @@ fun MarketScreen(
         }
     }
 
+    val marketRows = remember(filteredItems) { filteredItems.chunked(2) }
     val isVerified = verificationBadge != VerificationBadge.NONE
 
     LazyColumn(
@@ -433,7 +443,14 @@ fun MarketScreen(
         }
 
         // Grid in 2 columns
-        items(filteredItems.chunked(2)) { rowItems ->
+        items(
+            items = marketRows,
+            key = { rowItems ->
+                rowItems.joinToString(separator = "|") { item ->
+                    item.id.ifBlank { "${item.sellerUsername}:${item.title}" }
+                }
+            }
+        ) { rowItems ->
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier

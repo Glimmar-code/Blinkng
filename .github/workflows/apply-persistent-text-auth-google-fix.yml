@@ -18,6 +18,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Refresh latest main
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
@@ -29,6 +34,38 @@ jobs:
 
       - name: Apply persistent input and auth fixes
         run: python .github/scripts/apply_persistent_text_auth_google_fix.py
+
+      - name: Complete Compose MutableState adapters
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/example/data/local/PersistentTextDraftStore.kt')
+          text = path.read_text()
+
+          string_marker = '                    PersistentTextDraftStore.writeStorageKey(context, storageKey, newValue)\n                }\n        }\n'
+          string_replacement = '                    PersistentTextDraftStore.writeStorageKey(context, storageKey, newValue)\n                }\n            override fun component1(): String = value\n            override fun component2(): (String) -> Unit = { value = it }\n        }\n'
+          if 'override fun component1(): String = value' not in text:
+              if text.count(string_marker) != 1:
+                  raise RuntimeError('String MutableState adapter marker not found exactly once')
+              text = text.replace(string_marker, string_replacement, 1)
+
+          list_marker = '                        if (hasTypedContent) encode(newValue) else ""\n                    )\n                }\n        }\n'
+          list_replacement = '                        if (hasTypedContent) encode(newValue) else ""\n                    )\n                }\n            override fun component1(): List<String> = value\n            override fun component2(): (List<String>) -> Unit = { value = it }\n        }\n'
+          if 'override fun component1(): List<String> = value' not in text:
+              if text.count(list_marker) != 1:
+                  raise RuntimeError('List MutableState adapter marker not found exactly once')
+              text = text.replace(list_marker, list_replacement, 1)
+
+          path.write_text(text)
+
+          auth = Path('app/src/main/java/com/example/ui/screens/AuthScreens.kt')
+          auth_text = auth.read_text().replace(
+              'mutableStateOf(rememberedLogin != null || true)',
+              'mutableStateOf(true)'
+          )
+          auth.write_text(auth_text)
+          PY
 
       - name: Compile Kotlin
         run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
@@ -52,7 +89,9 @@ jobs:
           git add app/src/main/java app/src/test/java
           if git diff --cached --quiet; then
             echo "No source changes to commit"
-          else
-            git commit -m "fix: persist input drafts and repair remembered Google auth"
-            git push origin HEAD:main
+            exit 0
           fi
+          git commit -m "fix: persist input drafts and repair remembered Google auth"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main

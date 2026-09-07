@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.*
@@ -89,7 +90,7 @@ fun StoryViewerDialog(
     // Story timer progress (0f to 1f)
     var progress by remember { mutableFloatStateOf(0f) }
     var isPaused by remember { mutableStateOf(false) }
-    var replyText by rememberSaveable { mutableStateOf("") }
+    var replyText by rememberPersistentTextState(key = "com/example/ui/components/StoryViewerDialog.kt:replyText:1")
     var floatingReaction by remember { mutableStateOf<String?>(null) }
     var showQuickReactions by rememberSaveable { mutableStateOf(false) }
 

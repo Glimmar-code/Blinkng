@@ -6,6 +6,8 @@ import android.util.Log
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import com.example.auth.AccountSessionStore
+import com.example.auth.AuthErrorMapper
+import com.example.auth.GoogleAuthLaunchGate
 import com.example.auth.GoogleAuthCallbackActivity
 import com.example.data.models.ContactField
 import com.example.data.models.UserProfile
@@ -39,7 +41,7 @@ class AuthRepository(private val context: Context, private val supabaseService: 
     private val baseUrl = SupabaseConfig.url.trimEnd('/')
     private val anonKey = SupabaseConfig.anonKey
 
-    suspend fun signUpWithEmail(email: String, password: String, username: String, fullName: String? = null, faculty: String = "SIMME"): AuthResult = withContext(Dispatchers.IO) {
+    suspend fun signUpWithEmail(email: String, password: String, username: String, fullName: String? = null, faculty: String = ""): AuthResult = withContext(Dispatchers.IO) {
         val cleanEmail = email.trim().lowercase(); val cleanUsername = username.trim().lowercase().removePrefix("@"); val cleanName = fullName?.trim()?.ifBlank { null } ?: cleanUsername.replace(".", " ")
         if (cleanEmail.isBlank() || password.isBlank() || cleanUsername.isBlank()) return@withContext AuthResult.failure("Please complete all required fields.")
         if (!cleanUsername.matches(Regex("^[a-z0-9][a-z0-9._-]{1,29}$"))) {
@@ -52,10 +54,7 @@ class AuthRepository(private val context: Context, private val supabaseService: 
         if (availability?.usernameAvailable == false) {
             return@withContext AuthResult.failure("That username is already taken. Please choose another one.")
         }
-        if (availability?.fullNameAvailable == false) {
-            return@withContext AuthResult.failure("That display name is already in use. Add a middle name or another identifier.")
-        }
-        try { val result = supabaseService.signUpUser(cleanEmail, password, cleanUsername, cleanName, faculty); if (result.isSuccess) { val profile = result.getOrThrow(); persistSession(profile); _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken()); AuthResult.success(profile) } else AuthResult.failure(result.exceptionOrNull()?.message ?: "Sign up failed.") } catch (e: Exception) { Log.e("AuthRepository", "signUpWithEmail error", e); AuthResult.failure(e.message ?: "Sign up failed.") }
+        try { val result = supabaseService.signUpUser(cleanEmail, password, cleanUsername, cleanName, faculty); if (result.isSuccess) { val profile = result.getOrThrow(); persistSession(profile); _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken()); AuthResult.success(profile) } else AuthResult.failure(AuthErrorMapper.friendly(result.exceptionOrNull()?.message, "Sign up failed.")) } catch (e: Exception) { Log.e("AuthRepository", "signUpWithEmail error", e); AuthResult.failure(AuthErrorMapper.friendly(e.message, "Sign up failed.")) }
     }
 
     suspend fun signInWithEmail(emailOrUsername: String, password: String): AuthResult = withContext(Dispatchers.IO) {
@@ -67,8 +66,8 @@ class AuthRepository(private val context: Context, private val supabaseService: 
             } else {
                 authenticateWithUsername(cleanInput, password)
             }
-            if (result.isSuccess) { val profile = result.getOrThrow(); persistSession(profile); _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken()); AuthResult.success(profile) } else AuthResult.failure(result.exceptionOrNull()?.message ?: "Invalid email/username or password.")
-        } catch (e: Exception) { Log.e("AuthRepository", "signInWithEmail error", e); AuthResult.failure(e.message ?: "Connection error. Please try again.") }
+            if (result.isSuccess) { val profile = result.getOrThrow(); persistSession(profile); _authState.value = AuthState.Authenticated(profile, SupabaseService.accessToken()); AuthResult.success(profile) } else AuthResult.failure(AuthErrorMapper.friendly(result.exceptionOrNull()?.message, "Unable to sign in."))
+        } catch (e: Exception) { Log.e("AuthRepository", "signInWithEmail error", e); AuthResult.failure(AuthErrorMapper.friendly(e.message, "Unable to sign in.")) }
     }
 
     private suspend fun authenticateWithUsername(username: String, password: String): Result<UserProfile> = withContext(Dispatchers.IO) {
@@ -139,6 +138,9 @@ class AuthRepository(private val context: Context, private val supabaseService: 
      * This deliberately replaces the old browser/redirect based OAuth flow.
      */
     suspend fun signInWithGoogle(email: String): AuthResult = withContext(Dispatchers.Main) {
+        if (!GoogleAuthLaunchGate.tryStart()) {
+            return@withContext AuthResult.failure("GOOGLE_OAUTH_STARTED")
+        }
         try {
             context.startActivity(
                 Intent(context, GoogleAuthCallbackActivity::class.java)
@@ -146,8 +148,9 @@ class AuthRepository(private val context: Context, private val supabaseService: 
             )
             AuthResult.failure("GOOGLE_OAUTH_STARTED")
         } catch (e: Exception) {
+            GoogleAuthLaunchGate.end()
             Log.e("AuthRepository", "Unable to launch native Google sign-in", e)
-            AuthResult.failure("Unable to open Google sign-in on this device.")
+            AuthResult.failure(AuthErrorMapper.friendly(e.message, "Unable to open Google sign-in on this device."))
         }
     }
 
@@ -234,7 +237,7 @@ class AuthRepository(private val context: Context, private val supabaseService: 
             }
         } catch (e: Exception) {
             Log.e("AuthRepository", "Native Google sign-in error", e)
-            AuthResult.failure(e.message ?: "Google authentication failed.")
+            AuthResult.failure(AuthErrorMapper.friendly(e.message, "Google authentication failed."))
         }
     }
 

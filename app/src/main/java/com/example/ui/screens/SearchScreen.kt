@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.activity.compose.BackHandler
@@ -116,7 +117,7 @@ fun SearchScreen(
 
     BackHandler { goHome() }
 
-    var query by rememberSaveable { mutableStateOf("") }
+    var query by rememberPersistentTextState(key = "com/example/ui/screens/SearchScreen.kt:query:1")
     val clean = query.trim().removePrefix("#")
     LaunchedEffect(clean) { onSearchQueryChange(clean) }
 

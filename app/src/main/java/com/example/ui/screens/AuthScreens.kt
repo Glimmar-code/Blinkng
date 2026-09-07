@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
+import com.example.auth.RememberedLoginStore
+import com.example.auth.AccountSessionStore
+import com.example.auth.GoogleAuthLaunchGate
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -302,7 +307,7 @@ fun OnboardingScreen(
                 Text(
                     text = "By continuing, you agree to Blink's community guidelines.",
                     textAlign = TextAlign.Center,
-                    fontSize = 9.sp,
+                    fontSize = 11.sp,
                     color = DarkTextSecondary
                 )
             }
@@ -332,12 +337,15 @@ fun SignInScreen(
     onSwitchToSignUp: () -> Unit
 ) {
 
-    var emailOrUsername by rememberSaveable(initialIdentifier) {
-        mutableStateOf(initialIdentifier)
+    val context = LocalContext.current
+    val rememberedLogin = remember { RememberedLoginStore.load(context) }
+
+    var emailOrUsername by rememberSaveable(initialIdentifier, rememberedLogin?.identifier) {
+        mutableStateOf(rememberedLogin?.identifier?.takeIf { it.isNotBlank() } ?: initialIdentifier)
     }
 
-    var password by remember {
-        mutableStateOf("")
+    var password by rememberSaveable {
+        mutableStateOf(rememberedLogin?.password.orEmpty())
     }
 
     var passwordVisible by remember {
@@ -348,9 +356,7 @@ fun SignInScreen(
         mutableStateOf(false)
     }
 
-    var googleLoading by remember {
-        mutableStateOf(false)
-    }
+    val googleLoading by GoogleAuthLaunchGate.inFlight.collectAsState()
 
     var authError by remember {
         mutableStateOf<String?>(null)
@@ -360,12 +366,20 @@ fun SignInScreen(
         mutableStateOf(false)
     }
 
-    var rememberMe by remember {
-        mutableStateOf(true)
+    var rememberMe by rememberSaveable {
+        mutableStateOf(rememberedLogin != null)
     }
 
-    val coroutineScope =
-        rememberCoroutineScope()
+    LaunchedEffect(rememberMe, emailOrUsername, password) {
+        delay(300)
+        if (rememberMe) {
+            if (emailOrUsername.isNotBlank() || password.isNotBlank()) {
+                RememberedLoginStore.save(context, emailOrUsername, password)
+            }
+        } else {
+            RememberedLoginStore.clear(context)
+        }
+    }
 
     var entranceReady by remember { mutableStateOf(false) }
     val entranceAlpha by animateFloatAsState(
@@ -431,20 +445,9 @@ fun SignInScreen(
                     else
                         "Continue with Google",
                     onClick = {
-
-                        if (googleLoading) {
-                            return@GoogleSignInButton
-                        }
-
-                        googleLoading = true
-                        authError = null
-
-                        // Credential Manager / Google picker is triggered by AuthRepository.
-                        onGoogleSignIn("")
-
-                        coroutineScope.launch {
-                            delay(1200)
-                            googleLoading = false
+                        if (!googleLoading) {
+                            authError = null
+                            onGoogleSignIn("")
                         }
                     },
                     modifier = Modifier
@@ -484,7 +487,7 @@ fun SignInScreen(
                         emailOrUsername = it
                         authError = null
                     },
-                    label = "University Email or Username",
+                    label = "Email or username",
                     icon = Icons.Default.Email,
                     keyboardType = KeyboardType.Email,
                     testTag = "signin_email_field"
@@ -509,10 +512,6 @@ fun SignInScreen(
                     testTag = "signin_password_field"
                 )
 
-                PasswordStrengthBar(
-                    password = password
-                )
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -525,8 +524,9 @@ fun SignInScreen(
 
                         Checkbox(
                             checked = rememberMe,
-                            onCheckedChange = {
-                                rememberMe = it
+                            onCheckedChange = { checked ->
+                                rememberMe = checked
+                                if (!checked) RememberedLoginStore.clear(context)
                             },
                             colors = CheckboxDefaults.colors(
                                 checkedColor = BlinkGold,
@@ -568,7 +568,7 @@ fun SignInScreen(
 
                             emailOrUsername.isBlank() -> {
                                 authError =
-                                    "Enter your university email or username."
+                                    "Enter your email or username."
                             }
 
                             password.isBlank() -> {
@@ -588,7 +588,14 @@ fun SignInScreen(
 
                                     isSubmitting = false
 
-                                    if (!success) {
+                                    if (success) {
+                                        AccountSessionStore.setSignInRequired(context, !rememberMe)
+                                        if (rememberMe) {
+                                            RememberedLoginStore.save(context, emailOrUsername.trim(), password)
+                                        } else {
+                                            RememberedLoginStore.clear(context)
+                                        }
+                                    } else {
                                         authError =
                                             errorMessage
                                                 ?: "Unable to sign in."
@@ -723,21 +730,13 @@ fun SignUpScreen(
     onSwitchToSignIn: () -> Unit
 ) {
 
-    var fullName by remember {
-        mutableStateOf("")
-    }
+    var fullName by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:fullName:1")
 
-    var username by remember {
-        mutableStateOf("")
-    }
+    var username by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:username:2")
 
-    var email by remember {
-        mutableStateOf("")
-    }
+    var email by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:email:3")
 
-    var password by remember {
-        mutableStateOf("")
-    }
+    var password by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:password:4")
 
     var passwordVisible by remember {
         mutableStateOf(false)
@@ -1199,17 +1198,13 @@ fun ProfileSetupOnboardingScreen(
         )
     }
 
-    var department by remember {
-        mutableStateOf("")
-    }
+    var department by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:department:5")
 
     var selectedLevel by remember {
         mutableStateOf("200 Level")
     }
 
-    var bio by remember {
-        mutableStateOf("")
-    }
+    var bio by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:bio:6")
 
     var currentStep by remember {
         mutableIntStateOf(0)
@@ -1262,7 +1257,7 @@ fun ProfileSetupOnboardingScreen(
                             text = "STEP ${currentStep + 1}/4",
                             color = BlinkPink,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 9.sp,
+                            fontSize = 11.sp,
                             modifier = Modifier.padding(
                                 horizontal = 9.dp,
                                 vertical = 5.dp
@@ -1489,7 +1484,7 @@ fun ProfileSetupOnboardingScreen(
 
                                 Text(
                                     "${bio.length}/180",
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     color = DarkTextSecondary,
                                     modifier = Modifier.align(
                                         Alignment.End
@@ -2086,7 +2081,7 @@ private fun PasswordStrengthBar(
             Text(
                 "$score/4",
                 color = DarkTextSecondary,
-                fontSize = 9.sp
+                fontSize = 11.sp
             )
         }
 
@@ -2685,7 +2680,7 @@ private fun ProfilePreviewCard(
                 Text(
                     university,
                     color = DarkTextSecondary,
-                    fontSize = 9.sp
+                    fontSize = 11.sp
                 )
             }
 
@@ -2855,7 +2850,7 @@ private fun PremiumFeatureCard(
                 Text(
                     description,
                     color = DarkTextSecondary,
-                    fontSize = 9.sp,
+                    fontSize = 11.sp,
                     lineHeight = 13.sp
                 )
             }
