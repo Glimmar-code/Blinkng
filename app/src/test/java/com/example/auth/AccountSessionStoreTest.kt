@@ -1,5 +1,6 @@
 package com.example.auth
 
+import android.app.Application
 import android.content.Context
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -10,7 +11,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = Application::class)
 class AccountSessionStoreTest {
     @Test
     fun persistSelectedAccount_updatesBothLocalAuthStores() {
