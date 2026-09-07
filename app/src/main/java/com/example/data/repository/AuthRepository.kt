@@ -7,7 +7,7 @@ import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import com.example.auth.AccountSessionStore
 import com.example.auth.GoogleAuthCallbackActivity
-import com.example.data.models.ContactField
+import com.example.auth.PasswordRecoveryClient
 import com.example.data.models.UserProfile
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
@@ -238,7 +238,9 @@ class AuthRepository(private val context: Context, private val supabaseService: 
         }
     }
 
-    suspend fun recoverPassword(email: String): Boolean = withContext(Dispatchers.IO) { supabaseService.recoverPassword(email) }
+    suspend fun recoverPassword(email: String): Boolean = withContext(Dispatchers.IO) {
+        PasswordRecoveryClient.requestPasswordReset(email)
+    }
 
     fun markAuthenticated(profile: UserProfile) {
         val token = SupabaseService.accessToken()
@@ -248,6 +250,7 @@ class AuthRepository(private val context: Context, private val supabaseService: 
     }
 
     suspend fun signOut() {
+        val currentUserId = supabaseService.getCurrentUserId()
         val rememberedIdentifier = prefs.getString("email", "").orEmpty()
             .ifBlank { prefs.getString("username", "").orEmpty() }
         AccountSessionStore.rememberIdentifier(context.applicationContext, rememberedIdentifier)
@@ -259,6 +262,10 @@ class AuthRepository(private val context: Context, private val supabaseService: 
             Log.w("AuthRepository", "Supabase logout failed", e)
         } finally {
             SupabaseService.clearSession()
+        }
+
+        if (!currentUserId.isNullOrBlank()) {
+            AccountSessionStore.remove(context.applicationContext, currentUserId)
         }
 
         runCatching {
