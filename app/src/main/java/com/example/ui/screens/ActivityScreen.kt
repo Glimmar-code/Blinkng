@@ -31,6 +31,8 @@ import com.example.data.models.ActivityItem
 import com.example.data.models.NotificationFilter
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
+import com.example.data.supabase.AdminAnnouncementDetail
+import com.example.data.supabase.AdminAnnouncementService
 import com.example.data.supabase.SupabaseService
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.BlinkPink
@@ -38,6 +40,7 @@ import com.example.ui.theme.BlinkPurple
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,7 +58,20 @@ fun ActivityScreen(
 ) {
     var filter by remember { mutableStateOf(NotificationFilter.ALL) }
     val profileService = remember { SupabaseService() }
+    val announcementService = remember { AdminAnnouncementService() }
+    val scope = rememberCoroutineScope()
     var actorProfiles by remember { mutableStateOf<Map<String, UserProfile>>(emptyMap()) }
+    var selectedAdminMessage by remember { mutableStateOf<AdminAnnouncementDetail?>(null) }
+    var adminMessageLoading by remember { mutableStateOf(false) }
+    var adminMessageError by remember { mutableStateOf<String?>(null) }
+
+    selectedAdminMessage?.let { detail ->
+        AdminMessageDetailScreen(
+            detail = detail,
+            onBack = { selectedAdminMessage = null }
+        )
+        return
+    }
 
     // Activity rows store actor_id for integrity. Resolve those IDs to public profile
     // details only while this screen is visible so UUIDs are never rendered to people.
@@ -138,6 +154,35 @@ fun ActivityScreen(
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
+            if (adminMessageLoading) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+
+            adminMessageError?.let { message ->
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            message,
+                            modifier = Modifier.weight(1f),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        TextButton(onClick = { adminMessageError = null }) {
+                            Text("Dismiss")
+                        }
+                    }
+                }
+            }
+
             if (!isConnected) {
                 NotificationConnectionNotice()
             } else if (!errorMessage.isNullOrBlank() && activities.isNotEmpty()) {
@@ -207,7 +252,33 @@ fun ActivityScreen(
                             item = item,
                             profile = actorProfiles[item.user],
                             onProfileClick = onProfileClick,
-                            onNotificationClick = onNotificationClick
+                            onNotificationClick = { tapped ->
+                                if (!tapped.targetType.equals("notification", ignoreCase = true)) {
+                                    onNotificationClick(tapped)
+                                } else if (!adminMessageLoading) {
+                                    scope.launch {
+                                        adminMessageLoading = true
+                                        adminMessageError = null
+                                        announcementService.fetchForActivity(tapped.id)
+                                            .onSuccess { detail ->
+                                                if (detail != null) {
+                                                    selectedAdminMessage = detail
+                                                    // The secure detail RPC marks both the activity and
+                                                    // underlying notification read; refresh local state too.
+                                                    onRefresh()
+                                                } else {
+                                                    // Preserve legacy system-notification behavior if the
+                                                    // row is not part of an admin campaign.
+                                                    onNotificationClick(tapped)
+                                                }
+                                            }
+                                            .onFailure {
+                                                adminMessageError = it.message ?: "Couldn't open this Blink message."
+                                            }
+                                        adminMessageLoading = false
+                                    }
+                                }
+                            }
                         )
                     }
                 }
@@ -292,7 +363,6 @@ private fun NotificationCard(
     val verificationBadge = profile?.verificationBadge ?: item.verificationBadge
     val isActive = profile?.onlineNow == true
     val canOpenProfile = username.isNotBlank()
-    val initial = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "B"
 
     Surface(
         shape = RoundedCornerShape(18.dp),
