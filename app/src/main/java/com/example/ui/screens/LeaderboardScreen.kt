@@ -12,7 +12,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,6 +26,7 @@ import coil.compose.AsyncImage
 import com.example.data.models.LeaderboardUser
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
+import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.BlinkGold
 import com.example.ui.theme.BlinkPink
 
@@ -163,13 +163,23 @@ fun LeaderboardScreen(
                                             .size(if (idx == 0) 48.dp else 40.dp)
                                             .clip(CircleShape)
                                     )
-                                    Text(
-                                        user.fullName.ifBlank { user.username },
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            user.fullName.ifBlank { user.username },
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (user.verificationBadge != VerificationBadge.NONE) {
+                                            Spacer(Modifier.width(3.dp))
+                                            VerifiedMark(user.verificationBadge, size = 11.dp)
+                                        }
+                                    }
                                     Text(
                                         "${user.points} pts",
                                         fontSize = 10.sp,
@@ -233,12 +243,7 @@ fun LeaderboardScreen(
                                 )
                                 if (user.verificationBadge != VerificationBadge.NONE) {
                                     Spacer(Modifier.width(4.dp))
-                                    Icon(
-                                        Icons.Default.Verified,
-                                        null,
-                                        tint = BlinkPink,
-                                        modifier = Modifier.size(14.dp)
-                                    )
+                                    VerifiedMark(user.verificationBadge, size = 14.dp)
                                 }
                             }
                             Text(
