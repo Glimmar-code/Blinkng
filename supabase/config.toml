@@ -1,6 +1,7 @@
 # Blinkng local Supabase configuration.
 # Safe to commit: do not put production passwords, service-role keys,
-# SMTP passwords, OAuth client secrets, or Firebase credentials in this file.
+# SMTP passwords, OAuth client secrets, Firebase private keys, or payment
+# provider secret values in this file.
 
 project_id = "blinkng"
 
@@ -20,6 +21,33 @@ enabled = true
 [auth]
 enabled = true
 
+# Keep Edge Function authentication behavior source-controlled so a fallback
+# deployment cannot silently change which endpoints require a JWT.
+[functions.game-rewards]
+verify_jwt = true
+
+[functions.moderation-action]
+verify_jwt = true
+
+[functions.verify-payment]
+verify_jwt = true
+
+[functions.send-push-notification]
+verify_jwt = true
+
+[functions.send-call-notification]
+verify_jwt = true
+
+[functions.username-login]
+verify_jwt = false
+
+[functions.share-preview]
+verify_jwt = false
+
+[functions.blink-web]
+verify_jwt = false
+
 # Production Auth provider settings, redirect URLs, SMTP credentials and
-# third-party secrets must be configured through Supabase/secrets management
-# and documented as required configuration in RECOVERY.md, not committed here.
+# third-party secret values must be configured through Supabase/secrets
+# management and documented as required configuration in RECOVERY.md.
+# Secret values must never be committed to Git.
