@@ -26,6 +26,10 @@ dependencies {
     implementation("org.json:json:20250517")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2")
 
+    // Cached network media for avatars, posts, marketplace and reel thumbnails.
+    implementation("io.coil-kt.coil3:coil-compose:3.6.2")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.2")
+
     // Windows DPAPI wrapper used to protect persisted refresh/access tokens at rest.
     implementation("net.java.dev.jna:jna-platform:5.17.0")
 }
