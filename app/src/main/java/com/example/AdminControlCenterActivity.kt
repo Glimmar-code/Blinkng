@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -19,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.data.supabase.*
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
@@ -38,7 +40,11 @@ class AdminControlCenterActivity : ComponentActivity() {
 }
 
 private enum class AdminTab(val label: String) {
-    OVERVIEW("Overview"), USERS("Users"), MESSAGE("Message"), POSTS("Posts")
+    OVERVIEW("Overview"),
+    USERS("Users"),
+    MESSAGE("Message"),
+    POSTS("Posts"),
+    FEATURES("200 Features")
 }
 
 @Composable
@@ -162,6 +168,7 @@ private fun AdminDashboard(
                 AdminTab.USERS -> Users(service, capability) { status = it }
                 AdminTab.MESSAGE -> MessageCenter(service) { status = it }
                 AdminTab.POSTS -> PostTools(service) { status = it }
+                AdminTab.FEATURES -> FeatureCenter(service) { status = it }
             }
         }
     }
@@ -562,6 +569,231 @@ private fun PostTools(service: AdminSupabaseService, status: (String) -> Unit) {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(enabled = !busy, onClick = { action("promote") }) { Text("Promote Sponsored") }
                 OutlinedButton(enabled = !busy, onClick = { action("unpromote") }) { Text("Stop promotion") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeatureCenter(service: AdminSupabaseService, status: (String) -> Unit) {
+    var allFeatures by remember { mutableStateOf<List<AdminFeature>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var category by rememberSaveable { mutableStateOf("all") }
+    var selected by remember { mutableStateOf<AdminFeature?>(null) }
+
+    LaunchedEffect(Unit) {
+        service.fetchFeatures()
+            .onSuccess { allFeatures = it }
+            .onFailure { status(it.message ?: "Could not load the 200 admin features.") }
+        loading = false
+    }
+
+    val visible = remember(allFeatures, query, category) {
+        allFeatures.filter { feature ->
+            (category == "all" || feature.category == category) &&
+                (query.isBlank() || feature.title.contains(query, ignoreCase = true) || feature.featureId.toString() == query.trim())
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text("200 Admin Features", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
+            Text(
+                "Every item is loaded from Supabase and runs a backend-enforced admin function. Owner-only controls are hidden from ordinary admins.",
+                color = Color.LightGray,
+                fontSize = 12.sp
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Search feature name or number") },
+                singleLine = true
+            )
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("all", "users", "admins", "coins", "verification", "content", "messages", "analytics", "system").forEach { key ->
+                    FilterChip(
+                        selected = category == key,
+                        onClick = { category = key },
+                        label = { Text(if (key == "all") "All" else key.replaceFirstChar { it.uppercase() }) }
+                    )
+                }
+            }
+            Text(
+                "${visible.size} available • ${allFeatures.size} loaded",
+                color = Color.Gray,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
+
+        if (loading) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+        } else {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(visible, key = { it.featureId }) { feature ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "#${feature.featureId}  ${feature.title}",
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    buildString {
+                                        append(feature.category.uppercase())
+                                        if (feature.ownerOnly) append(" • OWNER ONLY")
+                                    },
+                                    color = if (feature.ownerOnly) BlinkPink else Color.Gray,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedButton(onClick = { selected = feature }) { Text("Open") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    selected?.let { feature ->
+        FeatureExecuteDialog(
+            feature = feature,
+            service = service,
+            onDismiss = { selected = null },
+            status = status
+        )
+    }
+}
+
+@Composable
+private fun FeatureExecuteDialog(
+    feature: AdminFeature,
+    service: AdminSupabaseService,
+    onDismiss: () -> Unit,
+    status: (String) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var targetId by remember(feature.featureId) { mutableStateOf("") }
+    var text by remember(feature.featureId) { mutableStateOf("") }
+    var amount by remember(feature.featureId) { mutableStateOf("") }
+    var duration by remember(feature.featureId) { mutableStateOf("") }
+    var extraJson by remember(feature.featureId) { mutableStateOf("{}") }
+    var result by remember(feature.featureId) { mutableStateOf("") }
+    var busy by remember(feature.featureId) { mutableStateOf(false) }
+    val scroll = rememberScrollState()
+
+    Dialog(onDismissRequest = { if (!busy) onDismiss() }) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f),
+            shape = MaterialTheme.shapes.large,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                Modifier.fillMaxSize().padding(16.dp).verticalScroll(scroll),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("#${feature.featureId}", color = BlinkPink, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                Text(feature.title, fontWeight = FontWeight.Black, fontSize = 21.sp)
+                Text(
+                    "${feature.category.uppercase()}${if (feature.ownerOnly) " • OWNER ONLY" else ""}",
+                    color = Color.Gray,
+                    fontSize = 11.sp
+                )
+                Text(
+                    "Fill only the inputs this feature needs. The backend validates permissions, UUIDs, limits, and required values.",
+                    fontSize = 11.sp,
+                    color = Color.Gray
+                )
+
+                OutlinedTextField(
+                    targetId,
+                    { targetId = it.trim() },
+                    Modifier.fillMaxWidth(),
+                    label = { Text("Target UUID (optional)") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    text,
+                    { text = it },
+                    Modifier.fillMaxWidth(),
+                    label = { Text("Text / query / message (optional)") },
+                    minLines = 2,
+                    maxLines = 5
+                )
+                OutlinedTextField(
+                    amount,
+                    { value -> amount = value.filter { it.isDigit() || it == '-' }.take(12) },
+                    Modifier.fillMaxWidth(),
+                    label = { Text("Amount / numeric value (optional)") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    duration,
+                    { value -> duration = value.filter { it.isDigit() }.take(5) },
+                    Modifier.fillMaxWidth(),
+                    label = { Text("Duration hours (optional)") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    extraJson,
+                    { extraJson = it },
+                    Modifier.fillMaxWidth(),
+                    label = { Text("Extra JSON") },
+                    supportingText = { Text("Example: {\"reason\":\"Policy violation\"}") },
+                    minLines = 3,
+                    maxLines = 8
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        enabled = !busy,
+                        onClick = {
+                            scope.launch {
+                                busy = true
+                                result = ""
+                                service.executeFeature(
+                                    featureId = feature.featureId,
+                                    targetId = targetId.ifBlank { null },
+                                    text = text.ifBlank { null },
+                                    amount = amount.toLongOrNull(),
+                                    durationHours = duration.toIntOrNull(),
+                                    extraJson = extraJson
+                                ).onSuccess {
+                                    result = it
+                                    status("Feature #${feature.featureId} completed.")
+                                }.onFailure {
+                                    result = it.message ?: "Admin feature failed."
+                                }
+                                busy = false
+                            }
+                        }
+                    ) {
+                        if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        else Text("Run feature")
+                    }
+                    OutlinedButton(enabled = !busy, onClick = onDismiss) { Text("Close") }
+                }
+
+                if (result.isNotBlank()) {
+                    HorizontalDivider()
+                    Text("Backend result", fontWeight = FontWeight.Bold)
+                    Text(result, fontSize = 11.sp)
+                }
             }
         }
     }
