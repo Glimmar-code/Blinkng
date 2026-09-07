@@ -20,12 +20,16 @@ import androidx.core.content.ContextCompat
 object IncomingCallNotification {
     const val CHANNEL_INCOMING_CALLS = "blink_incoming_calls"
     const val CHANNEL_ONGOING_CALLS = "blink_ongoing_calls"
+    const val CHANNEL_MISSED_CALLS = "blink_missed_calls"
     const val FOREGROUND_NOTIFICATION_ID = 8701
 
     private val incomingVibrationPattern = longArrayOf(0, 500, 350, 500, 350, 500)
 
     private fun notificationId(callId: String): Int =
         70_000 + (callId.hashCode() and 0x7fffffff) % 20_000
+
+    private fun missedNotificationId(callId: String): Int =
+        90_000 + (callId.hashCode() and 0x7fffffff) % 20_000
 
     @SuppressLint("MissingPermission")
     fun showIncoming(
@@ -141,6 +145,40 @@ object IncomingCallNotification {
         }
     }
 
+    @SuppressLint("MissingPermission")
+    fun showMissed(
+        context: Context,
+        callId: String,
+        callType: CallType,
+        peerName: String
+    ) {
+        if (callId.isBlank()) return
+        createChannels(context)
+        if (!hasNotificationPermission(context)) return
+        cancel(context, callId)
+
+        val openPendingIntent = PendingIntent.getActivity(
+            context,
+            missedNotificationId(callId) + 1,
+            CallActivity.restoreIntent(context, callId),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val kind = if (callType == CallType.VIDEO) "video" else "voice"
+        val notification = NotificationCompat.Builder(context, CHANNEL_MISSED_CALLS)
+            .setSmallIcon(android.R.drawable.ic_menu_call)
+            .setContentTitle("Missed $kind call")
+            .setContentText("From ${peerName.ifBlank { "Blink user" }}")
+            .setCategory(NotificationCompat.CATEGORY_MISSED_CALL)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setAutoCancel(true)
+            .setContentIntent(openPendingIntent)
+            .build()
+        runCatching {
+            NotificationManagerCompat.from(context).notify(missedNotificationId(callId), notification)
+        }
+    }
+
     fun cancel(context: Context, callId: String) {
         if (callId.isBlank()) return
         NotificationManagerCompat.from(context).cancel(notificationId(callId))
@@ -231,7 +269,15 @@ object IncomingCallNotification {
             enableVibration(false)
             lockscreenVisibility = Notification.VISIBILITY_PRIVATE
         }
-        manager.createNotificationChannels(listOf(incoming, ongoing))
+        val missed = NotificationChannel(
+            CHANNEL_MISSED_CALLS,
+            "Missed calls",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Missed Blink voice and video calls"
+            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+        }
+        manager.createNotificationChannels(listOf(incoming, ongoing, missed))
     }
 
     private fun hasNotificationPermission(context: Context): Boolean {
