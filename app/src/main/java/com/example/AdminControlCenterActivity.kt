@@ -2,7 +2,7 @@ package com.example
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.setContent
+import androidx.activity.compose.setContent
 import com.example.data.supabase.SupabaseService
 import com.example.ui.theme.BlinkTheme
 
