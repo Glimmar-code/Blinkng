@@ -13,10 +13,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -39,7 +39,7 @@ import com.example.ui.theme.FeedBlue
 import com.example.viewmodel.MainTab
 
 private enum class FeedBottomDestination {
-    HOME, CONNECT, LEADERBOARD, MARKET, MESSAGE, MENU
+    HOME, CONNECT, LEADERBOARD, MARKET, MESSAGE, STORE
 }
 
 private data class FeedBottomItem(
@@ -55,7 +55,7 @@ private val feedBottomItems = listOf(
     FeedBottomItem(FeedBottomDestination.LEADERBOARD, Icons.Filled.EmojiEvents, Icons.Outlined.EmojiEvents, "Leaderboard"),
     FeedBottomItem(FeedBottomDestination.MARKET, Icons.Filled.Storefront, Icons.Outlined.Storefront, "Market"),
     FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message"),
-    FeedBottomItem(FeedBottomDestination.MENU, Icons.Filled.Menu, Icons.Filled.Menu, "Menu")
+    FeedBottomItem(FeedBottomDestination.STORE, Icons.Filled.Apps, Icons.Filled.Apps, "Blink Store")
 )
 
 @Composable
@@ -73,7 +73,7 @@ fun FeedBottomBar(
     modifier: Modifier = Modifier
 ) {
     val selectedDestination = when {
-        isMenuOpen -> FeedBottomDestination.MENU
+        isMenuOpen -> FeedBottomDestination.STORE
         currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT
         currentTab == MainTab.HOME -> FeedBottomDestination.HOME
         currentTab == MainTab.LEADERBOARD -> FeedBottomDestination.LEADERBOARD
@@ -112,7 +112,7 @@ fun FeedBottomBar(
                             FeedBottomDestination.LEADERBOARD -> onLeaderboardClick()
                             FeedBottomDestination.MARKET -> onMarketClick()
                             FeedBottomDestination.MESSAGE -> onMessageClick()
-                            FeedBottomDestination.MENU -> onMenuClick()
+                            FeedBottomDestination.STORE -> onMenuClick()
                         }
                     }
                 )
