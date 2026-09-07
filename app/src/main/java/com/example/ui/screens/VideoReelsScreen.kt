@@ -625,18 +625,6 @@ private fun ReelPage(
                 .entranceEffect(delayMillis = 60),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            AsyncImage(
-                model = reel.authorAvatar,
-                error = painterResource(R.drawable.ic_default_profile),
-                fallback = painterResource(R.drawable.ic_default_profile),
-                contentDescription = reel.author,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(CircleShape)
-                    .clickable { onProfileClick(reel.author) }
-            )
-            Spacer(Modifier.height(16.dp))
             ReelAction(
                 icon = Icons.Default.Visibility,
                 text = formatNumber(displayedViewsCount),
