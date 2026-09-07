@@ -1,0 +1,61 @@
+name: Apply Connect match spin
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-connect-match-spin.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply Connect match-spin source changes
+        run: python .github/scripts/apply_connect_match_spin.py
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Unit tests
+        run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Android lint
+        run: gradle :app:lintDebug --stacktrace --no-daemon
+
+      - name: Compile instrumentation tests
+        run: gradle :app:assembleDebugAndroidTest --stacktrace --no-daemon
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Commit verified source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/data/models/ConnectHubModels.kt \
+                  app/src/main/java/com/example/data/repository/ConnectHubRepository.kt \
+                  app/src/main/java/com/example/ui/screens/EditProfileScreen.kt \
+                  app/src/main/java/com/example/ui/screens/ConnectHubPremiumPanel.kt
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+          else
+            git commit -m "feat: add paid preference-based Connect match spin"
+            git push origin HEAD:main
+          fi
