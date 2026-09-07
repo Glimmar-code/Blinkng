@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
 import android.content.Intent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
@@ -186,7 +187,7 @@ fun GameSection(
     var showRoundSummary by remember { mutableStateOf(false) }
     var showReportDialog by remember { mutableStateOf(false) }
     var reportReason by remember { mutableStateOf("Incorrect or unclear") }
-    var reportDetails by remember { mutableStateOf("") }
+    var reportDetails by rememberPersistentTextState(key = "com/example/ui/screens/GameSection.kt:reportDetails:1")
 
     val latestActiveChallenge = remember(connectHub.gameChallenges) {
         connectHub.gameChallenges.firstOrNull { it.status == "accepted" || it.status == "in_progress" }

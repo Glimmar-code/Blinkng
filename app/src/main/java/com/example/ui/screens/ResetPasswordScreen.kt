@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,8 +44,8 @@ fun ResetPasswordScreen(
     onSubmit: (String, (Boolean, String) -> Unit) -> Unit,
     onCancel: () -> Unit
 ) {
-    var password by remember { mutableStateOf("") }
-    var confirmation by remember { mutableStateOf("") }
+    var password by rememberPersistentTextState(key = "com/example/ui/screens/ResetPasswordScreen.kt:password:1")
+    var confirmation by rememberPersistentTextState(key = "com/example/ui/screens/ResetPasswordScreen.kt:confirmation:2")
     var isSubmitting by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
