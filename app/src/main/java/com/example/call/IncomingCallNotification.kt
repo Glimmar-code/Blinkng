@@ -22,6 +22,8 @@ object IncomingCallNotification {
     const val CHANNEL_ONGOING_CALLS = "blink_ongoing_calls"
     const val FOREGROUND_NOTIFICATION_ID = 8701
 
+    private val incomingVibrationPattern = longArrayOf(0, 500, 350, 500, 350, 500)
+
     private fun notificationId(callId: String): Int =
         70_000 + (callId.hashCode() and 0x7fffffff) % 20_000
 
@@ -99,10 +101,13 @@ object IncomingCallNotification {
             .setImportant(true)
             .build()
         val label = if (callType == CallType.VIDEO) "Incoming video call" else "Incoming voice call"
+        val ringtone = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
 
         // CallStyle gives Android a real incoming-call surface with system Answer/Decline
         // affordances. The full-screen intent is used when Android permits it (for example
         // on a locked device); otherwise the same notification degrades to a heads-up banner.
+        // setSound()/setVibrate() are also applied directly so Android 7.x devices, which do
+        // not support notification channels, still audibly ring and vibrate.
         val notification = NotificationCompat.Builder(context, CHANNEL_INCOMING_CALLS)
             .setSmallIcon(android.R.drawable.ic_menu_call)
             .setContentTitle(peerName.ifBlank { "Blink user" })
@@ -117,6 +122,8 @@ object IncomingCallNotification {
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setSound(ringtone)
+            .setVibrate(incomingVibrationPattern)
             .setOngoing(true)
             .setAutoCancel(false)
             .setTimeoutAfter(50_000L)
@@ -203,7 +210,7 @@ object IncomingCallNotification {
         ).apply {
             description = "Incoming Blink voice and video calls"
             enableVibration(true)
-            vibrationPattern = longArrayOf(0, 500, 350, 500, 350, 500)
+            vibrationPattern = incomingVibrationPattern
             setSound(ringtone, callAudioAttributes)
             lockscreenVisibility = Notification.VISIBILITY_PRIVATE
         }
