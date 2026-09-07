@@ -1,5 +1,6 @@
 package com.example.notification
 
+import android.app.Activity
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
@@ -10,7 +11,9 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -34,6 +37,8 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PhoneInTalk
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -44,6 +49,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -61,6 +67,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.call.CallHistoryActivity
+import com.example.call.CallSoundPreferences
+import com.example.call.CallType
 import com.example.call.IncomingCallNotification
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
@@ -81,7 +89,8 @@ class NotificationAndCallSettingsActivity : ComponentActivity() {
 private data class ChannelSetting(
     val title: String,
     val subtitle: String,
-    val channelId: String
+    val channelId: String,
+    val callChannel: Boolean = false
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -93,6 +102,62 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
     var previewRingtone by remember { mutableStateOf<Ringtone?>(null) }
+    var pendingToneType by remember { mutableStateOf<CallType?>(null) }
+    var voiceRingEnabled by remember { mutableStateOf(CallSoundPreferences.ringEnabled(context, CallType.AUDIO)) }
+    var videoRingEnabled by remember { mutableStateOf(CallSoundPreferences.ringEnabled(context, CallType.VIDEO)) }
+    var vibrationEnabled by remember { mutableStateOf(CallSoundPreferences.vibrateEnabled(context)) }
+    var voiceToneLabel by remember { mutableStateOf(CallSoundPreferences.ringtoneLabel(context, CallType.AUDIO)) }
+    var videoToneLabel by remember { mutableStateOf(CallSoundPreferences.ringtoneLabel(context, CallType.VIDEO)) }
+
+    fun refreshCallSoundState() {
+        voiceRingEnabled = CallSoundPreferences.ringEnabled(context, CallType.AUDIO)
+        videoRingEnabled = CallSoundPreferences.ringEnabled(context, CallType.VIDEO)
+        vibrationEnabled = CallSoundPreferences.vibrateEnabled(context)
+        voiceToneLabel = CallSoundPreferences.ringtoneLabel(context, CallType.AUDIO)
+        videoToneLabel = CallSoundPreferences.ringtoneLabel(context, CallType.VIDEO)
+        IncomingCallNotification.createChannels(context)
+    }
+
+    val ringtonePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val type = pendingToneType
+        pendingToneType = null
+        if (type == null || result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+
+        val pickedUri: Uri? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+        }
+
+        // Android's ringtone picker returns null when the user explicitly chooses Silent.
+        if (pickedUri == null) {
+            CallSoundPreferences.setRingEnabled(context, type, false)
+        } else {
+            CallSoundPreferences.setRingtoneUri(context, type, pickedUri)
+            CallSoundPreferences.setRingEnabled(context, type, true)
+        }
+        refreshCallSoundState()
+    }
+
+    fun chooseRingtone(type: CallType) {
+        pendingToneType = type
+        val existing = CallSoundPreferences.ringtoneUri(context, type)
+        ringtonePicker.launch(
+            Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_RINGTONE)
+                putExtra(
+                    RingtoneManager.EXTRA_RINGTONE_TITLE,
+                    if (type == CallType.VIDEO) "Choose Blink video-call ringtone" else "Choose Blink voice-call ringtone"
+                )
+                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
+                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, existing)
+            }
+        )
+    }
 
     fun notificationsEnabled(): Boolean = BlinkNotificationHelper.areNotificationsEnabled(context)
 
@@ -100,9 +165,9 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
             notificationManager.canUseFullScreenIntent()
 
-    fun preview(type: Int) {
+    fun previewUri(uri: Uri?) {
         previewRingtone?.stop()
-        val uri = RingtoneManager.getDefaultUri(type) ?: return
+        if (uri == null) return
         val ringtone = RingtoneManager.getRingtone(context, uri) ?: return
         previewRingtone = ringtone
         ringtone.play()
@@ -115,6 +180,10 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
         }
     }
 
+    fun preview(type: Int) {
+        previewUri(RingtoneManager.getDefaultUri(type))
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             previewRingtone?.stop()
@@ -122,55 +191,61 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
         }
     }
 
-    val channels = remember {
-        listOf(
-            ChannelSetting(
-                "Direct messages",
-                "Message sound, vibration, lock-screen visibility and importance",
-                BlinkNotificationHelper.CHANNEL_MESSAGES
-            ),
-            ChannelSetting(
-                "Campus activity",
-                "Likes and general Blink activity",
-                BlinkNotificationHelper.CHANNEL_SOCIAL
-            ),
-            ChannelSetting(
-                "Mentions",
-                "When another user mentions you",
-                BlinkNotificationHelper.CHANNEL_MENTIONS
-            ),
-            ChannelSetting(
-                "Comments & replies",
-                "Comments and replies on your posts",
-                BlinkNotificationHelper.CHANNEL_COMMENTS
-            ),
-            ChannelSetting(
-                "Followers",
-                "New followers and follow activity",
-                BlinkNotificationHelper.CHANNEL_FOLLOWS
-            ),
-            ChannelSetting(
-                "Marketplace",
-                "Buyer, seller and listing activity",
-                BlinkNotificationHelper.CHANNEL_MARKET
-            ),
-            ChannelSetting(
-                "Market orders",
-                "Important order-status alerts",
-                BlinkNotificationHelper.CHANNEL_MARKET_ORDERS
-            ),
-            ChannelSetting(
-                "Incoming calls",
-                "Ringtone, vibration and high-priority call alerts",
-                IncomingCallNotification.CHANNEL_INCOMING_CALLS
-            ),
-            ChannelSetting(
-                "Missed calls",
-                "Missed Blink voice and video calls",
-                IncomingCallNotification.CHANNEL_MISSED_CALLS
-            )
+    val channels = listOf(
+        ChannelSetting(
+            "Direct messages",
+            "Message sound, vibration, lock-screen visibility and importance",
+            BlinkNotificationHelper.CHANNEL_MESSAGES
+        ),
+        ChannelSetting(
+            "Campus activity",
+            "Likes and general Blink activity",
+            BlinkNotificationHelper.CHANNEL_SOCIAL
+        ),
+        ChannelSetting(
+            "Mentions",
+            "When another user mentions you",
+            BlinkNotificationHelper.CHANNEL_MENTIONS
+        ),
+        ChannelSetting(
+            "Comments & replies",
+            "Comments and replies on your posts",
+            BlinkNotificationHelper.CHANNEL_COMMENTS
+        ),
+        ChannelSetting(
+            "Followers",
+            "New followers and follow activity",
+            BlinkNotificationHelper.CHANNEL_FOLLOWS
+        ),
+        ChannelSetting(
+            "Marketplace",
+            "Buyer, seller and listing activity",
+            BlinkNotificationHelper.CHANNEL_MARKET
+        ),
+        ChannelSetting(
+            "Market orders",
+            "Important order-status alerts",
+            BlinkNotificationHelper.CHANNEL_MARKET_ORDERS
+        ),
+        ChannelSetting(
+            "Voice-call Android channel",
+            "System-level importance, lock-screen and interruption controls",
+            IncomingCallNotification.incomingChannelId(context, CallType.AUDIO),
+            callChannel = true
+        ),
+        ChannelSetting(
+            "Video-call Android channel",
+            "System-level importance, lock-screen and interruption controls",
+            IncomingCallNotification.incomingChannelId(context, CallType.VIDEO),
+            callChannel = true
+        ),
+        ChannelSetting(
+            "Missed calls",
+            "Missed Blink voice and video calls",
+            IncomingCallNotification.CHANNEL_MISSED_CALLS,
+            callChannel = true
         )
-    }
+    )
 
     Scaffold(
         topBar = {
@@ -224,6 +299,81 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
             }
 
             item {
+                Text(
+                    "Blink call sounds",
+                    modifier = Modifier.padding(top = 5.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Voice and video calls can use different ringtones. Changes apply to the next incoming call.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+            }
+
+            item {
+                CallToneCard(
+                    icon = Icons.Default.Call,
+                    title = "Voice-call ringtone",
+                    toneLabel = voiceToneLabel,
+                    ringingEnabled = voiceRingEnabled,
+                    onToggle = { enabled ->
+                        CallSoundPreferences.setRingEnabled(context, CallType.AUDIO, enabled)
+                        refreshCallSoundState()
+                    },
+                    onChoose = { chooseRingtone(CallType.AUDIO) },
+                    onPreview = { previewUri(CallSoundPreferences.ringtoneUri(context, CallType.AUDIO)) }
+                )
+            }
+
+            item {
+                CallToneCard(
+                    icon = Icons.Default.Videocam,
+                    title = "Video-call ringtone",
+                    toneLabel = videoToneLabel,
+                    ringingEnabled = videoRingEnabled,
+                    onToggle = { enabled ->
+                        CallSoundPreferences.setRingEnabled(context, CallType.VIDEO, enabled)
+                        refreshCallSoundState()
+                    },
+                    onChoose = { chooseRingtone(CallType.VIDEO) },
+                    onPreview = { previewUri(CallSoundPreferences.ringtoneUri(context, CallType.VIDEO)) }
+                )
+            }
+
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 15.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Vibration, contentDescription = null, tint = BlinkPink)
+                        Spacer(Modifier.size(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Call vibration", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Vibrate for incoming voice and video calls",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = vibrationEnabled,
+                            onCheckedChange = { enabled ->
+                                CallSoundPreferences.setVibrateEnabled(context, enabled)
+                                refreshCallSoundState()
+                            }
+                        )
+                    }
+                }
+            }
+
+            item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -242,7 +392,7 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
                     ) {
                         Icon(Icons.Default.VolumeUp, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.size(6.dp))
-                        Text("Preview ring")
+                        Text("Device ring")
                     }
                 }
             }
@@ -305,7 +455,7 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "Choose a category to change its actual Android sound, vibration, importance and lock-screen behavior.",
+                    "Choose a category to change its Android sound, vibration, importance and lock-screen behavior.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp
                 )
@@ -313,17 +463,55 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
 
             items(channels, key = { it.channelId }) { channel ->
                 SettingsAction(
-                    icon = if (channel.channelId == IncomingCallNotification.CHANNEL_INCOMING_CALLS) {
-                        Icons.Default.Call
-                    } else {
-                        Icons.Default.Notifications
-                    },
+                    icon = if (channel.callChannel) Icons.Default.Call else Icons.Default.Notifications,
                     title = channel.title,
                     subtitle = channel.subtitle
                 ) {
                     BlinkNotificationHelper.createNotificationChannels(context)
                     IncomingCallNotification.createChannels(context)
                     BlinkNotificationHelper.openChannelSettings(context, channel.channelId)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CallToneCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    toneLabel: String,
+    ringingEnabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onChoose: () -> Unit,
+    onPreview: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(Modifier.padding(15.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, tint = BlinkPink)
+                Spacer(Modifier.size(11.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(title, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (ringingEnabled) toneLabel else "Silent",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                }
+                Switch(checked = ringingEnabled, onCheckedChange = onToggle)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onChoose, modifier = Modifier.weight(1f)) {
+                    Text("Choose tone")
+                }
+                Button(onClick = onPreview, enabled = ringingEnabled, modifier = Modifier.weight(1f)) {
+                    Text("Preview")
                 }
             }
         }
