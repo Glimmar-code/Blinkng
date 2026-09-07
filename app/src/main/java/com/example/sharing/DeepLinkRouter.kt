@@ -10,20 +10,48 @@ data class AppDeepLink(
 )
 
 object DeepLinkRouter {
-    private val expectedHost: String
-        get() = Uri.parse(BuildConfig.SHARE_BASE_URL).host.orEmpty()
+    private val configuredBase: Uri
+        get() = Uri.parse(BuildConfig.SHARE_BASE_URL)
 
     fun parse(uri: Uri?): AppDeepLink? {
-        if (uri == null || !uri.scheme.equals("https", ignoreCase = true)) return null
-        if (!uri.host.equals(expectedHost, ignoreCase = true)) return null
+        if (uri == null) return null
 
-        val segments = uri.pathSegments.filter { it.isNotBlank() }
+        return when {
+            uri.scheme.equals("blink", ignoreCase = true) -> parseAppScheme(uri)
+            uri.scheme.equals("https", ignoreCase = true) -> parseWebUrl(uri)
+            else -> null
+        }
+    }
+
+    private fun parseAppScheme(uri: Uri): AppDeepLink? {
+        val type = ShareContentType.fromPath(uri.host) ?: return null
+        val id = uri.pathSegments.firstOrNull()?.trim()?.removePrefix("@") ?: return null
+        return validated(type, id)
+    }
+
+    private fun parseWebUrl(uri: Uri): AppDeepLink? {
+        val base = configuredBase
+        if (!uri.host.equals(base.host, ignoreCase = true)) return null
+
+        val baseSegments = base.pathSegments.filter { it.isNotBlank() }
+        val incoming = uri.pathSegments.filter { it.isNotBlank() }
+        if (incoming.size < baseSegments.size) return null
+        if (!incoming.take(baseSegments.size).map(String::lowercase)
+                .equals(baseSegments.map(String::lowercase))) return null
+
+        val segments = incoming.drop(baseSegments.size)
+        if (segments.size == 1 && segments[0].startsWith("@")) {
+            return validated(ShareContentType.PROFILE, segments[0].removePrefix("@"))
+        }
         if (segments.size != 2) return null
 
         val type = ShareContentType.fromPath(segments[0]) ?: return null
-        val id = segments[1].trim().removePrefix("@")
-        if (id.isBlank() || id.length > 128) return null
+        return validated(type, segments[1].removePrefix("@"))
+    }
 
+    private fun validated(type: ShareContentType, rawId: String): AppDeepLink? {
+        val id = rawId.trim()
+        if (id.isBlank() || id.length > 128) return null
         return AppDeepLink(type = type, id = id)
     }
 
