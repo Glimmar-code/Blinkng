@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
@@ -49,7 +51,7 @@ val resolvedShareBaseUrl = configuredShareBaseUrl
   ?.trimEnd('/')
   ?.takeIf { it.startsWith("https://") }
   ?: "https://jhwgifrlxwspoedxjaly.supabase.co/functions/v1/blink-web"
-val resolvedShareUri = java.net.URI(resolvedShareBaseUrl)
+val resolvedShareUri = URI(resolvedShareBaseUrl)
 val resolvedShareHost = resolvedShareUri.host
   ?: throw GradleException("BLINK_SHARE_BASE_URL must contain a valid HTTPS host")
 val resolvedSharePathPrefix = resolvedShareUri.path.orEmpty().trimEnd('/')
