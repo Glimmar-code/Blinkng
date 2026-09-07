@@ -53,10 +53,12 @@ import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
+import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
 import com.example.data.repository.UserInteractionRepository
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.components.ProfileFollowInteractButton
+import com.example.ui.components.VerifiedMark
 import com.example.ui.components.formatNumber
 import com.example.ui.components.rememberDelayedContentViewCount
 import com.example.ui.components.trackContentExposure
@@ -216,6 +218,15 @@ private fun ReelsContent(
         initialPage = initialPage,
         pageCount = { reels.size }
     )
+
+    LaunchedEffect(initialReelId) {
+        val targetId = initialReelId ?: return@LaunchedEffect
+        val targetIndex = reels.indexOfFirst { it.id == targetId }
+        if (targetIndex >= 0 && pager.currentPage != targetIndex) {
+            pager.scrollToPage(targetIndex)
+        }
+    }
+
     var pendingLaunchReelId by remember(initialReelId) { mutableStateOf(initialReelId) }
     var pendingLaunchPositionMs by remember(initialReelId, initialReelPositionMs) {
         mutableStateOf(initialReelPositionMs.coerceAtLeast(0L))
@@ -270,7 +281,9 @@ private fun ReelsContent(
                 onDirectMessage = onDirectMessage,
                 onOpenConnectHub = onOpenConnectHub,
                 onSwipeToHome = onBackToPosts,
-                onSwipeToProfile = { onProfileClick(reel.author) },
+                onSwipeToProfile = {
+                    onProfileClick(reel.authorUsername.ifBlank { reel.author }.removePrefix("@"))
+                },
                 initialPositionMs = if (reel.id == pendingLaunchReelId) pendingLaunchPositionMs else 0L,
                 onInitialPositionConsumed = {
                     if (pendingLaunchReelId == reel.id) {
@@ -369,14 +382,11 @@ private fun ReelsLoadingSkeleton() {
     val highlight = Color(0xFF343434)
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        // Full-bleed video placeholder
         Box(
             Modifier
                 .fillMaxSize()
                 .shimmerBackground(RoundedCornerShape(0.dp), base, highlight)
         )
-
-        // Top tabs skeleton
         Row(
             Modifier
                 .align(Alignment.TopCenter)
@@ -388,8 +398,6 @@ private fun ReelsLoadingSkeleton() {
             Spacer(Modifier.width(20.dp))
             Box(Modifier.width(48.dp).height(15.dp).shimmerBackground(RoundedCornerShape(6.dp), base, highlight))
         }
-
-        // Caption skeleton
         Column(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -402,8 +410,6 @@ private fun ReelsLoadingSkeleton() {
             Spacer(Modifier.height(7.dp))
             Box(Modifier.fillMaxWidth(.58f).height(11.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
         }
-
-        // Action rail skeleton
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -418,8 +424,6 @@ private fun ReelsLoadingSkeleton() {
                 Spacer(Modifier.height(18.dp))
             }
         }
-
-        // Progress bar skeleton
         Box(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -433,7 +437,6 @@ private fun ReelsLoadingSkeleton() {
 @Composable
 private fun EmptyReelsState(onBackToPosts: () -> Unit) {
     val visibleState = remember { MutableTransitionState(false) }.apply { targetState = true }
-
     AnimatedVisibility(
         visibleState = visibleState,
         enter = fadeIn(tween(400)) + scaleIn(initialScale = .9f, animationSpec = tween(400))
@@ -500,6 +503,12 @@ private fun ReelPage(
     val authorId = authorProfile?.id.orEmpty()
     val authorName = authorProfile?.fullName?.takeIf { it.isNotBlank() } ?: reel.author
     val authorAvatar = authorProfile?.avatarUrl?.takeIf { it.isNotBlank() } ?: reel.authorAvatar
+    val authorVerificationBadge = when {
+        authorProfile?.verificationBadge != null && authorProfile.verificationBadge != VerificationBadge.NONE -> authorProfile.verificationBadge
+        reel.verificationBadge != VerificationBadge.NONE -> reel.verificationBadge
+        reel.isVerified -> VerificationBadge.BLUE
+        else -> VerificationBadge.NONE
+    }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val interactionRepository = remember { UserInteractionRepository() }
     val interactionScope = rememberCoroutineScope()
@@ -664,7 +673,7 @@ private fun ReelPage(
                 ) { onDelete(reel.id) }
             }
             Spacer(Modifier.height(10.dp))
-            StaticDisc(reel.authorAvatar)
+            StaticDisc(authorAvatar)
         }
 
         Column(
@@ -692,13 +701,20 @@ private fun ReelPage(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "@$reelUsername",
+                    text = authorName.ifBlank { reelUsername },
                     color = Color.White,
                     fontWeight = FontWeight.Black,
                     fontSize = 14.sp,
                     maxLines = 1,
                     modifier = Modifier.clickable { onProfileClick(reelUsername) }
                 )
+                if (authorVerificationBadge != VerificationBadge.NONE) {
+                    Spacer(Modifier.width(4.dp))
+                    VerifiedMark(
+                        badge = authorVerificationBadge,
+                        size = 13.dp
+                    )
+                }
                 if (!isAuthor && authorId.isNotBlank()) {
                     Spacer(Modifier.width(8.dp))
                     ProfileFollowInteractButton(
@@ -1016,15 +1032,6 @@ private fun StaticDisc(avatar: String) {
     }
 }
 
-
-/**
- * A lightweight home-feed teaser for a ranked reel.
- *
- * It auto-plays muted only while at least half visible, pauses after roughly two
- * seconds of actual video playback, then exposes a play button that opens the
- * full Reels surface at the current playback position. The card uses the same
- * qualified-visibility exposure tracker as the rest of the app.
- */
 @Composable
 internal fun InlineReelPreviewCard(
     reel: FeedPost,
@@ -1037,6 +1044,14 @@ internal fun InlineReelPreviewCard(
     var previewPositionMs by remember(reel.id) { mutableStateOf(0L) }
     var isBuffering by remember(reel.id) { mutableStateOf(false) }
     val displayedViewsCount = rememberDelayedContentViewCount(reel.id, reel.viewsCount)
+    val previewAuthorName = reel.author.trim().removePrefix("@").ifBlank {
+        reel.authorUsername.trim().removePrefix("@").ifBlank { "Blink user" }
+    }
+    val previewAuthorBadge = when {
+        reel.verificationBadge != VerificationBadge.NONE -> reel.verificationBadge
+        reel.isVerified -> VerificationBadge.BLUE
+        else -> VerificationBadge.NONE
+    }
 
     LaunchedEffect(isActive, reel.id) {
         if (!isActive) {
@@ -1056,7 +1071,6 @@ internal fun InlineReelPreviewCard(
         tonalElevation = 0.dp
     ) {
         Box(Modifier.fillMaxSize()) {
-            // Keep a thumbnail behind the player to avoid a black flash while preparing.
             ReelPreview(reel)
 
             if (url.isNotBlank() && (isActive || previewFinished)) {
@@ -1121,13 +1135,22 @@ internal fun InlineReelPreviewCard(
                     .align(Alignment.BottomStart)
                     .padding(start = 14.dp, end = 74.dp, bottom = 14.dp)
             ) {
-                Text(
-                    text = "@${reel.authorUsername.ifBlank { reel.author }.removePrefix("@")}",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Black,
-                    maxLines = 1
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = previewAuthorName,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1
+                    )
+                    if (previewAuthorBadge != VerificationBadge.NONE) {
+                        Spacer(Modifier.width(4.dp))
+                        VerifiedMark(
+                            badge = previewAuthorBadge,
+                            size = 12.dp
+                        )
+                    }
+                }
                 if (reel.text.isNotBlank()) {
                     Spacer(Modifier.height(4.dp))
                     Text(

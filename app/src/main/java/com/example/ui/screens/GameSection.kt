@@ -1,60 +1,139 @@
 package com.example.ui.screens
 
-import com.example.R
-import androidx.compose.ui.res.painterResource
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
+import com.example.data.local.rememberPersistentTextState
+import android.content.Intent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Leaderboard
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.MilitaryTech
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.R
 import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
-import com.example.data.models.VerificationBadge
+import com.example.data.models.GameDashboard
+import com.example.data.models.GameHistoryItem
+import com.example.data.models.GameLeaderboardEntry
 import com.example.data.models.LeaderboardUser
+import com.example.data.models.ServerGameAnswerResult
+import com.example.data.models.ServerGameQuestion
+import com.example.data.models.ServerGameRound
+import com.example.data.repository.GameRepository
 import com.example.ui.components.VerifiedMark
-import com.example.ui.theme.*
+import com.example.ui.theme.BlinkGold
+import com.example.ui.theme.BlinkOnlineGreen
+import com.example.ui.theme.BlinkPink
+import com.example.ui.theme.BlinkPurple
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-data class TriviaQuestion(
-    val id: String,
-    val question: String,
-    val options: List<String>,
-    val correctIndex: Int,
-    val explanation: String,
-    val category: String
-)
+private enum class GameHubPane(val label: String) {
+    PLAY("Play"), HISTORY("History"), LEADERBOARD("Ranks")
+}
 
-data class GameLeader(
-    val rank: Int,
-    val name: String,
-    val username: String,
-    val avatarUrl: String,
-    val score: Int,
-    val streak: Int,
-    val badge: VerificationBadge
+private enum class GameRankScope(val api: String, val label: String) {
+    GLOBAL("global", "Global"),
+    UNIVERSITY("university", "University"),
+    FACULTY("faculty", "Faculty"),
+    DEPARTMENT("department", "Department"),
+    FRIENDS("friends", "Friends")
+}
+
+private enum class GameRankPeriod(val api: String, val label: String) {
+    DAILY("daily", "Today"),
+    WEEKLY("weekly", "Week"),
+    MONTHLY("monthly", "Month"),
+    ALL_TIME("all_time", "All time")
+}
+
+private data class RoundAnswerRecord(
+    val question: ServerGameQuestion,
+    val selectedIndex: Int,
+    val result: ServerGameAnswerResult
 )
 
 @Composable
@@ -74,41 +153,44 @@ fun GameSection(
     onGameClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val cardBg = if (isDark) DarkSurface else LightSurface
-    val cardBorder = if (isDark) DarkBorder else LightBorder
+    val repository = remember { GameRepository() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var selectedModeName by rememberSaveable { mutableStateOf(ChallengeGameType.GENERAL_KNOWLEDGE.name) }
     val selectedMode = remember(selectedModeName) {
         ChallengeGameType.entries.firstOrNull { it.name == selectedModeName }
             ?: ChallengeGameType.GENERAL_KNOWLEDGE
     }
-    val questions = remember(selectedMode) { questionsForMode(selectedMode) }
+    var paneName by rememberSaveable { mutableStateOf(GameHubPane.PLAY.name) }
+    val pane = remember(paneName) { GameHubPane.entries.firstOrNull { it.name == paneName } ?: GameHubPane.PLAY }
 
-    var currentQuestionIndex by remember { mutableIntStateOf(0) }
+    var dashboard by remember { mutableStateOf<GameDashboard?>(null) }
+    var history by remember { mutableStateOf<List<GameHistoryItem>>(emptyList()) }
+    var leaderboard by remember { mutableStateOf<List<GameLeaderboardEntry>>(emptyList()) }
+    var rankScopeName by rememberSaveable { mutableStateOf(GameRankScope.GLOBAL.name) }
+    var rankPeriodName by rememberSaveable { mutableStateOf(GameRankPeriod.ALL_TIME.name) }
+    val rankScope = remember(rankScopeName) { GameRankScope.valueOf(rankScopeName) }
+    val rankPeriod = remember(rankPeriodName) { GameRankPeriod.valueOf(rankPeriodName) }
+
+    var round by remember { mutableStateOf<ServerGameRound?>(null) }
+    var currentQuestionIndex by rememberSaveable { mutableIntStateOf(0) }
     var selectedOptionIndex by remember { mutableStateOf<Int?>(null) }
-    var isAnswerSubmitted by remember { mutableStateOf(false) }
-    var roundScore by remember(selectedMode) { mutableIntStateOf(0) }
-    var remainingSeconds by remember(selectedMode, currentQuestionIndex) {
-        mutableIntStateOf(selectedMode.timedSeconds ?: 0)
-    }
-    var score by remember(connectHub.gameStats.score) { mutableIntStateOf(connectHub.gameStats.score) }
-    var streak by remember(connectHub.gameStats.streak) { mutableIntStateOf(connectHub.gameStats.streak) }
-    val coins = connectHub.gameStats.coins
-    var focusPromptIndex by rememberSaveable { mutableIntStateOf(0) }
-    val focusPrompts = remember {
-        listOf(
-            "Recall three key ideas from your last lecture without checking your notes.",
-            "Solve the next question, then explain your reasoning in one clear sentence.",
-            "Choose one weak topic and complete a focused five-minute review.",
-            "Teach a concept aloud as if you were helping a first-year student."
-        )
-    }
+    var answerResult by remember { mutableStateOf<ServerGameAnswerResult?>(null) }
+    val answerRecords = remember { mutableStateListOf<RoundAnswerRecord>() }
+    var isLoadingRound by remember { mutableStateOf(false) }
+    var isSubmitting by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var questionStartedAtMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var remainingSeconds by remember { mutableIntStateOf(0) }
+    var memoryPreviewVisible by remember { mutableStateOf(false) }
+    var showRoundSummary by remember { mutableStateOf(false) }
+    var showReportDialog by remember { mutableStateOf(false) }
+    var reportReason by remember { mutableStateOf("Incorrect or unclear") }
+    var reportDetails by rememberPersistentTextState(key = "com/example/ui/screens/GameSection.kt:reportDetails:1")
 
-    val currentQ = questions[currentQuestionIndex % questions.size]
     val latestActiveChallenge = remember(connectHub.gameChallenges) {
-        connectHub.gameChallenges.firstOrNull {
-            it.status == "accepted" || it.status == "in_progress"
-        }
+        connectHub.gameChallenges.firstOrNull { it.status == "accepted" || it.status == "in_progress" }
     }
     val activeChallenge = remember(connectHub.gameChallenges, selectedMode) {
         connectHub.gameChallenges.firstOrNull {
@@ -117,58 +199,206 @@ fun GameSection(
         }
     }
 
-    LaunchedEffect(selectedMode, currentQuestionIndex, isAnswerSubmitted) {
-        val timeLimit = selectedMode.timedSeconds
-        if (timeLimit != null && !isAnswerSubmitted) {
-            remainingSeconds = timeLimit
-            while (remainingSeconds > 0 && !isAnswerSubmitted) {
-                delay(1_000)
-                remainingSeconds--
-            }
-            if (remainingSeconds <= 0 && !isAnswerSubmitted) {
-                isAnswerSubmitted = true
-                streak = 0
-            }
+    fun refreshGameData() {
+        scope.launch {
+            repository.fetchDashboard().onSuccess { dashboard = it }
+            repository.fetchHistory().onSuccess { history = it }
         }
+    }
+
+    fun refreshLeaderboard() {
+        scope.launch {
+            repository.fetchLeaderboard(rankPeriod.api, rankScope.api).onSuccess { leaderboard = it }
+        }
+    }
+
+    fun startRound(daily: Boolean = false) {
+        if (isLoadingRound) return
+        isLoadingRound = true
+        errorMessage = null
+        answerResult = null
+        selectedOptionIndex = null
+        showRoundSummary = false
+        answerRecords.clear()
+        scope.launch {
+            repository.startRound(
+                gameType = selectedMode.apiName,
+                challengeId = activeChallenge?.id,
+                daily = daily
+            ).fold(
+                onSuccess = { loaded ->
+                    round = loaded
+                    val firstOpen = loaded.questions.indexOfFirst { it.id !in loaded.answeredQuestionIds }
+                    currentQuestionIndex = if (firstOpen >= 0) firstOpen else 0
+                    if (loaded.answeredQuestionIds.size >= loaded.questions.size && loaded.questions.isNotEmpty()) {
+                        showRoundSummary = true
+                    }
+                    refreshGameData()
+                },
+                onFailure = { errorMessage = it.message ?: "Couldn't start the game round." }
+            )
+            isLoadingRound = false
+        }
+    }
+
+    val currentQuestion = round?.questions?.getOrNull(currentQuestionIndex)
+
+    fun submitAnswer(index: Int) {
+        val activeRound = round ?: return
+        val question = currentQuestion ?: return
+        if (isSubmitting || answerResult != null) return
+        isSubmitting = true
+        errorMessage = null
+        val responseMs = (System.currentTimeMillis() - questionStartedAtMs).toInt().coerceIn(0, 120_000)
+        scope.launch {
+            repository.submitAnswer(activeRound.id, question.id, index, responseMs).fold(
+                onSuccess = { result ->
+                    selectedOptionIndex = index.takeIf { it >= 0 }
+                    answerResult = result
+                    if (answerRecords.none { it.question.id == question.id }) {
+                        answerRecords += RoundAnswerRecord(question, index, result)
+                    }
+                    round = activeRound.copy(
+                        answeredQuestionIds = activeRound.answeredQuestionIds + question.id,
+                        score = result.roundScore,
+                        coinsEarned = result.roundCoins,
+                        correctCount = result.correctCount
+                    )
+                    dashboard = (dashboard ?: GameDashboard()).copy(
+                        score = result.totalScore,
+                        coins = result.totalCoins,
+                        streak = result.streak,
+                        bestStreak = result.bestStreak,
+                        todayAnswers = (dashboard?.todayAnswers ?: 0) + if (result.duplicate) 0 else 1,
+                        todayCorrect = (dashboard?.todayCorrect ?: 0) + if (result.correct && !result.duplicate) 1 else 0
+                    )
+                    if (result.completed) {
+                        activeChallenge?.let { challenge ->
+                            connectHubActions.submitChallengeScore(challenge.id, result.roundScore)
+                        }
+                        refreshGameData()
+                        refreshLeaderboard()
+                    }
+                },
+                onFailure = { errorMessage = it.message ?: "Couldn't submit this answer." }
+            )
+            isSubmitting = false
+        }
+    }
+
+    fun nextQuestion() {
+        val activeRound = round ?: return
+        val result = answerResult ?: return
+        if (result.completed) {
+            showRoundSummary = true
+            answerResult = null
+            return
+        }
+        val next = activeRound.questions.indices.firstOrNull { index ->
+            index > currentQuestionIndex && activeRound.questions[index].id !in activeRound.answeredQuestionIds
+        } ?: activeRound.questions.indices.firstOrNull { index ->
+            activeRound.questions[index].id !in activeRound.answeredQuestionIds
+        }
+        if (next == null) {
+            showRoundSummary = true
+            return
+        }
+        currentQuestionIndex = next
+        selectedOptionIndex = null
+        answerResult = null
+    }
+
+    LaunchedEffect(Unit) {
+        repository.fetchDashboard().onSuccess { dashboard = it }
+        repository.fetchHistory().onSuccess { history = it }
+    }
+
+    LaunchedEffect(rankScope, rankPeriod) {
+        repository.fetchLeaderboard(rankPeriod.api, rankScope.api).onSuccess { leaderboard = it }
     }
 
     LaunchedEffect(latestActiveChallenge?.id) {
-        latestActiveChallenge?.let { challenge ->
-            selectedModeName = ChallengeGameType.fromApiName(challenge.gameType).name
+        latestActiveChallenge?.let {
+            selectedModeName = ChallengeGameType.fromApiName(it.gameType).name
         }
     }
 
-    LaunchedEffect(selectedMode) {
-        currentQuestionIndex = 0
+    LaunchedEffect(currentQuestion?.id) {
+        val question = currentQuestion ?: return@LaunchedEffect
         selectedOptionIndex = null
-        isAnswerSubmitted = false
-        roundScore = 0
+        answerResult = null
+        memoryPreviewVisible = !question.stimulus.isNullOrBlank()
+        if (memoryPreviewVisible) {
+            delay(3_000)
+            memoryPreviewVisible = false
+        }
+        questionStartedAtMs = System.currentTimeMillis()
+        remainingSeconds = question.timeLimitSeconds ?: 0
     }
 
-    val leaders = remember(leaderboardUsers) {
-        leaderboardUsers
-            .sortedBy { it.rank }
-            .take(10)
-            .map {
-                GameLeader(
-                    rank = it.rank,
-                    name = it.fullName.ifBlank { it.username },
-                    username = it.username,
-                    avatarUrl = it.avatar,
-                    score = it.points,
-                    streak = it.streakDays,
-                    badge = it.verificationBadge
-                )
+    LaunchedEffect(currentQuestion?.id, memoryPreviewVisible, answerResult, isSubmitting) {
+        val question = currentQuestion ?: return@LaunchedEffect
+        val timeLimit = question.timeLimitSeconds ?: return@LaunchedEffect
+        if (memoryPreviewVisible || answerResult != null || isSubmitting) return@LaunchedEffect
+        if (remainingSeconds <= 0) remainingSeconds = timeLimit
+        while (remainingSeconds > 0 && answerResult == null && !isSubmitting) {
+            delay(1_000)
+            remainingSeconds--
+        }
+        if (remainingSeconds <= 0 && answerResult == null && !isSubmitting) {
+            submitAnswer(-1)
+        }
+    }
+
+    if (showReportDialog && currentQuestion != null) {
+        AlertDialog(
+            onDismissRequest = { showReportDialog = false },
+            title = { Text("Report question") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Tell Blink why this question needs review.", fontSize = 13.sp)
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("Incorrect or unclear", "Outdated", "Duplicate", "Other").forEach { reason ->
+                            FilterChip(
+                                selected = reportReason == reason,
+                                onClick = { reportReason = reason },
+                                label = { Text(reason) }
+                            )
+                        }
+                    }
+                    androidx.compose.material3.OutlinedTextField(
+                        value = reportDetails,
+                        onValueChange = { reportDetails = it.take(500) },
+                        label = { Text("Optional details") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val questionId = currentQuestion.id
+                    scope.launch {
+                        repository.reportQuestion(questionId, reportReason, reportDetails)
+                            .onFailure { errorMessage = it.message }
+                        showReportDialog = false
+                        reportDetails = ""
+                    }
+                }) { Text("Submit") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReportDialog = false }) { Text("Cancel") }
             }
+        )
     }
 
     LazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(bottom = 120.dp)
     ) {
-        // Header
         item {
             GameHeader(
                 userAvatar = userAvatar,
@@ -178,570 +408,212 @@ fun GameSection(
             )
         }
 
-        item { Spacer(modifier = Modifier.height(10.dp)) }
-
-        // Stats Banner (Score, Streak, Coins)
         item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Score card
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = cardBg,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("Points", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("$score", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = BlinkPink)
-                    }
-                }
-
-                // Streak card
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = cardBg,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("Streak", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("🔥 $streak", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFF9800))
-                    }
-                }
-
-                // Coins card
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = cardBg,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("Coins", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("🪙 $coins", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = BlinkGold)
-                    }
-                }
-            }
+            TopNavigationRow(
+                selected = selectedTopTab,
+                onHome = onHomeClick,
+                onReel = onReelClick,
+                onConnect = onConnectClick,
+                onGame = onGameClick
+            )
         }
 
-        item { Spacer(modifier = Modifier.height(16.dp)) }
+        item { Spacer(Modifier.height(8.dp)) }
 
         item {
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                Text("Choose game mode", fontWeight = FontWeight.Black, fontSize = 16.sp)
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ChallengeGameType.entries.forEach { mode ->
-                        val selected = mode == selectedMode
-                        Surface(
-                            modifier = Modifier.clickable { selectedModeName = mode.name },
-                            shape = RoundedCornerShape(18.dp),
-                            color = if (selected) BlinkPink else cardBg,
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (selected) BlinkPink else cardBorder
-                            )
-                        ) {
-                            Row(
-                                Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(mode.emoji, fontSize = 17.sp)
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    mode.label,
-                                    fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
-                                    color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
-                                )
+            GameStatsPanel(
+                dashboard = dashboard ?: GameDashboard(
+                    score = connectHub.gameStats.score,
+                    coins = connectHub.gameStats.coins,
+                    streak = connectHub.gameStats.streak,
+                    bestStreak = connectHub.gameStats.bestStreak
+                )
+            )
+        }
+
+        item { Spacer(Modifier.height(14.dp)) }
+
+        item {
+            GamePaneTabs(
+                selected = pane,
+                onSelected = { paneName = it.name }
+            )
+        }
+
+        item { Spacer(Modifier.height(14.dp)) }
+
+        when (pane) {
+            GameHubPane.PLAY -> {
+                item {
+                    DailyChallengeCard(
+                        enabled = !isLoadingRound && round == null,
+                        onPlay = { startRound(daily = true) }
+                    )
+                }
+
+                item { Spacer(Modifier.height(14.dp)) }
+
+                item {
+                    ModeSelector(
+                        selectedMode = selectedMode,
+                        onModeSelected = { mode ->
+                            if (round == null || showRoundSummary) {
+                                selectedModeName = mode.name
+                                showRoundSummary = false
+                                round = null
                             }
                         }
-                    }
-                }
-                activeChallenge?.let {
-                    Spacer(Modifier.height(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = BlinkGold.copy(alpha = .12f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, BlinkGold.copy(alpha = .45f))
-                    ) {
-                        Text(
-                            "⚔️ Active ${selectedMode.label} challenge • finish this 5-question round to submit your score",
-                            modifier = Modifier.padding(10.dp),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-        }
-
-        item { Spacer(modifier = Modifier.height(14.dp)) }
-
-        // Premium multi-mode challenge card
-        item {
-            Surface(
-                shape = RoundedCornerShape(22.dp),
-                color = cardBg,
-                border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(100.dp),
-                            color = BlinkPink.copy(alpha = 0.15f)
-                        ) {
-                            Text(
-                                text = currentQ.category,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = BlinkPink,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                            )
-                        }
-
-                        Text(
-                            text = if (selectedMode.timedSeconds != null && !isAnswerSubmitted) {
-                                "⏱ ${remainingSeconds}s"
-                            } else {
-                                "Q ${((currentQuestionIndex) % questions.size) + 1} / ${questions.size}"
-                            },
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = currentQ.question,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        lineHeight = 22.sp
                     )
+                }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                if (activeChallenge != null) {
+                    item {
+                        Spacer(Modifier.height(10.dp))
+                        ActiveChallengeCard(selectedMode.label)
+                    }
+                }
 
-                    // Options
-                    currentQ.options.forEachIndexed { index, option ->
-                        val isSelected = selectedOptionIndex == index
-                        val isCorrect = isAnswerSubmitted && index == currentQ.correctIndex
-                        val isWrong = isAnswerSubmitted && isSelected && index != currentQ.correctIndex
+                if (errorMessage != null) {
+                    item {
+                        Spacer(Modifier.height(10.dp))
+                        ErrorCard(errorMessage.orEmpty(), onRetry = {
+                            errorMessage = null
+                            if (round == null) startRound() else refreshGameData()
+                        })
+                    }
+                }
 
-                        val optionBg = when {
-                            isCorrect -> BlinkOnlineGreen.copy(alpha = 0.2f)
-                            isWrong -> Color(0xFFFF4D4D).copy(alpha = 0.2f)
-                            isSelected -> BlinkPink.copy(alpha = 0.15f)
-                            else -> if (isDark) Color(0xFF1E1E1E) else Color(0xFFF3F3F3)
-                        }
-
-                        val optionBorder = when {
-                            isCorrect -> BlinkOnlineGreen
-                            isWrong -> Color(0xFFFF4D4D)
-                            isSelected -> BlinkPink
-                            else -> cardBorder
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = optionBg,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, optionBorder),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clickable(enabled = !isAnswerSubmitted) {
-                                    selectedOptionIndex = index
-                                    isAnswerSubmitted = true
-                                    if (index == currentQ.correctIndex) {
-                                        val earned = if (selectedMode.timedSeconds != null) 70 else 50
-                                        score += earned
-                                        roundScore += earned
-                                        streak += 1
-                                    } else {
-                                        streak = 0
-                                    }
-                                }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (isSelected || isCorrect) BlinkPink else Color.Transparent,
-                                    border = if (!isSelected && !isCorrect) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurfaceVariant) else null,
-                                    modifier = Modifier.size(22.dp)
-                                ) {
-                                    Text(
-                                        text = "${'A' + index}",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected || isCorrect) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.wrapContentSize()
+                if (isLoadingRound) {
+                    item {
+                        Box(
+                            Modifier.fillMaxWidth().padding(40.dp),
+                            contentAlignment = Alignment.Center
+                        ) { CircularProgressIndicator() }
+                    }
+                } else if (showRoundSummary && round != null) {
+                    item {
+                        Spacer(Modifier.height(12.dp))
+                        RoundSummaryCard(
+                            round = round!!,
+                            records = answerRecords,
+                            onPlayAgain = {
+                                round = null
+                                showRoundSummary = false
+                                answerRecords.clear()
+                                startRound()
+                            },
+                            onTryAnother = {
+                                round = null
+                                showRoundSummary = false
+                                answerRecords.clear()
+                            },
+                            onChallengeFriends = onConnectClick,
+                            onShare = {
+                                val r = round ?: return@RoundSummaryCard
+                                val share = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(
+                                        Intent.EXTRA_TEXT,
+                                        "I scored ${r.score} points in ${selectedMode.label} on Blink — ${r.correctCount}/${r.questions.size} correct."
                                     )
                                 }
-
-                                Spacer(modifier = Modifier.width(10.dp))
-
-                                Text(
-                                    text = option,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (isSelected || isCorrect) FontWeight.Bold else FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                    modifier = Modifier.weight(1f)
-                                )
-
-                                if (isCorrect) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = "Correct",
-                                        tint = BlinkOnlineGreen,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                } else if (isWrong) {
-                                    Icon(
-                                        imageVector = Icons.Default.Cancel,
-                                        contentDescription = "Wrong",
-                                        tint = Color(0xFFFF4D4D),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
+                                context.startActivity(Intent.createChooser(share, "Share Blink game result"))
                             }
-                        }
-                    }
-
-                    if (isAnswerSubmitted) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = currentQ.explanation,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            lineHeight = 16.sp
                         )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Button(
-                            onClick = {
-                                val finishingRound = (currentQuestionIndex % questions.size) == questions.lastIndex
-                                if (finishingRound) {
-                                    if (roundScore > 0) {
-                                        connectHubActions.recordGameResult(selectedMode.apiName, roundScore)
-                                    }
-                                    activeChallenge?.let { challenge ->
-                                        connectHubActions.submitChallengeScore(challenge.id, roundScore)
-                                    }
-                                    roundScore = 0
+                    }
+                } else if (round != null && currentQuestion != null) {
+                    item {
+                        Spacer(Modifier.height(12.dp))
+                        QuestionCard(
+                            question = currentQuestion,
+                            questionNumber = currentQuestionIndex + 1,
+                            totalQuestions = round!!.questions.size,
+                            remainingSeconds = remainingSeconds,
+                            memoryPreviewVisible = memoryPreviewVisible,
+                            selectedIndex = selectedOptionIndex,
+                            result = answerResult,
+                            isSubmitting = isSubmitting,
+                            onAnswer = ::submitAnswer,
+                            onNotSure = { submitAnswer(-1) },
+                            onNext = ::nextQuestion,
+                            onToggleSaved = {
+                                val q = currentQuestion
+                                scope.launch {
+                                    repository.toggleSavedQuestion(q.id).onSuccess { saved ->
+                                        round = round?.copy(
+                                            questions = round!!.questions.map {
+                                                if (it.id == q.id) it.copy(saved = saved) else it
+                                            }
+                                        )
+                                    }.onFailure { errorMessage = it.message }
                                 }
-                                currentQuestionIndex++
-                                selectedOptionIndex = null
-                                isAnswerSubmitted = false
                             },
-                            shape = RoundedCornerShape(100.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BlinkPink),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(44.dp)
-                                .testTag("next_trivia_question")
-                        ) {
-                            Text(if ((currentQuestionIndex % questions.size) == questions.lastIndex) "Finish Round ✦" else "Next Question →", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                    }
-                }
-            }
-        }
-
-        item { Spacer(modifier = Modifier.height(20.dp)) }
-
-        // A deterministic study prompt keeps the daily experience useful and age-appropriate.
-        item {
-            Surface(
-                shape = RoundedCornerShape(22.dp),
-                color = cardBg,
-                border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Daily Brain Boost",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
+                            onReport = { showReportDialog = true }
                         )
-                        Surface(
-                            shape = RoundedCornerShape(100.dp),
-                            color = BlinkGold.copy(alpha = 0.2f)
-                        ) {
-                            Text(
-                                text = "Focus practice",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = BlinkGold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
-                        }
                     }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = CircleShape,
-                            color = BlinkPurple.copy(alpha = .15f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Psychology,
-                                contentDescription = null,
-                                tint = BlinkPurple,
-                                modifier = Modifier.padding(11.dp).size(28.dp)
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        AnimatedContent(
-                            targetState = focusPromptIndex,
-                            transitionSpec = {
-                                (fadeIn() + slideInVertically { it / 3 }) togetherWith
-                                    (fadeOut() + slideOutVertically { -it / 3 })
-                            },
-                            label = "brainBoostPrompt"
-                        ) { promptIndex ->
-                            Text(
-                                text = focusPrompts[promptIndex],
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onBackground,
-                                lineHeight = 19.sp
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = {
-                            focusPromptIndex = (focusPromptIndex + 1) % focusPrompts.size
-                        },
-                        shape = RoundedCornerShape(100.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) BlinkCream else BlinkBlack),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(42.dp)
-                            .testTag("next_brain_boost_button")
-                    ) {
-                        Text(
-                            text = "Show another focus prompt",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = if (isDark) BlinkBlack else BlinkCream
+                } else {
+                    item {
+                        Spacer(Modifier.height(12.dp))
+                        GameModeHero(
+                            mode = selectedMode,
+                            hasChallenge = activeChallenge != null,
+                            onPlay = { startRound() }
                         )
                     }
                 }
+
+                item { Spacer(Modifier.height(18.dp)) }
+                item { AchievementStrip(dashboard ?: GameDashboard()) }
             }
-        }
 
-        item { Spacer(modifier = Modifier.height(20.dp)) }
-
-        // Trivia Leaderboard
-        item {
-            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Text(
-                    text = "Campus Game Champions",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text(
-                    text = "Top scorers across all Blink game modes",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            GameHubPane.HISTORY -> {
+                if (history.isEmpty()) {
+                    item { EmptyGameState("No completed rounds yet", "Finish a round and it will appear here.") }
+                } else {
+                    items(history, key = { it.id }) { item -> HistoryCard(item) }
+                }
             }
-        }
 
-        item { Spacer(modifier = Modifier.height(10.dp)) }
-
-        if (leaders.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "No live leaderboard users yet.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp
+            GameHubPane.LEADERBOARD -> {
+                item {
+                    LeaderboardFilters(
+                        scope = rankScope,
+                        period = rankPeriod,
+                        onScope = { rankScopeName = it.name },
+                        onPeriod = { rankPeriodName = it.name }
                     )
                 }
-            }
-        }
+                item { Spacer(Modifier.height(10.dp)) }
 
-        items(leaders.size) { index ->
-            val leader = leaders[index]
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = cardBg,
-                border = androidx.compose.foundation.BorderStroke(1.dp, cardBorder),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Rank badge
-                    Surface(
-                        shape = CircleShape,
-                        color = when (leader.rank) {
-                            1 -> BlinkGold
-                            2 -> Color(0xFFC0C0C0)
-                            3 -> Color(0xFFCD7F32)
-                            else -> if (isDark) Color(0xFF2A2A2A) else Color(0xFFE0E0E0)
-                        },
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Text(
-                            text = "${leader.rank}",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (leader.rank <= 3) Color.Black else MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.wrapContentSize()
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .clickable { onProfileClick(leader.username) }
-                    ) {
-                        AsyncImage(
-                            model = leader.avatarUrl,
-                            error = painterResource(R.drawable.ic_default_profile),
-                            fallback = painterResource(R.drawable.ic_default_profile),
-                            contentDescription = leader.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = leader.name,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            VerifiedMark(badge = leader.badge)
-                        }
-                        Text(
-                            text = "@${leader.username} • 🔥 ${leader.streak} Streak",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Text(
-                        text = "${leader.score} pts",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = BlinkPink
+                val liveEntries = if (leaderboard.isNotEmpty()) leaderboard else leaderboardUsers.take(10).map {
+                    GameLeaderboardEntry(
+                        rank = it.rank,
+                        userId = "",
+                        name = it.fullName.ifBlank { it.username },
+                        username = it.username,
+                        avatarUrl = it.avatar,
+                        university = "",
+                        faculty = "",
+                        department = "",
+                        score = it.points,
+                        streak = it.streakDays,
+                        verificationBadge = it.verificationBadge
                     )
+                }
+
+                if (liveEntries.isEmpty()) {
+                    item { EmptyGameState("No ranked players yet", "Complete a game round to enter the rankings.") }
+                } else {
+                    if (liveEntries.size >= 3) {
+                        item { PodiumCard(liveEntries.take(3), onProfileClick) }
+                    }
+                    items(liveEntries, key = { "${it.rank}:${it.username}" }) { entry ->
+                        LeaderboardRow(entry, onProfileClick)
+                    }
                 }
             }
         }
     }
-}
-
-private fun questionsForMode(mode: ChallengeGameType): List<TriviaQuestion> = when (mode) {
-    ChallengeGameType.GENERAL_KNOWLEDGE -> listOf(
-        TriviaQuestion("t1", "Which is the oldest university in Nigeria, founded in 1948?", listOf("University of Lagos", "University of Ibadan", "Ahmadu Bello University", "University of Nigeria, Nsukka"), 1, "University of Ibadan was established in 1948.", "Campus History"),
-        TriviaQuestion("t2", "What does JAMB stand for?", listOf("Joint Admissions and Matriculation Board", "Junior Academic Management Board", "Joint Association of Matriculated Brethren", "Judicial Academic Monitoring Bureau"), 0, "JAMB is the Joint Admissions and Matriculation Board.", "Academics"),
-        TriviaQuestion("t3", "Which Nigerian university is situated along the Lagos Lagoon?", listOf("Covenant University", "LASU", "University of Lagos", "Babcock University"), 2, "UNILAG's Akoka campus borders the Lagos Lagoon.", "Campus Life"),
-        TriviaQuestion("t4", "What is the motto of Obafemi Awolowo University?", listOf("In Deed and In Truth", "For Learning and Culture", "Character and Sound Knowledge", "Excellence in Action"), 1, "OAU's motto is commonly translated as For Learning and Culture.", "Tradition"),
-        TriviaQuestion("t5", "On a 5.0 scale, which classification commonly starts at 4.50?", listOf("Second Class Upper", "First Class Honours", "Distinction Pass", "Merit"), 1, "4.50–5.00 is commonly First Class on a 5-point scale.", "Academics")
-    )
-    ChallengeGameType.MATH_SPRINT -> listOf(
-        TriviaQuestion("m1", "18 × 7 = ?", listOf("116", "126", "136", "146"), 1, "18 × 7 = 126.", "Math Sprint"),
-        TriviaQuestion("m2", "144 ÷ 12 = ?", listOf("10", "11", "12", "14"), 2, "144 ÷ 12 = 12.", "Math Sprint"),
-        TriviaQuestion("m3", "15% of 200 = ?", listOf("20", "25", "30", "35"), 2, "0.15 × 200 = 30.", "Percentages"),
-        TriviaQuestion("m4", "If x + 9 = 23, x = ?", listOf("12", "13", "14", "15"), 2, "23 − 9 = 14.", "Algebra"),
-        TriviaQuestion("m5", "√225 = ?", listOf("12", "13", "14", "15"), 3, "15 × 15 = 225.", "Numbers")
-    )
-    ChallengeGameType.LOGIC -> listOf(
-        TriviaQuestion("l1", "What comes next: 2, 6, 12, 20, 30, ?", listOf("36", "40", "42", "44"), 2, "Differences are +4,+6,+8,+10,+12.", "Sequence"),
-        TriviaQuestion("l2", "All Zips are Nors. Some Nors are Veks. Which is guaranteed?", listOf("Some Zips are Veks", "All Nors are Zips", "All Zips are Nors", "No Veks are Zips"), 2, "Only the original statement that all Zips are Nors is guaranteed.", "Deduction"),
-        TriviaQuestion("l3", "Odd one out: 16, 25, 36, 45, 49", listOf("16", "25", "45", "49"), 2, "45 is not a perfect square.", "Pattern"),
-        TriviaQuestion("l4", "A clock shows 3:00. What is the angle between the hands?", listOf("30°", "60°", "90°", "120°"), 2, "At 3:00 the hands are 90° apart.", "Spatial"),
-        TriviaQuestion("l5", "If CAT → DBU by shifting each letter +1, DOG → ?", listOf("EPH", "EOG", "FPH", "DPI"), 0, "D→E, O→P, G→H.", "Code")
-    )
-    ChallengeGameType.MEMORY -> listOf(
-        TriviaQuestion("mry1", "Remember: PURPLE • 7 • STAR. Which number appeared?", listOf("5", "6", "7", "8"), 2, "The sequence contained 7.", "Memory"),
-        TriviaQuestion("mry2", "Remember: BOOK • LAMP • TREE. Which item was second?", listOf("Book", "Lamp", "Tree", "Pen"), 1, "Lamp was second.", "Memory"),
-        TriviaQuestion("mry3", "Remember: 4 • 9 • 2 • 6. Which came after 9?", listOf("4", "2", "6", "9"), 1, "2 followed 9.", "Memory"),
-        TriviaQuestion("mry4", "Remember: RED • BLUE • GOLD. Which color was last?", listOf("Red", "Blue", "Gold", "Green"), 2, "Gold was last.", "Memory"),
-        TriviaQuestion("mry5", "Remember: A3 • B8 • C1. What was paired with B?", listOf("1", "3", "8", "9"), 2, "B was paired with 8.", "Memory")
-    )
-    ChallengeGameType.BRAIN_MIX -> listOf(
-        TriviaQuestion("b1", "What comes next: 3, 6, 12, 24, ?", listOf("30", "36", "42", "48"), 3, "Each number doubles, so 24 becomes 48.", "Pattern Sprint"),
-        TriviaQuestion("b2", "Which word is closest in meaning to concise?", listOf("Brief", "Noisy", "Ancient", "Hidden"), 0, "Concise means brief and clear.", "Word Power"),
-        TriviaQuestion("b3", "If all labs are rooms and this place is a lab, what must be true?", listOf("It is a room", "It is outdoors", "It is empty", "It is a library"), 0, "A lab must be a room under the stated rule.", "Quick Logic"),
-        TriviaQuestion("b4", "Remember 8 • BLUE • K. Which color appeared?", listOf("Gold", "Green", "Blue", "Red"), 2, "Blue was the middle item.", "Memory Flash"),
-        TriviaQuestion("b5", "27 + 16 = ?", listOf("41", "42", "43", "44"), 2, "27 + 16 = 43.", "Math Sprint")
-    )
-    ChallengeGameType.WORD_POWER -> listOf(
-        TriviaQuestion("w1", "Choose the correctly spelled word.", listOf("Accomodate", "Acommodate", "Accommodate", "Acomodate"), 2, "Accommodate has two c's and two m's.", "Spelling"),
-        TriviaQuestion("w2", "What is the opposite of scarce?", listOf("Rare", "Abundant", "Small", "Costly"), 1, "Abundant means available in large quantities.", "Vocabulary"),
-        TriviaQuestion("w3", "Which word completes the analogy: Book is to read as song is to ___?", listOf("Listen", "Write", "Draw", "Count"), 0, "A book is read and a song is listened to.", "Analogy"),
-        TriviaQuestion("w4", "Which word is a noun?", listOf("Quickly", "Create", "Curious", "Knowledge"), 3, "Knowledge names an idea, so it is a noun.", "Grammar"),
-        TriviaQuestion("w5", "Rearrange L I S T E N to form another word.", listOf("Silent", "Tinsel", "Enlist", "All three"), 3, "Silent, tinsel and enlist all use the same letters.", "Anagram")
-    )
 }
 
 @Composable
@@ -752,41 +624,31 @@ private fun GameHeader(
     onProfileClick: () -> Unit
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 8.dp, end = 8.dp, top = 38.dp, bottom = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 34.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(
-            onClick = onMenuClick,
-            modifier = Modifier.size(44.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.MoreHoriz,
-                contentDescription = "Menu",
-                modifier = Modifier.size(27.dp)
-            )
+        IconButton(onClick = onMenuClick, modifier = Modifier.size(44.dp)) {
+            Icon(Icons.Default.MoreHoriz, contentDescription = "Menu", modifier = Modifier.size(27.dp))
         }
-
-        Spacer(modifier = Modifier.weight(1f))
-
+        Column(Modifier.weight(1f)) {
+            Text("Blink Games", fontSize = 20.sp, fontWeight = FontWeight.Black)
+            Text("Play • learn • compete", fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        IconButton(onClick = onNotificationClick, modifier = Modifier.size(42.dp)) {
+            Icon(Icons.Default.NotificationsNone, contentDescription = "Notifications")
+        }
         Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .clickable { onProfileClick() }
+            modifier = Modifier.size(36.dp).clip(CircleShape).clickable(onClick = onProfileClick)
         ) {
             AsyncImage(
                 model = userAvatar,
-                error = painterResource(R.drawable.ic_default_profile),
-                fallback = painterResource(R.drawable.ic_default_profile),
+                fallback = androidx.compose.ui.res.painterResource(R.drawable.ic_default_profile),
+                error = androidx.compose.ui.res.painterResource(R.drawable.ic_default_profile),
                 contentDescription = "Profile",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
         }
-
-        Spacer(modifier = Modifier.width(4.dp))
     }
 }
 
@@ -799,40 +661,638 @@ private fun TopNavigationRow(
     onGame: () -> Unit
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 2.dp),
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        TopTabItem(text = "Home", selected = selected == 0, onClick = onHome)
-        Spacer(modifier = Modifier.width(8.dp))
-        TopTabItem(text = "Reel", selected = selected == 1, onClick = onReel)
-        Spacer(modifier = Modifier.width(8.dp))
-        TopTabItem(text = "Connect", selected = selected == 2, onClick = onConnect)
-        Spacer(modifier = Modifier.width(8.dp))
-        TopTabItem(text = "Game", selected = selected == 3, onClick = onGame)
+        TopTabItem("Home", selected == 0, onHome)
+        TopTabItem("Reel", selected == 1, onReel)
+        TopTabItem("Connect", selected == 2, onConnect)
+        TopTabItem("Game", selected == 3, onGame)
     }
 }
 
 @Composable
-private fun TopTabItem(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
+private fun TopTabItem(text: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.clickable { onClick() },
+        modifier = Modifier.padding(horizontal = 3.dp).clickable(onClick = onClick),
         shape = RoundedCornerShape(100.dp),
         color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
     ) {
         Text(
-            text = text,
+            text,
             color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
         )
+    }
+}
+
+@Composable
+private fun GameStatsPanel(dashboard: GameDashboard) {
+    val level = (dashboard.score / 1_000) + 1
+    val levelProgress = (dashboard.score % 1_000) / 1_000f
+    val dailyProgress = (dashboard.todayAnswers.toFloat() / dashboard.dailyGoal.coerceAtLeast(1)).coerceIn(0f, 1f)
+
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            StatCard("Points", dashboard.score.toString(), Icons.Default.Bolt, BlinkPink, Modifier.weight(1f))
+            StatCard("Coins", dashboard.coins.toString(), Icons.Default.WorkspacePremium, BlinkGold, Modifier.weight(1f))
+            StatCard("Streak", dashboard.streak.toString(), Icons.Default.LocalFireDepartment, Color(0xFFFF8A00), Modifier.weight(1f))
+            StatCard("Best", dashboard.bestStreak.toString(), Icons.Default.MilitaryTech, BlinkPurple, Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(10.dp))
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Level $level", fontWeight = FontWeight.Black, fontSize = 14.sp)
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        if (dashboard.worldRank > 0) "#${dashboard.worldRank} global" else "Unranked",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(7.dp))
+                LinearProgressIndicator(progress = levelProgress, modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape))
+                Spacer(Modifier.height(11.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Daily goal", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Text("${dashboard.todayAnswers}/${dashboard.dailyGoal}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BlinkPink)
+                }
+                Spacer(Modifier.height(5.dp))
+                LinearProgressIndicator(progress = dailyProgress, modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape))
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color, modifier: Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(Modifier.padding(vertical = 10.dp, horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+            Text(value, fontWeight = FontWeight.Black, fontSize = 15.sp, maxLines = 1)
+            Text(label, fontSize = 9.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun GamePaneTabs(selected: GameHubPane, onSelected: (GameHubPane) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        GameHubPane.entries.forEach { pane ->
+            val icon = when (pane) {
+                GameHubPane.PLAY -> Icons.Default.SportsEsports
+                GameHubPane.HISTORY -> Icons.Default.History
+                GameHubPane.LEADERBOARD -> Icons.Default.Leaderboard
+            }
+            Surface(
+                modifier = Modifier.weight(1f).clickable { onSelected(pane) },
+                shape = RoundedCornerShape(14.dp),
+                color = if (selected == pane) BlinkPink else MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, if (selected == pane) BlinkPink else MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Row(
+                    Modifier.padding(vertical = 10.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(17.dp), tint = if (selected == pane) Color.White else MaterialTheme.colorScheme.onSurface)
+                    Spacer(Modifier.width(5.dp))
+                    Text(pane.label, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = if (selected == pane) Color.White else MaterialTheme.colorScheme.onSurface)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyChallengeCard(enabled: Boolean, onPlay: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(22.dp),
+        color = BlinkPurple.copy(alpha = .11f),
+        border = BorderStroke(1.dp, BlinkPurple.copy(alpha = .35f))
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = BlinkPurple.copy(alpha = .18f)) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = BlinkPurple, modifier = Modifier.padding(11.dp).size(25.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Daily Challenge", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                Text("One shared mixed set • counts toward your daily goal", fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Button(
+                onClick = onPlay,
+                enabled = enabled,
+                shape = RoundedCornerShape(100.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = BlinkPurple)
+            ) { Text("Play", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+        }
+    }
+}
+
+@Composable
+private fun ModeSelector(selectedMode: ChallengeGameType, onModeSelected: (ChallengeGameType) -> Unit) {
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Text("Choose a game", fontSize = 15.sp, fontWeight = FontWeight.Black)
+        Text("Difficulty adapts from your recent answers.", fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(9.dp))
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            ChallengeGameType.entries.forEach { mode ->
+                val selected = mode == selectedMode
+                Surface(
+                    modifier = Modifier.width(142.dp).clickable { onModeSelected(mode) },
+                    shape = RoundedCornerShape(18.dp),
+                    color = if (selected) BlinkPink.copy(alpha = .12f) else MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, if (selected) BlinkPink else MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Column(Modifier.padding(13.dp)) {
+                        Text(mode.emoji, fontSize = 22.sp)
+                        Spacer(Modifier.height(5.dp))
+                        Text(mode.label, fontWeight = FontWeight.Black, fontSize = 12.5.sp, maxLines = 1)
+                        Text(modeDescription(mode), fontSize = 9.8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, minLines = 2, maxLines = 2)
+                        Spacer(Modifier.height(7.dp))
+                        Text(modeMeta(mode), fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = if (selected) BlinkPink else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun modeDescription(mode: ChallengeGameType) = when (mode) {
+    ChallengeGameType.BRAIN_MIX -> "Fast mixed questions across skills."
+    ChallengeGameType.MATH_SPRINT -> "Timed arithmetic and number challenges."
+    ChallengeGameType.LOGIC -> "Sequences, deduction and patterns."
+    ChallengeGameType.MEMORY -> "Memorise first, then answer from recall."
+    ChallengeGameType.WORD_POWER -> "Vocabulary, grammar and word puzzles."
+    ChallengeGameType.GENERAL_KNOWLEDGE -> "Campus, science and everyday knowledge."
+}
+
+private fun modeMeta(mode: ChallengeGameType) = when (mode) {
+    ChallengeGameType.BRAIN_MIX -> "10 sec • mixed"
+    ChallengeGameType.MATH_SPRINT -> "15 sec • speed"
+    ChallengeGameType.LOGIC -> "25 sec • reasoning"
+    ChallengeGameType.MEMORY -> "3 sec preview"
+    ChallengeGameType.WORD_POWER -> "20 sec • language"
+    ChallengeGameType.GENERAL_KNOWLEDGE -> "20 sec • quiz"
+}
+
+@Composable
+private fun ActiveChallengeCard(label: String) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = BlinkGold.copy(alpha = .12f),
+        border = BorderStroke(1.dp, BlinkGold.copy(alpha = .4f)),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+    ) {
+        Text("⚔️ Active $label challenge • your verified round score will submit when you finish.", modifier = Modifier.padding(12.dp), fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun GameModeHero(mode: ChallengeGameType, hasChallenge: Boolean, onPlay: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(mode.emoji, fontSize = 38.sp)
+            Spacer(Modifier.height(6.dp))
+            Text(mode.label, fontSize = 19.sp, fontWeight = FontWeight.Black)
+            Text(modeDescription(mode), textAlign = TextAlign.Center, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(13.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FeaturePill(Icons.Default.School, "Adaptive")
+                FeaturePill(Icons.Default.Timer, "Timed")
+                FeaturePill(Icons.Default.EmojiEvents, if (hasChallenge) "Challenge" else "Ranked")
+            }
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = onPlay,
+                shape = RoundedCornerShape(100.dp),
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = BlinkPink)
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(if (hasChallenge) "Play challenge" else "Start 5-question round", fontWeight = FontWeight.Bold)
+            }
+            Text("Answers are checked by Blink's server before points or coins are awarded.", modifier = Modifier.padding(top = 9.dp), fontSize = 9.5.sp, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun FeaturePill(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Surface(shape = RoundedCornerShape(100.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+        Row(Modifier.padding(horizontal = 9.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(13.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(text, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun QuestionCard(
+    question: ServerGameQuestion,
+    questionNumber: Int,
+    totalQuestions: Int,
+    remainingSeconds: Int,
+    memoryPreviewVisible: Boolean,
+    selectedIndex: Int?,
+    result: ServerGameAnswerResult?,
+    isSubmitting: Boolean,
+    onAnswer: (Int) -> Unit,
+    onNotSure: () -> Unit,
+    onNext: () -> Unit,
+    onToggleSaved: () -> Unit,
+    onReport: () -> Unit
+) {
+    val progress = (questionNumber.toFloat() / totalQuestions.coerceAtLeast(1)).coerceIn(0f, 1f)
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).animateContentSize(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(Modifier.padding(17.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(100.dp), color = BlinkPink.copy(alpha = .12f)) {
+                    Text(question.category, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = BlinkPink)
+                }
+                Spacer(Modifier.weight(1f))
+                Text("Q $questionNumber/$totalQuestions", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                if (question.timeLimitSeconds != null && result == null && !memoryPreviewVisible) {
+                    Spacer(Modifier.width(8.dp))
+                    Surface(shape = RoundedCornerShape(100.dp), color = if (remainingSeconds <= 5) Color(0xFFFF5252).copy(alpha = .14f) else MaterialTheme.colorScheme.surfaceVariant) {
+                        Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Timer, contentDescription = null, modifier = Modifier.size(13.dp), tint = if (remainingSeconds <= 5) Color(0xFFFF5252) else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(3.dp))
+                            Text("${remainingSeconds}s", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(9.dp))
+            LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape))
+            Spacer(Modifier.height(15.dp))
+
+            AnimatedContent(
+                targetState = memoryPreviewVisible,
+                transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
+                label = "memoryPreview"
+            ) { preview ->
+                if (preview) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)) {
+                        Icon(Icons.Default.Psychology, contentDescription = null, tint = BlinkPurple, modifier = Modifier.size(34.dp))
+                        Spacer(Modifier.height(9.dp))
+                        Text("Memorise this", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(question.stimulus.orEmpty(), fontSize = 22.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
+                        Text("It will disappear before the question.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                    }
+                } else {
+                    Column {
+                        Text(question.prompt, fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Black)
+                        Spacer(Modifier.height(14.dp))
+                        question.options.forEachIndexed { index, option ->
+                            AnswerOption(
+                                index = index,
+                                text = option,
+                                selected = selectedIndex == index,
+                                correct = result != null && result.correctIndex == index,
+                                wrong = result != null && selectedIndex == index && result.correctIndex != index,
+                                enabled = result == null && !isSubmitting,
+                                onClick = { onAnswer(index) }
+                            )
+                        }
+                        if (result == null) {
+                            TextButton(onClick = onNotSure, enabled = !isSubmitting, modifier = Modifier.align(Alignment.End)) {
+                                Text("Not sure — skip", fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (isSubmitting) {
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Checking answer…", fontSize = 11.sp)
+                }
+            }
+
+            if (result != null) {
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(15.dp),
+                    color = if (result.correct) BlinkOnlineGreen.copy(alpha = .10f) else MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(if (result.correct) Icons.Default.CheckCircle else Icons.Default.Cancel, contentDescription = null, tint = if (result.correct) BlinkOnlineGreen else Color(0xFFFF5252), modifier = Modifier.size(19.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (result.correct) "Correct • +${result.awardedScore} pts • +${result.awardedCoins} coins" else "Review this one", fontWeight = FontWeight.Black, fontSize = 11.5.sp)
+                        }
+                        if (result.explanation.isNotBlank()) {
+                            Text(result.explanation, fontSize = 11.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 7.dp))
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 7.dp), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onToggleSaved) {
+                        Icon(if (question.saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text(if (question.saved) "Saved" else "Save", fontSize = 10.5.sp)
+                    }
+                    TextButton(onClick = onReport) {
+                        Icon(Icons.Default.Flag, contentDescription = null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("Report", fontSize = 10.5.sp)
+                    }
+                }
+                Button(
+                    onClick = onNext,
+                    shape = RoundedCornerShape(100.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BlinkPink),
+                    modifier = Modifier.fillMaxWidth().height(44.dp).testTag("next_game_question")
+                ) {
+                    Text(if (result.completed) "View round result" else "Next question", fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(5.dp))
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnswerOption(
+    index: Int,
+    text: String,
+    selected: Boolean,
+    correct: Boolean,
+    wrong: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val border = when {
+        correct -> BlinkOnlineGreen
+        wrong -> Color(0xFFFF5252)
+        selected -> BlinkPink
+        else -> MaterialTheme.colorScheme.outlineVariant
+    }
+    val bg = when {
+        correct -> BlinkOnlineGreen.copy(alpha = .10f)
+        wrong -> Color(0xFFFF5252).copy(alpha = .08f)
+        selected -> BlinkPink.copy(alpha = .08f)
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(15.dp),
+        color = bg,
+        border = BorderStroke(1.dp, border)
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = if (selected || correct) BlinkPink else Color.Transparent, border = if (!selected && !correct) BorderStroke(1.dp, MaterialTheme.colorScheme.onSurfaceVariant) else null, modifier = Modifier.size(23.dp)) {
+                Text(('A'.code + index).toChar().toString(), fontSize = 10.5.sp, fontWeight = FontWeight.Black, color = if (selected || correct) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 3.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(text, fontSize = 12.5.sp, fontWeight = if (selected || correct) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.weight(1f))
+            if (correct) Icon(Icons.Default.CheckCircle, contentDescription = "Correct", tint = BlinkOnlineGreen, modifier = Modifier.size(18.dp))
+            if (wrong) Icon(Icons.Default.Cancel, contentDescription = "Incorrect", tint = Color(0xFFFF5252), modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun RoundSummaryCard(
+    round: ServerGameRound,
+    records: List<RoundAnswerRecord>,
+    onPlayAgain: () -> Unit,
+    onTryAnother: () -> Unit,
+    onChallengeFriends: () -> Unit,
+    onShare: () -> Unit
+) {
+    val accuracy = if (round.questions.isEmpty()) 0 else (round.correctCount * 100 / round.questions.size)
+    val mistakes = records.filterNot { it.result.correct }
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(Modifier.padding(19.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Surface(shape = CircleShape, color = BlinkGold.copy(alpha = .15f)) {
+                Icon(Icons.Default.EmojiEvents, contentDescription = null, tint = BlinkGold, modifier = Modifier.padding(14.dp).size(34.dp))
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("Round complete", fontSize = 20.sp, fontWeight = FontWeight.Black)
+            Text("${round.correctCount}/${round.questions.size} correct • $accuracy% accuracy", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MiniMetric("Score", round.score.toString(), Modifier.weight(1f))
+                MiniMetric("Coins", round.coinsEarned.toString(), Modifier.weight(1f))
+                MiniMetric("Mistakes", mistakes.size.toString(), Modifier.weight(1f))
+            }
+            if (mistakes.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                Text("Review mistakes", modifier = Modifier.fillMaxWidth(), fontSize = 12.sp, fontWeight = FontWeight.Black)
+                mistakes.take(3).forEach { record ->
+                    Text("• ${record.question.prompt}", modifier = Modifier.fillMaxWidth().padding(top = 6.dp), fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = onPlayAgain, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(100.dp), colors = ButtonDefaults.buttonColors(containerColor = BlinkPink)) {
+                Icon(Icons.Default.Refresh, contentDescription = null)
+                Spacer(Modifier.width(5.dp))
+                Text("Play again", fontWeight = FontWeight.Bold)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                TextButton(onClick = onTryAnother, modifier = Modifier.weight(1f)) { Text("Another mode", fontSize = 10.5.sp) }
+                TextButton(onClick = onChallengeFriends, modifier = Modifier.weight(1f)) { Text("Challenge", fontSize = 10.5.sp) }
+                TextButton(onClick = onShare, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text("Share", fontSize = 10.5.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniMetric(label: String, value: String, modifier: Modifier) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+        Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, fontWeight = FontWeight.Black, fontSize = 16.sp)
+            Text(label, fontSize = 9.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun AchievementStrip(dashboard: GameDashboard) {
+    val achievements = listOf(
+        Triple(Icons.Default.School, "First steps", dashboard.score >= 100),
+        Triple(Icons.Default.LocalFireDepartment, "5 streak", dashboard.bestStreak >= 5),
+        Triple(Icons.Default.MilitaryTech, "1K club", dashboard.score >= 1_000),
+        Triple(Icons.Default.WorkspacePremium, "Coin collector", dashboard.coins >= 100)
+    )
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Text("Achievements", fontSize = 14.sp, fontWeight = FontWeight.Black)
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            achievements.forEach { (icon, label, unlocked) ->
+                Surface(shape = RoundedCornerShape(16.dp), color = if (unlocked) BlinkGold.copy(alpha = .12f) else MaterialTheme.colorScheme.surface, border = BorderStroke(1.dp, if (unlocked) BlinkGold.copy(alpha = .4f) else MaterialTheme.colorScheme.outlineVariant)) {
+                    Row(Modifier.padding(11.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(icon, contentDescription = null, tint = if (unlocked) BlinkGold else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(label, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HistoryCard(item: GameHistoryItem) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = BlinkPink.copy(alpha = .12f)) {
+                Icon(Icons.Default.History, contentDescription = null, tint = BlinkPink, modifier = Modifier.padding(9.dp).size(19.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(item.gameType.replace('_', ' ').replaceFirstChar { it.uppercase() }, fontWeight = FontWeight.Black, fontSize = 12.5.sp)
+                Text("${item.correctCount}/${item.questionCount} correct • ${item.coinsEarned} coins", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("${item.score} pts", fontSize = 12.sp, fontWeight = FontWeight.Black, color = BlinkPink)
+        }
+    }
+}
+
+@Composable
+private fun LeaderboardFilters(
+    scope: GameRankScope,
+    period: GameRankPeriod,
+    onScope: (GameRankScope) -> Unit,
+    onPeriod: (GameRankPeriod) -> Unit
+) {
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Text("Campus Game Champions", fontSize = 16.sp, fontWeight = FontWeight.Black)
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            GameRankScope.entries.forEach { item ->
+                FilterChip(selected = scope == item, onClick = { onScope(item) }, label = { Text(item.label, fontSize = 10.5.sp) })
+            }
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            GameRankPeriod.entries.forEach { item ->
+                FilterChip(selected = period == item, onClick = { onPeriod(item) }, label = { Text(item.label, fontSize = 10.5.sp) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun PodiumCard(entries: List<GameLeaderboardEntry>, onProfileClick: (String) -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(22.dp),
+        color = BlinkGold.copy(alpha = .08f),
+        border = BorderStroke(1.dp, BlinkGold.copy(alpha = .28f))
+    ) {
+        Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
+            listOfNotNull(entries.getOrNull(1), entries.getOrNull(0), entries.getOrNull(2)).forEach { entry ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(90.dp).clickable { onProfileClick(entry.username) }) {
+                    Text(if (entry.rank == 1) "👑" else "#${entry.rank}", fontSize = if (entry.rank == 1) 20.sp else 12.sp, fontWeight = FontWeight.Black)
+                    AsyncImage(model = entry.avatarUrl, fallback = androidx.compose.ui.res.painterResource(R.drawable.ic_default_profile), error = androidx.compose.ui.res.painterResource(R.drawable.ic_default_profile), contentDescription = entry.name, contentScale = ContentScale.Crop, modifier = Modifier.size(if (entry.rank == 1) 52.dp else 44.dp).clip(CircleShape))
+                    Text(entry.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                    Text("${entry.score} pts", fontSize = 9.5.sp, color = BlinkPink, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LeaderboardRow(entry: GameLeaderboardEntry, onProfileClick: (String) -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = if (entry.isMe) BlinkPink.copy(alpha = .08f) else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, if (entry.isMe) BlinkPink.copy(alpha = .35f) else MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(Modifier.padding(11.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("#${entry.rank}", modifier = Modifier.width(34.dp), fontSize = 11.sp, fontWeight = FontWeight.Black, color = if (entry.rank <= 3) BlinkGold else MaterialTheme.colorScheme.onSurfaceVariant)
+            AsyncImage(model = entry.avatarUrl, fallback = androidx.compose.ui.res.painterResource(R.drawable.ic_default_profile), error = androidx.compose.ui.res.painterResource(R.drawable.ic_default_profile), contentDescription = entry.name, contentScale = ContentScale.Crop, modifier = Modifier.size(38.dp).clip(CircleShape).clickable { onProfileClick(entry.username) })
+            Spacer(Modifier.width(9.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(entry.name.ifBlank { entry.username }, fontSize = 12.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.width(4.dp))
+                    VerifiedMark(entry.verificationBadge, size = 12.dp)
+                }
+                Text("@${entry.username} • 🔥 ${entry.streak}", fontSize = 9.8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("${entry.score} pts", fontSize = 11.5.sp, fontWeight = FontWeight.Black, color = BlinkPink)
+        }
+    }
+}
+
+@Composable
+private fun ErrorCard(message: String, onRetry: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.errorContainer
+    ) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(message, modifier = Modifier.weight(1f), fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onErrorContainer)
+            TextButton(onClick = onRetry) { Text("Retry") }
+        }
+    }
+}
+
+@Composable
+private fun EmptyGameState(title: String, subtitle: String) {
+    Column(Modifier.fillMaxWidth().padding(42.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(Icons.Default.SportsEsports, contentDescription = null, modifier = Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(title, modifier = Modifier.padding(top = 9.dp), fontWeight = FontWeight.Black, fontSize = 14.sp)
+        Text(subtitle, textAlign = TextAlign.Center, fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
     }
 }

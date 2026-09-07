@@ -37,7 +37,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tag
-import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -73,6 +72,7 @@ import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.PostCard
+import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.BlinkOnlineGreen
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.FeedBackground
@@ -104,7 +104,7 @@ fun SearchScreen(
     isDark: Boolean
 ) {
     @Suppress("UNUSED_VARIABLE")
-    val legacyPostOpenCallback = onPostClick // Whole-card taps are intentionally disabled in Discover.
+    val legacyPostOpenCallback = onPostClick
 
     val density = LocalDensity.current
     val dragOffset = remember { Animatable(0f) }
@@ -327,11 +327,9 @@ fun SearchScreen(
                                             )
                                             if (person.verificationBadge != VerificationBadge.NONE) {
                                                 Spacer(Modifier.width(3.dp))
-                                                Icon(
-                                                    Icons.Default.Verified,
-                                                    null,
-                                                    tint = BlinkPink,
-                                                    modifier = Modifier.size(13.dp)
+                                                VerifiedMark(
+                                                    badge = person.verificationBadge,
+                                                    size = 13.dp
                                                 )
                                             }
                                         }

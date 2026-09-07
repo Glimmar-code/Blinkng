@@ -536,7 +536,7 @@ fun SignInScreen(
                         )
 
                         Text(
-                            "Keep me signed in",
+                            "Remember username & password",
                             color = DarkTextSecondary,
                             fontSize = 11.5.sp
                         )

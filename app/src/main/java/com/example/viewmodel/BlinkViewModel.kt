@@ -88,6 +88,7 @@ data class BlinkUiState(
     val isPostingComment: Boolean = false,
     val mutedUsers: Set<String> = emptySet(),
     val feedSubTab: Int = 0,
+    val routedReelId: String? = null,
     val isOnline: Boolean = true,
     val isLiveSupabaseConnected: Boolean = false,
     val isMessagingRealtimeConnected: Boolean = false,
@@ -335,6 +336,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                         val state = _uiState.value
                         _uiState.value = state.copy(
                             selectedTab = MainTab.HOME,
+                            routedReelId = null,
                             viewingProfile = profile,
                             deepLinkedPost = null,
                             activePostOptionsPost = null,
@@ -357,6 +359,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                         _uiState.value = state.copy(
                             selectedTab = MainTab.HOME,
                             feedSubTab = 1,
+                            routedReelId = post.id,
                             reels = listOf(post) + state.reels.filterNot { it.id == post.id },
                             viewingProfile = null,
                             deepLinkedPost = null,
@@ -367,6 +370,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                         _uiState.value = state.copy(
                             selectedTab = MainTab.HOME,
                             feedSubTab = 0,
+                            routedReelId = null,
                             posts = listOf(post) + state.posts.filterNot { it.id == post.id },
                             viewingProfile = null,
                             deepLinkedPost = post,
@@ -1537,6 +1541,7 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = _uiState.value.copy(
             selectedTab = tab,
             feedSubTab = nextFeedSubTab,
+            routedReelId = null,
             viewingProfile = null,
             viewingProduct = null,
             isConversationFullScreen = false,
@@ -1553,7 +1558,10 @@ private suspend fun restoreSupabaseSession() {
     }
     fun setTab(tab: MainTab) = selectTab(tab)
     fun setFeedSubTab(tab: Int) {
-        _uiState.value = _uiState.value.copy(feedSubTab = tab.coerceIn(0, 3))
+        _uiState.value = _uiState.value.copy(
+            feedSubTab = tab.coerceIn(0, 3),
+            routedReelId = null
+        )
         persistUiPreferences()
     }
     fun toggleDarkMode() {
@@ -3359,7 +3367,8 @@ private suspend fun restoreSupabaseSession() {
             if (target != null) {
                 _uiState.value = _uiState.value.copy(
                     selectedTab = MainTab.HOME,
-                    feedSubTab = if (target.isReel) 1 else 0
+                    feedSubTab = if (target.isReel) 1 else 0,
+                    routedReelId = target.id.takeIf { target.isReel }
                 )
                 if (activity.category == NotificationFilter.COMMENTS) {
                     openCommentsForPost(target.id)

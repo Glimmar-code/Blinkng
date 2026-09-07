@@ -442,6 +442,7 @@ fun MainAppContent(
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
                         currentSubTab = uiState.feedSubTab,
+                        routedReelId = uiState.routedReelId,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
                         isDark = uiState.isDarkMode,
                         onLikePost = { viewModel.togglePostLike(it) },
