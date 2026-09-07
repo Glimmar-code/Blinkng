@@ -1,0 +1,33 @@
+name: Sync native calls with main
+
+on:
+  push:
+    branches:
+      - fix/native-chat-calls-20260907
+    paths:
+      - .github/workflows/sync-native-calls-with-main.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/native-chat-calls-20260907
+
+      - name: Merge latest main safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Glimmar"
+          git config user.email "golowosile@gmail.com"
+          git fetch origin main
+          git merge --no-commit --no-ff origin/main
+          git rm .github/workflows/sync-native-calls-with-main.yml
+          git commit -m "Merge main into native call fixes"
+          git push origin HEAD:fix/native-chat-calls-20260907
