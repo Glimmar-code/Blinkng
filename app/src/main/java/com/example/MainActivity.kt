@@ -341,7 +341,8 @@ fun MainAppContent(
                 uiState.isCreateStoryOpen ||
                 uiState.activeViewingStory != null ||
                 uiState.showSellerCongratulationsDialog ||
-                uiState.deepLinkedPost != null
+                uiState.deepLinkedPost != null ||
+                (uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1)
     ) {
         when {
             uiState.deepLinkedPost != null -> viewModel.closeDeepLinkedPost()
@@ -359,6 +360,10 @@ fun MainAppContent(
             uiState.isCreateStoryOpen -> viewModel.openCreateStory(false)
             uiState.activeViewingStory != null -> viewModel.closeStory()
             uiState.showSellerCongratulationsDialog -> viewModel.dismissSellerCongratulations()
+            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1 -> {
+                isBottomBarVisibleByScroll = true
+                viewModel.setFeedSubTab(0)
+            }
         }
     }
 
