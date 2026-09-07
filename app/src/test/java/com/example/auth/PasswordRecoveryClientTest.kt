@@ -1,5 +1,6 @@
 package com.example.auth
 
+import android.app.Application
 import android.net.Uri
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -9,7 +10,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = Application::class)
 class PasswordRecoveryClientTest {
     @Test
     fun parseRecoveryLink_readsSupabaseFragmentSession() {
