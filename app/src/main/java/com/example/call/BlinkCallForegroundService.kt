@@ -1,8 +1,11 @@
 package com.example.call
 
+import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.IBinder
+import androidx.core.app.ServiceCompat
 
 class BlinkCallForegroundService : Service() {
     companion object {
@@ -33,6 +36,7 @@ class BlinkCallForegroundService : Service() {
         IncomingCallNotification.createChannels(this)
     }
 
+    @SuppressLint("InlinedApi")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val callId = intent?.getStringExtra(CallActivity.EXTRA_CALL_ID).orEmpty()
         if (callId.isBlank()) {
@@ -50,7 +54,18 @@ class BlinkCallForegroundService : Service() {
             callType = callType,
             status = status
         )
-        startForeground(IncomingCallNotification.FOREGROUND_NOTIFICATION_ID, notification)
+
+        // Android 14+ validates the runtime foreground-service types and their
+        // corresponding while-in-use permissions. Audio calls must not request the
+        // camera service type, while video calls need both microphone and camera.
+        val foregroundServiceTypes = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+            if (callType == CallType.VIDEO) ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA else 0
+        ServiceCompat.startForeground(
+            this,
+            IncomingCallNotification.FOREGROUND_NOTIFICATION_ID,
+            notification,
+            foregroundServiceTypes
+        )
         return START_NOT_STICKY
     }
 
