@@ -62,8 +62,9 @@ jobs:
 
       - name: Push verified source commit
         run: |
-          if git status --porcelain | grep -q .; then
-            echo "Unexpected working tree changes after verification"
+          rm -rf app/schemas
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "Unexpected tracked working tree changes after verification"
             git status --short
             exit 1
           fi
@@ -80,6 +81,12 @@ jobs:
               gradle :app:lintDebug --stacktrace --no-daemon
               gradle :app:assembleDebugAndroidTest --stacktrace --no-daemon
               gradle :app:assembleDebug --stacktrace --no-daemon
+              rm -rf app/schemas
+              if ! git diff --quiet || ! git diff --cached --quiet; then
+                echo "Tracked files changed after re-verification"
+                git status --short
+                exit 1
+              fi
             fi
 
             if git push origin HEAD:main; then
