@@ -1,0 +1,61 @@
+name: Apply scheduler settings post policy and message audit
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-scheduler-settings-post-policy-message-audit.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply scheduler settings post policy and message patch
+        run: python .github/scripts/apply_scheduler_settings_post_policy_message_audit.py
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Commit source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/src/main/java/com/example/data/models/PostModel.kt \
+            app/src/main/java/com/example/data/repository/ScheduledPostRepository.kt \
+            app/src/main/java/com/example/viewmodel/BlinkViewModel.kt \
+            app/src/main/java/com/example/ui/components/CreatePostSheet.kt \
+            app/src/main/java/com/example/ui/components/AppMenuSheet.kt \
+            app/src/main/java/com/example/ProfessionalCenterActivity.kt \
+            app/src/main/java/com/example/ui/screens/AuthScreens.kt \
+            app/src/main/java/com/example/data/supabase/SupabaseService.kt
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+          else
+            git commit -m "feat: connect scheduled posts and harden post message settings"
+            for attempt in 1 2 3 4 5; do
+              if git pull --rebase origin main && git push origin HEAD:main; then
+                exit 0
+              fi
+              git rebase --abort 2>/dev/null || true
+              sleep 2
+            done
+            echo "Could not push source fixes after retries"
+            exit 1
+          fi
