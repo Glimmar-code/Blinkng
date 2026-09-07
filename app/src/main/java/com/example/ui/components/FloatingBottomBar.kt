@@ -1,28 +1,16 @@
 package com.example.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
@@ -39,27 +27,15 @@ import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.FeedBlue
-import com.example.ui.theme.FeedBorder
-import com.example.ui.theme.FeedElevatedSurface
-import com.example.ui.theme.FeedPurple
-import com.example.ui.theme.FeedTextPrimary
-import com.example.ui.theme.FeedTextSecondary
 import com.example.viewmodel.MainTab
 
 private enum class FeedBottomDestination {
@@ -105,6 +81,7 @@ fun FeedBottomBar(
         currentTab == MainTab.MESSAGES -> FeedBottomDestination.MESSAGE
         else -> null
     }
+
     val navigationSurface = if (isDark) Color(0xFF0E0F10) else Color.White
     val navigationBorder = if (isDark) Color(0xFF2D3035) else Color(0xFFE1E4E8)
 
@@ -117,7 +94,9 @@ fun FeedBottomBar(
         border = BorderStroke(1.dp, navigationBorder)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -148,11 +127,12 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val tint = if (selected) FeedBlue else MaterialTheme.colorScheme.onSurface
+    val tint = if (selected) FeedBlue else MaterialTheme.colorScheme.onSurfaceVariant
+
     Column(
         modifier = Modifier
             .weight(1f)
-            .heightIn(min = 62.dp)
+            .height(58.dp)
             .clickable(role = Role.Tab, onClick = onClick)
             .testTag("feed_nav_${item.destination.name.lowercase()}"),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -160,19 +140,20 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(.66f)
-                .heightIn(min = 3.dp, max = 3.dp)
+                .fillMaxWidth(0.62f)
+                .height(3.dp)
                 .background(if (selected) FeedBlue else Color.Transparent)
         )
+        Spacer(Modifier.height(7.dp))
         Box(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.size(40.dp),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = if (selected) item.filledIcon else item.outlinedIcon,
                 contentDescription = item.label,
                 tint = tint,
-                modifier = Modifier.size(26.dp)
+                modifier = Modifier.size(25.dp)
             )
         }
     }
