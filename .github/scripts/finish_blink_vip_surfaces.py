@@ -225,35 +225,4 @@ patch(
                             }"""
 )
 
-# Story rail labels. Same-package shared badge requires no import.
-patch(
-    "app/src/main/java/com/example/ui/components/StoryBar.kt",
-    """        Text(
-            text = story.username,
-            fontSize = 10.5.sp,""",
-    """        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = story.username,
-                fontSize = 10.5.sp,"""
-)
-patch(
-    "app/src/main/java/com/example/ui/components/StoryBar.kt",
-    """            overflow = TextOverflow.Ellipsis
-        )
-
-        Text(
-            text = story.faculty,""",
-    """            overflow = TextOverflow.Ellipsis
-            )
-            BlinkVipMarkForUsername(
-                username = story.username,
-                knownVip = if (story.isVip) true else null,
-                modifier = Modifier.padding(start = 3.dp)
-            )
-        }
-
-        Text(
-            text = story.faculty,"""
-)
-
 print("Blink VIP identity surfaces patched successfully.")
