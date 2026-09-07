@@ -94,10 +94,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.AdminControlCenterActivity
 import com.example.ProfessionalCenterActivity
 import com.example.auth.AccountSwitcherActivity
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
+import com.example.data.supabase.AdminSupabaseService
 import com.example.ui.theme.BlinkPink
 import kotlinx.coroutines.delay
 
@@ -127,7 +129,13 @@ fun AppMenuSheet(
     onSimulateNotification: () -> Unit
 ) {
     val context = LocalContext.current
+    val adminService = remember { AdminSupabaseService() }
+    var adminModeAvailable by remember(profile.id) { mutableStateOf(false) }
     var expandedSections by rememberSaveable { mutableStateOf(setOf("Campus & tools")) }
+
+    LaunchedEffect(profile.id) {
+        adminModeAvailable = adminService.fetchCapability().getOrNull()?.isAdmin == true
+    }
 
     fun toggle(title: String) {
         expandedSections = if (title in expandedSections) {
@@ -162,6 +170,17 @@ fun AppMenuSheet(
             ProfileHeaderCard(profile) {
                 onDismiss()
                 onViewProfile()
+            }
+
+            if (adminModeAvailable) {
+                MenuItemRow(
+                    Icons.Outlined.Security,
+                    "Switch to Admin Account",
+                    "Open Blink administration"
+                ) {
+                    onDismiss()
+                    context.startActivity(Intent(context, AdminControlCenterActivity::class.java))
+                }
             }
 
             MenuItemRow(Icons.Outlined.Notifications, "Activity", "Mentions and notifications") {
