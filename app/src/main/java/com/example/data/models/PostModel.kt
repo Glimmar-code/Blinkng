@@ -28,6 +28,7 @@ data class FeedPost(
     val facultyTag: String = "",
     val isVerified: Boolean = false,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    val authorIsVip: Boolean = false,
     val timeAgo: String,
     val text: String,
     val images: List<String> = emptyList(),
@@ -110,7 +111,8 @@ data class Story(
     val university: String = "",
     val likesCount: Int = 0,
     val isLiked: Boolean = false,
-    val verificationBadge: VerificationBadge = VerificationBadge.NONE
+    val verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    val isVip: Boolean = false
 )
 
 data class ActivityItem(
@@ -127,7 +129,9 @@ data class ActivityItem(
     val targetUsername: String? = null,
     val targetType: String? = null,
     val previewText: String? = null,
-    val verificationBadge: VerificationBadge = VerificationBadge.NONE
+    val verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    val actorIsVip: Boolean = false,
+    val vipPriority: Boolean = false
 )
 
 data class MarketItem(
@@ -142,6 +146,7 @@ data class MarketItem(
     val sellerWhatsapp: String = "",
     val sellerIsVerified: Boolean = false,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    val sellerIsVip: Boolean = false,
     val sellerRating: Double = 0.0,
     val sellerReviewCount: Int = 0,
     val university: String = "",
@@ -166,7 +171,8 @@ data class LeaderboardUser(
     val streakDays: Int = 0,
     val coins: Int = 0,
     val bestStreak: Int = 0,
-    val verificationBadge: VerificationBadge = VerificationBadge.NONE
+    val verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    val isVip: Boolean = false
 )
 
 data class GameActionResult(
@@ -185,6 +191,7 @@ data class CommentReply(
     var likes: Int = 0,
     var isLiked: Boolean = false,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    val isVip: Boolean = false,
     val postId: String = "",
     val parentCommentId: String = "",
     val authorId: String = "",
@@ -201,6 +208,7 @@ data class Comment(
     var isLiked: Boolean = false,
     val replies: List<CommentReply> = emptyList(),
     val verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    val isVip: Boolean = false,
     val postId: String = "",
     val authorId: String = "",
     val displayName: String = ""
@@ -253,6 +261,7 @@ data class ChatConversation(
     val unreadCount: Int = 0,
     val isVerified: Boolean = false,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE,
+    val partnerIsVip: Boolean = false,
     val faculty: String = "SIMME",
     val lastSeen: String = "Last seen recently",
     val isMuted: Boolean = false,
