@@ -32,17 +32,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import coil.compose.AsyncImage
 import com.example.MainActivity
 import com.example.data.supabase.SupabaseService
 import com.example.ui.theme.BlinkTheme
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AccountSwitcherActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SupabaseService.initialize(applicationContext)
+        // Persist any refresh-token rotation that happened while this account was active
+        // before trying to restore a different saved account.
+        AccountSessionStore.syncCurrentTokens(this)
+
         setContent {
             BlinkTheme {
                 var accounts by remember { mutableStateOf(AccountSessionStore.list(this@AccountSwitcherActivity)) }
@@ -73,20 +79,44 @@ class AccountSwitcherActivity : ComponentActivity() {
                                         Button(onClick = {
                                             error = null
                                             switchingUserId = account.userId
-                                            CoroutineScope(Dispatchers.IO).launch {
-                                                val refreshed = SupabaseSessionRefresher.refresh(account.refreshToken)
-                                                runOnUiThread {
+                                            lifecycleScope.launch(Dispatchers.IO) {
+                                                // Re-read in case the active account's tokens were rotated after
+                                                // this screen was first composed.
+                                                AccountSessionStore.syncCurrentTokens(this@AccountSwitcherActivity)
+                                                val latestAccount = AccountSessionStore.list(this@AccountSwitcherActivity)
+                                                    .firstOrNull { it.userId == account.userId }
+                                                    ?: account
+                                                val refreshed = SupabaseSessionRefresher.refresh(latestAccount.refreshToken)
+
+                                                withContext(Dispatchers.Main) {
                                                     refreshed.fold(
                                                         onSuccess = { session ->
-                                                            AccountSessionStore.switchTo(this@AccountSwitcherActivity, account, session.accessToken, session.refreshToken)
+                                                            AccountSessionStore.switchTo(
+                                                                this@AccountSwitcherActivity,
+                                                                latestAccount,
+                                                                session.accessToken,
+                                                                session.refreshToken
+                                                            )
                                                             startActivity(Intent(this@AccountSwitcherActivity, MainActivity::class.java).apply {
                                                                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                                                             })
                                                             finish()
                                                         },
-                                                        onFailure = {
+                                                        onFailure = { throwable ->
                                                             switchingUserId = null
-                                                            error = "${account.username}: session expired. Please sign in again."
+                                                            val refreshFailure = throwable as? SupabaseSessionRefresher.RefreshFailure
+                                                            if (refreshFailure?.sessionExpired == true) {
+                                                                // Never leave a known-revoked token in the one-tap switch list.
+                                                                AccountSessionStore.rememberIdentifier(
+                                                                    this@AccountSwitcherActivity,
+                                                                    latestAccount.email.ifBlank { latestAccount.username }
+                                                                )
+                                                                AccountSessionStore.remove(this@AccountSwitcherActivity, latestAccount.userId)
+                                                                accounts = AccountSessionStore.list(this@AccountSwitcherActivity)
+                                                                error = "@${latestAccount.username}'s saved sign-in expired. Tap Add account and sign in again."
+                                                            } else {
+                                                                error = "Couldn't switch accounts. Check your connection and try again."
+                                                            }
                                                         }
                                                     )
                                                 }
@@ -99,11 +129,14 @@ class AccountSwitcherActivity : ComponentActivity() {
                     }
                     Button(
                         onClick = {
-                            val recent = accounts.firstOrNull()
-                            AccountSessionStore.rememberIdentifier(
-                                this@AccountSwitcherActivity,
-                                recent?.email?.takeIf { it.isNotBlank() } ?: recent?.username.orEmpty()
-                            )
+                            AccountSessionStore.syncCurrentTokens(this@AccountSwitcherActivity)
+                            if (AccountSessionStore.lastIdentifier(this@AccountSwitcherActivity).isBlank()) {
+                                val recent = accounts.firstOrNull()
+                                AccountSessionStore.rememberIdentifier(
+                                    this@AccountSwitcherActivity,
+                                    recent?.email?.takeIf { it.isNotBlank() } ?: recent?.username.orEmpty()
+                                )
+                            }
                             AccountSessionStore.setSignInRequired(this@AccountSwitcherActivity, true)
                             SupabaseService.clearSession()
                             getSharedPreferences("blink_auth_prefs", MODE_PRIVATE).edit().clear().apply()
