@@ -1,0 +1,89 @@
+name: One-shot native call signaling hardening
+
+on:
+  push:
+    branches:
+      - fix/native-chat-calls-20260907
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/native-chat-calls-20260907
+      - name: Harden call signal ordering and ICE buffering
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected source block not found in {path}")
+              p.write_text(text.replace(old, new, 1))
+
+          activity = "app/src/main/java/com/example/call/CallActivity.kt"
+          rtc = "app/src/main/java/com/example/call/WebRtcCallClient.kt"
+
+          replace_once(
+              activity,
+              "import kotlinx.coroutines.launch\n",
+              "import kotlinx.coroutines.launch\nimport kotlinx.coroutines.sync.Mutex\nimport kotlinx.coroutines.sync.withLock\n",
+          )
+
+          replace_once(
+              activity,
+              "    private var lastSignalId = 0L\n    private val pendingSignals = mutableListOf<CallSignal>()\n",
+              "    private var lastFetchedSignalId = 0L\n    private val processedSignalIds = mutableSetOf<Long>()\n    private val pendingSignals = mutableListOf<CallSignal>()\n    private val signalSendMutex = Mutex()\n",
+          )
+
+          replace_once(
+              activity,
+              '''    private suspend fun synchronizeSignals() {\n        val active = call ?: return\n        repository.fetchSignals(active.id, lastSignalId).getOrNull()?.forEach { processSignal(it) }\n    }\n\n    private fun processSignal(signal: CallSignal) {\n        val active = call ?: return\n        if (signal.callId != active.id || signal.id <= lastSignalId) return\n        lastSignalId = maxOf(lastSignalId, signal.id)\n        if (signal.senderId == repository.currentUserId()) return\n        val rtc = rtcClient\n        if (rtc == null) {\n            pendingSignals.add(signal)\n            return\n        }\n        when (signal.kind) {\n''',
+              '''    private suspend fun synchronizeSignals() {\n        val active = call ?: return\n        val signals = repository.fetchSignals(active.id, lastFetchedSignalId)\n            .getOrNull()\n            ?.sortedBy { it.id }\n            .orEmpty()\n        for (signal in signals) {\n            // Only ordered REST reconciliation advances the cursor. Realtime can arrive out of\n            // order, so letting a high realtime id move this cursor could permanently skip SDP.\n            lastFetchedSignalId = maxOf(lastFetchedSignalId, signal.id)\n            processSignal(signal)\n        }\n    }\n\n    private fun processSignal(signal: CallSignal) {\n        val active = call ?: return\n        if (signal.callId != active.id) return\n        if (signal.senderId == repository.currentUserId()) return\n        val rtc = rtcClient\n        if (rtc == null) {\n            if (pendingSignals.none { it.id == signal.id }) pendingSignals.add(signal)\n            return\n        }\n        if (!processedSignalIds.add(signal.id)) return\n        when (signal.kind) {\n''',
+          )
+
+          replace_once(
+              activity,
+              '''        override fun onLocalDescription(kind: String, description: SessionDescription) {\n            val active = call ?: return\n            lifecycleScope.launch {\n                repository.sendSignal(\n                    active.id,\n                    kind,\n                    JSONObject().put("type", description.type.canonicalForm()).put("sdp", description.description)\n                )\n            }\n        }\n\n        override fun onLocalIceCandidate(candidate: IceCandidate) {\n            val active = call ?: return\n            lifecycleScope.launch {\n                repository.sendSignal(\n                    active.id,\n                    "ice",\n                    JSONObject()\n                        .put("sdpMid", candidate.sdpMid ?: JSONObject.NULL)\n                        .put("sdpMLineIndex", candidate.sdpMLineIndex)\n                        .put("candidate", candidate.sdp)\n                )\n            }\n        }\n''',
+              '''        override fun onLocalDescription(kind: String, description: SessionDescription) {\n            val active = call ?: return\n            lifecycleScope.launch {\n                signalSendMutex.withLock {\n                    repository.sendSignal(\n                        active.id,\n                        kind,\n                        JSONObject().put("type", description.type.canonicalForm()).put("sdp", description.description)\n                    )\n                }\n            }\n        }\n\n        override fun onLocalIceCandidate(candidate: IceCandidate) {\n            val active = call ?: return\n            lifecycleScope.launch {\n                signalSendMutex.withLock {\n                    repository.sendSignal(\n                        active.id,\n                        "ice",\n                        JSONObject()\n                            .put("sdpMid", candidate.sdpMid ?: JSONObject.NULL)\n                            .put("sdpMLineIndex", candidate.sdpMLineIndex)\n                            .put("candidate", candidate.sdp)\n                    )\n                }\n            }\n        }\n''',
+          )
+
+          replace_once(
+              rtc,
+              "    private var speakerEnabled = type == CallType.VIDEO\n    private var released = false\n",
+              "    private var speakerEnabled = type == CallType.VIDEO\n    @Volatile private var remoteDescriptionReady = false\n    private val pendingRemoteIceCandidates = mutableListOf<IceCandidate>()\n    private var released = false\n",
+          )
+
+          replace_once(
+              rtc,
+              '''    fun applyRemoteDescription(kind: String, sdp: String) {\n        if (released || sdp.isBlank()) return\n        val descriptionType = when (kind.lowercase()) {\n            "offer" -> SessionDescription.Type.OFFER\n            "answer" -> SessionDescription.Type.ANSWER\n            else -> return\n        }\n        val description = SessionDescription(descriptionType, sdp)\n        peerConnection.setRemoteDescription(object : BaseSdpObserver() {\n            override fun onSetSuccess() {\n                if (descriptionType == SessionDescription.Type.OFFER) createAnswer()\n            }\n        }, description)\n    }\n\n    fun addRemoteIceCandidate(sdpMid: String?, lineIndex: Int, candidate: String) {\n        if (released || candidate.isBlank()) return\n        val accepted = peerConnection.addIceCandidate(IceCandidate(sdpMid, lineIndex, candidate))\n        if (!accepted) Log.w(TAG, "Remote ICE candidate was rejected")\n    }\n''',
+              '''    fun applyRemoteDescription(kind: String, sdp: String) {\n        if (released || sdp.isBlank()) return\n        val descriptionType = when (kind.lowercase()) {\n            "offer" -> SessionDescription.Type.OFFER\n            "answer" -> SessionDescription.Type.ANSWER\n            else -> return\n        }\n        val description = SessionDescription(descriptionType, sdp)\n        synchronized(pendingRemoteIceCandidates) {\n            remoteDescriptionReady = false\n        }\n        peerConnection.setRemoteDescription(object : BaseSdpObserver() {\n            override fun onSetSuccess() {\n                val queued = synchronized(pendingRemoteIceCandidates) {\n                    remoteDescriptionReady = true\n                    pendingRemoteIceCandidates.toList().also { pendingRemoteIceCandidates.clear() }\n                }\n                queued.forEach(::addIceCandidateNow)\n                if (descriptionType == SessionDescription.Type.OFFER) createAnswer()\n            }\n        }, description)\n    }\n\n    fun addRemoteIceCandidate(sdpMid: String?, lineIndex: Int, candidate: String) {\n        if (released || candidate.isBlank()) return\n        val iceCandidate = IceCandidate(sdpMid, lineIndex, candidate)\n        synchronized(pendingRemoteIceCandidates) {\n            if (!remoteDescriptionReady) {\n                pendingRemoteIceCandidates.add(iceCandidate)\n                return\n            }\n        }\n        addIceCandidateNow(iceCandidate)\n    }\n\n    private fun addIceCandidateNow(candidate: IceCandidate) {\n        if (released) return\n        val accepted = peerConnection.addIceCandidate(candidate)\n        if (!accepted) Log.w(TAG, "Remote ICE candidate was rejected")\n    }\n''',
+          )
+
+          # Ensure the old lossy cursor is gone and the new safety mechanisms are present.
+          activity_text = Path(activity).read_text()
+          rtc_text = Path(rtc).read_text()
+          assert "lastSignalId" not in activity_text
+          assert "lastFetchedSignalId" in activity_text
+          assert "signalSendMutex.withLock" in activity_text
+          assert "processedSignalIds.add" in activity_text
+          assert "pendingRemoteIceCandidates" in rtc_text
+          assert "remoteDescriptionReady" in rtc_text
+          PY
+      - name: Commit hardened signaling and remove one-shot workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-call-signaling-order.yml
+          git add app/src/main/java/com/example/call/CallActivity.kt app/src/main/java/com/example/call/WebRtcCallClient.kt
+          git commit -m "Harden native call signaling ordering"
+          git push origin HEAD:fix/native-chat-calls-20260907
