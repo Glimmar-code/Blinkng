@@ -14,7 +14,7 @@ report_conflict() {
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     echo "----- $file -----"
-    git diff --cc -- "$file" | sed -n '1,480p' || true
+    git diff --cc -- "$file" | sed -n '1,520p' || true
   done < <(git diff --name-only --diff-filter=U)
 }
 
@@ -130,11 +130,47 @@ PY
   git commit --no-edit
 }
 
+merge_notifications() {
+  local branch="fix/professional-notifications-20260907"
+  local file="app/src/main/java/com/example/ui/screens/ActivityScreen.kt"
+  echo "===== MERGE $branch ====="
+  if git merge --no-ff --no-edit "origin/$branch"; then return 0; fi
+  mapfile -t c < <(git diff --name-only --diff-filter=U)
+  [ "${#c[@]}" -eq 1 ] && [ "${c[0]}" = "$file" ] || { report_conflict "$branch"; exit 10; }
+  python - <<'PY'
+from pathlib import Path
+import re
+p=Path('app/src/main/java/com/example/ui/screens/ActivityScreen.kt')
+s=p.read_text()
+if s.count('<<<<<<< HEAD') != 2:
+    raise SystemExit(f'Unexpected notification conflict count: {s.count("<<<<<<< HEAD")}')
+
+pattern=r'''<<<<<<< HEAD\n\s*val accent = if \(item\.vipPriority\) \{\n\s*Color\(0xFFF59E0B\)\n\s*\} else when \(category\) \{\n\s*NotificationFilter\.LIKES -> BlinkPink\n\s*NotificationFilter\.COMMENTS -> BlinkPurple\n\s*NotificationFilter\.MARKET -> Color\(0xFF22C55E\)\n\s*NotificationFilter\.ALL -> BlinkPink\n\s*\}\n=======\n\s*val isOfficial = item\.targetType\.equals\("notification", ignoreCase = true\)\n\s*val accent = notificationAccent\(category, isOfficial\)\n>>>>>>> origin/fix/professional-notifications-20260907'''
+repl='''    val isOfficial = item.targetType.equals("notification", ignoreCase = true)
+    val accent = if (item.vipPriority) Color(0xFFF59E0B) else notificationAccent(category, isOfficial)'''
+s,n=re.subn(pattern,repl,s,count=1)
+if n != 1: raise SystemExit('Could not resolve notification accent conflict')
+
+start=s.index('<<<<<<< HEAD')
+end=s.index('>>>>>>> origin/fix/professional-notifications-20260907',start)+len('>>>>>>> origin/fix/professional-notifications-20260907')
+block=s[start:end]
+ours=block.split('=======',1)[0].split('<<<<<<< HEAD\n',1)[1]
+theirs=block.split('=======\n',1)[1].rsplit('\n>>>>>>> origin/fix/professional-notifications-20260907',1)[0]
+# Both elements belong in the name row: VIP mark first, then official badge.
+s=s[:start]+ours+theirs+'\n'+s[end:]
+if '<<<<<<<' in s or '>>>>>>>' in s or '=======' in s:
+    raise SystemExit('Unresolved notification conflict markers remain')
+p.write_text(s)
+PY
+  git add "$file"
+  git commit --no-edit
+}
+
 # Already merged to main: fix/post-like-speed-reliability, game-professional-overhaul.
 merge_auth
 merge_admin
 merge_connect
-merge_one fix/professional-notifications-20260907
+merge_notifications
 merge_one fix/reel-route-target-20260907
 merge_one feature/professional-search-discover
 merge_one leaderboard-top10-professional
