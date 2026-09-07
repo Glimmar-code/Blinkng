@@ -86,6 +86,20 @@ class BlinkEconomyService {
         rpc("gift_blink_vip", JSONObject().put("p_recipient_username", username.trim()))
     }
 
+    suspend fun sendDigitalGift(inventoryId: String, username: String, message: String = "") = runCatching {
+        require(inventoryId.isNotBlank()) { "Digital gift inventory is missing." }
+        require(username.trim().isNotEmpty()) { "Enter a Blink username." }
+        require(message.length <= 200) { "Gift message must be 200 characters or less." }
+        rpc("send_blink_digital_gift", JSONObject()
+            .put("p_inventory_id", inventoryId)
+            .put("p_recipient_username", username.trim())
+            .put("p_message", message.trim().takeIf { it.isNotBlank() } ?: JSONObject.NULL))
+    }
+
+    suspend fun vipStatusByUsername(username: String) = runCatching {
+        rpc("get_blink_vip_status_by_username", JSONObject().put("p_username", username.trim()))
+    }
+
     private fun readableError(raw: String, code: Int): String {
         val message = runCatching { JSONObject(raw).optString("message") }.getOrDefault(raw)
         return when {
@@ -96,6 +110,9 @@ class BlinkEconomyService {
             message.contains("BENEFIT_EXHAUSTED") -> "That VIP benefit has already been used for this pass."
             message.contains("ALREADY_CLAIMED_TODAY") -> "Today's VIP coin bonus is already claimed."
             message.contains("INVALID_RECIPIENT") -> "That account cannot receive this gift."
+            message.contains("RECIPIENT_REQUIRED") -> "Enter the recipient's Blink username."
+            message.contains("DIGITAL_GIFT_NOT_AVAILABLE") -> "This digital gift is no longer available in your Vault."
+            message.contains("MESSAGE_TOO_LONG") -> "Gift message must be 200 characters or less."
             message.isNotBlank() -> message
             else -> "Blink Store request failed ($code)."
         }
