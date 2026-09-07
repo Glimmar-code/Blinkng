@@ -8,6 +8,12 @@ plugins {
 
 kotlin {
     jvmToolchain(17)
+    sourceSets {
+        main {
+            // Compile the same platform-neutral Blinkng contracts/logic as Android.
+            kotlin.srcDir("../shared/src/main/kotlin")
+        }
+    }
 }
 
 dependencies {
