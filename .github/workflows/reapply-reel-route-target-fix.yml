@@ -1,0 +1,105 @@
+name: Reapply Reel route target fix
+
+on:
+  push:
+    branches:
+      - fix/reel-route-target-20260907
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/reel-route-target-20260907
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply Reel route fix on latest main
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected one match in {path}, found {count}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          vm = "app/src/main/java/com/example/viewmodel/BlinkViewModel.kt"
+          main = "app/src/main/java/com/example/MainActivity.kt"
+          premium = "app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt"
+          reels = "app/src/main/java/com/example/ui/screens/VideoReelsScreen.kt"
+
+          replace_once(vm,
+              "    val feedSubTab: Int = 0,\n    val isOnline: Boolean = true,",
+              "    val feedSubTab: Int = 0,\n    val routedReelId: String? = null,\n    val isOnline: Boolean = true,")
+
+          replace_once(vm,
+              "                        _uiState.value = state.copy(\n                            selectedTab = MainTab.HOME,\n                            feedSubTab = 1,\n                            reels = listOf(post) + state.reels.filterNot { it.id == post.id },",
+              "                        _uiState.value = state.copy(\n                            selectedTab = MainTab.HOME,\n                            feedSubTab = 1,\n                            routedReelId = post.id,\n                            reels = listOf(post) + state.reels.filterNot { it.id == post.id },")
+
+          replace_once(vm,
+              "                        _uiState.value = state.copy(\n                            selectedTab = MainTab.HOME,\n                            feedSubTab = 0,\n                            posts = listOf(post) + state.posts.filterNot { it.id == post.id },",
+              "                        _uiState.value = state.copy(\n                            selectedTab = MainTab.HOME,\n                            feedSubTab = 0,\n                            routedReelId = null,\n                            posts = listOf(post) + state.posts.filterNot { it.id == post.id },")
+
+          replace_once(vm,
+              "                        _uiState.value = state.copy(\n                            selectedTab = MainTab.HOME,\n                            viewingProfile = profile,",
+              "                        _uiState.value = state.copy(\n                            selectedTab = MainTab.HOME,\n                            routedReelId = null,\n                            viewingProfile = profile,")
+
+          replace_once(vm,
+              "        _uiState.value = _uiState.value.copy(\n            selectedTab = tab,\n            feedSubTab = nextFeedSubTab,\n            viewingProfile = null,",
+              "        _uiState.value = _uiState.value.copy(\n            selectedTab = tab,\n            feedSubTab = nextFeedSubTab,\n            routedReelId = null,\n            viewingProfile = null,")
+
+          replace_once(vm,
+              "    fun setFeedSubTab(tab: Int) {\n        _uiState.value = _uiState.value.copy(feedSubTab = tab.coerceIn(0, 3))\n        persistUiPreferences()\n    }",
+              "    fun setFeedSubTab(tab: Int) {\n        _uiState.value = _uiState.value.copy(\n            feedSubTab = tab.coerceIn(0, 3),\n            routedReelId = null\n        )\n        persistUiPreferences()\n    }")
+
+          replace_once(vm,
+              "                _uiState.value = _uiState.value.copy(\n                    selectedTab = MainTab.HOME,\n                    feedSubTab = if (target.isReel) 1 else 0\n                )",
+              "                _uiState.value = _uiState.value.copy(\n                    selectedTab = MainTab.HOME,\n                    feedSubTab = if (target.isReel) 1 else 0,\n                    routedReelId = target.id.takeIf { target.isReel }\n                )")
+
+          replace_once(main,
+              "                        currentSubTab = uiState.feedSubTab,\n                        onSubTabChanged = { viewModel.setFeedSubTab(it) },",
+              "                        currentSubTab = uiState.feedSubTab,\n                        routedReelId = uiState.routedReelId,\n                        onSubTabChanged = { viewModel.setFeedSubTab(it) },")
+
+          replace_once(premium,
+              "    onBottomBarVisibilityChange: (Boolean) -> Unit = {},\n    hasUnreadNotifications: Boolean = false\n) {",
+              "    onBottomBarVisibilityChange: (Boolean) -> Unit = {},\n    hasUnreadNotifications: Boolean = false,\n    routedReelId: String? = null\n) {")
+
+          replace_once(premium,
+              "    var launchReelId by rememberSaveable(resumeUserKey) { mutableStateOf<String?>(null) }\n    var launchReelPositionMs by rememberSaveable(resumeUserKey) { mutableStateOf(0L) }\n\n    fun openReelsAt",
+              "    var launchReelId by rememberSaveable(resumeUserKey) { mutableStateOf<String?>(null) }\n    var launchReelPositionMs by rememberSaveable(resumeUserKey) { mutableStateOf(0L) }\n\n    LaunchedEffect(currentSubTab) {\n        if (currentSubTab != 1 && launchReelId != null) {\n            launchReelId = null\n            launchReelPositionMs = 0L\n        }\n    }\n\n    fun openReelsAt")
+
+          replace_once(premium,
+              "            initialReelId = launchReelId,\n            initialReelPositionMs = launchReelPositionMs",
+              "            initialReelId = routedReelId ?: launchReelId,\n            initialReelPositionMs = if (routedReelId != null) 0L else launchReelPositionMs")
+
+          replace_once(reels,
+              "    val pager = rememberPagerState(\n        initialPage = initialPage,\n        pageCount = { reels.size }\n    )\n    var pendingLaunchReelId",
+              "    val pager = rememberPagerState(\n        initialPage = initialPage,\n        pageCount = { reels.size }\n    )\n\n    LaunchedEffect(initialReelId) {\n        val targetId = initialReelId ?: return@LaunchedEffect\n        val targetIndex = reels.indexOfFirst { it.id == targetId }\n        if (targetIndex >= 0 && pager.currentPage != targetIndex) {\n            pager.scrollToPage(targetIndex)\n        }\n    }\n\n    var pendingLaunchReelId")
+
+          print("Applied exact Reel route target fix on latest main.")
+          PY
+
+      - name: Remove one-shot workflow
+        run: rm .github/workflows/reapply-reel-route-target-fix.yml
+
+      - name: Commit route fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: route shared reels to exact target"
+          git push origin HEAD:fix/reel-route-target-20260907
