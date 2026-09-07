@@ -72,6 +72,8 @@ class WebRtcCallClient(
     private var microphoneEnabled = true
     private var cameraEnabled = type == CallType.VIDEO
     private var speakerEnabled = type == CallType.VIDEO
+    @Volatile private var remoteDescriptionReady = false
+    private val pendingRemoteIceCandidates = mutableListOf<IceCandidate>()
     private var released = false
 
     init {
@@ -160,8 +162,16 @@ class WebRtcCallClient(
             else -> return
         }
         val description = SessionDescription(descriptionType, sdp)
+        synchronized(pendingRemoteIceCandidates) {
+            remoteDescriptionReady = false
+        }
         peerConnection.setRemoteDescription(object : BaseSdpObserver() {
             override fun onSetSuccess() {
+                val queued = synchronized(pendingRemoteIceCandidates) {
+                    remoteDescriptionReady = true
+                    pendingRemoteIceCandidates.toList().also { pendingRemoteIceCandidates.clear() }
+                }
+                queued.forEach(::addIceCandidateNow)
                 if (descriptionType == SessionDescription.Type.OFFER) createAnswer()
             }
         }, description)
@@ -169,7 +179,19 @@ class WebRtcCallClient(
 
     fun addRemoteIceCandidate(sdpMid: String?, lineIndex: Int, candidate: String) {
         if (released || candidate.isBlank()) return
-        val accepted = peerConnection.addIceCandidate(IceCandidate(sdpMid, lineIndex, candidate))
+        val iceCandidate = IceCandidate(sdpMid, lineIndex, candidate)
+        synchronized(pendingRemoteIceCandidates) {
+            if (!remoteDescriptionReady) {
+                pendingRemoteIceCandidates.add(iceCandidate)
+                return
+            }
+        }
+        addIceCandidateNow(iceCandidate)
+    }
+
+    private fun addIceCandidateNow(candidate: IceCandidate) {
+        if (released) return
+        val accepted = peerConnection.addIceCandidate(candidate)
         if (!accepted) Log.w(TAG, "Remote ICE candidate was rejected")
     }
 

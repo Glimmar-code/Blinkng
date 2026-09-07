@@ -64,6 +64,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.webrtc.IceCandidate
 import org.webrtc.PeerConnection
@@ -140,8 +142,10 @@ class CallActivity : ComponentActivity() {
     private var pollJob: Job? = null
     private var durationJob: Job? = null
     private var reconnectJob: Job? = null
-    private var lastSignalId = 0L
+    private var lastFetchedSignalId = 0L
+    private val processedSignalIds = mutableSetOf<Long>()
     private val pendingSignals = mutableListOf<CallSignal>()
+    private val signalSendMutex = Mutex()
     private val ending = AtomicBoolean(false)
     private var mediaRequestedForIncomingAnswer = false
     private var mediaStarted = false
@@ -412,19 +416,28 @@ class CallActivity : ComponentActivity() {
 
     private suspend fun synchronizeSignals() {
         val active = call ?: return
-        repository.fetchSignals(active.id, lastSignalId).getOrNull()?.forEach { processSignal(it) }
+        val signals = repository.fetchSignals(active.id, lastFetchedSignalId)
+            .getOrNull()
+            ?.sortedBy { it.id }
+            .orEmpty()
+        for (signal in signals) {
+            // Only ordered REST reconciliation advances the cursor. Realtime can arrive out of
+            // order, so letting a high realtime id move this cursor could permanently skip SDP.
+            lastFetchedSignalId = maxOf(lastFetchedSignalId, signal.id)
+            processSignal(signal)
+        }
     }
 
     private fun processSignal(signal: CallSignal) {
         val active = call ?: return
-        if (signal.callId != active.id || signal.id <= lastSignalId) return
-        lastSignalId = maxOf(lastSignalId, signal.id)
+        if (signal.callId != active.id) return
         if (signal.senderId == repository.currentUserId()) return
         val rtc = rtcClient
         if (rtc == null) {
-            pendingSignals.add(signal)
+            if (pendingSignals.none { it.id == signal.id }) pendingSignals.add(signal)
             return
         }
+        if (!processedSignalIds.add(signal.id)) return
         when (signal.kind) {
             "offer", "answer" -> {
                 val sdp = signal.payload.optString("sdp")
@@ -477,25 +490,29 @@ class CallActivity : ComponentActivity() {
         override fun onLocalDescription(kind: String, description: SessionDescription) {
             val active = call ?: return
             lifecycleScope.launch {
-                repository.sendSignal(
-                    active.id,
-                    kind,
-                    JSONObject().put("type", description.type.canonicalForm()).put("sdp", description.description)
-                )
+                signalSendMutex.withLock {
+                    repository.sendSignal(
+                        active.id,
+                        kind,
+                        JSONObject().put("type", description.type.canonicalForm()).put("sdp", description.description)
+                    )
+                }
             }
         }
 
         override fun onLocalIceCandidate(candidate: IceCandidate) {
             val active = call ?: return
             lifecycleScope.launch {
-                repository.sendSignal(
-                    active.id,
-                    "ice",
-                    JSONObject()
-                        .put("sdpMid", candidate.sdpMid ?: JSONObject.NULL)
-                        .put("sdpMLineIndex", candidate.sdpMLineIndex)
-                        .put("candidate", candidate.sdp)
-                )
+                signalSendMutex.withLock {
+                    repository.sendSignal(
+                        active.id,
+                        "ice",
+                        JSONObject()
+                            .put("sdpMid", candidate.sdpMid ?: JSONObject.NULL)
+                            .put("sdpMLineIndex", candidate.sdpMLineIndex)
+                            .put("candidate", candidate.sdp)
+                    )
+                }
             }
         }
 
