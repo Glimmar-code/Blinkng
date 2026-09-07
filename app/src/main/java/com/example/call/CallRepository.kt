@@ -65,8 +65,20 @@ class CallRepository {
             JSONObject().put("p_call_id", callId).put("p_reason", reason.take(120))
         )
 
-    suspend fun expireCall(callId: String): Result<BlinkCall> =
-        rpcCall("expire_call", JSONObject().put("p_call_id", callId))
+    suspend fun expireCall(callId: String): Result<BlinkCall> {
+        val result = rpcCall("expire_call", JSONObject().put("p_call_id", callId))
+        val expired = result.getOrNull()
+        if (
+            expired?.status == CallStatus.MISSED &&
+            expired.callerId == currentUserId()
+        ) {
+            // The caller owns the missed-call push. This avoids the receiver notifying the
+            // caller about the caller's own unanswered attempt when both apps are polling.
+            dispatchPush(callId, "missed")
+                .onFailure { Log.w(TAG, "Unable to dispatch missed call notification", it) }
+        }
+        return result
+    }
 
     suspend fun fetchCall(callId: String): Result<BlinkCall> = withContext(Dispatchers.IO) {
         runCatching {
