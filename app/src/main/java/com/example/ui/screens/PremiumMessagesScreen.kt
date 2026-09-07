@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import android.app.Activity
@@ -654,7 +655,7 @@ private fun PremiumMessagesHome(
     isConnected: Boolean,
     isLoading: Boolean
 ) {
-    var query by remember { mutableStateOf("") }
+    var query by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:query:1")
     val sortedConversations = remember(conversations) {
         conversations.sortedWith(
             compareByDescending<ChatConversation> { it.lastMessageRawTime }
@@ -1240,7 +1241,7 @@ private fun PremiumChatDetail(
     onToggleFullScreen: () -> Unit
 ) {
     val context = LocalContext.current
-    var text by rememberSaveable(conversation.partnerUsername) { mutableStateOf("") }
+    var text by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:text:2")
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
@@ -1250,7 +1251,7 @@ private fun PremiumChatDetail(
     var showOverflow by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var confirmClearChat by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var searchVisible by remember(conversation.partnerUsername) { mutableStateOf(false) }
-    var searchQuery by remember(conversation.partnerUsername) { mutableStateOf("") }
+    var searchQuery by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:searchQuery:3")
     var pinnedOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     val listState = rememberLazyListState()

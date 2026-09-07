@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedContent
@@ -176,7 +177,7 @@ fun ConnectHubPremiumPanel(
 ) {
     var match by remember { mutableStateOf<Pair<UserProfile, Int>?>(null) }
     var form by rememberSaveable { mutableStateOf(HubForm.NONE) }
-    var hubQuery by rememberSaveable { mutableStateOf("") }
+    var hubQuery by rememberPersistentTextState(key = "com/example/ui/screens/ConnectHubPremiumPanel.kt:hubQuery:1")
     var isMatching by remember { mutableStateOf(false) }
     var showMatchSpinDialog by rememberSaveable { mutableStateOf(false) }
     var matchRemainingCoins by remember { mutableStateOf<Long?>(null) }
@@ -800,7 +801,7 @@ private fun MatchSpinDialog(
     var selectedDepartment by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedLevel by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedRelationship by rememberSaveable { mutableStateOf<String?>(null) }
-    var typePrompt by rememberSaveable { mutableStateOf("") }
+    var typePrompt by rememberPersistentTextState(key = "com/example/ui/screens/ConnectHubPremiumPanel.kt:typePrompt:2")
     var onlineOnly by rememberSaveable { mutableStateOf(false) }
 
     val universityOptions = remember(universitySearch) {

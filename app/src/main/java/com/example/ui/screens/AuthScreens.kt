@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
+import com.example.auth.RememberedLoginStore
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -332,12 +335,15 @@ fun SignInScreen(
     onSwitchToSignUp: () -> Unit
 ) {
 
-    var emailOrUsername by rememberSaveable(initialIdentifier) {
-        mutableStateOf(initialIdentifier)
+    val context = LocalContext.current
+    val rememberedLogin = remember { RememberedLoginStore.load(context) }
+
+    var emailOrUsername by rememberSaveable(initialIdentifier, rememberedLogin?.identifier) {
+        mutableStateOf(rememberedLogin?.identifier?.takeIf { it.isNotBlank() } ?: initialIdentifier)
     }
 
-    var password by remember {
-        mutableStateOf("")
+    var password by rememberSaveable {
+        mutableStateOf(rememberedLogin?.password.orEmpty())
     }
 
     var passwordVisible by remember {
@@ -360,12 +366,23 @@ fun SignInScreen(
         mutableStateOf(false)
     }
 
-    var rememberMe by remember {
+    var rememberMe by rememberSaveable {
         mutableStateOf(true)
     }
 
     val coroutineScope =
         rememberCoroutineScope()
+
+    LaunchedEffect(rememberMe, emailOrUsername, password) {
+        delay(300)
+        if (rememberMe) {
+            if (emailOrUsername.isNotBlank() || password.isNotBlank()) {
+                RememberedLoginStore.save(context, emailOrUsername, password)
+            }
+        } else {
+            RememberedLoginStore.clear(context)
+        }
+    }
 
     var entranceReady by remember { mutableStateOf(false) }
     val entranceAlpha by animateFloatAsState(
@@ -525,8 +542,9 @@ fun SignInScreen(
 
                         Checkbox(
                             checked = rememberMe,
-                            onCheckedChange = {
-                                rememberMe = it
+                            onCheckedChange = { checked ->
+                                rememberMe = checked
+                                if (!checked) RememberedLoginStore.clear(context)
                             },
                             colors = CheckboxDefaults.colors(
                                 checkedColor = BlinkGold,
@@ -536,7 +554,7 @@ fun SignInScreen(
                         )
 
                         Text(
-                            "Keep me signed in",
+                            "Remember username & password",
                             color = DarkTextSecondary,
                             fontSize = 11.5.sp
                         )
@@ -723,21 +741,13 @@ fun SignUpScreen(
     onSwitchToSignIn: () -> Unit
 ) {
 
-    var fullName by remember {
-        mutableStateOf("")
-    }
+    var fullName by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:fullName:1")
 
-    var username by remember {
-        mutableStateOf("")
-    }
+    var username by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:username:2")
 
-    var email by remember {
-        mutableStateOf("")
-    }
+    var email by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:email:3")
 
-    var password by remember {
-        mutableStateOf("")
-    }
+    var password by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:password:4")
 
     var passwordVisible by remember {
         mutableStateOf(false)
@@ -1199,17 +1209,13 @@ fun ProfileSetupOnboardingScreen(
         )
     }
 
-    var department by remember {
-        mutableStateOf("")
-    }
+    var department by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:department:5")
 
     var selectedLevel by remember {
         mutableStateOf("200 Level")
     }
 
-    var bio by remember {
-        mutableStateOf("")
-    }
+    var bio by rememberPersistentTextState(key = "com/example/ui/screens/AuthScreens.kt:bio:6")
 
     var currentStep by remember {
         mutableIntStateOf(0)

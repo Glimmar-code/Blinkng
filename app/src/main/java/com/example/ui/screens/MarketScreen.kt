@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.animateContentSize
@@ -59,7 +60,7 @@ fun MarketScreen(
     isDark: Boolean
 ) {
     var selectedCategory by remember { mutableStateOf("All Categories") }
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by rememberPersistentTextState(key = "com/example/ui/screens/MarketScreen.kt:searchQuery:1")
     var showVerificationRequiredDialog by remember { mutableStateOf(false) }
 
     val searchSuggestions = remember(items) {

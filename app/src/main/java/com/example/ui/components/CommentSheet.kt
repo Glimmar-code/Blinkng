@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.core.animateFloatAsState
@@ -70,6 +71,7 @@ fun CommentSheet(
     isLoading: Boolean,
     isPosting: Boolean,
     currentUserId: String,
+    draftKey: String,
     mentionCandidates: List<UserProfile>,
     isDark: Boolean,
     onDismiss: () -> Unit,
@@ -78,7 +80,7 @@ fun CommentSheet(
     onReportComment: (commentId: String, reason: String) -> Unit,
     onProfileClick: (String) -> Unit
 ) {
-    var textInput by remember { mutableStateOf("") }
+    var textInput by rememberPersistentTextState(key = "comment_text", scope = draftKey)
     var replyParentId by remember { mutableStateOf<String?>(null) }
     var replyingToUsername by remember { mutableStateOf<String?>(null) }
     var reportingCommentId by remember { mutableStateOf<String?>(null) }

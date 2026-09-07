@@ -874,6 +874,7 @@ fun MainAppContent(
                 isLoading = uiState.isCommentsLoading,
                 isPosting = uiState.isPostingComment,
                 currentUserId = uiState.myProfile.id,
+                draftKey = uiState.activeCommentsPostId.orEmpty(),
                 mentionCandidates = (listOf(uiState.myProfile) + uiState.profiles)
                     .filter { it.username.isNotBlank() }
                     .distinctBy { it.username.trim().removePrefix("@").lowercase() },

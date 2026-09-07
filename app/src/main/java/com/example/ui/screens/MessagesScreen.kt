@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import android.content.Intent
@@ -891,9 +892,7 @@ private fun MessagesInboxContent(
     isLoading: Boolean = false
 ) {
 
-    var searchQuery by rememberSaveable {
-        mutableStateOf("")
-    }
+    var searchQuery by rememberPersistentTextState(key = "messages_search")
 
     var selectedFilter by rememberSaveable {
         mutableStateOf("All")
@@ -3267,9 +3266,10 @@ fun ChatConversationView(
     isLoadingMessages: Boolean = false
 ) {
 
-    var messageText by rememberSaveable {
-        mutableStateOf("")
-    }
+    var messageText by rememberPersistentTextState(
+        key = "chat_message",
+        scope = convo.id.ifBlank { convo.partnerUsername }
+    )
 
     var showChatSearch by rememberSaveable {
         mutableStateOf(false)

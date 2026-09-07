@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.data.local.rememberPersistentTextState
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1828,9 +1829,7 @@ private fun UniversityPickerDialog(
     onSelected: (String) -> Unit
 ) {
 
-    var query by remember {
-        mutableStateOf("")
-    }
+    var query by rememberPersistentTextState(key = "com/example/ui/screens/EditProfileScreen.kt:query:1")
 
     val universities =
         remember(
