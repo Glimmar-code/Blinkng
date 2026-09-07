@@ -67,8 +67,25 @@ jobs:
             git status --short
             exit 1
           fi
-          if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then
-            echo "Nothing new to push"
-          else
-            git push origin HEAD:main
-          fi
+
+          for attempt in 1 2 3 4; do
+            echo "Push attempt $attempt"
+            git fetch origin main
+
+            if ! git merge-base --is-ancestor origin/main HEAD; then
+              echo "main advanced; rebasing premium commit and re-running the Android gate"
+              git rebase origin/main
+              gradle :app:compileDebugKotlin --stacktrace --no-daemon
+              gradle :app:testDebugUnitTest --stacktrace --no-daemon
+              gradle :app:lintDebug --stacktrace --no-daemon
+              gradle :app:assembleDebugAndroidTest --stacktrace --no-daemon
+              gradle :app:assembleDebug --stacktrace --no-daemon
+            fi
+
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+          done
+
+          echo "main kept advancing during all safe push attempts"
+          exit 1
