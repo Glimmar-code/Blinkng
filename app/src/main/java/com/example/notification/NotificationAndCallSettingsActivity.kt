@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PhoneInTalk
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Videocam
@@ -63,9 +64,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.call.CallHistoryActivity
 import com.example.call.CallSoundPreferences
 import com.example.call.CallType
@@ -97,6 +101,7 @@ private data class ChannelSetting(
 @Composable
 private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val notificationManager = remember {
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -108,13 +113,23 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
     var vibrationEnabled by remember { mutableStateOf(CallSoundPreferences.vibrateEnabled(context)) }
     var voiceToneLabel by remember { mutableStateOf(CallSoundPreferences.ringtoneLabel(context, CallType.AUDIO)) }
     var videoToneLabel by remember { mutableStateOf(CallSoundPreferences.ringtoneLabel(context, CallType.VIDEO)) }
+    var notificationDeliveryEnabled by remember { mutableStateOf(BlinkNotificationHelper.areNotificationsEnabled(context)) }
+    var fullScreenCallAllowed by remember {
+        mutableStateOf(
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
+                notificationManager.canUseFullScreenIntent()
+        )
+    }
 
-    fun refreshCallSoundState() {
+    fun refreshAllState() {
         voiceRingEnabled = CallSoundPreferences.ringEnabled(context, CallType.AUDIO)
         videoRingEnabled = CallSoundPreferences.ringEnabled(context, CallType.VIDEO)
         vibrationEnabled = CallSoundPreferences.vibrateEnabled(context)
         voiceToneLabel = CallSoundPreferences.ringtoneLabel(context, CallType.AUDIO)
         videoToneLabel = CallSoundPreferences.ringtoneLabel(context, CallType.VIDEO)
+        notificationDeliveryEnabled = BlinkNotificationHelper.areNotificationsEnabled(context)
+        fullScreenCallAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
+            notificationManager.canUseFullScreenIntent()
         IncomingCallNotification.createChannels(context)
     }
 
@@ -139,7 +154,7 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
             CallSoundPreferences.setRingtoneUri(context, type, pickedUri)
             CallSoundPreferences.setRingEnabled(context, type, true)
         }
-        refreshCallSoundState()
+        refreshAllState()
     }
 
     fun chooseRingtone(type: CallType) {
@@ -159,12 +174,6 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
         )
     }
 
-    fun notificationsEnabled(): Boolean = BlinkNotificationHelper.areNotificationsEnabled(context)
-
-    fun fullScreenAllowed(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
-            notificationManager.canUseFullScreenIntent()
-
     fun previewUri(uri: Uri?) {
         previewRingtone?.stop()
         if (uri == null) return
@@ -182,6 +191,16 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
 
     fun preview(type: Int) {
         previewUri(RingtoneManager.getDefaultUri(type))
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) refreshAllState()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     DisposableEffect(Unit) {
@@ -275,26 +294,26 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
             item {
                 StatusCard(
                     title = "Notification delivery",
-                    value = if (notificationsEnabled()) "Enabled" else "Needs attention",
-                    detail = if (notificationsEnabled()) {
+                    value = if (notificationDeliveryEnabled) "Enabled" else "Needs attention",
+                    detail = if (notificationDeliveryEnabled) {
                         "Blink is allowed to post notifications on this device."
                     } else {
                         "Enable notifications so messages and incoming calls can alert you."
                     },
-                    healthy = notificationsEnabled()
+                    healthy = notificationDeliveryEnabled
                 )
             }
 
             item {
                 StatusCard(
                     title = "Full-screen incoming calls",
-                    value = if (fullScreenAllowed()) "Available" else "Permission off",
-                    detail = if (fullScreenAllowed()) {
+                    value = if (fullScreenCallAllowed) "Available" else "Permission off",
+                    detail = if (fullScreenCallAllowed) {
                         "Locked-screen calls can use Android's incoming-call surface when the system permits it."
                     } else {
                         "Android can still show a heads-up call alert, but full-screen ringing is currently disabled."
                     },
-                    healthy = fullScreenAllowed()
+                    healthy = fullScreenCallAllowed
                 )
             }
 
@@ -320,7 +339,7 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
                     ringingEnabled = voiceRingEnabled,
                     onToggle = { enabled ->
                         CallSoundPreferences.setRingEnabled(context, CallType.AUDIO, enabled)
-                        refreshCallSoundState()
+                        refreshAllState()
                     },
                     onChoose = { chooseRingtone(CallType.AUDIO) },
                     onPreview = { previewUri(CallSoundPreferences.ringtoneUri(context, CallType.AUDIO)) }
@@ -335,7 +354,7 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
                     ringingEnabled = videoRingEnabled,
                     onToggle = { enabled ->
                         CallSoundPreferences.setRingEnabled(context, CallType.VIDEO, enabled)
-                        refreshCallSoundState()
+                        refreshAllState()
                     },
                     onChoose = { chooseRingtone(CallType.VIDEO) },
                     onPreview = { previewUri(CallSoundPreferences.ringtoneUri(context, CallType.VIDEO)) }
@@ -366,10 +385,26 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
                             checked = vibrationEnabled,
                             onCheckedChange = { enabled ->
                                 CallSoundPreferences.setVibrateEnabled(context, enabled)
-                                refreshCallSoundState()
+                                refreshAllState()
                             }
                         )
                     }
+                }
+            }
+
+            item {
+                Button(
+                    onClick = {
+                        previewRingtone?.stop()
+                        previewRingtone = null
+                        CallSoundPreferences.reset(context)
+                        refreshAllState()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(7.dp))
+                    Text("Reset call sounds")
                 }
             }
 
