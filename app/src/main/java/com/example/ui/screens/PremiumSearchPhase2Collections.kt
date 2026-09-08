@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -24,9 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.LocationOn
-import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Photo
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Tag
@@ -37,10 +36,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,13 +53,14 @@ import coil.compose.AsyncImage
 import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
 import com.example.ui.theme.BlinkThemeTokens
+import java.util.Locale
 
 /**
- * Phase 2 search collections that sit on top of the stable Phase 1 search experience.
+ * Phase 2A discovery collections layered on top of the stable Phase 1 search UI.
  *
- * The host deliberately uses only data already present in BlinkUiState. This keeps
- * Testlab honest: no dead Marketplace/Communities/Event controls are exposed until
- * their global-search contracts are wired into the search surface.
+ * Only collections backed by data available on both Android and Windows ship here.
+ * Saved, Communities, Events and Marketplace remain staged until their cross-platform
+ * search contracts are available; this prevents attractive controls that cannot work.
  */
 private enum class PremiumSearchCollection(
     val label: String,
@@ -68,7 +68,6 @@ private enum class PremiumSearchCollection(
 ) {
     SEARCH("Search", Icons.Rounded.Search),
     TRENDING("Trending", Icons.Rounded.TrendingUp),
-    SAVED("Saved", Icons.Rounded.Bookmark),
     PLACES("Places", Icons.Rounded.LocationOn),
 }
 
@@ -108,6 +107,10 @@ internal fun PremiumSearchPhase2Host(
         (posts + serverPosts).distinctBy { it.id }
     }
 
+    BackHandler(enabled = collection != PremiumSearchCollection.SEARCH) {
+        collection = PremiumSearchCollection.SEARCH
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Crossfade(
             targetState = collection,
@@ -139,11 +142,6 @@ internal fun PremiumSearchPhase2Host(
                     profiles = allProfiles,
                     posts = allPosts,
                     onProfileClick = onProfileClick,
-                    onPostClick = onPostClick,
-                )
-
-                PremiumSearchCollection.SAVED -> PremiumSavedCollection(
-                    posts = allPosts,
                     onPostClick = onPostClick,
                 )
 
@@ -193,7 +191,7 @@ private fun PremiumSearchCollectionDock(
                     color = if (isSelected) colors.primaryBright.copy(alpha = 0.14f) else colors.surfaceElevated,
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
@@ -202,7 +200,7 @@ private fun PremiumSearchCollectionDock(
                             modifier = Modifier.size(17.dp),
                             tint = if (isSelected) colors.primaryBright else colors.textSecondary,
                         )
-                        Spacer(Modifier.width(5.dp))
+                        Spacer(Modifier.width(6.dp))
                         Text(
                             text = item.label,
                             fontSize = 11.sp,
@@ -276,31 +274,6 @@ private fun PremiumTrendingCollection(
             }
         } else {
             item { PremiumCollectionEmpty("Nothing is trending yet", "As people interact with posts and reels, rising content will appear here.") }
-        }
-    }
-}
-
-@Composable
-private fun PremiumSavedCollection(
-    posts: List<FeedPost>,
-    onPostClick: (FeedPost) -> Unit,
-) {
-    val saved = remember(posts) {
-        posts.filter { it.isBookmarked }
-            .sortedWith(compareByDescending<FeedPost> { it.createdAt }.thenByDescending(::phase2TrendScore))
-    }
-
-    PremiumCollectionScaffold(
-        title = "Saved content",
-        subtitle = "Your bookmarked posts and reels in one searchable-discovery collection",
-    ) {
-        if (saved.isEmpty()) {
-            item { PremiumCollectionEmpty("No saved content yet", "Bookmark a post or reel and it will be collected here automatically.") }
-        } else {
-            item { PremiumCollectionHeading("Saved", "${saved.size} item${if (saved.size == 1) "" else "s"}") }
-            items(saved, key = { "saved-${it.id}" }) { post ->
-                PremiumCollectionPostCard(post = post, onClick = { onPostClick(post) })
-            }
         }
     }
 }
@@ -489,7 +462,6 @@ private fun PremiumCollectionPostCard(post: FeedPost, onClick: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                 PremiumMetric(Icons.Rounded.TrendingUp, phase2CompactNumber(post.viewsCount.toLong()))
                 PremiumMetric(Icons.Rounded.Tag, phase2CompactNumber(post.likes.toLong()) + " likes")
-                if (post.isBookmarked) PremiumMetric(Icons.Rounded.Bookmark, "Saved")
                 if (!post.location.isNullOrBlank()) PremiumMetric(Icons.Rounded.LocationOn, post.location.orEmpty())
             }
         }
@@ -539,7 +511,13 @@ private fun PremiumPlaceCard(place: PremiumPlaceResult, onPostClick: (FeedPost) 
                             Column(Modifier.padding(10.dp)) {
                                 Text(post.author, maxLines = 1, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
                                 Spacer(Modifier.height(4.dp))
-                                Text(post.text.ifBlank { if (post.isReel) "Reel at ${place.label}" else "Post at ${place.label}" }, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 10.sp, color = colors.textSecondary)
+                                Text(
+                                    post.text.ifBlank { if (post.isReel) "Reel at ${place.label}" else "Post at ${place.label}" },
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 10.sp,
+                                    color = colors.textSecondary,
+                                )
                             }
                         }
                     }
@@ -576,7 +554,12 @@ private fun phase2TrendScore(post: FeedPost): Long =
         post.repostsCount.toLong() * 7L
 
 private fun phase2CompactNumber(value: Long): String = when {
-    value >= 1_000_000L -> String.format("%.1fM", value / 1_000_000.0).removeSuffix(".0M") + if (value % 1_000_000L == 0L) "M" else ""
-    value >= 1_000L -> String.format("%.1fK", value / 1_000.0).removeSuffix(".0K") + if (value % 1_000L == 0L) "K" else ""
+    value >= 1_000_000L -> compactWithSuffix(value / 1_000_000.0, "M")
+    value >= 1_000L -> compactWithSuffix(value / 1_000.0, "K")
     else -> value.toString()
+}
+
+private fun compactWithSuffix(value: Double, suffix: String): String {
+    val formatted = String.format(Locale.US, "%.1f", value).removeSuffix(".0")
+    return "$formatted$suffix"
 }
