@@ -40,13 +40,13 @@ enum class BlinkNotificationType(
                 "call_update", "call_status", "missed_call" -> CALL_UPDATE
                 "market", "marketplace", "buyer_inquiry" -> MARKET
                 "market_order", "order", "order_update" -> MARKET_ORDER
-                "like", "post_like", "comment_like", "story_like" -> LIKE
+                "like", "post_like", "comment_like" -> LIKE
                 "comment", "post_comment" -> COMMENT
                 "reply", "comment_reply" -> REPLY
                 "follow", "follower", "follow_request", "follow_accepted" -> FOLLOW
                 "mention", "tag" -> MENTION
                 "repost", "share" -> REPOST
-                "story", "story_reply", "story_reaction", "story_mention" -> STORY
+                "story", "story_like", "story_reply", "story_reaction", "story_mention" -> STORY
                 "reel", "reel_like", "reel_comment", "reel_reply", "reel_share" -> REEL
                 "admin", "announcement", "admin_announcement", "broadcast" -> ADMIN
                 "security", "login_alert", "password_changed", "account_alert" -> SECURITY
