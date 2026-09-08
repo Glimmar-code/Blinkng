@@ -39,3 +39,14 @@ Windows equivalent or reason no equivalent is needed: No equivalent is required 
 Backend/shared behavior preserved: Call signaling, call status transitions, timeout semantics, missed-call persistence, notification deduplication, and shared backend behavior are unchanged.
 Tests/validation: Require the Android quality gate, Windows parity gate, and Windows desktop build to pass before merging.
 Owner/reviewer note: Keep this exception limited to Android legacy ringtone playback; any shared call-semantic change still requires Windows parity.
+
+
+PARITY-EXCEPTION: android-touch-chat-swipe-navigation
+Date: 2026-09-08
+Feature: Touch gestures for direct chat navigation and reply
+Android behavior: Swipe left on any incoming or outgoing message bubble to reply. Swipe right across the open chat to return directly to Messages. The former interactive 70/30 inbox reveal is removed.
+Why this is genuinely Android-only: This change is specifically a touchscreen gesture adapter implemented with Jetpack Compose pointer input.
+Windows equivalent or reason no equivalent is needed: Windows retains direct full-screen chat/inbox navigation through desktop pointer/keyboard controls; no touch-drag pane is required. Message reply semantics remain the same shared product behavior.
+Backend/shared behavior preserved: Message storage, reply state semantics, conversation identity, delivery/read receipts, notification routing, and backend APIs are unchanged.
+Tests/validation: Android compile/unit/lint/APK quality gate plus Windows parity/build gate must pass before merge.
+Owner/reviewer note: Only the Android touch interaction is excepted; any change to message/reply business semantics still requires Windows parity.
