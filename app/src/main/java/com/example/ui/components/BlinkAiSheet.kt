@@ -17,10 +17,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -123,9 +123,11 @@ fun BlinkAiSheet(
             ttsReady = status == TextToSpeech.SUCCESS
         }
     }
+
     LaunchedEffect(ttsReady) {
         if (ttsReady) textToSpeech.language = Locale.getDefault()
     }
+
     DisposableEffect(Unit) {
         onDispose {
             service.cancelActiveRequest()
@@ -139,7 +141,7 @@ fun BlinkAiSheet(
             listOf(
                 BlinkAiMessage(
                     id = 1L,
-                    text = "Hi! I’m Blink AI. Ask anything, choose a mode, search the web when needed, attach images or a voice note, or let me help with confirmed Blink profile changes.",
+                    text = "Hi! I’m Blink AI. Ask anything, attach media, search the web, or use one of the focused modes below.",
                     fromUser = false
                 )
             )
@@ -172,12 +174,27 @@ fun BlinkAiSheet(
             ?.firstOrNull()
             ?.trim()
         if (!spoken.isNullOrBlank()) {
-            input = listOf(input.trim(), spoken).filter { it.isNotBlank() }.joinToString(" ").take(8_000)
+            input = listOf(input.trim(), spoken)
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+                .take(8_000)
         }
     }
 
     fun appendAssistant(text: String, metadata: String = "") {
         messages = messages + BlinkAiMessage(nextId++, text, false, metadata)
+    }
+
+    fun friendlyError(throwable: Throwable, fallback: String): String {
+        val message = throwable.message?.trim().orEmpty()
+        return when {
+            message.contains("Canceled", ignoreCase = true) -> "Generation stopped."
+            message.contains("not configured", ignoreCase = true) ||
+                message.contains("missing_gemini_key", ignoreCase = true) ->
+                "Blink AI is temporarily unavailable because its server AI provider is not configured."
+            message.isNotBlank() -> message
+            else -> fallback
+        }
     }
 
     fun startNewChat() {
@@ -207,7 +224,10 @@ fun BlinkAiSheet(
             snapshot.imageUris.isNotEmpty() -> "Analyze ${if (snapshot.imageUris.size == 1) "this image" else "these images"}."
             else -> "Listen to this voice note."
         }
-        if (showUserBubble) messages = messages + BlinkAiMessage(nextId++, visibleText, true)
+
+        if (showUserBubble) {
+            messages = messages + BlinkAiMessage(nextId++, visibleText, true)
+        }
         error = null
         isSending = true
         lastRequest = snapshot
@@ -237,6 +257,7 @@ fun BlinkAiSheet(
                     pendingActionImageUri = snapshot.imageUris.firstOrNull()
                     audioUri = null
                 }
+
                 val metadata = buildList {
                     reply.mode?.let { add(it.replaceFirstChar { c -> c.uppercase() }) }
                     reply.model?.let { add(it) }
@@ -244,13 +265,10 @@ fun BlinkAiSheet(
                     if (reply.searchedWeb) add("Web")
                     if (snapshot.temporaryChat) add("Temporary")
                 }.joinToString(" • ")
+
                 appendAssistant(reply.text, metadata)
             }.onFailure { throwable ->
-                error = if (throwable.message?.contains("Canceled", ignoreCase = true) == true) {
-                    "Generation stopped."
-                } else {
-                    throwable.message ?: "Blink AI couldn’t answer that request."
-                }
+                error = friendlyError(throwable, "Blink AI couldn’t answer that request.")
             }
             isSending = false
         }
@@ -259,6 +277,7 @@ fun BlinkAiSheet(
     fun sendMessage() {
         val text = input.trim()
         if ((text.isBlank() && imageUris.isEmpty() && audioUri == null) || isSending) return
+
         val snapshot = BlinkAiRequestSnapshot(
             text = text,
             imageUris = imageUris,
@@ -271,6 +290,7 @@ fun BlinkAiSheet(
             temporaryChat = temporaryChat,
             customInstructions = customInstructions
         )
+
         input = ""
         performSend(snapshot, showUserBubble = true)
     }
@@ -284,6 +304,7 @@ fun BlinkAiSheet(
         if (isSending) return
         error = null
         isSending = true
+
         scope.launch {
             service.executeAction(
                 context = context,
@@ -296,7 +317,7 @@ fun BlinkAiSheet(
                 imageUris = emptyList()
                 audioUri = null
             }.onFailure { throwable ->
-                error = throwable.message ?: "Blink AI couldn’t complete that action."
+                error = friendlyError(throwable, "Blink AI couldn’t complete that action.")
             }
             isSending = false
         }
@@ -308,7 +329,7 @@ fun BlinkAiSheet(
             service.loadConversations().onSuccess {
                 conversations = it
             }.onFailure {
-                error = it.message ?: "Couldn’t load Blink AI history."
+                error = friendlyError(it, "Couldn’t load Blink AI history.")
             }
             historyLoading = false
         }
@@ -332,7 +353,7 @@ fun BlinkAiSheet(
                 historyOpen = false
                 error = null
             }.onFailure {
-                error = it.message ?: "Couldn’t open that conversation."
+                error = friendlyError(it, "Couldn’t open that conversation.")
             }
             historyLoading = false
         }
@@ -356,12 +377,17 @@ fun BlinkAiSheet(
             text = { Text(action.description) },
             confirmButton = {
                 Button(onClick = { confirmPendingAction() }, enabled = !isSending) {
-                    if (isSending) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                    else Text("Confirm")
+                    if (isSending) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Confirm")
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingAction = null }, enabled = !isSending) { Text("Cancel") }
+                TextButton(onClick = { pendingAction = null }, enabled = !isSending) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -371,9 +397,47 @@ fun BlinkAiSheet(
             onDismissRequest = { settingsOpen = false },
             title = { Text("Blink AI settings") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Response length", fontWeight = FontWeight.SemiBold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Context & privacy",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    SettingSwitchRow(
+                        title = "Use my Blink context",
+                        subtitle = "Profile and recent Blink activity. Private DMs stay excluded.",
+                        checked = usePersonalContext,
+                        enabled = interactionId == null && !isSending && !temporaryChat,
+                        onCheckedChange = { usePersonalContext = it }
+                    )
+                    SettingSwitchRow(
+                        title = "Web search",
+                        subtitle = "Use current web sources when fresh information is useful.",
+                        checked = useWebSearch,
+                        enabled = !isSending,
+                        onCheckedChange = { useWebSearch = it }
+                    )
+                    SettingSwitchRow(
+                        title = "Temporary chat",
+                        subtitle = "Do not save this chat or use saved AI memory.",
+                        checked = temporaryChat,
+                        enabled = interactionId == null && !isSending,
+                        onCheckedChange = {
+                            temporaryChat = it
+                            if (it) usePersonalContext = false
+                        }
+                    )
+
+                    Text(
+                        "Response",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text("Length", style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         listOf("short", "medium", "long").forEach { item ->
                             FilterChip(
                                 selected = responseLength == item,
@@ -382,7 +446,8 @@ fun BlinkAiSheet(
                             )
                         }
                     }
-                    Text("Tone", fontWeight = FontWeight.SemiBold)
+
+                    Text("Tone", style = MaterialTheme.typography.labelLarge)
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -395,6 +460,7 @@ fun BlinkAiSheet(
                             )
                         }
                     }
+
                     OutlinedTextField(
                         value = customInstructions,
                         onValueChange = { customInstructions = it.take(1_200) },
@@ -406,15 +472,22 @@ fun BlinkAiSheet(
                     )
                 }
             },
-            confirmButton = { TextButton(onClick = { settingsOpen = false }) { Text("Done") } }
+            confirmButton = {
+                TextButton(onClick = { settingsOpen = false }) { Text("Done") }
+            }
         )
     }
 
     if (historyOpen) {
         val filtered = remember(conversations, historyQuery) {
             val q = historyQuery.trim()
-            if (q.isBlank()) conversations else conversations.filter { it.title.contains(q, ignoreCase = true) }
+            if (q.isBlank()) {
+                conversations
+            } else {
+                conversations.filter { it.title.contains(q, ignoreCase = true) }
+            }
         }
+
         AlertDialog(
             onDismissRequest = { if (!historyLoading) historyOpen = false },
             title = { Text("Blink AI history") },
@@ -427,11 +500,18 @@ fun BlinkAiSheet(
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(8.dp))
+
                     if (historyLoading) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                             Text("  Loading…")
                         }
+                    } else if (filtered.isEmpty()) {
+                        Text(
+                            "No saved conversations found.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     } else {
                         LazyColumn(
                             modifier = Modifier.heightIn(max = 360.dp),
@@ -445,20 +525,31 @@ fun BlinkAiSheet(
                                 ) {
                                     Column(Modifier.padding(10.dp)) {
                                         Text(conversation.title, fontWeight = FontWeight.SemiBold)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            TextButton(onClick = { openConversation(conversation) }) { Text("Open") }
+                                        Row(
+                                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            TextButton(onClick = { openConversation(conversation) }) {
+                                                Text("Open")
+                                            }
                                             TextButton(onClick = {
                                                 renameTarget = conversation
                                                 renameText = conversation.title
-                                            }) { Text("Rename") }
+                                            }) {
+                                                Text("Rename")
+                                            }
                                             TextButton(onClick = {
                                                 scope.launch {
                                                     service.deleteConversation(conversation.id).onSuccess {
                                                         if (activeConversationId == conversation.id) startNewChat()
                                                         refreshHistory()
-                                                    }.onFailure { error = it.message }
+                                                    }.onFailure {
+                                                        error = friendlyError(it, "Couldn’t delete that conversation.")
+                                                    }
                                                 }
-                                            }) { Text("Delete") }
+                                            }) {
+                                                Text("Delete")
+                                            }
                                         }
                                     }
                                 }
@@ -467,8 +558,12 @@ fun BlinkAiSheet(
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { historyOpen = false }) { Text("Close") } },
-            dismissButton = { TextButton(onClick = { refreshHistory() }) { Text("Refresh") } }
+            confirmButton = {
+                TextButton(onClick = { historyOpen = false }) { Text("Close") }
+            },
+            dismissButton = {
+                TextButton(onClick = { refreshHistory() }) { Text("Refresh") }
+            }
         )
     }
 
@@ -491,13 +586,19 @@ fun BlinkAiSheet(
                             service.renameConversation(target.id, renameText).onSuccess {
                                 renameTarget = null
                                 refreshHistory()
-                            }.onFailure { error = it.message }
+                            }.onFailure {
+                                error = friendlyError(it, "Couldn’t rename that conversation.")
+                            }
                         }
                     },
                     enabled = renameText.isNotBlank()
-                ) { Text("Save") }
+                ) {
+                    Text("Save")
+                }
             },
-            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Cancel") } }
+            dismissButton = {
+                TextButton(onClick = { renameTarget = null }) { Text("Cancel") }
+            }
         )
     }
 
@@ -519,22 +620,44 @@ fun BlinkAiSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Blink AI", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     Text(
-                        "Gemini • web • memory • image + voice",
+                        "Blink AI",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Your AI assistant inside Blink",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                TextButton(onClick = { startNewChat() }, enabled = !isSending) { Text("New") }
-                TextButton(onClick = {
-                    historyOpen = true
-                    refreshHistory()
-                }, enabled = !isSending && !temporaryChat) { Text("History") }
                 TextButton(onClick = onDismiss) { Text("Close") }
             }
 
-            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                TextButton(onClick = { startNewChat() }, enabled = !isSending) {
+                    Text("New chat")
+                }
+                TextButton(
+                    onClick = {
+                        historyOpen = true
+                        refreshHistory()
+                    },
+                    enabled = !isSending && !temporaryChat
+                ) {
+                    Text("History")
+                }
+                TextButton(onClick = { settingsOpen = true }, enabled = !isSending) {
+                    Text("Settings")
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
 
             Row(
                 modifier = Modifier
@@ -552,42 +675,25 @@ fun BlinkAiSheet(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
 
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
             ) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    SettingSwitchRow(
-                        title = "Use my Blink context",
-                        subtitle = "Profile + your recent Blink activity. Private DMs stay excluded.",
-                        checked = usePersonalContext,
-                        enabled = interactionId == null && !isSending && !temporaryChat,
-                        onCheckedChange = { usePersonalContext = it }
-                    )
-                    SettingSwitchRow(
-                        title = "Web search",
-                        subtitle = "Use current web sources when fresh information is useful.",
-                        checked = useWebSearch,
-                        enabled = !isSending,
-                        onCheckedChange = { useWebSearch = it }
-                    )
-                    SettingSwitchRow(
-                        title = "Temporary chat",
-                        subtitle = "Do not save this conversation or use saved AI memory.",
-                        checked = temporaryChat,
-                        enabled = interactionId == null && !isSending,
-                        onCheckedChange = {
-                            temporaryChat = it
-                            if (it) usePersonalContext = false
-                        }
-                    )
-                    TextButton(onClick = { settingsOpen = true }, enabled = !isSending) {
-                        Text("Response settings & custom instructions")
-                    }
-                }
+                val status = buildList {
+                    add(mode.replaceFirstChar { it.uppercase() })
+                    if (useWebSearch) add("Web")
+                    if (usePersonalContext && !temporaryChat) add("Blink context")
+                    if (temporaryChat) add("Temporary")
+                }.joinToString(" • ")
+                Text(
+                    status,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Spacer(Modifier.height(8.dp))
@@ -596,7 +702,7 @@ fun BlinkAiSheet(
                 state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 150.dp, max = 360.dp),
+                    .heightIn(min = 220.dp, max = 430.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(messages, key = { it.id }) { message ->
@@ -607,32 +713,64 @@ fun BlinkAiSheet(
                         Surface(
                             modifier = Modifier.fillMaxWidth(0.9f),
                             shape = RoundedCornerShape(18.dp),
-                            color = if (message.fromUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                            color = if (message.fromUser) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            }
                         ) {
                             Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                                 Text(
                                     message.text,
-                                    color = if (message.fromUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = if (message.fromUser) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
                                     style = MaterialTheme.typography.bodyMedium
                                 )
+
                                 if (message.metadata.isNotBlank()) {
                                     Spacer(Modifier.height(4.dp))
                                     Text(
                                         message.metadata,
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (message.fromUser) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        color = if (message.fromUser) {
+                                            MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        }
                                     )
                                 }
+
                                 if (!message.fromUser) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        TextButton(onClick = { clipboard.setText(AnnotatedString(message.text)) }) { Text("Copy") }
-                                        TextButton(onClick = { shareText(message.text) }) { Text("Share") }
+                                    Row(
+                                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        TextButton(onClick = {
+                                            clipboard.setText(AnnotatedString(message.text))
+                                        }) {
+                                            Text("Copy")
+                                        }
+                                        TextButton(onClick = { shareText(message.text) }) {
+                                            Text("Share")
+                                        }
                                         TextButton(
                                             onClick = {
-                                                if (ttsReady) textToSpeech.speak(message.text, TextToSpeech.QUEUE_FLUSH, null, "blink-ai-${message.id}")
+                                                if (ttsReady) {
+                                                    textToSpeech.speak(
+                                                        message.text,
+                                                        TextToSpeech.QUEUE_FLUSH,
+                                                        null,
+                                                        "blink-ai-${message.id}"
+                                                    )
+                                                }
                                             },
                                             enabled = ttsReady
-                                        ) { Text("Read") }
+                                        ) {
+                                            Text("Read")
+                                        }
                                     }
                                 }
                             }
@@ -642,18 +780,26 @@ fun BlinkAiSheet(
 
                 if (isSending && pendingAction == null) {
                     item(key = "blink_ai_loading") {
-                        Row(
+                        Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                         ) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Text("  Blink AI is answering…", style = MaterialTheme.typography.bodySmall)
-                            Spacer(Modifier.weight(1f))
-                            TextButton(onClick = {
-                                service.cancelActiveRequest()
-                                isSending = false
-                                error = "Generation stopped."
-                            }) { Text("Stop") }
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Text("  Blink AI is answering…", style = MaterialTheme.typography.bodySmall)
+                                Spacer(Modifier.weight(1f))
+                                TextButton(onClick = {
+                                    service.cancelActiveRequest()
+                                    isSending = false
+                                    error = "Generation stopped."
+                                }) {
+                                    Text("Stop")
+                                }
+                            }
                         }
                     }
                 }
@@ -667,7 +813,7 @@ fun BlinkAiSheet(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
@@ -693,14 +839,22 @@ fun BlinkAiSheet(
                 ) {
                     imageUris.forEach { uri ->
                         Surface(shape = RoundedCornerShape(12.dp)) {
-                            Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(
+                                Modifier.padding(6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
                                 AsyncImage(
                                     model = uri,
                                     contentDescription = "Image attached to Blink AI",
                                     modifier = Modifier.size(58.dp),
                                     contentScale = ContentScale.Crop
                                 )
-                                TextButton(onClick = { imageUris = imageUris - uri }, enabled = !isSending) { Text("Remove") }
+                                TextButton(
+                                    onClick = { imageUris = imageUris - uri },
+                                    enabled = !isSending
+                                ) {
+                                    Text("Remove")
+                                }
                             }
                         }
                     }
@@ -714,57 +868,91 @@ fun BlinkAiSheet(
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Voice note attached", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                        TextButton(onClick = { audioUri = null }, enabled = !isSending) { Text("Remove") }
+                    Row(
+                        Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Voice note attached",
+                            modifier = Modifier.weight(1f),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        TextButton(onClick = { audioUri = null }, enabled = !isSending) {
+                            Text("Remove")
+                        }
                     }
                 }
             }
 
             Spacer(Modifier.height(8.dp))
 
-            OutlinedTextField(
-                value = input,
-                onValueChange = { if (it.length <= 8_000) input = it },
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Ask Blink AI anything…") },
-                minLines = 1,
-                maxLines = 5,
-                enabled = !isSending && pendingAction == null
-            )
-
-            Spacer(Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
             ) {
-                OutlinedButton(onClick = { imagePicker.launch("image/*") }, enabled = !isSending && pendingAction == null) {
-                    Text("Images ${if (imageUris.isNotEmpty()) "(${imageUris.size})" else ""}")
-                }
-                OutlinedButton(onClick = { audioPicker.launch("audio/*") }, enabled = !isSending && pendingAction == null) {
-                    Text("Voice note")
-                }
-                OutlinedButton(
-                    onClick = {
-                        runCatching {
-                            speechLauncher.launch(
-                                Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                    .putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Blink AI")
-                            )
-                        }.onFailure { error = "Speech recognition isn’t available on this device." }
-                    },
-                    enabled = !isSending && pendingAction == null
-                ) { Text("Dictate") }
-                Button(
-                    onClick = { sendMessage() },
-                    enabled = (input.isNotBlank() || imageUris.isNotEmpty() || audioUri != null) && !isSending && pendingAction == null
-                ) {
-                    if (isSending) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                    else Text("Send")
+                Column(Modifier.padding(10.dp)) {
+                    OutlinedTextField(
+                        value = input,
+                        onValueChange = { if (it.length <= 8_000) input = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Ask Blink AI anything…") },
+                        minLines = 1,
+                        maxLines = 5,
+                        enabled = !isSending && pendingAction == null
+                    )
+
+                    Spacer(Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { imagePicker.launch("image/*") },
+                            enabled = !isSending && pendingAction == null
+                        ) {
+                            Text("Images${if (imageUris.isNotEmpty()) " (${imageUris.size})" else ""}")
+                        }
+                        OutlinedButton(
+                            onClick = { audioPicker.launch("audio/*") },
+                            enabled = !isSending && pendingAction == null
+                        ) {
+                            Text("Voice note")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                runCatching {
+                                    speechLauncher.launch(
+                                        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                                            .putExtra(
+                                                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                                            )
+                                            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Blink AI")
+                                    )
+                                }.onFailure {
+                                    error = "Speech recognition isn’t available on this device."
+                                }
+                            },
+                            enabled = !isSending && pendingAction == null
+                        ) {
+                            Text("Dictate")
+                        }
+                        Button(
+                            onClick = { sendMessage() },
+                            enabled = (input.isNotBlank() || imageUris.isNotEmpty() || audioUri != null) &&
+                                !isSending && pendingAction == null
+                        ) {
+                            if (isSending) {
+                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            } else {
+                                Text("Send")
+                            }
+                        }
+                    }
                 }
             }
 
@@ -786,9 +974,21 @@ private fun SettingSwitchRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                title,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
+        )
     }
 }
