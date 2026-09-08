@@ -1,0 +1,66 @@
+name: Testlab live premium chat swipe fix
+
+on:
+  push:
+    branches: [Testlab-live-chat-swipe-fix-20260908]
+    paths:
+      - '.github/scripts/apply_live_premium_chat_swipe_fix.py'
+      - '.github/workflows/testlab-live-premium-chat-swipe-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: testlab-live-premium-chat-swipe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  patch-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Testlab
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply fix to the live Premium Messages screen
+        run: python3 .github/scripts/apply_live_premium_chat_swipe_fix.py
+
+      - name: Verify required Store work remains present
+        shell: bash
+        run: |
+          grep -q 'fun BlinkStoreItem.premiumExperience' app/src/main/java/com/example/BlinkStoreExperience.kt
+          grep -q 'invalidateBlinkPublicPremiumIdentityCache' app/src/main/java/com/example/BlinkStoreActivity.kt
+          grep -q 'equippedIds' app/src/main/java/com/example/BlinkStoreActivity.kt
+
+      - name: Check patch formatting
+        run: git diff --check
+
+      - name: Compile live Android Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Run Android unit tests
+        run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Commit validated source only
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/screens/PremiumMessagesScreen.kt
+          git rm .github/scripts/apply_live_premium_chat_swipe_fix.py
+          git rm .github/workflows/testlab-live-premium-chat-swipe-fix.yml
+          git diff --cached --check
+          git commit -m "Fix live premium chat swipe navigation"
+          git push origin HEAD:Testlab-live-chat-swipe-fix-20260908
