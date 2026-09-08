@@ -27,3 +27,15 @@ Owner/reviewer note:
 Examples of potentially valid platform-specific adapters include Android Activity/Intent behavior, CameraX integration, WorkManager scheduling, Firebase Messaging delivery, Android permissions, Windows system-tray integration, Windows native menus, desktop file dialogs, and installer packaging.
 
 Business rules, accounts, permissions, posts, reels, messages, coins, verification, marketplace behavior, Connect behavior, ranking, moderation, notifications semantics, and admin rules are not platform exceptions and must remain equivalent across Android and Windows.
+
+## Approved platform-specific changes
+
+PARITY-EXCEPTION: android-legacy-foreground-call-ringtone-loop
+Date: 2026-09-08
+Feature: Foreground incoming-call ringtone looping on Android 7–8
+Android behavior: Replays the selected Android Ringtone after each completed cycle on API 24–27 so a foreground incoming call continues ringing until Answer, Decline, replacement call, timeout, or activity destruction.
+Why this is genuinely Android-only: This compensates for the Android platform Ringtone API, where native Ringtone.isLooping is unavailable before Android 9 (API 28).
+Windows equivalent or reason no equivalent is needed: No equivalent is required because the Windows client does not use Android Activity, Ringtone, or API-level compatibility behavior. Windows call ringing remains implemented through its own desktop audio adapter when that route is active.
+Backend/shared behavior preserved: Call signaling, call status transitions, timeout semantics, missed-call persistence, notification deduplication, and shared backend behavior are unchanged.
+Tests/validation: Require the Android quality gate, Windows parity gate, and Windows desktop build to pass before merging.
+Owner/reviewer note: Keep this exception limited to Android legacy ringtone playback; any shared call-semantic change still requires Windows parity.
