@@ -2470,6 +2470,7 @@ suspend fun uploadPostMedia(
                         id = sid,
                         username = prof?.username ?: u,
                         avatar = prof?.avatarUrl.orEmpty(),
+                        displayName = prof?.fullName.orEmpty(),
                         hasUnseen = !viewed.contains(sid),
                         isUser = (uid != null && u == uid),
                         storyImage = o.optString("image_url", o.optString("media_url", o.optString("video_url", ""))),

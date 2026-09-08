@@ -135,7 +135,7 @@ fun StoryViewerDialog(
         if (currentStory.storyImage.isNotBlank()) {
             AsyncImage(
                 model = currentStory.storyImage,
-                contentDescription = "Story by ${currentStory.username}",
+                contentDescription = "Story by ${currentStory.displayLabel}",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
@@ -320,7 +320,7 @@ fun StoryViewerDialog(
                         model = currentStory.avatar,
                         error = painterResource(R.drawable.ic_default_profile),
                         fallback = painterResource(R.drawable.ic_default_profile),
-                        contentDescription = currentStory.username,
+                        contentDescription = currentStory.displayLabel,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .size(38.dp)
@@ -332,7 +332,7 @@ fun StoryViewerDialog(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = currentStory.username,
+                                text = currentStory.displayLabel,
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.5.sp
@@ -475,7 +475,7 @@ fun StoryViewerDialog(
                             onValueChange = { replyText = it },
                             placeholder = {
                                 Text(
-                                    text = "Send message to ${currentStory.username}...",
+                                    text = "Send message to ${currentStory.displayLabel}...",
                                     color = Color.White.copy(alpha = 0.6f),
                                     fontSize = 12.5.sp
                                 )

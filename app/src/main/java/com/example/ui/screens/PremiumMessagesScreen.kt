@@ -175,6 +175,7 @@ private data class MatchPerson(
     val avatar: String,
     val isOnline: Boolean,
     val hasUnseenStory: Boolean,
+    val verificationBadge: VerificationBadge = VerificationBadge.NONE,
     val conversation: ChatConversation? = null,
     val story: Story? = null
 )
@@ -918,6 +919,11 @@ private fun MatchesRail(
                 avatar = conversation.partnerAvatar,
                 isOnline = conversation.isOnline,
                 hasUnseenStory = false,
+                verificationBadge = when {
+                    conversation.verificationBadge != VerificationBadge.NONE -> conversation.verificationBadge
+                    conversation.isVerified -> VerificationBadge.BLUE
+                    else -> VerificationBadge.NONE
+                },
                 conversation = conversation
             )
         }
@@ -928,11 +934,12 @@ private fun MatchesRail(
                 existingUsers += normalized
                 people += MatchPerson(
                     id = "story_${story.id}",
-                    name = story.username.removePrefix("@"),
+                    name = story.displayLabel,
                     username = normalized,
                     avatar = story.avatar,
                     isOnline = false,
                     hasUnseenStory = story.hasUnseen,
+                    verificationBadge = story.verificationBadge,
                     story = story
                 )
             }
@@ -1007,14 +1014,20 @@ private fun MatchItem(person: MatchPerson, palette: MessagePalette, onClick: () 
             emphasizeRing = person.isOnline || person.hasUnseenStory
         )
         Spacer(Modifier.height(5.dp))
-        Text(
-            text = person.name.substringBefore(" ").take(10),
-            color = palette.textSecondary,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = person.name.substringBefore(" ").take(10),
+                color = palette.textSecondary,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            if (person.verificationBadge != VerificationBadge.NONE) {
+                VerificationDot(person.verificationBadge)
+            }
+        }
     }
 }
 
