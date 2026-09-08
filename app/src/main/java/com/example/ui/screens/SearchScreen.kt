@@ -7,8 +7,8 @@ import com.example.data.models.UserProfile
 /**
  * Stable public entry point used by MainActivity.
  *
- * Search is intentionally routed through the premium discovery implementation so
- * navigation and ViewModel contracts remain stable while the experience evolves.
+ * Search remains routed through a stable wrapper so navigation and ViewModel
+ * contracts do not churn while premium discovery collections evolve in Testlab.
  */
 @Composable
 fun SearchScreen(
@@ -30,7 +30,7 @@ fun SearchScreen(
     onBackToHome: () -> Unit = {},
     isDark: Boolean
 ) {
-    PremiumSearchExperience(
+    PremiumSearchPhase2Host(
         profiles = profiles,
         posts = posts,
         currentUsername = currentUsername,
