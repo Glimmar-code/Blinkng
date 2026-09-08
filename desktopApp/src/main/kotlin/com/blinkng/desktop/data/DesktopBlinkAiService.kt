@@ -9,8 +9,10 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 data class DesktopBlinkAiSource(
@@ -45,17 +47,24 @@ data class DesktopBlinkAiHistoryMessage(
     val createdAt: String,
 )
 
-/**
- * Windows client for the same authenticated Blink AI contract used by Android.
- * It prefers `blink-ai-v2` and falls back to the original `blink-ai` function if v2
- * is unavailable, preserving a production rollback path on both platforms.
- */
+/** Windows counterpart to Android's Blink AI service. */
 class DesktopBlinkAiService(
     private val client: DesktopSupabaseClient,
 ) {
     companion object {
         private const val MAX_MESSAGE_LENGTH = 8_000
+        private const val MAX_IMAGE_BYTES = 6 * 1024 * 1024
+        private const val MAX_AUDIO_BYTES = 8 * 1024 * 1024
+        private const val MAX_COMBINED_MEDIA_BYTES = 24 * 1024 * 1024
+        private const val MAX_IMAGES = 6
     }
+
+    private data class EncodedAttachment(
+        val type: String,
+        val mimeType: String,
+        val base64: String,
+        val rawBytes: Int,
+    )
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -73,6 +82,8 @@ class DesktopBlinkAiService(
     suspend fun ask(
         message: String,
         previousInteractionId: String? = null,
+        imageFiles: List<File> = emptyList(),
+        audioFile: File? = null,
         usePersonalContext: Boolean = true,
         useWebSearch: Boolean = true,
         mode: String = "fast",
@@ -82,9 +93,13 @@ class DesktopBlinkAiService(
         customInstructions: String = "",
     ): DesktopBlinkAiReply = withContext(Dispatchers.IO) {
         val cleanMessage = message.trim()
-        require(cleanMessage.isNotBlank()) { "Type a message for Blink AI." }
+        require(cleanMessage.isNotBlank() || imageFiles.isNotEmpty() || audioFile != null) {
+            "Type a message or attach media for Blink AI."
+        }
         require(cleanMessage.length <= MAX_MESSAGE_LENGTH) { "Keep your message under 8,000 characters." }
+        require(imageFiles.size <= MAX_IMAGES) { "Attach up to 6 images at a time." }
 
+        val attachments = encodeAttachments(imageFiles, audioFile)
         val payload = JSONObject()
             .put("message", cleanMessage)
             .put("use_personal_context", usePersonalContext)
@@ -94,7 +109,7 @@ class DesktopBlinkAiService(
             .put("response_length", responseLength)
             .put("temporary_chat", temporaryChat)
             .put("custom_instructions", customInstructions.take(1_200))
-            .put("attachments", JSONArray())
+            .put("attachments", attachmentsToJson(attachments))
             .apply {
                 previousInteractionId
                     ?.trim()
@@ -196,6 +211,60 @@ class DesktopBlinkAiService(
             path = "/rest/v1/blink_ai_conversations?id=eq.$encoded",
             method = "DELETE",
         )
+    }
+
+    private fun encodeAttachments(imageFiles: List<File>, audioFile: File?): List<EncodedAttachment> {
+        val result = mutableListOf<EncodedAttachment>()
+        imageFiles.take(MAX_IMAGES).forEach { result += encodeFile(it, "image", MAX_IMAGE_BYTES) }
+        audioFile?.let { result += encodeFile(it, "audio", MAX_AUDIO_BYTES) }
+        require(result.sumOf { it.rawBytes } <= MAX_COMBINED_MEDIA_BYTES) {
+            "The attached media is too large. Keep the total under 24 MB."
+        }
+        return result
+    }
+
+    private fun encodeFile(file: File, type: String, maxBytes: Int): EncodedAttachment {
+        require(file.isFile) { "The selected media file is unavailable." }
+        require(file.length() in 1..maxBytes.toLong()) {
+            if (type == "image") "Keep each image under 6 MB." else "Keep voice notes under 8 MB."
+        }
+        val mime = mimeType(file, type)
+            ?: throw IllegalArgumentException(if (type == "image") "That image format isn't supported." else "That audio format isn't supported.")
+        val bytes = file.readBytes()
+        return EncodedAttachment(
+            type = type,
+            mimeType = mime,
+            base64 = Base64.getEncoder().encodeToString(bytes),
+            rawBytes = bytes.size,
+        )
+    }
+
+    private fun mimeType(file: File, type: String): String? {
+        val ext = file.extension.lowercase()
+        return if (type == "image") {
+            mapOf(
+                "png" to "image/png", "jpg" to "image/jpeg", "jpeg" to "image/jpeg",
+                "webp" to "image/webp", "gif" to "image/gif", "bmp" to "image/bmp",
+                "tif" to "image/tiff", "tiff" to "image/tiff", "heic" to "image/heic", "heif" to "image/heif",
+            )[ext]
+        } else {
+            mapOf(
+                "wav" to "audio/wav", "mp3" to "audio/mpeg", "aiff" to "audio/aiff",
+                "aac" to "audio/aac", "ogg" to "audio/ogg", "flac" to "audio/flac",
+                "m4a" to "audio/m4a", "opus" to "audio/opus", "webm" to "audio/webm",
+            )[ext]
+        }
+    }
+
+    private fun attachmentsToJson(attachments: List<EncodedAttachment>) = JSONArray().apply {
+        attachments.forEach { attachment ->
+            put(
+                JSONObject()
+                    .put("type", attachment.type)
+                    .put("mime_type", attachment.mimeType)
+                    .put("data", attachment.base64)
+            )
+        }
     }
 
     private fun executeRest(
