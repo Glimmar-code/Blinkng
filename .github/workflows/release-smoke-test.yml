@@ -2,15 +2,18 @@ name: Android release smoke test
 
 on:
   push:
-    branches: [main]
+    branches: [main, Testlab, Testlab-apk-update-continuity]
     paths:
       - 'app/build.gradle.kts'
+      - 'app/google-services.json'
       - 'app/proguard-rules.pro'
       - '.github/workflows/signed-release.yml'
       - '.github/workflows/release-smoke-test.yml'
   pull_request:
+    branches: [main, Testlab]
     paths:
       - 'app/build.gradle.kts'
+      - 'app/google-services.json'
       - 'app/proguard-rules.pro'
       - '.github/workflows/signed-release.yml'
       - '.github/workflows/release-smoke-test.yml'
@@ -34,6 +37,29 @@ jobs:
           java-version: '17'
 
       - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify Android/Firebase package identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          expected = "com.aistudio.blink.appvtwo"
+          gradle = Path("app/build.gradle.kts").read_text()
+          if f'applicationId = "{expected}"' not in gradle:
+              raise SystemExit(f"Android applicationId must remain {expected}")
+
+          data = json.loads(Path("app/google-services.json").read_text())
+          packages = {
+              client.get("client_info", {}).get("android_client_info", {}).get("package_name")
+              for client in data.get("client", [])
+          }
+          if expected not in packages:
+              raise SystemExit(f"Firebase config has no Android client for {expected}")
+          print(f"Android/Firebase package identity verified: {expected}")
+          PY
 
       - name: Create disposable CI signing key
         shell: bash
@@ -59,13 +85,25 @@ jobs:
           KEY_PASSWORD: smoke-password
           VERSION_CODE: '1999000000'
           VERSION_NAME: 'ci-smoke'
-        run: gradle :app:assembleRelease --stacktrace --no-daemon
+        run: gradle :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
 
-      - name: Verify generated APK signature
+      - name: Verify generated release identity and signatures
         shell: bash
         run: |
           set -euo pipefail
           APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          AAB="$(find app/build/outputs/bundle/release -name '*.aab' -type f | head -n 1)"
           test -n "$APK"
+          test -n "$AAB"
+
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
-          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          jarsigner -verify "$AAB" >/dev/null
+
+          BADGING="$("$BUILD_TOOLS/aapt" dump badging "$APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -F "name='com.aistudio.blink.appvtwo'" >/dev/null
+          echo "$BADGING" | grep -F "versionCode='1999000000'" >/dev/null
+          echo "$BADGING" | grep -F "versionName='ci-smoke'" >/dev/null
+
+          echo "Release smoke APK/AAB package, version and signatures verified."
