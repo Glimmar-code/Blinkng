@@ -206,6 +206,16 @@ Deno.serve(async (req) => {
   const recipientId = String(recipientParticipant?.user_id ?? "").trim();
   if (!recipientId) return json({ ok: true, skipped: "no_recipient" });
 
+  const { data: allowed, error: allowedError } = await admin.rpc("notification_push_allowed", {
+    p_user_id: recipientId,
+    p_type: "message",
+  });
+  // Backward-compatible while a deployment is rolling: if the RPC is unavailable, keep the
+  // pre-existing delivery behavior rather than dropping messages.
+  if (!allowedError && allowed === false) {
+    return json({ ok: true, skipped: "recipient_preferences" });
+  }
+
   const [{ data: sender }, { data: tokenRows }, { data: legacyRecipient }] = await Promise.all([
     admin.from("profiles")
       .select("username,full_name,avatar_url")
@@ -263,6 +273,8 @@ Deno.serve(async (req) => {
     type: "message",
     title: senderName,
     body: notificationBody,
+    recipient_id: recipientId,
+    sender_id: senderId,
     sender_username: senderUsername,
     sender_name: senderName,
     sender_avatar: senderAvatar,
@@ -287,7 +299,9 @@ Deno.serve(async (req) => {
                 data,
                 android: {
                   priority: "HIGH",
-                  ttl: "2419200s",
+                  // Keep live pushes fresh. Long-offline gaps are reconstructed from authoritative
+                  // unread message state by NotificationSyncWorker instead of replaying old FCM packets.
+                  ttl: "86400s",
                 },
               },
             }),

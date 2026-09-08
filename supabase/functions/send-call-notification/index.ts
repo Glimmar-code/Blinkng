@@ -133,8 +133,7 @@ Deno.serve(async (req) => {
     if (Date.parse(String(call.timeout_at)) <= Date.now()) return json({ ok: true, skipped: "expired" });
     targetUserId = String(call.callee_id);
   } else if (event === "answered") {
-    // An answered event is intentionally sent back to the receiver account itself. FCM fans
-    // it out to all signed-in receiver devices so every stale ringing surface is dismissed.
+    // Fan an answered event back to all receiver devices to dismiss stale ringing surfaces.
     if (senderId !== call.callee_id || !["connecting", "connected"].includes(String(call.status))) {
       return json({ error: "Call is not answerable" }, 409);
     }
@@ -151,6 +150,15 @@ Deno.serve(async (req) => {
   };
   if (event !== "invite" && !(expectedStatus[event] ?? []).includes(String(call.status))) {
     return json({ ok: true, skipped: `status_${call.status}` });
+  }
+
+  const pushType = event === "invite" ? "incoming_call" : "call_update";
+  const { data: allowed, error: allowedError } = await admin.rpc("notification_push_allowed", {
+    p_user_id: targetUserId,
+    p_type: pushType,
+  });
+  if (!allowedError && allowed === false) {
+    return json({ ok: true, skipped: "recipient_preferences" });
   }
 
   const { data: prior } = await admin
@@ -210,13 +218,15 @@ Deno.serve(async (req) => {
   const callType = String(call.call_type);
   const incoming = event === "invite";
   const data: Record<string, string> = {
-    type: incoming ? "incoming_call" : "call_update",
+    type: pushType,
+    recipient_id: targetUserId,
     call_event: event,
     call_id: String(call.id),
     call_type: callType,
     conversation_id: String(call.conversation_id),
     caller_id: String(call.caller_id),
     callee_id: String(call.callee_id),
+    sender_id: senderId,
     sender_username: senderUsername,
     sender_name: senderName,
     sender_avatar: senderAvatar,
