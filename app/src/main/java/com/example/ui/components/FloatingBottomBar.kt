@@ -2,6 +2,9 @@ package com.example.ui.components
 
 import android.app.Activity
 import android.content.Intent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -30,17 +34,23 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.example.BlinkStoreActivity
 import com.example.R
-import com.example.ui.theme.FeedBlue
+import com.example.ui.theme.BlinkElevation
+import com.example.ui.theme.BlinkMotion
+import com.example.ui.theme.BlinkThemeTokens
 import com.example.viewmodel.MainTab
 
 private enum class FeedBottomDestination {
@@ -78,6 +88,7 @@ fun FeedBottomBar(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val colors = BlinkThemeTokens.colors
     val selectedDestination = when {
         currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT
         currentTab == MainTab.HOME -> FeedBottomDestination.HOME
@@ -87,21 +98,21 @@ fun FeedBottomBar(
         else -> null
     }
 
-    val navigationSurface = if (isDark) Color(0xFF0E0F10) else Color.White
-    val navigationBorder = if (isDark) Color(0xFF2D3035) else Color(0xFFE1E4E8)
-
     Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(0.dp),
-        color = navigationSurface,
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-        border = BorderStroke(1.dp, navigationBorder)
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(22.dp),
+        color = colors.surface.copy(alpha = if (isDark) 0.97f else 0.99f),
+        tonalElevation = BlinkElevation.raised,
+        shadowElevation = BlinkElevation.floating,
+        border = BorderStroke(1.dp, colors.border.copy(alpha = 0.9f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(58.dp),
+                .height(64.dp)
+                .padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -138,34 +149,66 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val tint = if (selected) FeedBlue else MaterialTheme.colorScheme.onSurfaceVariant
+    val colors = BlinkThemeTokens.colors
+    val haptics = LocalHapticFeedback.current
+    val tint by animateColorAsState(
+        targetValue = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = BlinkMotion.fastTween(),
+        label = "feedNavTint"
+    )
+    val indicator by animateColorAsState(
+        targetValue = if (selected) colors.primary else Color.Transparent,
+        animationSpec = BlinkMotion.standardTween(),
+        label = "feedNavIndicator"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.06f else 1f,
+        animationSpec = spring(),
+        label = "feedNavScale"
+    )
 
     Column(
         modifier = Modifier
             .weight(1f)
-            .height(58.dp)
-            .clickable(role = Role.Tab, onClick = onClick)
+            .height(64.dp)
+            .clickable(
+                role = Role.Tab,
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onClick()
+                }
+            )
             .testTag("feed_nav_${item.destination.name.lowercase()}"),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.62f)
                 .height(3.dp)
-                .background(if (selected) FeedBlue else Color.Transparent)
+                .fillMaxWidth(0.28f)
+                .background(indicator, RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp))
         )
         Spacer(Modifier.height(7.dp))
-        Box(
-            modifier = Modifier.size(40.dp),
-            contentAlignment = Alignment.Center
+        Surface(
+            modifier = Modifier
+                .size(44.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                },
+            shape = RoundedCornerShape(15.dp),
+            color = if (selected) colors.primary.copy(alpha = 0.18f) else Color.Transparent,
+            border = if (selected) BorderStroke(1.dp, colors.primary.copy(alpha = 0.28f)) else null,
+            tonalElevation = 0.dp
         ) {
-            Icon(
-                imageVector = if (selected) item.filledIcon else item.outlinedIcon,
-                contentDescription = item.label,
-                tint = tint,
-                modifier = Modifier.size(25.dp)
-            )
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = if (selected) item.filledIcon else item.outlinedIcon,
+                    contentDescription = item.label,
+                    tint = tint,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
     }
 }
