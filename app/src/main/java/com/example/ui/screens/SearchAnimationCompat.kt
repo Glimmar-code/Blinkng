@@ -4,6 +4,10 @@ import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 
-/** Keeps search transition syntax compatible with the Compose version used by the Android target. */
-internal infix fun EnterTransition.togetherWith(exit: ExitTransition): ContentTransform =
+/**
+ * Compatibility fallback for files that do not import Compose's transition helper.
+ * The generic receiver keeps Compose's native non-generic overload preferred in
+ * callers such as MainActivity that already import it explicitly.
+ */
+internal infix fun <T : EnterTransition> T.togetherWith(exit: ExitTransition): ContentTransform =
     ContentTransform(targetContentEnter = this, initialContentExit = exit)
