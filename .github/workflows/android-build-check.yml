@@ -1,10 +1,11 @@
 name: Android quality gate
 
-# Keep this gate explicit for main-branch integration validation.
+# Testlab is the proving ground. main remains the production integration branch.
 on:
   push:
-    branches: [main]
+    branches: [Testlab, main]
   pull_request:
+    branches: [Testlab, main]
   workflow_dispatch:
 
 permissions:
