@@ -41,6 +41,20 @@ val desktopPackageVersion = providers.environmentVariable("BLINK_DESKTOP_VERSION
     .orElse(providers.gradleProperty("BLINK_DESKTOP_VERSION"))
     .orElse("1.0.0")
 
+// Native packages carry the environment selected by CI. Public Supabase client
+// values may be embedded, but privileged service-role/secret keys must never be.
+// Testlab packaging supplies staging values so the installed test build cannot
+// silently fall back to the production backend on another Windows machine.
+val desktopBackendEnvironment = providers.environmentVariable("BLINK_ENV")
+    .orElse(providers.gradleProperty("BLINK_ENV"))
+    .orElse("production")
+val desktopSupabaseUrl = providers.environmentVariable("SUPABASE_URL")
+    .orElse(providers.gradleProperty("SUPABASE_URL"))
+    .orElse("")
+val desktopSupabaseAnonKey = providers.environmentVariable("SUPABASE_ANON_KEY")
+    .orElse(providers.gradleProperty("SUPABASE_ANON_KEY"))
+    .orElse("")
+
 compose.desktop {
     application {
         mainClass = "com.blinkng.desktop.MainKt"
@@ -51,6 +65,11 @@ compose.desktop {
             packageVersion = desktopPackageVersion.get()
             description = "Blinkng social platform for Windows"
             vendor = "Blinkng"
+            jvmArgs += listOf(
+                "-Dblink.env=${desktopBackendEnvironment.get()}",
+                "-Dblink.supabase.url=${desktopSupabaseUrl.get()}",
+                "-Dblink.supabase.anonKey=${desktopSupabaseAnonKey.get()}",
+            )
 
             windows {
                 dirChooser = true
