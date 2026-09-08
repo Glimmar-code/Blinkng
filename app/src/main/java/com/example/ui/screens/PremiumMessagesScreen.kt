@@ -34,6 +34,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -126,7 +128,9 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -156,6 +160,7 @@ import com.example.ui.theme.messagePalette
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
+import kotlin.math.abs
 
 private const val MESSAGE_PREFERENCES = "blink_message_preferences"
 private const val MESSAGE_THEME_KEY = "message_theme"
@@ -357,6 +362,40 @@ fun PremiumMessagesScreen(
 }
 
 
+private fun Modifier.observeRightSwipeToClose(
+    thresholdPx: Float,
+    onSwipeRight: () -> Unit
+): Modifier = pointerInput(thresholdPx, onSwipeRight) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        var horizontal = 0f
+        var vertical = 0f
+        var fired = false
+
+        while (true) {
+            // Observe in the Initial pass so message-bubble gestures can still consume
+            // their own left swipe later without blocking the screen-level right swipe.
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            val delta = change.positionChange()
+            horizontal += delta.x
+            vertical += delta.y
+
+            if (
+                !fired &&
+                horizontal >= thresholdPx &&
+                horizontal > abs(vertical) * 1.25f
+            ) {
+                fired = true
+                onSwipeRight()
+                break
+            }
+
+            if (!change.pressed) break
+        }
+    }
+}
+
 @Composable
 private fun PremiumMessagesMasterDetail(
     conversations: List<ChatConversation>,
@@ -380,171 +419,69 @@ private fun PremiumMessagesMasterDetail(
 ) {
     val density = LocalDensity.current
     val swipeThresholdPx = remember(density) { with(density) { 72.dp.toPx() } }
-    val gestureScope = rememberCoroutineScope()
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .semantics { contentDescription = "Chat drawer" }
-        ) {
-            val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
-            val dragOffset = remember(activeConversation.partnerUsername, isFullScreen, widthPx) {
-                Animatable(0f)
-            }
-            val railWidth = (maxWidth * .20f).coerceIn(68.dp, 92.dp)
-            val targetPanelWidth = if (isFullScreen) maxWidth else maxWidth - railWidth
-            val panelWidth by animateDpAsState(
-                targetValue = targetPanelWidth,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                ),
-                label = "chatDrawerWidth"
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .semantics { contentDescription = "Chat" }
+            .observeRightSwipeToClose(
+                thresholdPx = swipeThresholdPx,
+                onSwipeRight = onCloseConversation
             )
+    ) {
+        AnimatedContent(
+            targetState = activeConversation.partnerUsername,
+            transitionSpec = {
+                (slideInHorizontally(
+                    initialOffsetX = { it / 6 },
+                    animationSpec = tween(240, easing = FastOutSlowInEasing)
+                ) + fadeIn(tween(180))) togetherWith
+                    (slideOutHorizontally(
+                        targetOffsetX = { -it / 8 },
+                        animationSpec = tween(180, easing = FastOutSlowInEasing)
+                    ) + fadeOut(tween(120)))
+            },
+            label = "chatQuickSwitch"
+        ) { partner ->
+            val displayedConversation = conversations.firstOrNull {
+                it.partnerUsername.equals(partner, ignoreCase = true)
+            } ?: activeConversation
 
-            AnimatedVisibility(
-                visible = !isFullScreen,
-                enter = fadeIn(tween(180)),
-                exit = fadeOut(tween(120)),
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .width(railWidth)
-                    .fillMaxHeight()
-            ) {
-                ConversationSwitchRail(
-                    conversations = conversations,
-                    selectedPartner = activeConversation.partnerUsername,
-                    palette = palette,
-                    onOpenConversation = onOpenConversation,
-                    onCloseConversation = onCloseConversation
-                )
-            }
-
-            val panelShape = if (isFullScreen) {
-                RoundedCornerShape(0.dp)
-            } else {
-                RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp)
-            }
-
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .width(panelWidth)
-                    .fillMaxHeight()
-                    .graphicsLayer { translationX = dragOffset.value }
-                    .pointerInput(isFullScreen, activeConversation.partnerUsername, widthPx) {
-                        var totalDrag = 0f
-                        detectHorizontalDragGestures(
-                            onDragStart = { totalDrag = 0f },
-                            onHorizontalDrag = { change, dragAmount ->
-                                totalDrag += dragAmount
-                                if (dragAmount > 0f || dragOffset.value > 0f) {
-                                    change.consume()
-                                    val next = (dragOffset.value + dragAmount).coerceIn(0f, widthPx)
-                                    gestureScope.launch { dragOffset.snapTo(next) }
-                                }
-                            },
-                            onDragCancel = {
-                                totalDrag = 0f
-                                gestureScope.launch {
-                                    dragOffset.animateTo(
-                                        0f,
-                                        spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        )
-                                    )
-                                }
-                            },
-                            onDragEnd = {
-                                when {
-                                    dragOffset.value >= swipeThresholdPx -> gestureScope.launch {
-                                        dragOffset.animateTo(
-                                            widthPx,
-                                            tween(190, easing = FastOutSlowInEasing)
-                                        )
-                                        onCloseConversation()
-                                    }
-                                    !isFullScreen && totalDrag < -swipeThresholdPx -> {
-                                        gestureScope.launch { dragOffset.snapTo(0f) }
-                                        onFullScreenChange(true)
-                                    }
-                                    else -> gestureScope.launch {
-                                        dragOffset.animateTo(
-                                            0f,
-                                            spring(
-                                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                                stiffness = Spring.StiffnessMediumLow
-                                            )
-                                        )
-                                    }
-                                }
-                                totalDrag = 0f
-                            }
-                        )
-                    },
-                shape = panelShape,
-                color = Color.Transparent,
-                tonalElevation = 0.dp,
-                shadowElevation = if (isFullScreen) 0.dp else 14.dp,
-                border = if (isFullScreen) null else BorderStroke(1.dp, palette.border)
-            ) {
-                AnimatedContent(
-                    targetState = activeConversation.partnerUsername,
-                    transitionSpec = {
-                        (slideInHorizontally(
-                            initialOffsetX = { it / 6 },
-                            animationSpec = tween(240, easing = FastOutSlowInEasing)
-                        ) + fadeIn(tween(180))) togetherWith
-                            (slideOutHorizontally(
-                                targetOffsetX = { -it / 8 },
-                                animationSpec = tween(180, easing = FastOutSlowInEasing)
-                            ) + fadeOut(tween(120)))
-                    },
-                    label = "chatQuickSwitch"
-                ) { partner ->
-                    val displayedConversation = conversations.firstOrNull {
-                        it.partnerUsername.equals(partner, ignoreCase = true)
-                    } ?: activeConversation
-
-                    PremiumChatDetail(
-                        conversation = displayedConversation,
-                        allConversations = conversations,
-                        palette = palette,
-                        onBack = { onCloseConversation() },
-                        hasMoreMessages = hasMoreMessages(displayedConversation.id),
-                        isLoadingOlder = isLoadingOlder(displayedConversation.id),
-                        onLoadOlder = { onLoadOlder(displayedConversation.partnerUsername) },
-                        isLoadingMessages = isLoadingMessages(displayedConversation.id),
-                        onSend = { content, replyTo ->
-                            onSendMessage(displayedConversation.partnerUsername, content, replyTo)
-                        },
-                        onForward = { target, message ->
-                            val forwarded = message.text.takeIf { it.isNotBlank() }
-                                ?: message.attachedVideoUrl
-                                ?: message.attachedImageUrl
-                                ?: "Forwarded message"
-                            onSendMessage(target, forwarded, null)
-                        },
-                        interactionActions = interactionActions,
-                        onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
-                        onRetry = { message ->
-                            onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
-                        },
-                        onProfileClick = { onProfileClick(displayedConversation.partnerUsername) },
-                        onAudioCall = {
-                            onStartCall(displayedConversation, MessageCallKind.AUDIO)
-                        },
-                        onVideoCall = {
-                            onStartCall(displayedConversation, MessageCallKind.VIDEO)
-                        },
-                        isConnected = isConnected,
-                        isFullScreen = isFullScreen,
-                        onToggleFullScreen = { onFullScreenChange(!isFullScreen) }
-                    )
-                }
-            }
+            PremiumChatDetail(
+                conversation = displayedConversation,
+                allConversations = conversations,
+                palette = palette,
+                onBack = onCloseConversation,
+                hasMoreMessages = hasMoreMessages(displayedConversation.id),
+                isLoadingOlder = isLoadingOlder(displayedConversation.id),
+                onLoadOlder = { onLoadOlder(displayedConversation.partnerUsername) },
+                isLoadingMessages = isLoadingMessages(displayedConversation.id),
+                onSend = { content, replyTo ->
+                    onSendMessage(displayedConversation.partnerUsername, content, replyTo)
+                },
+                onForward = { target, message ->
+                    val forwarded = message.text.takeIf { it.isNotBlank() }
+                        ?: message.attachedVideoUrl
+                        ?: message.attachedImageUrl
+                        ?: "Forwarded message"
+                    onSendMessage(target, forwarded, null)
+                },
+                interactionActions = interactionActions,
+                onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
+                onRetry = { message ->
+                    onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
+                },
+                onProfileClick = { onProfileClick(displayedConversation.partnerUsername) },
+                onAudioCall = {
+                    onStartCall(displayedConversation, MessageCallKind.AUDIO)
+                },
+                onVideoCall = {
+                    onStartCall(displayedConversation, MessageCallKind.VIDEO)
+                },
+                isConnected = isConnected,
+                isFullScreen = true,
+                onToggleFullScreen = {}
+            )
         }
     }
 }
@@ -1681,14 +1618,6 @@ private fun ChatHeader(
                     )
                 }
             }
-            GlassIconButton(
-                icon = if (isFullScreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                contentDescription = if (isFullScreen) "Restore chat drawer" else "Expand chat fullscreen",
-                palette = palette,
-                size = 34.dp,
-                onClick = onToggleFullScreen
-            )
-            Spacer(Modifier.width(4.dp))
             GlassIconButton(Icons.Default.Call, "Audio call", palette, 36.dp, onClick = onAudioCall)
             Spacer(Modifier.width(4.dp))
             GlassIconButton(Icons.Default.Videocam, "Video call", palette, 36.dp, onClick = onVideoCall)
@@ -1776,12 +1705,12 @@ private fun MessageBubble(
     )
 
     Box(modifier = Modifier.fillMaxWidth()) {
-        if (displayOffset > 10f) {
+        if (displayOffset < -10f) {
             Icon(
                 Icons.Default.Reply,
                 contentDescription = null,
-                tint = palette.accent.copy(alpha = (displayOffset / threshold).coerceIn(.25f, 1f)),
-                modifier = Modifier.align(if (isMine) Alignment.CenterEnd else Alignment.CenterStart).padding(horizontal = 6.dp).size(20.dp)
+                tint = palette.accent.copy(alpha = ((-displayOffset) / threshold).coerceIn(.25f, 1f)),
+                modifier = Modifier.align(Alignment.CenterEnd).padding(horizontal = 6.dp).size(20.dp)
             )
         }
         Row(
@@ -1791,10 +1720,10 @@ private fun MessageBubble(
                 .pointerInput(message.id) {
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { _, amount ->
-                            dragOffset = (dragOffset + amount).coerceIn(0f, threshold * 1.35f)
+                            dragOffset = (dragOffset + amount).coerceIn(-threshold * 1.35f, 0f)
                         },
                         onDragEnd = {
-                            if (dragOffset >= threshold) onReply()
+                            if (dragOffset <= -threshold) onReply()
                             dragOffset = 0f
                         },
                         onDragCancel = { dragOffset = 0f }
