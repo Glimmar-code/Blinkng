@@ -32,33 +32,53 @@ if "import androidx.compose.ui.graphics.Color\n" not in search:
     )
 search_path.write_text(search)
 
-# The primary patcher intentionally stops before writing its PremiumHomeFeed
-# in-memory edits when its context marker is ambiguous. The scoped continuation
-# adds the map, while this step restores the matching data parameter + call.
+# The primary patcher stops before writing its PremiumHomeFeed in-memory edits
+# when its generic context marker is ambiguous. Scope the missing argument and
+# parameter checks to PremiumHomeFeed itself so other profile-bearing functions
+# cannot create a false positive.
 feed_path = Path("app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt")
 feed = feed_path.read_text()
-if "            profiles = profiles,\n            currentUsername = currentUsername," not in feed:
+
+call_start = feed.find("        0 -> PremiumHomeFeed(")
+if call_start < 0:
+    raise RuntimeError("PremiumHomeFeed call not found")
+call_probe = feed[call_start:call_start + 260]
+if "profiles = profiles," not in call_probe:
     feed = replace_once(
         feed,
         """        0 -> PremiumHomeFeed(\n            posts = posts,\n            reels = reels,\n            currentUsername = currentUsername,\n""",
         """        0 -> PremiumHomeFeed(\n            posts = posts,\n            reels = reels,\n            profiles = profiles,\n            currentUsername = currentUsername,\n""",
         "PremiumHomeFeed profiles call",
     )
-if "    profiles: List<UserProfile>,\n    currentUsername: String," not in feed:
+
+function_start = feed.find("private fun PremiumHomeFeed(")
+if function_start < 0:
+    raise RuntimeError("PremiumHomeFeed function not found")
+function_header_end = feed.find(") {", function_start)
+if function_header_end < 0:
+    raise RuntimeError("PremiumHomeFeed function header end not found")
+function_header = feed[function_start:function_header_end]
+if "profiles: List<UserProfile>," not in function_header:
     feed = replace_once(
         feed,
         """private fun PremiumHomeFeed(\n    posts: List<FeedPost>,\n    reels: List<FeedPost>,\n    currentUsername: String,\n""",
         """private fun PremiumHomeFeed(\n    posts: List<FeedPost>,\n    reels: List<FeedPost>,\n    profiles: List<UserProfile>,\n    currentUsername: String,\n""",
         "PremiumHomeFeed profiles signature",
     )
+
 feed_path.write_text(feed)
 
-# Fail closed if any of the exact compile fixes are absent.
+# Re-read scoped regions after edits and fail closed if anything is missing.
+call_start = feed.find("        0 -> PremiumHomeFeed(")
+call_probe = feed[call_start:call_start + 280]
+function_start = feed.find("private fun PremiumHomeFeed(")
+function_header_end = feed.find(") {", function_start)
+function_header = feed[function_start:function_header_end]
 required = {
     "PostCard border import": "import androidx.compose.foundation.border\n" in post,
     "ProfessionalSearch Color import": "import androidx.compose.ui.graphics.Color\n" in search,
-    "PremiumHomeFeed profiles call": "            profiles = profiles,\n            currentUsername = currentUsername," in feed,
-    "PremiumHomeFeed profiles signature": "    profiles: List<UserProfile>,\n    currentUsername: String," in feed,
+    "PremiumHomeFeed profiles call": "profiles = profiles," in call_probe,
+    "PremiumHomeFeed profiles signature": "profiles: List<UserProfile>," in function_header,
 }
 missing = [name for name, ok in required.items() if not ok]
 if missing:
