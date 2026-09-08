@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.BuildConfig
+import com.example.call.CallTimeoutWorker
 import com.example.call.CallType
 import com.example.call.IncomingCallNotification
 import com.example.data.repository.ChatRepository
@@ -20,6 +21,7 @@ import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -63,6 +65,47 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 .addOnFailureListener { error ->
                     Log.w(TAG, "Unable to obtain FCM token", error)
                 }
+        }
+
+        /**
+         * Deactivates this device token for the currently authenticated account.
+         * This must run before the Supabase access token is revoked during logout.
+         */
+        suspend fun unregisterCurrentToken(context: Context): Boolean = withContext(Dispatchers.IO) {
+            val appContext = context.applicationContext
+            val token = appContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+                .getString(TOKEN_KEY, "")
+                .orEmpty()
+            if (token.isBlank()) return@withContext true
+
+            return@withContext try {
+                SupabaseService.initialize(appContext)
+                val accessToken = SupabaseService.accessToken() ?: return@withContext false
+                val body = JSONObject()
+                    .put("p_token", token)
+                    .toString()
+                    .toRequestBody("application/json".toMediaType())
+                val request = Request.Builder()
+                    .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/unregister_my_fcm_token")
+                    .addHeader("apikey", SupabaseConfig.anonKey)
+                    .addHeader("Authorization", "Bearer $accessToken")
+                    .addHeader("Content-Type", "application/json")
+                    .post(body)
+                    .build()
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .readTimeout(10, TimeUnit.SECONDS)
+                    .build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        Log.w(TAG, "FCM token unregister failed: ${response.code}")
+                    }
+                    response.isSuccessful
+                }
+            } catch (error: Exception) {
+                Log.w(TAG, "FCM token unregister error", error)
+                false
+            }
         }
 
         private fun saveToken(context: Context, token: String) {
@@ -167,15 +210,22 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 val callId = data["call_id"].orEmpty()
                 val callerId = data["caller_id"].orEmpty()
                 if (callId.isNotBlank() && callerId.isNotBlank()) {
+                    val callType = CallType.fromWire(data["call_type"])
                     IncomingCallNotification.showIncoming(
                         context = this,
                         callId = callId,
-                        callType = CallType.fromWire(data["call_type"]),
+                        callType = callType,
                         peerId = callerId,
                         peerUsername = sender,
                         peerName = senderName,
                         peerAvatar = senderAvatar,
                         conversationId = conversationId
+                    )
+                    CallTimeoutWorker.schedule(
+                        context = this,
+                        callId = callId,
+                        callType = callType,
+                        peerName = senderName
                     )
                 }
             }
@@ -183,6 +233,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             type.equals("call_update", ignoreCase = true) -> {
                 val callId = data["call_id"].orEmpty()
                 val event = data["call_event"].orEmpty()
+                CallTimeoutWorker.cancel(this, callId)
                 IncomingCallNotification.handleCallUpdate(
                     context = this,
                     callId = callId,
@@ -220,6 +271,14 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             }
 
             else -> {
+                // The REST recovery worker reads the same unread rows after reconnect/login.
+                // Record the delivery time before rendering so an already-shown admin/social
+                // push is not reconstructed as a second notification on the next login.
+                val uid = runCatching {
+                    SupabaseService.initialize(applicationContext)
+                    SupabaseService().getCurrentUserId().orEmpty()
+                }.getOrDefault("")
+                SocialNotificationRecovery.markPushReceived(applicationContext, uid)
                 BlinkNotificationHelper.showSocialNotification(
                     context = this,
                     title = title,
