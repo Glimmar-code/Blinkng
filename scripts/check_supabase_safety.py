@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATIONS = ROOT / "supabase" / "migrations"
 
 SCHEMA_DDL = re.compile(
     r"\b(?:CREATE|ALTER|DROP)\s+(?:TABLE|POLICY|FUNCTION|TRIGGER|VIEW|TYPE|SCHEMA)\b|"
@@ -28,18 +27,34 @@ def git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
 
 
+def fetch_ref(ref: str) -> None:
+    try:
+        git("fetch", "origin", ref, "--depth=1")
+    except subprocess.CalledProcessError:
+        # checkout uses fetch-depth: 0 in CI, so the remote ref may already be present.
+        pass
+
+
 def determine_base() -> str:
+    # PRs must be evaluated against their actual target branch.
+    base_ref = os.getenv("GITHUB_BASE_REF", "").strip()
+    if base_ref:
+        fetch_ref(base_ref)
+        return f"origin/{base_ref}"
+
+    # A Testlab push should evaluate the complete Testlab-only delta against the
+    # current production baseline. This avoids flagging historical migrations
+    # merely because main was synchronized into Testlab, while still blocking
+    # every new migration/change that exists only on Testlab.
+    ref_name = os.getenv("GITHUB_REF_NAME", "").strip()
+    if ref_name == "Testlab":
+        fetch_ref("main")
+        return "origin/main"
+
+    # On main (or another directly checked branch), inspect only this push.
     base_sha = os.getenv("BASE_SHA", "").strip()
     if base_sha and set(base_sha) != {"0"}:
         return base_sha
-
-    base_ref = os.getenv("GITHUB_BASE_REF", "").strip()
-    if base_ref:
-        try:
-            git("fetch", "origin", base_ref, "--depth=1")
-        except subprocess.CalledProcessError:
-            pass
-        return git("merge-base", "HEAD", f"origin/{base_ref}")
 
     try:
         return git("rev-parse", "HEAD^")
@@ -62,6 +77,7 @@ def changed_files(base: str) -> list[tuple[str, str]]:
 
 def main() -> int:
     base = determine_base()
+    print(f"Supabase safety baseline: {base}")
     failures: list[str] = []
     notices: list[str] = []
 
@@ -69,7 +85,9 @@ def main() -> int:
         if not relative.startswith("supabase/") or not relative.endswith(".sql"):
             continue
         if status.startswith("D"):
-            failures.append(f"Do not delete tracked Supabase SQL without an explicit replacement/rollback plan: {relative}")
+            failures.append(
+                f"Do not delete tracked Supabase SQL without an explicit replacement/rollback plan: {relative}"
+            )
             continue
 
         path = ROOT / relative
