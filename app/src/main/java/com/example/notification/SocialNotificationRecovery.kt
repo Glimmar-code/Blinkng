@@ -1,49 +1,51 @@
 package com.example.notification
 
 import android.content.Context
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
 
 /**
- * Bridges FCM delivery and REST gap recovery for social/admin notifications.
+ * Durable per-account dedupe for social/admin notifications reconstructed after reconnect.
  *
- * FCM and the notification recovery worker are intentionally independent. Without a
- * shared watermark, a notification that was already shown by FCM can be reconstructed
- * again after logout/login while its server row is still unread. This per-user watermark
- * makes recovery idempotent without marking the notification as read for the user.
+ * A server notification can be displayed, remain unread, then be returned again by the
+ * recovery query after logout/login. Remembering the server notification id prevents the
+ * same alert from being posted twice without changing the user's read/unread state.
  */
 object SocialNotificationRecovery {
     private const val PREFS = "blink_notification_sync"
-    private const val PUSH_WATERMARK_PREFIX = "last_social_push_received_at_"
+    private const val SHOWN_IDS_PREFIX = "shown_social_notification_ids_"
+    private const val MAX_REMEMBERED_IDS = 512
 
-    fun markPushReceived(context: Context, userId: String) {
-        if (userId.isBlank()) return
+    @Synchronized
+    fun wasShown(context: Context, userId: String, notificationId: String): Boolean {
+        if (userId.isBlank() || notificationId.isBlank()) return false
+        return readIds(context, userId).contains(notificationId)
+    }
+
+    @Synchronized
+    fun markShown(context: Context, userId: String, notificationId: String) {
+        if (userId.isBlank() || notificationId.isBlank()) return
+        val ids = readIds(context, userId).toMutableList()
+        if (ids.remove(notificationId)) {
+            ids.add(notificationId)
+        } else {
+            ids.add(notificationId)
+        }
+        while (ids.size > MAX_REMEMBERED_IDS) ids.removeAt(0)
+
         context.applicationContext
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .putString(PUSH_WATERMARK_PREFIX + userId, utcNow())
+            .putString(SHOWN_IDS_PREFIX + userId, ids.joinToString("\n"))
             .apply()
     }
 
-    fun effectiveCursor(context: Context, userId: String, persistedCursor: String): String {
-        if (userId.isBlank()) return persistedCursor
-        val pushWatermark = context.applicationContext
+    private fun readIds(context: Context, userId: String): List<String> {
+        return context.applicationContext
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(PUSH_WATERMARK_PREFIX + userId, "")
+            .getString(SHOWN_IDS_PREFIX + userId, "")
             .orEmpty()
-        return when {
-            persistedCursor.isBlank() -> pushWatermark
-            pushWatermark.isBlank() -> persistedCursor
-            pushWatermark > persistedCursor -> pushWatermark
-            else -> persistedCursor
-        }
-    }
-
-    private fun utcNow(): String {
-        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
-        }.format(Date())
+            .lineSequence()
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .toList()
     }
 }
