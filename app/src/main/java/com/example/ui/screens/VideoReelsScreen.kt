@@ -56,6 +56,7 @@ import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
 import com.example.data.repository.UserInteractionRepository
+import com.example.data.supabase.ReelRecommendationService
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.components.ProfileFollowInteractButton
 import com.example.ui.components.VerifiedMark
@@ -511,6 +512,7 @@ private fun ReelPage(
     }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val interactionRepository = remember { UserInteractionRepository() }
+    val reelRecommendationService = remember { ReelRecommendationService() }
     val interactionScope = rememberCoroutineScope()
     val mentorListingId = connectHub.mentors.firstOrNull { it.userId == authorId }?.id
     val roommateListingId = connectHub.roommates.firstOrNull { it.userId == authorId }?.id
@@ -582,7 +584,18 @@ private fun ReelPage(
                 initialPositionMs = initialPositionMs,
                 onInitialPositionConsumed = onInitialPositionConsumed,
                 onProgressChange = { progress = it },
-                onBufferingChange = { isBuffering = it }
+                onBufferingChange = { isBuffering = it },
+                onSessionEnd = { session ->
+                    if (!isAuthor) {
+                        reelRecommendationService.recordReelEngagementAsync(
+                            postId = reel.id,
+                            watchedMs = session.watchedMs,
+                            durationMs = session.durationMs,
+                            completed = session.completed,
+                            rewatched = session.rewatched
+                        )
+                    }
+                }
             )
         } else if (!url.isNullOrBlank()) {
             ReelPreview(reel)
@@ -1220,6 +1233,13 @@ private fun ReelPreview(reel: FeedPost) {
     }
 }
 
+private data class ReelPlaybackSession(
+    val watchedMs: Long,
+    val durationMs: Long,
+    val completed: Boolean,
+    val rewatched: Boolean
+)
+
 @Composable
 private fun ReelVideo(
     url: String,
@@ -1229,15 +1249,22 @@ private fun ReelVideo(
     onInitialPositionConsumed: () -> Unit = {},
     onProgressChange: (Float) -> Unit,
     onBufferingChange: (Boolean) -> Unit,
-    onPositionChange: (Long) -> Unit = {}
+    onPositionChange: (Long) -> Unit = {},
+    onSessionEnd: (ReelPlaybackSession) -> Unit = {}
 ) {
     val context = LocalContext.current
     var error by remember(url) { mutableStateOf<String?>(null) }
+    var watchedMs by remember(url) { mutableLongStateOf(0L) }
+    var knownDurationMs by remember(url) { mutableLongStateOf(0L) }
+    var previousPositionMs by remember(url) { mutableLongStateOf(0L) }
+    var completed by remember(url) { mutableStateOf(false) }
+    var rewatched by remember(url) { mutableStateOf(false) }
 
     val currentOnProgressChange by rememberUpdatedState(onProgressChange)
     val currentOnBufferingChange by rememberUpdatedState(onBufferingChange)
     val currentOnInitialPositionConsumed by rememberUpdatedState(onInitialPositionConsumed)
     val currentOnPositionChange by rememberUpdatedState(onPositionChange)
+    val currentOnSessionEnd by rememberUpdatedState(onSessionEnd)
 
     val player = remember(url) {
         val httpDataSource = DefaultHttpDataSource.Factory()
@@ -1266,6 +1293,7 @@ private fun ReelVideo(
 
                     override fun onPlaybackStateChanged(state: Int) {
                         currentOnBufferingChange(state == Player.STATE_BUFFERING)
+                        if (state == Player.STATE_ENDED) completed = true
                     }
                 })
                 setMediaItem(MediaItem.fromUri(url))
@@ -1291,19 +1319,53 @@ private fun ReelVideo(
     }
 
     LaunchedEffect(player, isActive) {
+        var lastTickMs = android.os.SystemClock.elapsedRealtime()
         while (isActive) {
+            val nowMs = android.os.SystemClock.elapsedRealtime()
+            if (player.isPlaying) {
+                watchedMs += (nowMs - lastTickMs).coerceIn(0L, 1_000L)
+            }
+            lastTickMs = nowMs
+
             val position = player.currentPosition.coerceAtLeast(0L)
             currentOnPositionChange(position)
             val duration = player.duration
             if (duration > 0) {
+                knownDurationMs = duration
                 currentOnProgressChange((position.toFloat() / duration.toFloat()).coerceIn(0f, 1f))
+
+                if (position >= (duration * 95L / 100L) || watchedMs >= (duration * 90L / 100L)) {
+                    completed = true
+                }
+                if (previousPositionMs > (duration * 80L / 100L) && position < (duration * 20L / 100L)) {
+                    completed = true
+                    rewatched = true
+                }
+                if (watchedMs >= (duration * 105L / 100L)) {
+                    rewatched = true
+                }
             }
+            previousPositionMs = position
             delay(100)
         }
     }
 
     DisposableEffect(player) {
-        onDispose { player.release() }
+        onDispose {
+            val duration = knownDurationMs.takeIf { it > 0L }
+                ?: player.duration.takeIf { it > 0L }
+            if (duration != null && duration >= 1_000L && watchedMs >= 250L) {
+                currentOnSessionEnd(
+                    ReelPlaybackSession(
+                        watchedMs = watchedMs,
+                        durationMs = duration,
+                        completed = completed,
+                        rewatched = rewatched
+                    )
+                )
+            }
+            player.release()
+        }
     }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
