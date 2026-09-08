@@ -11,9 +11,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -115,7 +115,7 @@ private fun DesktopBlinkAiDialog(
             listOf(
                 DesktopAiMessage(
                     id = 1L,
-                    text = "Hi! I’m Blink AI for Windows. Choose a mode, use current web search, attach images or a voice note, or continue a saved chat.",
+                    text = "Hi! I’m Blink AI for Windows. Ask anything, attach media, search the web, or choose a focused mode.",
                     fromUser = false,
                 )
             )
@@ -125,6 +125,18 @@ private fun DesktopBlinkAiDialog(
 
     DisposableEffect(Unit) {
         onDispose { service.cancelActiveRequest() }
+    }
+
+    fun friendlyError(throwable: Throwable, fallback: String): String {
+        val message = throwable.message?.trim().orEmpty()
+        return when {
+            message.contains("Canceled", ignoreCase = true) -> "Generation stopped."
+            message.contains("not configured", ignoreCase = true) ||
+                message.contains("missing_gemini_key", ignoreCase = true) ->
+                "Blink AI is temporarily unavailable because its server AI provider is not configured."
+            message.isNotBlank() -> message
+            else -> fallback
+        }
     }
 
     fun resetChat() {
@@ -144,7 +156,7 @@ private fun DesktopBlinkAiDialog(
         scope.launch {
             runCatching { service.loadConversations() }
                 .onSuccess { conversations = it }
-                .onFailure { error = it.message ?: "Couldn’t load Blink AI history." }
+                .onFailure { error = friendlyError(it, "Couldn’t load Blink AI history.") }
             historyLoading = false
         }
     }
@@ -196,11 +208,7 @@ private fun DesktopBlinkAiDialog(
                 imageFiles = emptyList()
                 audioFile = null
             }.onFailure { throwable ->
-                error = if (throwable.message?.contains("Canceled", ignoreCase = true) == true) {
-                    "Generation stopped."
-                } else {
-                    throwable.message ?: "Blink AI couldn't answer that request."
-                }
+                error = friendlyError(throwable, "Blink AI couldn't answer that request.")
             }
             sending = false
         }
@@ -211,9 +219,36 @@ private fun DesktopBlinkAiDialog(
             onDismissRequest = { settingsOpen = false },
             title = { Text("Blink AI settings") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Response length", fontWeight = FontWeight.SemiBold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Context & privacy", fontWeight = FontWeight.Bold)
+                    DesktopAiSwitchRow(
+                        title = "Use my Blink context",
+                        checked = usePersonalContext,
+                        enabled = previousInteractionId == null && !temporaryChat && !sending,
+                        onChanged = { usePersonalContext = it },
+                    )
+                    DesktopAiSwitchRow(
+                        title = "Web search",
+                        checked = useWebSearch,
+                        enabled = !sending,
+                        onChanged = { useWebSearch = it },
+                    )
+                    DesktopAiSwitchRow(
+                        title = "Temporary chat",
+                        checked = temporaryChat,
+                        enabled = previousInteractionId == null && !sending,
+                        onChanged = {
+                            temporaryChat = it
+                            if (it) usePersonalContext = false
+                        },
+                    )
+
+                    Text("Response", fontWeight = FontWeight.Bold)
+                    Text("Length", style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                         listOf("short", "medium", "long").forEach { item ->
                             FilterChip(
                                 selected = responseLength == item,
@@ -222,7 +257,7 @@ private fun DesktopBlinkAiDialog(
                             )
                         }
                     }
-                    Text("Tone", fontWeight = FontWeight.SemiBold)
+                    Text("Tone", style = MaterialTheme.typography.labelLarge)
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -270,6 +305,8 @@ private fun DesktopBlinkAiDialog(
                             CircularProgressIndicator(modifier = Modifier.padding(4.dp), strokeWidth = 2.dp)
                             Text("Loading…")
                         }
+                    } else if (filtered.isEmpty()) {
+                        Text("No saved conversations found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
                         LazyColumn(
                             modifier = Modifier.heightIn(max = 360.dp),
@@ -301,7 +338,9 @@ private fun DesktopBlinkAiDialog(
                                                             activeConversationId = conversation.id
                                                             historyOpen = false
                                                         }
-                                                        .onFailure { error = it.message }
+                                                        .onFailure {
+                                                            error = friendlyError(it, "Couldn’t open that conversation.")
+                                                        }
                                                     historyLoading = false
                                                 }
                                             }
@@ -314,7 +353,9 @@ private fun DesktopBlinkAiDialog(
                                                             if (activeConversationId == conversation.id) resetChat()
                                                             refreshHistory()
                                                         }
-                                                        .onFailure { error = it.message }
+                                                        .onFailure {
+                                                            error = friendlyError(it, "Couldn’t delete that conversation.")
+                                                        }
                                                 }
                                             }
                                         ) { Text("Delete") }
@@ -342,23 +383,31 @@ private fun DesktopBlinkAiDialog(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Blink AI", fontWeight = FontWeight.Black)
-                    Text("Windows • Gemini • web • memory • media", style = MaterialTheme.typography.bodySmall)
+                    Text("Your AI assistant inside Blink", style = MaterialTheme.typography.bodySmall)
                 }
-                TextButton(onClick = { resetChat() }, enabled = !sending) { Text("New") }
-                TextButton(
-                    onClick = {
-                        historyOpen = true
-                        refreshHistory()
-                    },
-                    enabled = !sending && !temporaryChat,
-                ) { Text("History") }
+                TextButton(onClick = onDismiss) { Text("Close") }
             }
         },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextButton(onClick = { resetChat() }, enabled = !sending) { Text("New chat") }
+                    TextButton(
+                        onClick = {
+                            historyOpen = true
+                            refreshHistory()
+                        },
+                        enabled = !sending && !temporaryChat,
+                    ) { Text("History") }
+                    TextButton(onClick = { settingsOpen = true }, enabled = !sending) { Text("Settings") }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -376,36 +425,23 @@ private fun DesktopBlinkAiDialog(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
                 ) {
-                    Column(Modifier.padding(8.dp)) {
-                        DesktopAiSwitchRow(
-                            title = "Use my Blink context",
-                            checked = usePersonalContext,
-                            enabled = previousInteractionId == null && !temporaryChat && !sending,
-                            onChanged = { usePersonalContext = it },
-                        )
-                        DesktopAiSwitchRow(
-                            title = "Web search",
-                            checked = useWebSearch,
-                            enabled = !sending,
-                            onChanged = { useWebSearch = it },
-                        )
-                        DesktopAiSwitchRow(
-                            title = "Temporary chat",
-                            checked = temporaryChat,
-                            enabled = previousInteractionId == null && !sending,
-                            onChanged = {
-                                temporaryChat = it
-                                if (it) usePersonalContext = false
-                            },
-                        )
-                        TextButton(onClick = { settingsOpen = true }, enabled = !sending) { Text("Response settings") }
-                    }
+                    val status = buildList {
+                        add(mode.replaceFirstChar(Char::uppercaseChar))
+                        if (useWebSearch) add("Web")
+                        if (usePersonalContext && !temporaryChat) add("Blink context")
+                        if (temporaryChat) add("Temporary")
+                    }.joinToString(" • ")
+                    Text(
+                        status,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
                 }
 
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp, max = 300.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 210.dp, max = 330.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(messages, key = { it.id }) { message ->
@@ -434,10 +470,23 @@ private fun DesktopBlinkAiDialog(
                 }
 
                 error?.let {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(it, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.error)
-                        if (!sending && lastPrompt != null) {
-                            TextButton(onClick = { send(lastPrompt, addUserBubble = false) }) { Text("Retry") }
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                it,
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                            if (!sending && lastPrompt != null) {
+                                TextButton(onClick = { send(lastPrompt, addUserBubble = false) }) { Text("Retry") }
+                            }
                         }
                     }
                 }
@@ -447,58 +496,74 @@ private fun DesktopBlinkAiDialog(
                 }
                 audioFile?.let { Text("Voice note: ${it.name}", style = MaterialTheme.typography.bodySmall) }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                 ) {
-                    OutlinedButton(
-                        onClick = {
-                            val chooser = JFileChooser().apply {
-                                dialogTitle = "Choose Blink AI images"
-                                fileSelectionMode = JFileChooser.FILES_ONLY
-                                isMultiSelectionEnabled = true
-                                fileFilter = FileNameExtensionFilter("Images", "png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "heic", "heif")
-                            }
-                            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                                imageFiles = chooser.selectedFiles.toList().take(6)
-                            }
-                        },
-                        enabled = !sending,
-                    ) { Text("Images ${if (imageFiles.isEmpty()) "" else "(${imageFiles.size})"}") }
-                    OutlinedButton(
-                        onClick = {
-                            val chooser = JFileChooser().apply {
-                                dialogTitle = "Choose Blink AI voice note"
-                                fileSelectionMode = JFileChooser.FILES_ONLY
-                                isMultiSelectionEnabled = false
-                                fileFilter = FileNameExtensionFilter("Audio", "wav", "mp3", "aiff", "aac", "ogg", "flac", "m4a", "opus", "webm")
-                            }
-                            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                                audioFile = chooser.selectedFile
-                            }
-                        },
-                        enabled = !sending,
-                    ) { Text("Voice note") }
-                    if (imageFiles.isNotEmpty() || audioFile != null) {
-                        TextButton(
-                            onClick = {
-                                imageFiles = emptyList()
-                                audioFile = null
-                            },
+                    Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedTextField(
+                            value = input,
+                            onValueChange = { input = it.take(8_000) },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2,
+                            maxLines = 6,
+                            label = { Text("Message Blink AI") },
                             enabled = !sending,
-                        ) { Text("Clear media") }
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val chooser = JFileChooser().apply {
+                                        dialogTitle = "Choose Blink AI images"
+                                        fileSelectionMode = JFileChooser.FILES_ONLY
+                                        isMultiSelectionEnabled = true
+                                        fileFilter = FileNameExtensionFilter(
+                                            "Images",
+                                            "png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "heic", "heif",
+                                        )
+                                    }
+                                    if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                                        imageFiles = chooser.selectedFiles.toList().take(6)
+                                    }
+                                },
+                                enabled = !sending,
+                            ) { Text("Images${if (imageFiles.isEmpty()) "" else " (${imageFiles.size})"}") }
+
+                            OutlinedButton(
+                                onClick = {
+                                    val chooser = JFileChooser().apply {
+                                        dialogTitle = "Choose Blink AI voice note"
+                                        fileSelectionMode = JFileChooser.FILES_ONLY
+                                        isMultiSelectionEnabled = false
+                                        fileFilter = FileNameExtensionFilter(
+                                            "Audio",
+                                            "wav", "mp3", "aiff", "aac", "ogg", "flac", "m4a", "opus", "webm",
+                                        )
+                                    }
+                                    if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                                        audioFile = chooser.selectedFile
+                                    }
+                                },
+                                enabled = !sending,
+                            ) { Text("Voice note") }
+
+                            if (imageFiles.isNotEmpty() || audioFile != null) {
+                                TextButton(
+                                    onClick = {
+                                        imageFiles = emptyList()
+                                        audioFile = null
+                                    },
+                                    enabled = !sending,
+                                ) { Text("Clear media") }
+                            }
+                        }
                     }
                 }
-
-                OutlinedTextField(
-                    value = input,
-                    onValueChange = { input = it.take(8_000) },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    maxLines = 6,
-                    label = { Text("Message Blink AI") },
-                    enabled = !sending,
-                )
 
                 if (sending) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
