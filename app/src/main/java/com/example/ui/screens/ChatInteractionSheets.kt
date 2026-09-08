@@ -101,22 +101,46 @@ internal fun MessageActionsSheet(
     onReport: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = palette.glass, contentColor = palette.textPrimary) {
-        Text("React", color = palette.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp))
-        LazyRow(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = palette.glass,
+        contentColor = palette.textPrimary
+    ) {
+        Text(
+            "React",
+            color = palette.textSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp)
+        )
+        LazyRow(
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
             items(CHAT_REACTIONS) { emoji ->
                 val selected = emoji in message.myReactions
-                Surface(shape = CircleShape, color = if (selected) palette.accent.copy(alpha = .24f) else palette.glassElevated, border = BorderStroke(1.dp, if (selected) palette.accent else palette.border), modifier = Modifier.size(42.dp).clickable { onReaction(emoji) }) {
+                Surface(
+                    shape = CircleShape,
+                    color = if (selected) palette.accent.copy(alpha = .24f) else palette.glassElevated,
+                    border = BorderStroke(1.dp, if (selected) palette.accent else palette.border),
+                    modifier = Modifier.size(42.dp).clickable { onReaction(emoji) }
+                ) {
                     Box(contentAlignment = Alignment.Center) { Text(emoji, fontSize = 20.sp) }
                 }
             }
         }
-        Spacer(Modifier.height(12.dp)); HorizontalDivider(color = palette.border)
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Spacer(Modifier.height(12.dp))
+        HorizontalDivider(color = palette.border)
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MessageActionChip("Reply", Icons.Default.Reply, palette, Modifier.weight(1f), onReply)
                 MessageActionChip("Forward", Icons.Default.Forward, palette, Modifier.weight(1f), onForward)
-                if (message.isFromMe && !message.deletedForEveryone) MessageActionChip("Edit", Icons.Default.Edit, palette, Modifier.weight(1f), onEdit)
+                if (message.isFromMe && !message.deletedForEveryone) {
+                    MessageActionChip("Edit", Icons.Default.Edit, palette, Modifier.weight(1f), onEdit)
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MessageActionChip(if (message.isStarred) "Unstar" else "Star", Icons.Default.Star, palette, Modifier.weight(1f), onToggleStar)
@@ -125,7 +149,9 @@ internal fun MessageActionsSheet(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MessageActionChip("Delete for me", Icons.Default.Delete, palette, Modifier.weight(1f), onDeleteForMe, danger = true)
-                if (message.isFromMe) MessageActionChip("Delete everyone", Icons.Default.ClearAll, palette, Modifier.weight(1f), onDeleteForEveryone, danger = true)
+                if (message.isFromMe) {
+                    MessageActionChip("Delete everyone", Icons.Default.ClearAll, palette, Modifier.weight(1f), onDeleteForEveryone, danger = true)
+                }
                 MessageActionChip("Report", Icons.Default.Report, palette, Modifier.weight(1f), onReport, danger = true)
             }
         }
@@ -134,31 +160,84 @@ internal fun MessageActionsSheet(
 }
 
 @Composable
-private fun MessageActionChip(label: String, icon: ImageVector, palette: MessagePalette, modifier: Modifier, onClick: () -> Unit, danger: Boolean = false) {
-    Surface(color = if (danger) palette.danger.copy(alpha = .10f) else palette.glassElevated, shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, if (danger) palette.danger.copy(alpha = .35f) else palette.border), modifier = modifier.clickable(onClick = onClick)) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)) {
+private fun MessageActionChip(
+    label: String,
+    icon: ImageVector,
+    palette: MessagePalette,
+    modifier: Modifier,
+    onClick: () -> Unit,
+    danger: Boolean = false
+) {
+    Surface(
+        color = if (danger) palette.danger.copy(alpha = .10f) else palette.glassElevated,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, if (danger) palette.danger.copy(alpha = .35f) else palette.border),
+        modifier = modifier.clickable(onClick = onClick)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)
+        ) {
             Icon(icon, contentDescription = null, tint = if (danger) palette.danger else palette.textPrimary, modifier = Modifier.size(19.dp))
-            Spacer(Modifier.height(5.dp)); Text(label, color = if (danger) palette.danger else palette.textSecondary, fontSize = 9.sp, maxLines = 1)
+            Spacer(Modifier.height(5.dp))
+            Text(label, color = if (danger) palette.danger else palette.textSecondary, fontSize = 9.sp, maxLines = 1)
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ForwardMessageSheet(sourcePartner: String, conversations: List<ChatConversation>, palette: MessagePalette, onForward: (List<ChatConversation>) -> Unit, onDismiss: () -> Unit) {
+internal fun ForwardMessageSheet(
+    sourcePartner: String,
+    conversations: List<ChatConversation>,
+    palette: MessagePalette,
+    onForward: (List<ChatConversation>) -> Unit,
+    onDismiss: () -> Unit
+) {
     val selected = remember { mutableStateListOf<String>() }
     val candidates = conversations.filterNot { it.partnerUsername.equals(sourcePartner, true) }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = palette.glass, contentColor = palette.textPrimary) {
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text("Forward message", fontWeight = FontWeight.Bold, fontSize = 17.sp); Text("Choose up to 10 chats • ${selected.size}/10", color = palette.textSecondary, fontSize = 10.sp) }
-            TextButton(enabled = selected.isNotEmpty(), onClick = { onForward(candidates.filter { it.id in selected }) }) { Text("Send", color = palette.accent, fontWeight = FontWeight.Bold) }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = palette.glass,
+        contentColor = palette.textPrimary
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Forward message", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Text("Choose up to 10 chats • ${selected.size}/10", color = palette.textSecondary, fontSize = 10.sp)
+            }
+            TextButton(
+                enabled = selected.isNotEmpty(),
+                onClick = { onForward(candidates.filter { it.id in selected }) }
+            ) { Text("Send", color = palette.accent, fontWeight = FontWeight.Bold) }
         }
         LazyColumn(modifier = Modifier.fillMaxWidth()) {
             items(candidates, key = { it.id }) { conversation ->
                 val checked = conversation.id in selected
-                Row(modifier = Modifier.fillMaxWidth().clickable { if (checked) selected.remove(conversation.id) else if (selected.size < 10) selected.add(conversation.id) }.padding(horizontal = 18.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(shape = CircleShape, color = if (checked) palette.accent else palette.glassElevated, border = BorderStroke(1.dp, if (checked) palette.accent else palette.border), modifier = Modifier.size(28.dp)) { Box(contentAlignment = Alignment.Center) { if (checked) Text("✓", color = Color.White, fontWeight = FontWeight.Bold) } }
-                    Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(conversation.partnerName, color = palette.textPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("@${conversation.partnerUsername.removePrefix("@")}", color = palette.textSecondary, fontSize = 10.sp) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (checked) selected.remove(conversation.id)
+                            else if (selected.size < 10) selected.add(conversation.id)
+                        }
+                        .padding(horizontal = 18.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = if (checked) palette.accent else palette.glassElevated,
+                        border = BorderStroke(1.dp, if (checked) palette.accent else palette.border),
+                        modifier = Modifier.size(28.dp)
+                    ) { Box(contentAlignment = Alignment.Center) { if (checked) Text("✓", color = Color.White, fontWeight = FontWeight.Bold) } }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(conversation.partnerName, color = palette.textPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("@${conversation.partnerUsername.removePrefix("@")}", color = palette.textSecondary, fontSize = 10.sp)
+                    }
                 }
             }
         }
@@ -183,7 +262,11 @@ internal fun ChatOverflowSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = palette.glass, contentColor = palette.textPrimary) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = palette.glass,
+        contentColor = palette.textPrimary
+    ) {
         Text(conversation.partnerName, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
         OverflowRow("View profile", Icons.Default.Person, palette, onProfile)
         OverflowRow("Search in chat", Icons.Default.Search, palette, onSearch)
@@ -202,15 +285,31 @@ internal fun ChatOverflowSheet(
 }
 
 @Composable
-private fun OverflowRow(label: String, icon: ImageVector, palette: MessagePalette, onClick: () -> Unit, danger: Boolean = false) {
-    Row(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun OverflowRow(
+    label: String,
+    icon: ImageVector,
+    palette: MessagePalette,
+    onClick: () -> Unit,
+    danger: Boolean = false
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Icon(icon, contentDescription = null, tint = if (danger) palette.danger else palette.textSecondary, modifier = Modifier.size(21.dp))
-        Spacer(Modifier.width(13.dp)); Text(label, color = if (danger) palette.danger else palette.textPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+        Spacer(Modifier.width(13.dp))
+        Text(label, color = if (danger) palette.danger else palette.textPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
     }
 }
 
 internal fun shareChatMessage(context: Context, message: ChatMessage) {
-    val body = message.text.takeIf { it.isNotBlank() } ?: message.attachedVideoUrl ?: message.attachedImageUrl ?: return
-    val intent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, body) }
+    val body = message.text.takeIf { it.isNotBlank() }
+        ?: message.attachedVideoUrl
+        ?: message.attachedImageUrl
+        ?: return
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, body)
+    }
     context.startActivity(Intent.createChooser(intent, "Share message"))
 }
