@@ -32,6 +32,18 @@ if "import androidx.compose.ui.graphics.Color\n" not in search:
     )
 search_path.write_text(search)
 
+# Desktop ContentScreens also uses Color for offline status dots.
+desktop_content_path = Path("desktopApp/src/main/kotlin/com/blinkng/desktop/ui/ContentScreens.kt")
+desktop_content = desktop_content_path.read_text()
+if "import androidx.compose.ui.graphics.Color\n" not in desktop_content:
+    desktop_content = replace_once(
+        desktop_content,
+        "import androidx.compose.ui.draw.clip\n",
+        "import androidx.compose.ui.draw.clip\nimport androidx.compose.ui.graphics.Color\n",
+        "Desktop ContentScreens Color import",
+    )
+desktop_content_path.write_text(desktop_content)
+
 # The primary patcher stops before writing its PremiumHomeFeed in-memory edits
 # when its generic context marker is ambiguous. Scope the missing argument and
 # parameter checks to PremiumHomeFeed itself so other profile-bearing functions
@@ -77,6 +89,7 @@ function_header = feed[function_start:function_header_end]
 required = {
     "PostCard border import": "import androidx.compose.foundation.border\n" in post,
     "ProfessionalSearch Color import": "import androidx.compose.ui.graphics.Color\n" in search,
+    "Desktop ContentScreens Color import": "import androidx.compose.ui.graphics.Color\n" in desktop_content,
     "PremiumHomeFeed profiles call": "profiles = profiles," in call_probe,
     "PremiumHomeFeed profiles signature": "profiles: List<UserProfile>," in function_header,
 }
