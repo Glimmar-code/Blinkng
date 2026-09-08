@@ -35,6 +35,17 @@ def fetch_ref(ref: str) -> None:
         pass
 
 
+def usable_push_base() -> str | None:
+    base_sha = os.getenv("BASE_SHA", "").strip()
+    if not base_sha or set(base_sha) == {"0"}:
+        return None
+    try:
+        git("merge-base", "--is-ancestor", base_sha, "HEAD")
+        return base_sha
+    except subprocess.CalledProcessError:
+        return None
+
+
 def determine_base() -> str:
     # PRs must be evaluated against their actual target branch.
     base_ref = os.getenv("GITHUB_BASE_REF", "").strip()
@@ -42,19 +53,25 @@ def determine_base() -> str:
         fetch_ref(base_ref)
         return f"origin/{base_ref}"
 
-    # A Testlab push should evaluate the complete Testlab-only delta against the
-    # current production baseline. This avoids flagging historical migrations
-    # merely because main was synchronized into Testlab, while still blocking
-    # every new migration/change that exists only on Testlab.
+    # Prefer the production baseline for Testlab when the histories are related.
+    # If Testlab was created from a disconnected history, fall back to the actual
+    # previous Testlab commit so the safety gate still validates the pushed delta
+    # instead of crashing before any migration checks can run.
     ref_name = os.getenv("GITHUB_REF_NAME", "").strip()
     if ref_name == "Testlab":
         fetch_ref("main")
-        return "origin/main"
+        try:
+            git("merge-base", "origin/main", "HEAD")
+            return "origin/main"
+        except subprocess.CalledProcessError:
+            push_base = usable_push_base()
+            if push_base:
+                return push_base
 
     # On main (or another directly checked branch), inspect only this push.
-    base_sha = os.getenv("BASE_SHA", "").strip()
-    if base_sha and set(base_sha) != {"0"}:
-        return base_sha
+    push_base = usable_push_base()
+    if push_base:
+        return push_base
 
     try:
         return git("rev-parse", "HEAD^")
