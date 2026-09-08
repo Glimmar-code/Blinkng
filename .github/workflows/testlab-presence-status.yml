@@ -1,0 +1,103 @@
+name: Testlab presence status validation
+
+on:
+  push:
+    branches:
+      - Testlab-presence-status-20260908
+    paths:
+      - '.github/workflows/testlab-presence-status.yml'
+      - '.github/scripts/apply_presence_status.py'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout isolated Testlab branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply focused presence patch
+        run: python .github/scripts/apply_presence_status.py
+
+      - name: Verify patch shape
+        run: |
+          git diff --check
+          grep -q 'fun presenceStatus' app/src/main/java/com/example/util/TimeFormatters.kt
+          grep -q 'Last seen 1 min ago' app/src/test/java/com/example/util/TimeFormattersTest.kt
+          grep -q 'Color(0xFF8B5A2B)' app/src/main/java/com/example/ui/screens/ProfileScreen.kt
+          grep -q 'online: Boolean? = null' app/src/main/java/com/example/ui/screens/PremiumMessagesScreen.kt
+          grep -q 'authorOnline = authorPresenceByKey' app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt
+          grep -q 'desktopPresenceStatus' desktopApp/src/main/kotlin/com/blinkng/desktop/ui/PresenceUi.kt
+          grep -q 'partner_last_seen' desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopSupabaseClient.kt
+          grep -q 'Presence and last-seen identity' platform-parity/changes.md
+          if ! git diff --quiet -- supabase; then
+            echo 'Presence UI patch unexpectedly changed Supabase files'
+            exit 1
+          fi
+
+      - name: Create local candidate commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            app/src/main/java/com/example/util/TimeFormatters.kt \
+            app/src/main/java/com/example/data/repository/ChatRepository.kt \
+            app/src/main/java/com/example/ui/screens/ProfileScreen.kt \
+            app/src/main/java/com/example/ui/screens/PremiumMessagesScreen.kt \
+            app/src/main/java/com/example/ui/screens/ProfessionalSearchScreen.kt \
+            app/src/main/java/com/example/ui/components/PostCard.kt \
+            app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt \
+            app/src/test/java/com/example/util/TimeFormattersTest.kt \
+            desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopModels.kt \
+            desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopSupabaseClient.kt \
+            desktopApp/src/main/kotlin/com/blinkng/desktop/ui/PresenceUi.kt \
+            desktopApp/src/main/kotlin/com/blinkng/desktop/ui/MessagesScreen.kt \
+            desktopApp/src/main/kotlin/com/blinkng/desktop/ui/ContentScreens.kt \
+            platform-parity/changes.md
+          git commit -m "feat: add active and last-seen presence status"
+
+      - name: Android Kotlin compile
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Android unit tests
+        run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Android lint
+        run: gradle :app:lintDebug --stacktrace --no-daemon
+
+      - name: Android debug APK build
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Windows desktop build
+        run: gradle -p desktopApp build --stacktrace --no-daemon
+
+      - name: Ensure verification did not mutate tracked source
+        run: |
+          rm -rf app/schemas
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "Unexpected tracked changes after validation"
+            git status --short
+            exit 1
+          fi
+
+      - name: Push verified candidate to isolated Testlab branch
+        run: |
+          git fetch origin "$GITHUB_REF_NAME"
+          if ! git merge-base --is-ancestor "origin/$GITHUB_REF_NAME" HEAD; then
+            echo "Testlab branch advanced during validation; refusing to overwrite it"
+            exit 1
+          fi
+          git push origin HEAD:"$GITHUB_REF_NAME"
