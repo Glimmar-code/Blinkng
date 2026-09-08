@@ -14,10 +14,13 @@ concurrency:
   group: supabase-safety-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  SUPABASE_TELEMETRY_DISABLED: '1'
+
 jobs:
   migration-safety:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,12 +30,53 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Validate Supabase changes
+      - name: Validate Supabase changes statically
         env:
           BASE_SHA: ${{ github.event.before }}
         run: python3 scripts/check_supabase_safety.py
 
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0
+
+      - name: Start disposable local Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This starts Docker services on the GitHub runner only. It does not
+          # link to, reset, push to, or otherwise modify the production project.
+          supabase start -x studio,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor
+
+      - name: Rebuild database from migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          # --local is explicit so this command can never target a linked cloud DB.
+          supabase db reset --local
+
+      - name: Lint rebuilt local database
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db lint --local --fail-on error
+
+      - name: Verify local Auth API health
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            --retry 10 --retry-delay 2 --retry-connrefused \
+            http://127.0.0.1:54321/auth/v1/health >/dev/null
+          echo "Disposable local Supabase is healthy; no production backend was used."
+
+      - name: Stop and erase disposable Supabase
+        if: always()
+        shell: bash
+        run: supabase stop --no-backup || true
+
       - name: Confirm staging-first policy
         shell: bash
         run: |
-          echo "Supabase production changes must be promoted only after Testlab + staging verification."
+          echo "Supabase production changes must be promoted only after Testlab verification."
+          echo "This gate uses a free disposable local Supabase stack and never requires paid branching."
