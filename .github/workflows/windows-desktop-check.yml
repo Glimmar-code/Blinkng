@@ -2,8 +2,9 @@ name: Windows desktop quality gate
 
 on:
   pull_request:
+    branches: [Testlab, main]
   push:
-    branches: [main]
+    branches: [Testlab, main]
   workflow_dispatch:
 
 permissions:
@@ -35,9 +36,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # The repository currently contains Gradle wrapper properties but not the
-      # wrapper launch scripts. Pin Gradle explicitly so the desktop build is
-      # deterministic and does not depend on the runner's preinstalled version.
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.12.1'
