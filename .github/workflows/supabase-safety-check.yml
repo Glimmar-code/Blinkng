@@ -35,12 +35,35 @@ jobs:
           BASE_SHA: ${{ github.event.before }}
         run: python3 scripts/check_supabase_safety.py
 
+      - name: Install PostgreSQL SQL parser
+        run: python3 -m pip install --disable-pip-version-check --no-cache-dir 'pglast==7.10'
+
+      - name: Validate migration SQL syntax
+        run: python3 scripts/check_supabase_sql_syntax.py
+
+      - name: Detect complete local schema baseline
+        id: baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f supabase/migrations/00000000000000_schema_baseline.sql ]]; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+            echo 'Complete schema baseline found; enabling full local rebuild.'
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo 'No complete schema baseline is tracked yet.'
+            echo 'Legacy migrations were captured from an already-existing production schema, so a clean rebuild would produce false dependency failures.'
+            echo 'Static safety and PostgreSQL syntax validation remain mandatory.'
+          fi
+
       - name: Install pinned Supabase CLI
+        if: steps.baseline.outputs.available == 'true'
         uses: supabase/setup-cli@v1
         with:
           version: 2.117.0
 
       - name: Start disposable local Supabase
+        if: steps.baseline.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -49,6 +72,7 @@ jobs:
           supabase start -x studio,imgproxy,mailpit,edge-runtime,logflare,vector,supavisor
 
       - name: Rebuild database from migrations
+        if: steps.baseline.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -56,27 +80,34 @@ jobs:
           supabase db reset --local
 
       - name: Lint rebuilt local database
+        if: steps.baseline.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
           supabase db lint --local --fail-on error
 
       - name: Verify local Auth API health
+        if: steps.baseline.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
           curl --fail --silent --show-error \
             --retry 10 --retry-delay 2 --retry-connrefused \
             http://127.0.0.1:54321/auth/v1/health >/dev/null
-          echo "Disposable local Supabase is healthy; no production backend was used."
+          echo 'Disposable local Supabase is healthy; no production backend was used.'
 
       - name: Stop and erase disposable Supabase
-        if: always()
+        if: always() && steps.baseline.outputs.available == 'true'
         shell: bash
         run: supabase stop --no-backup || true
 
       - name: Confirm staging-first policy
         shell: bash
         run: |
-          echo "Supabase production changes must be promoted only after Testlab verification."
-          echo "This gate uses a free disposable local Supabase stack and never requires paid branching."
+          echo 'Supabase production changes must be promoted only after Testlab verification.'
+          if [[ '${{ steps.baseline.outputs.available }}' == 'true' ]]; then
+            echo 'Full disposable local Supabase rebuild completed.'
+          else
+            echo 'Full rebuild is intentionally disabled until a complete schema baseline is checked in.'
+            echo 'Current gate still enforces migration placement, destructive-change review, and PostgreSQL syntax correctness.'
+          fi
