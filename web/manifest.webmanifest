@@ -1,11 +1,18 @@
 {
   "name": "Blink",
   "short_name": "Blink",
-  "description": "Blink social, campus and creator experience on the web.",
+  "description": "Blink social, campus, creator, messaging and premium experience on the web.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#08070d",
   "theme_color": "#08070d",
-  "categories": ["social", "education", "productivity"]
+  "categories": ["social", "education", "productivity"],
+  "shortcuts": [
+    {"name":"Home","short_name":"Home","description":"Open your Blink feed","url":"./feed"},
+    {"name":"Messages","short_name":"Messages","description":"Open Blink messages","url":"./messages"},
+    {"name":"Blink Store","short_name":"Store","description":"Open Blink Store and premium items","url":"./store"},
+    {"name":"Blink AI","short_name":"AI","description":"Open Blink AI","url":"./ai"},
+    {"name":"More app features","short_name":"More","description":"Open the Android-to-web parity center","url":"./more"}
+  ]
 }
