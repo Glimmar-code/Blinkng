@@ -57,6 +57,26 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
 
     suspend fun getStoreState(): JSONObject = rpc("get_blink_store_state", JSONObject())
 
+    suspend fun activateStoreItem(inventoryId: String, targetId: String? = null): JSONObject =
+        rpc("activate_blink_item", JSONObject()
+            .put("p_inventory_id", inventoryId)
+            .put("p_target_id", targetId?.takeIf(String::isNotBlank) ?: JSONObject.NULL))
+
+    suspend fun equipStoreItem(inventoryId: String, slot: String, enabled: Boolean): JSONObject =
+        rpc("set_blink_item_equipped", JSONObject()
+            .put("p_inventory_id", inventoryId)
+            .put("p_slot", slot)
+            .put("p_enabled", enabled))
+
+    suspend fun sendDigitalGift(inventoryId: String, username: String, message: String = ""): JSONObject =
+        rpc("send_blink_digital_gift", JSONObject()
+            .put("p_inventory_id", inventoryId)
+            .put("p_recipient_username", username.trim().removePrefix("@"))
+            .put("p_message", message.trim().takeIf(String::isNotBlank) ?: JSONObject.NULL))
+
+    suspend fun getPublicPremiumStyle(username: String): JSONObject =
+        rpc("get_blink_public_premium_style", JSONObject().put("p_username", username.trim().removePrefix("@")))
+
     suspend fun renewVip(): JSONObject = rpc("renew_blink_vip", JSONObject())
 
     suspend fun setVipAutoRenew(enabled: Boolean): JSONObject =
