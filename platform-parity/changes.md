@@ -4,6 +4,7 @@ Every pull request that changes a user-facing Android feature must update Window
 
 | Date | Feature | Android | Windows | Shared/adapter note |
 |---|---|---|---|---|
+| 2026-09-08 | Blink AI organized chat interface | Main sheet reorganized into header/actions, mode selector, compact state summary, conversation area, error/media state, and composer; context/privacy controls moved into Settings | Desktop dialog mirrors the same organization and Settings grouping | Same Blink AI modes, web/context/temporary-chat semantics, history, media, response settings, and backend contracts retained |
 | 2026-09-07 | Windows desktop foundation | Existing production client | Desktop shell + EXE/MSI build foundation | Initial migration foundation; existing Android routes still need incremental porting |
 
 ## Platform exception policy
