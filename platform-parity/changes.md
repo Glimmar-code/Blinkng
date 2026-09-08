@@ -51,3 +51,14 @@ Windows equivalent or reason no equivalent is needed: Windows retains direct ful
 Backend/shared behavior preserved: Message storage, reply state semantics, conversation identity, delivery/read receipts, notification routing, and backend APIs are unchanged.
 Tests/validation: Android compile/unit/lint/APK quality gate plus Windows parity/build gate must pass before merge.
 Owner/reviewer note: Only the Android touch interaction is excepted; any change to message/reply business semantics still requires Windows parity.
+
+
+PARITY-EXCEPTION: android-duplicate-source-cleanup-20260908
+Date: 2026-09-08
+Feature: Android duplicate and legacy source cleanup
+Android behavior: Removes inactive legacy Messages/Admin V2 implementations and exact duplicate maintenance scripts, while PasswordResetActivity now renders the existing shared Android ResetPasswordScreen instead of maintaining a second reset form.
+Why this is genuinely Android-only: The removed files are Android-only legacy/duplicate source implementations and repository maintenance scripts. This cleanup does not add or alter a cross-platform product feature.
+Windows equivalent or reason no equivalent is needed: No Windows UI or business-rule change is required because Windows behavior is unchanged; there is no corresponding duplicate Android source to remove from the desktop client.
+Backend/shared behavior preserved: Message transport, admin backend rules, authentication/recovery semantics, Supabase state, and Windows/shared feature behavior are unchanged.
+Tests/validation: Android quality gate, Windows parity gate, migration safety, and Windows desktop build must pass before merge.
+Owner/reviewer note: This exception covers source cleanup only. Any future user-facing Messages, Admin, or password-recovery behavior change still requires Windows parity.
