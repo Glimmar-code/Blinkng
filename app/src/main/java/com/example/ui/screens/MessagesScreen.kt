@@ -50,6 +50,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -161,6 +163,7 @@ import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 @Composable
 private fun MessagesConnectionNotice() {
@@ -627,198 +630,101 @@ fun MessagesScreen(
     isLoading: Boolean = false
 ) {
     val selectedChat = activePartner?.takeIf { it.isNotBlank() }
-    val paneOpen = selectedChat != null
     val selectedConversation = remember(conversations, selectedChat) {
         conversations.firstOrNull {
             it.partnerUsername.equals(selectedChat, ignoreCase = true)
         }
     }
-    val scope = rememberCoroutineScope()
-    val density = LocalDensity.current
 
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("messages_fullscreen_chat")
-    ) {
-        val widthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
-        val swipeOffset = remember(selectedChat, widthPx) {
-            Animatable(if (paneOpen) widthPx else 0f)
+    if (selectedChat == null) {
+        // Inbox and chat are mutually exclusive full-screen destinations. The inbox is
+        // never mounted underneath an open chat, so a back/right swipe cannot expose a
+        // 70/30 split or partially reveal the Messages screen.
+        MessagesInboxContent(
+            conversations = conversations,
+            activePartner = null,
+            onOpenConversation = onOpenConversation,
+            onCloseConversation = onCloseConversation,
+            onSendMessage = onSendMessage,
+            onProfileClick = onProfileClick,
+            isDark = isDark,
+            isConnected = isConnected,
+            isLoading = isLoading
+        )
+    } else {
+        val density = LocalDensity.current
+        val exitSwipeThresholdPx = with(density) { 72.dp.toPx() }
+
+        BackHandler(enabled = true) {
+            onCloseConversation()
         }
 
-        LaunchedEffect(selectedChat, widthPx) {
-            if (paneOpen) {
-                // A chat always arrives as a real full-screen page. It never first
-                // compresses the inbox into an avatar-only rail.
-                swipeOffset.snapTo(widthPx)
-                swipeOffset.animateTo(
-                    targetValue = 0f,
-                    animationSpec = tween(
-                        durationMillis = 270,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-            } else {
-                swipeOffset.snapTo(0f)
-            }
-        }
-
-        val revealFraction = (swipeOffset.value / widthPx).coerceIn(0f, 1f)
-        val inboxBlur = if (paneOpen) ((1f - revealFraction) * 13f).dp else 0.dp
-
-        // Messages stays mounted underneath the conversation. Keeping it alive avoids
-        // a flash/reload and gives the right-swipe transition a real destination.
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .blur(inboxBlur)
-                .graphicsLayer {
-                    alpha = if (paneOpen) 0.78f + (0.22f * revealFraction) else 1f
-                    scaleX = if (paneOpen) 0.985f + (0.015f * revealFraction) else 1f
-                    scaleY = if (paneOpen) 0.985f + (0.015f * revealFraction) else 1f
+                .testTag("messages_fullscreen_chat")
+                .pointerInput(selectedChat, exitSwipeThresholdPx) {
+                    // Observe the whole chat without consuming leftward movement. Message
+                    // bubbles therefore own swipe-left-to-reply, while a deliberate right
+                    // swipe exits straight to Messages with no interactive pane reveal.
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val startX = down.position.x
+                        val startY = down.position.y
+                        var navigated = false
+
+                        while (!navigated) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) break
+
+                            val dx = change.position.x - startX
+                            val dy = change.position.y - startY
+                            if (
+                                dx >= exitSwipeThresholdPx &&
+                                abs(dx) > abs(dy) * 1.15f
+                            ) {
+                                navigated = true
+                                onCloseConversation()
+                            }
+                        }
+                    }
                 }
         ) {
-            MessagesInboxContent(
-                conversations = conversations,
-                activePartner = null,
-                onOpenConversation = onOpenConversation,
-                onCloseConversation = onCloseConversation,
-                onSendMessage = onSendMessage,
-                onProfileClick = onProfileClick,
-                isDark = isDark,
-                isConnected = isConnected,
-                isLoading = isLoading
-            )
-        }
-
-        fun closeChatAnimated() {
-            if (!paneOpen) return
-            scope.launch {
-                swipeOffset.animateTo(
-                    targetValue = widthPx,
-                    animationSpec = tween(
-                        durationMillis = 205,
-                        easing = FastOutSlowInEasing
+            val convo = selectedConversation
+            if (convo != null) {
+                androidx.compose.runtime.key(convo.id) {
+                    ChatConversationView(
+                        convo = convo,
+                        onBack = onCloseConversation,
+                        onSendMessage = { text ->
+                            onSendMessage(convo.partnerUsername, text)
+                        },
+                        onSendVideo = { uri ->
+                            onSendVideo(convo.partnerUsername, uri)
+                        },
+                        onProfileClick = onProfileClick,
+                        isDark = isDark,
+                        isConnected = isConnected,
+                        onRetryMessage = onRetryMessage?.let { retry ->
+                            { message -> retry(convo.partnerUsername, message) }
+                        },
+                        hasMoreMessages = hasMoreMessages(convo.id),
+                        isLoadingOlder = isLoadingOlder(convo.id),
+                        onLoadOlder = { onLoadOlder(convo.partnerUsername) },
+                        isLoadingMessages = isLoadingMessages(convo.id)
                     )
-                )
-                onCloseConversation()
-            }
-        }
-
-        BackHandler(enabled = paneOpen) {
-            closeChatAnimated()
-        }
-
-        if (paneOpen) {
-            // This scrim is deliberately above the inbox but below the chat. As the
-            // user drags the chat right, the exposed Messages area remains blurred and
-            // tapping that revealed area exits directly to Messages.
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        MaterialTheme.colorScheme.scrim.copy(
-                            alpha = 0.20f * (1f - revealFraction)
-                        )
-                    )
-                    .clickable(onClick = { closeChatAnimated() })
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        translationX = swipeOffset.value
-                    }
-                    .clip(
-                        RoundedCornerShape(
-                            topStart = (18f * revealFraction).dp,
-                            bottomStart = (18f * revealFraction).dp
-                        )
-                    )
-                    .pointerInput(selectedChat, widthPx) {
-                        detectHorizontalDragGestures(
-                            onHorizontalDrag = { change, dragAmount ->
-                                val next = (swipeOffset.value + dragAmount)
-                                    .coerceIn(0f, widthPx)
-                                if (dragAmount > 0f || swipeOffset.value > 0f) {
-                                    change.consume()
-                                    scope.launch {
-                                        swipeOffset.snapTo(next)
-                                    }
-                                }
-                            },
-                            onDragEnd = {
-                                scope.launch {
-                                    if (swipeOffset.value >= widthPx * 0.20f) {
-                                        swipeOffset.animateTo(
-                                            targetValue = widthPx,
-                                            animationSpec = tween(
-                                                durationMillis = 185,
-                                                easing = FastOutSlowInEasing
-                                            )
-                                        )
-                                        onCloseConversation()
-                                    } else {
-                                        swipeOffset.animateTo(
-                                            targetValue = 0f,
-                                            animationSpec = spring(
-                                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                                stiffness = Spring.StiffnessMediumLow
-                                            )
-                                        )
-                                    }
-                                }
-                            },
-                            onDragCancel = {
-                                scope.launch {
-                                    swipeOffset.animateTo(
-                                        targetValue = 0f,
-                                        animationSpec = spring(
-                                            dampingRatio = Spring.DampingRatioNoBouncy,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        )
-                                    )
-                                }
-                            }
-                        )
-                    }
-            ) {
-                val convo = selectedConversation
-                if (convo != null) {
-                    androidx.compose.runtime.key(convo.id) {
-                        ChatConversationView(
-                            convo = convo,
-                            onBack = { closeChatAnimated() },
-                            onSendMessage = { text ->
-                                onSendMessage(convo.partnerUsername, text)
-                            },
-                            onSendVideo = { uri ->
-                                onSendVideo(convo.partnerUsername, uri)
-                            },
-                            onProfileClick = onProfileClick,
-                            isDark = isDark,
-                            isConnected = isConnected,
-                            onRetryMessage = onRetryMessage?.let { retry ->
-                                { message -> retry(convo.partnerUsername, message) }
-                            },
-                            hasMoreMessages = hasMoreMessages(convo.id),
-                            isLoadingOlder = isLoadingOlder(convo.id),
-                            onLoadOlder = { onLoadOlder(convo.partnerUsername) },
-                            isLoadingMessages = isLoadingMessages(convo.id)
-                        )
-                    }
-                } else {
-                    Surface(
+                }
+            } else {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    Box(
                         modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                        }
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
                     }
                 }
             }
@@ -4182,6 +4088,13 @@ private fun MessageRow(
         mutableStateOf(false)
     }
 
+    // Both outgoing and incoming bubbles use the same left-swipe reply gesture.
+    val replySwipeMaxPx = with(LocalDensity.current) { 72.dp.toPx() }
+    val replySwipeTriggerPx = with(LocalDensity.current) { 44.dp.toPx() }
+    var replySwipeOffset by remember(message.id) {
+        mutableStateOf(0f)
+    }
+
     val scale by animateFloatAsState(
         targetValue =
             if (pressed)
@@ -4218,6 +4131,9 @@ private fun MessageRow(
             modifier =
                 Modifier
                     .scale(scale)
+                    .graphicsLayer {
+                        translationX = replySwipeOffset
+                    }
                     .animateContentSize(
                         animationSpec =
                             tween(
@@ -4225,6 +4141,35 @@ private fun MessageRow(
                                 easing = FastOutSlowInEasing
                             )
                     )
+                    .pointerInput(
+                        message.id,
+                        replySwipeMaxPx,
+                        replySwipeTriggerPx
+                    ) {
+                        detectHorizontalDragGestures(
+                            onHorizontalDrag = { change, dragAmount ->
+                                // Reply is intentionally left-only. A right swipe is left
+                                // available to the full-screen chat navigation observer.
+                                if (dragAmount < 0f || replySwipeOffset < 0f) {
+                                    replySwipeOffset =
+                                        (replySwipeOffset + dragAmount)
+                                            .coerceIn(-replySwipeMaxPx, 0f)
+                                    change.consume()
+                                }
+                            },
+                            onDragEnd = {
+                                val shouldReply =
+                                    replySwipeOffset <= -replySwipeTriggerPx
+                                replySwipeOffset = 0f
+                                if (shouldReply) {
+                                    onReply()
+                                }
+                            },
+                            onDragCancel = {
+                                replySwipeOffset = 0f
+                            }
+                        )
+                    }
                     .pointerInput(
                         message.id
                     ) {
@@ -4398,15 +4343,6 @@ private fun MessageRow(
                     3.dp
                 )
         ) {
-
-            if (message.text.length > 80) {
-
-                SmallMessageAction(
-                    icon =
-                        Icons.Outlined.Reply,
-                    onClick = onReply
-                )
-            }
 
             SmallMessageAction(
                 icon =
