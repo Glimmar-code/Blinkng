@@ -29,6 +29,20 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Isolate Testlab backend
+        if: github.ref_name == 'Testlab' || github.base_ref == 'Testlab' || github.head_ref == 'Testlab'
+        shell: bash
+        run: |
+          cat > .env <<'EOF'
+          BLINK_ENV=staging
+          SUPABASE_URL=https://testlab-not-configured.invalid
+          SUPABASE_ANON_KEY=testlab_not_configured
+          VITE_SUPABASE_URL=https://testlab-not-configured.invalid
+          VITE_SUPABASE_ANON_KEY=testlab_not_configured
+          EOF
+          echo "BLINK_SHARE_BASE_URL=https://testlab-not-configured.invalid/functions/v1/blink-web" >> "$GITHUB_ENV"
+          echo "Testlab backend isolation enabled; production Supabase fallback is forbidden."
+
       - name: Unit tests
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 
