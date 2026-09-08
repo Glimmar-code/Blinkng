@@ -2,16 +2,21 @@ name: Android release smoke test
 
 on:
   push:
-    branches: [main]
+    branches: [Testlab, main]
     paths:
       - 'app/build.gradle.kts'
       - 'app/proguard-rules.pro'
+      - 'shared/src/main/kotlin/com/blinkng/shared/BlinkBackendDefaults.kt'
+      - 'app/src/main/java/com/example/data/supabase/SupabaseConfig.kt'
       - '.github/workflows/signed-release.yml'
       - '.github/workflows/release-smoke-test.yml'
   pull_request:
+    branches: [Testlab, main]
     paths:
       - 'app/build.gradle.kts'
       - 'app/proguard-rules.pro'
+      - 'shared/src/main/kotlin/com/blinkng/shared/BlinkBackendDefaults.kt'
+      - 'app/src/main/java/com/example/data/supabase/SupabaseConfig.kt'
       - '.github/workflows/signed-release.yml'
       - '.github/workflows/release-smoke-test.yml'
   workflow_dispatch:
@@ -34,6 +39,20 @@ jobs:
           java-version: '17'
 
       - uses: gradle/actions/setup-gradle@v4
+
+      - name: Isolate non-production backend
+        if: github.ref_name == 'Testlab' || github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          cat > .env <<'EOF'
+          BLINK_ENV=staging
+          SUPABASE_URL=https://testlab-not-configured.invalid
+          SUPABASE_ANON_KEY=testlab_not_configured
+          VITE_SUPABASE_URL=https://testlab-not-configured.invalid
+          VITE_SUPABASE_ANON_KEY=testlab_not_configured
+          EOF
+          echo "BLINK_SHARE_BASE_URL=https://testlab-not-configured.invalid/functions/v1/blink-web" >> "$GITHUB_ENV"
+          echo "Release smoke test is isolated from production Supabase."
 
       - name: Create disposable CI signing key
         shell: bash
