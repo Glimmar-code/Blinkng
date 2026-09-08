@@ -270,10 +270,15 @@ internal fun ChatOverflowSheet(
         Text(conversation.partnerName, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
         OverflowRow("View profile", Icons.Default.Person, palette, onProfile)
         OverflowRow("Search in chat", Icons.Default.Search, palette, onSearch)
-        OverflowRow("Call history", Icons.Default.Phone, palette) {
-            onDismiss()
-            context.startActivity(Intent(context, CallHistoryActivity::class.java))
-        }
+        OverflowRow(
+            "Call history",
+            Icons.Default.Phone,
+            palette,
+            onClick = {
+                onDismiss()
+                context.startActivity(Intent(context, CallHistoryActivity::class.java))
+            }
+        )
         OverflowRow(if (pinnedOnly) "Show all messages" else "Pinned messages", Icons.Default.Place, palette, onPinned)
         OverflowRow(if (starredOnly) "Show all messages" else "Starred messages", Icons.Default.Star, palette, onStarred)
         OverflowRow(if (conversation.isMuted) "Unmute notifications" else "Mute notifications", Icons.Default.VolumeOff, palette, onMute)
