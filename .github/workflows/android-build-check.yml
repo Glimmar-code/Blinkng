@@ -64,13 +64,13 @@ jobs:
       - name: Compile instrumentation tests
         run: gradle :app:assembleDebugAndroidTest --stacktrace --no-daemon
 
-      - name: Build debug APK
+      - name: Build debug APK for CI validation only
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 
-      - name: Upload latest debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: blinkng-debug-${{ github.sha }}
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
+      - name: Prevent debug APK distribution as an app update
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          echo "::notice::Debug APK validated successfully. It is intentionally NOT uploaded because it is debug-signed while using Blink's production package ID. Publishing it as a user update could cause Android signature/update mismatch errors. Production-installable APKs must come from the Signed Android release workflow."
