@@ -6,32 +6,10 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
 import com.example.MainActivity
 import com.example.data.supabase.SupabaseService
+import com.example.ui.screens.ResetPasswordScreen
 import com.example.ui.theme.BlinkTheme
 import kotlinx.coroutines.launch
 
@@ -45,123 +23,41 @@ class PasswordResetActivity : ComponentActivity() {
         setContent {
             BlinkTheme {
                 val scope = rememberCoroutineScope()
-                val recoverySession = remember { recovery.getOrNull() }
-                var password by remember { mutableStateOf("") }
-                var confirmPassword by remember { mutableStateOf("") }
-                var isSubmitting by remember { mutableStateOf(false) }
-                var error by remember {
-                    mutableStateOf(
-                        recovery.exceptionOrNull()?.message
-                            ?.takeIf { it.isNotBlank() }
-                    )
-                }
+                val recoverySession = recovery.getOrNull()
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .statusBarsPadding()
-                        .padding(horizontal = 24.dp, vertical = 28.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("Reset password", style = MaterialTheme.typography.headlineMedium)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        if (recoverySession != null) {
-                            "Choose a new password for your Blink account."
-                        } else {
-                            "This reset link cannot be used. Request a fresh link from the sign-in screen."
-                        },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Spacer(Modifier.height(24.dp))
-
-                    if (recoverySession != null) {
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = {
-                                password = it
-                                error = null
-                            },
-                            label = { Text("New password") },
-                            singleLine = true,
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value = confirmPassword,
-                            onValueChange = {
-                                confirmPassword = it
-                                error = null
-                            },
-                            label = { Text("Confirm new password") },
-                            singleLine = true,
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(Modifier.height(12.dp))
-                    }
-
-                    error?.let {
-                        Text(it, color = MaterialTheme.colorScheme.error)
-                        Spacer(Modifier.height(12.dp))
-                    }
-
-                    Button(
-                        enabled = !isSubmitting,
-                        onClick = {
-                            if (recoverySession == null) {
-                                return@Button
-                            }
-                            when {
-                                password.length < 8 -> error = "Password must be at least 8 characters."
-                                password != confirmPassword -> error = "The passwords do not match."
-                                else -> {
-                                    isSubmitting = true
-                                    error = null
-                                    scope.launch {
-                                        PasswordRecoveryClient.updatePassword(
-                                            accessToken = recoverySession.accessToken,
-                                            newPassword = password
-                                        ).fold(
-                                            onSuccess = {
-                                                isSubmitting = false
-                                                finishResetAndRequireFreshSignIn()
-                                            },
-                                            onFailure = { failure ->
-                                                isSubmitting = false
-                                                error = failure.message ?: "Password could not be updated."
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (isSubmitting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.height(20.dp),
-                                strokeWidth = 2.dp
+                ResetPasswordScreen(
+                    onSubmit = { password, onResult ->
+                        if (recoverySession == null) {
+                            onResult(
+                                false,
+                                recovery.exceptionOrNull()?.message
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?: "This reset link cannot be used. Request a fresh link from the sign-in screen."
                             )
                         } else {
-                            Text(if (recoverySession != null) "Update password" else "Link unavailable")
+                            scope.launch {
+                                PasswordRecoveryClient.updatePassword(
+                                    accessToken = recoverySession.accessToken,
+                                    newPassword = password
+                                ).fold(
+                                    onSuccess = {
+                                        onResult(true, "Password updated.")
+                                        finishResetAndRequireFreshSignIn()
+                                    },
+                                    onFailure = { failure ->
+                                        onResult(
+                                            false,
+                                            failure.message ?: "Password could not be updated."
+                                        )
+                                    }
+                                )
+                            }
                         }
+                    },
+                    onCancel = {
+                        finishResetAndRequireFreshSignIn(showSuccess = false)
                     }
-
-                    Spacer(Modifier.height(10.dp))
-
-                    Button(
-                        onClick = { finishResetAndRequireFreshSignIn(showSuccess = false) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Back to sign in")
-                    }
-                }
+                )
             }
         }
     }
