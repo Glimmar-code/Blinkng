@@ -10,6 +10,8 @@ import kotlin.math.max
 object TimeFormatters {
     private val absoluteFormatter: DateTimeFormatter =
         DateTimeFormatter.ofPattern("MMM d, yyyy • h:mm a", Locale.getDefault())
+    private val presenceDateFormatter: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())
 
     fun relativeOrDate(
         rawTimestamp: String?,
@@ -31,6 +33,30 @@ object TimeFormatters {
             days == 1L -> "1 day ago"
             days < 7L -> "$days days ago"
             else -> absoluteFormatter.format(instant.atZone(zoneId))
+        }
+    }
+
+    fun presenceStatus(
+        isOnline: Boolean,
+        rawTimestamp: String?,
+        now: Instant = Instant.now(),
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): String {
+        if (isOnline) return "Active now"
+        val instant = parseInstant(rawTimestamp) ?: return "Last seen recently"
+        val seconds = max(0L, now.epochSecond - instant.epochSecond)
+        val minutes = seconds / 60L
+        val hours = seconds / 3_600L
+        val days = seconds / 86_400L
+
+        return when {
+            seconds < 60L -> "Last seen just now"
+            minutes == 1L -> "Last seen 1 min ago"
+            minutes < 60L -> "Last seen $minutes mins ago"
+            hours == 1L -> "Last seen 1 hr ago"
+            hours < 24L -> "Last seen $hours hrs ago"
+            days == 1L -> "Last seen 1 day ago"
+            else -> "Last seen ${presenceDateFormatter.format(instant.atZone(zoneId))}"
         }
     }
 

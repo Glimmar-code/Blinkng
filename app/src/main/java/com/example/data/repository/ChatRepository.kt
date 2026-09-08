@@ -86,8 +86,8 @@ class ChatRepository(
                         isOnline = o.optBoolean("partner_online", false),
                         lastSeen = o.optString("partner_last_seen")
                             .takeIf { it.isNotBlank() && !it.equals("null", true) }
-                            ?.let(TimeFormatters::relativeOrDate)
-                            ?: "recently",
+                            ?.let { TimeFormatters.presenceStatus(false, it) }
+                            ?: "Last seen recently",
                         lastMessage = o.optString("last_message").takeUnless { it.equals("null", true) }.orEmpty(),
                         lastMessageTime = o.optString("last_message_at")
                             .takeIf { it.isNotBlank() && !it.equals("null", true) }

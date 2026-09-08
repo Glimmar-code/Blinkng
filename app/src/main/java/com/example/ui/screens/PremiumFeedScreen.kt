@@ -275,6 +275,7 @@ fun PremiumFeedScreen(
         0 -> PremiumHomeFeed(
             posts = posts,
             reels = reels,
+            profiles = profiles,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
             resumeUserKey = resumeUserKey,
@@ -420,6 +421,7 @@ fun PremiumFeedScreen(
 private fun PremiumHomeFeed(
     posts: List<FeedPost>,
     reels: List<FeedPost>,
+    profiles: List<UserProfile>,
     currentUsername: String,
     userAvatar: String,
     resumeUserKey: String,
@@ -460,6 +462,14 @@ private fun PremiumHomeFeed(
     onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
 ) {
     val context = LocalContext.current
+    val authorPresenceByKey = remember(profiles) {
+        buildMap<String, Boolean> {
+            profiles.forEach { profile ->
+                profile.username.trim().removePrefix("@").lowercase().takeIf(String::isNotBlank)?.let { put(it, profile.onlineNow) }
+                profile.fullName.trim().lowercase().takeIf(String::isNotBlank)?.let { put(it, profile.onlineNow) }
+            }
+        }
+    }
     val resumePrefs = remember(context) {
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
@@ -994,6 +1004,9 @@ private fun PremiumHomeFeed(
                                                     onOptionsClick = { onOptionsClick(post) },
                                                     onProfileClick = onProfileClick,
                                                     onVotePoll = onVotePoll,
+                                                    authorOnline = authorPresenceByKey[
+                                                        post.authorUsername.trim().removePrefix("@").lowercase()
+                                                    ] ?: authorPresenceByKey[post.author.trim().removePrefix("@").lowercase()],
                                                     isAuthor = post.author.equals(currentUsername.removePrefix("@"), ignoreCase = true) ||
                                                             post.authorUsername.removePrefix("@").equals(currentUsername.removePrefix("@"), ignoreCase = true),
                                                     onDelete = { onDeletePost(post.id) }

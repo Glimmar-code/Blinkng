@@ -2415,7 +2415,7 @@ private fun RingAvatar(
     palette: MessagePalette,
     size: Dp,
     modifier: Modifier = Modifier,
-    online: Boolean = false,
+    online: Boolean? = null,
     emphasizeRing: Boolean = true
 ) {
     Box(modifier = modifier.size(size)) {
@@ -2439,13 +2439,13 @@ private fun RingAvatar(
                 modifier = Modifier.fillMaxSize()
             )
         }
-        if (online) {
+        online?.let { active ->
             Box(
                 modifier = Modifier
                     .size(size * .25f)
                     .align(Alignment.BottomEnd)
                     .clip(CircleShape)
-                    .background(palette.online)
+                    .background(if (active) palette.online else Color(0xFF8B5A2B))
                     .border(2.dp, palette.glass, CircleShape)
             )
         }

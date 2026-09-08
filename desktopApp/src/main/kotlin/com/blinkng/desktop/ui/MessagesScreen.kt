@@ -38,6 +38,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -134,13 +135,24 @@ fun MessagesScreen(state: DesktopAppState) {
                         shape = RoundedCornerShape(14.dp),
                         color = MaterialTheme.colorScheme.surface,
                     ) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                            Text(conversation.title, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                            Text(
-                                if (conversation.isGroup) "Group conversation" else "Direct conversation",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            PresenceAvatar(
+                                name = conversation.title,
+                                isOnline = if (conversation.isGroup) null else conversation.isOnline,
+                                size = 42.dp,
                             )
+                            Spacer(Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(conversation.title, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text(
+                                    if (conversation.isGroup) "Group conversation" else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt),
+                                    fontSize = 11.sp,
+                                    color = if (!conversation.isGroup && conversation.isOnline) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
@@ -164,12 +176,18 @@ fun MessagesScreen(state: DesktopAppState) {
                 Icon(Icons.Rounded.ArrowBack, contentDescription = "Back to Messages")
             }
             Spacer(Modifier.width(4.dp))
+            PresenceAvatar(
+                name = active.title,
+                isOnline = if (active.isGroup) null else active.isOnline,
+                size = 40.dp,
+            )
+            Spacer(Modifier.width(9.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(active.title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 Text(
-                    if (active.isGroup) "Group chat" else "Blink conversation",
+                    if (active.isGroup) "Group chat" else desktopPresenceStatus(active.isOnline, active.lastSeenAt),
                     fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (!active.isGroup && active.isOnline) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             IconButton(onClick = { error = "Desktop voice-call media adapter is not active yet." }) {

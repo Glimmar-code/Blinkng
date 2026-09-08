@@ -60,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -312,11 +313,16 @@ fun SearchScreen(state: DesktopAppState) {
             items(results.profiles, key = { "profile-${it.id}" }) { profile ->
                 Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 1.dp) {
                     Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AvatarInitial(profile.fullName)
+                        PresenceAvatar(profile.fullName, profile.isOnline)
                         Spacer(Modifier.width(10.dp))
                         Column {
                             VerifiedName(profile.fullName, profile.isVerified)
                             Text("@${profile.username} • ${profile.university ?: "Blinkng"}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                desktopPresenceStatus(profile.isOnline, profile.lastSeenAt),
+                                fontSize = 10.sp,
+                                color = if (profile.isOnline) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
                 }
@@ -653,11 +659,16 @@ fun ProfileScreen(state: DesktopAppState) {
                 Surface(shape = RoundedCornerShape(24.dp), tonalElevation = 2.dp) {
                     Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            AvatarInitial(profile.fullName, 64.dp)
+                            PresenceAvatar(profile.fullName, profile.isOnline, 64.dp)
                             Spacer(Modifier.width(14.dp))
                             Column {
                                 VerifiedName(profile.fullName, profile.isVerified, 21.sp)
                                 Text("@${profile.username}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    desktopPresenceStatus(profile.isOnline, profile.lastSeenAt),
+                                    fontSize = 11.sp,
+                                    color = if (profile.isOnline) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                                 Text(listOfNotNull(profile.university, profile.faculty, profile.department).joinToString(" • "), fontSize = 12.sp)
                             }
                         }
@@ -772,7 +783,7 @@ private fun PostCard(post: DesktopFeedPost, onLike: () -> Unit, onComments: () -
     Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
         Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AvatarInitial(post.authorName)
+                PresenceAvatar(post.authorName, post.authorOnline)
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     VerifiedName(post.authorName, post.authorVerified)
