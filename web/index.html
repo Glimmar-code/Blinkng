@@ -3,147 +3,19 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#09090b" />
-  <meta name="description" content="Browse public Blink profiles, posts and reels on the web." />
+  <meta name="theme-color" content="#08070d" />
+  <meta name="description" content="Blink on the web — browse, post, message and connect with your campus community." />
   <meta property="og:title" content="Blink" />
-  <meta property="og:description" content="Browse public Blink profiles, posts and reels." />
+  <meta property="og:description" content="Browse public Blink profiles, posts and reels, or sign in for the full experience." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
   <title>Blink</title>
-  <style>
-    :root{color-scheme:dark;--bg:#07070a;--surface:#111116;--surface2:#19191f;--line:#2a2a33;--text:#fafafa;--muted:#a1a1aa;--pink:#ff2d8d;--purple:#8b5cf6;--blue:#3b82f6;--gold:#f5c451;--max:760px}
-    *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% -15%,#241038 0,#0b0b10 35%,var(--bg) 70%);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}body{min-height:100vh}
-    a{color:inherit;text-decoration:none}button,input{font:inherit}.shell{width:min(100%,var(--max));margin:0 auto;min-height:100vh;padding:0 14px 80px}.topbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;padding:14px 2px;background:linear-gradient(180deg,rgba(7,7,10,.98),rgba(7,7,10,.78),transparent);backdrop-filter:blur(14px)}
-    .brand{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:900;letter-spacing:-.5px}.mark{display:grid;place-items:center;width:34px;height:34px;border-radius:12px;background:linear-gradient(135deg,var(--pink),var(--purple),var(--blue));box-shadow:0 0 30px rgba(139,92,246,.25)}.pill{border:1px solid var(--line);background:rgba(25,25,31,.75);color:var(--text);border-radius:999px;padding:9px 13px;cursor:pointer}.pill.primary{border:0;background:linear-gradient(135deg,var(--pink),var(--purple));font-weight:800}.hero{padding:54px 8px 26px;text-align:center}.hero h1{font-size:clamp(34px,9vw,58px);letter-spacing:-2px;line-height:.98;margin:0 0 14px}.gradient{background:linear-gradient(90deg,#fff,var(--pink),#a78bfa,#60a5fa);-webkit-background-clip:text;background-clip:text;color:transparent}.hero p{max-width:580px;margin:0 auto;color:var(--muted);font-size:15px;line-height:1.65}.search{display:flex;gap:8px;margin:24px auto 0;max-width:520px;padding:7px;border:1px solid var(--line);border-radius:18px;background:rgba(17,17,22,.85)}.search input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--text);padding:10px 12px}.search button{border:0;border-radius:12px;padding:10px 15px;background:#fff;color:#07070a;font-weight:850;cursor:pointer}.card{background:linear-gradient(180deg,rgba(20,20,26,.94),rgba(13,13,18,.96));border:1px solid var(--line);border-radius:24px;overflow:hidden;box-shadow:0 18px 70px rgba(0,0,0,.22)}.cover{height:190px;background:linear-gradient(135deg,#261234,#121d42);background-size:cover;background-position:center}.profile-body{padding:0 18px 20px;margin-top:-48px}.avatar{width:96px;height:96px;border-radius:50%;object-fit:cover;background:#27272f;border:4px solid var(--surface);box-shadow:0 0 0 2px rgba(255,45,141,.55)}.profile-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}.identity{margin-top:12px}.identity h1{margin:0;font-size:26px;letter-spacing:-.6px}.handle{color:var(--pink);font-weight:700;font-size:14px;margin-top:2px}.headline{margin:10px 0 0;font-weight:700}.bio{margin:10px 0 0;color:#d4d4d8;line-height:1.55;white-space:pre-wrap}.meta{margin-top:9px;color:var(--muted);font-size:13px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:18px}.stat{padding:13px 7px;border:1px solid var(--line);border-radius:16px;text-align:center;background:rgba(25,25,31,.55)}.stat strong{display:block;font-size:18px}.stat span{font-size:11px;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.section-title{display:flex;align-items:center;justify-content:space-between;margin:24px 4px 12px}.section-title h2{font-size:17px;margin:0}.section-title span{font-size:12px;color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.tile{position:relative;min-height:185px;border:1px solid var(--line);border-radius:19px;overflow:hidden;background:var(--surface);cursor:pointer}.tile img,.tile video{width:100%;height:185px;object-fit:cover;display:block}.tile-text{padding:14px;line-height:1.4;color:#e4e4e7}.tile-badge{position:absolute;top:9px;left:9px;padding:5px 8px;border-radius:999px;background:rgba(0,0,0,.72);font-size:10px;font-weight:800}.tile-stats{position:absolute;bottom:8px;right:8px;padding:5px 8px;border-radius:999px;background:rgba(0,0,0,.72);font-size:10px}.content{padding:18px}.author{display:flex;align-items:center;gap:10px;margin-bottom:15px;cursor:pointer}.author img{width:43px;height:43px;border-radius:50%;object-fit:cover;background:#27272f}.author strong{display:block}.author small{color:var(--pink)}.post-text{white-space:pre-wrap;font-size:16px;line-height:1.55;margin:0 0 14px}.media{border-radius:18px;overflow:hidden;background:#050506;border:1px solid var(--line);margin:12px 0}.media img,.media video{display:block;width:100%;max-height:72vh;object-fit:contain;background:#050506}.media-stack{display:grid;gap:8px}.engagement{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin:14px 1px}.interaction-row{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:12px}.interaction-row button{border:1px solid var(--line);border-radius:13px;padding:10px 6px;background:var(--surface2);color:var(--text);cursor:pointer;font-size:12px}.notice{border:1px solid rgba(139,92,246,.35);background:rgba(139,92,246,.08);border-radius:17px;padding:13px 15px;color:#ddd6fe;font-size:13px;line-height:1.5;margin-top:14px}.empty{padding:70px 22px;text-align:center;color:var(--muted)}.empty h2{color:var(--text);margin:0 0 8px}.loader{display:grid;place-items:center;min-height:55vh;color:var(--muted)}.spinner{width:28px;height:28px;border:3px solid #2b2b35;border-top-color:var(--pink);border-radius:50%;animation:spin .75s linear infinite;margin-bottom:12px}@keyframes spin{to{transform:rotate(360deg)}}.toast{position:fixed;left:50%;bottom:24px;z-index:60;transform:translateX(-50%) translateY(120px);opacity:0;padding:11px 15px;border-radius:13px;background:#fff;color:#111;font-weight:750;transition:.22s;max-width:90vw;text-align:center}.toast.show{transform:translateX(-50%) translateY(0);opacity:1}.modal{position:fixed;inset:0;z-index:50;display:none;place-items:end center;background:rgba(0,0,0,.68);padding:16px}.modal.show{display:grid}.sheet{width:min(100%,520px);border:1px solid var(--line);border-radius:24px;background:#15151b;padding:20px}.sheet h3{margin:0 0 7px}.sheet p{color:var(--muted);line-height:1.55;margin:0 0 16px}.sheet .buttons{display:grid;gap:8px}.sheet button{border:0;border-radius:14px;padding:12px;cursor:pointer;font-weight:800}.sheet .open{background:linear-gradient(135deg,var(--pink),var(--purple));color:white}.sheet .cancel{background:#282832;color:white}.footer{text-align:center;color:#71717a;font-size:11px;padding:38px 8px}.verified{color:#60a5fa;font-size:15px}@media(max-width:520px){.shell{padding-left:10px;padding-right:10px}.grid{grid-template-columns:1fr 1fr}.interaction-row{grid-template-columns:repeat(2,1fr)}.profile-head{align-items:center}.cover{height:155px}}
-  </style>
 </head>
 <body>
-  <main class="shell">
-    <header class="topbar"><a class="brand" data-route="/" href="#"><span class="mark">B</span><span>Blink</span></a><button class="pill primary" id="open-app-top">Open Blink</button></header>
-    <div id="app"><div class="loader"><div><div class="spinner"></div>Loading Blink…</div></div></div>
-    <footer class="footer">Public Blink content • Interactions require the Blink app</footer>
-  </main>
-  <div class="toast" id="toast"></div>
-  <div class="modal" id="modal"><div class="sheet"><h3>Continue in Blink</h3><p id="modal-copy">Log in to Blink to interact with this content.</p><div class="buttons"><button class="open" id="modal-open">Open Blink app</button><button class="cancel" id="modal-close">Not now</button></div></div></div>
-<script>
-(() => {
-  'use strict';
-  const SUPABASE_URL = 'https://jhwgifrlxwspoedxjaly.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impod2dpZnJseHdzcG9lZHhqYWx5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjQ3NDUsImV4cCI6MjA5NjcwMDc0NX0.-R9ITzT_lTptU8VuzRTy8co_ZZeegsUp5YkDJg1fITk';
-  const PREVIEW_BASE = location.hostname.endsWith('github.io') ? '/Blinkng' : '';
-  const app = document.getElementById('app');
-  const modal = document.getElementById('modal');
-  const modalCopy = document.getElementById('modal-copy');
-  const modalOpen = document.getElementById('modal-open');
-  let currentTarget = { type: 'profile', id: '' };
-
-  const esc = v => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-  const safeUrl = v => { try { const u = new URL(String(v || ''), location.origin); return /^https?:$/.test(u.protocol) ? u.href : ''; } catch { return ''; } };
-  const number = v => new Intl.NumberFormat().format(Number(v || 0));
-  const ago = v => { const d = new Date(v); if (Number.isNaN(d.valueOf())) return ''; const s=Math.max(1,Math.floor((Date.now()-d)/1000)); if(s<60)return `${s}s`; if(s<3600)return `${Math.floor(s/60)}m`; if(s<86400)return `${Math.floor(s/3600)}h`; if(s<604800)return `${Math.floor(s/86400)}d`; return d.toLocaleDateString(); };
-  const routeHref = path => `${PREVIEW_BASE}${path}` || '/';
-
-  function toast(message){ const el=document.getElementById('toast'); el.textContent=message; el.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>el.classList.remove('show'),2200); }
-  function loading(){ app.innerHTML='<div class="loader"><div><div class="spinner"></div>Loading Blink…</div></div>'; }
-  function notFound(title='Not available', message='This content may be private, removed, or the link may be incorrect.'){ app.innerHTML=`<div class="card empty"><h2>${esc(title)}</h2><p>${esc(message)}</p><a class="pill" data-route="/" href="${routeHref('/')}">Back to Blink</a></div>`; bindRoutes(); }
-
-  async function rpc(name, body){
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, { method:'POST', headers:{'apikey':SUPABASE_ANON_KEY,'Authorization':`Bearer ${SUPABASE_ANON_KEY}`,'Content-Type':'application/json'}, body:JSON.stringify(body) });
-    if(!res.ok) throw new Error(`${name} failed (${res.status})`);
-    return res.json();
-  }
-
-  function currentPath(){
-    const redirected = new URLSearchParams(location.search).get('p');
-    if (redirected) {
-      const clean = redirected.startsWith('/') ? redirected : `/${redirected}`;
-      history.replaceState({},'',routeHref(clean));
-      return clean.split('?')[0].split('#')[0];
-    }
-    let path = location.pathname;
-    if(PREVIEW_BASE && path.startsWith(PREVIEW_BASE)) path=path.slice(PREVIEW_BASE.length) || '/';
-    return decodeURI(path || '/');
-  }
-
-  function navigate(path){ history.pushState({},'',routeHref(path)); render(path); window.scrollTo({top:0,behavior:'instant'}); }
-  function bindRoutes(){ document.querySelectorAll('[data-route]').forEach(el=>el.onclick=e=>{e.preventDefault();navigate(el.getAttribute('data-route'));}); }
-
-  function openGate(action, type, id){ currentTarget={type,id}; modalCopy.textContent=`${action} requires a Blink account. Open Blink and log in to continue.`; modal.classList.add('show'); }
-  function appLink(type,id){ return `blink://${type}/${encodeURIComponent(String(id||'').replace(/^@/,''))}`; }
-  function openApp(type=currentTarget.type,id=currentTarget.id){ if(!id){ toast('Open any profile, post or reel first.'); return; } location.href=appLink(type,id); setTimeout(()=>toast('If Blink did not open, install or update the app.'),900); }
-  modalOpen.onclick=()=>{modal.classList.remove('show');openApp();}; document.getElementById('modal-close').onclick=()=>modal.classList.remove('show'); modal.onclick=e=>{if(e.target===modal)modal.classList.remove('show');}; document.getElementById('open-app-top').onclick=()=>openApp();
-
-  function avatar(url,name,size='avatar'){ const src=safeUrl(url); return src?`<img class="${size}" src="${esc(src)}" alt="${esc(name)}" loading="lazy">`:`<div class="${size}" style="display:grid;place-items:center;font-weight:900;font-size:28px">${esc((name||'B')[0].toUpperCase())}</div>`; }
-  function verified(p){ return p?.isVerified ? '<span class="verified" title="Verified">●</span>' : ''; }
-
-  function mediaHtml(item, tile=false){
-    const images=Array.isArray(item.imageUrls)?item.imageUrls.filter(safeUrl):[]; const video=safeUrl(item.videoUrl);
-    if(video) return tile?`<video src="${esc(video)}" muted playsinline preload="metadata"></video>`:`<div class="media"><video src="${esc(video)}" controls playsinline preload="metadata"></video></div>`;
-    if(images.length) return tile?`<img src="${esc(safeUrl(images[0]))}" alt="${esc(item.altText||'Blink post')}" loading="lazy">`:`<div class="media media-stack">${images.map(u=>`<img src="${esc(safeUrl(u))}" alt="${esc(item.altText||'Blink post')}" loading="lazy">`).join('')}</div>`;
-    const text=item.caption||item.text||'View on Blink'; return `<div class="tile-text">${esc(text).slice(0,tile?240:5000)}</div>`;
-  }
-
-  async function renderProfile(identifier, legacy=false){
-    loading();
-    try{
-      const data=await rpc('get_public_web_profile',{p_username:identifier});
-      if(!data?.available||!data.profile) return notFound('Profile unavailable','This Blink profile is private, removed, or does not exist.');
-      const p=data.profile; currentTarget={type:'profile',id:p.username||p.id};
-      if(p.username && (legacy || identifier.includes('-') || identifier.toLowerCase()!==p.username.toLowerCase())) history.replaceState({},'',routeHref(`/@${encodeURIComponent(p.username)}`));
-      document.title=`${p.fullName||p.username} (@${p.username}) • Blink`;
-      const cover=safeUrl(p.coverPhotoUrl); const items=Array.isArray(data.items)?data.items:[];
-      app.innerHTML=`
-        <section class="card">
-          <div class="cover" ${cover?`style="background-image:linear-gradient(180deg,transparent,rgba(0,0,0,.35)),url('${esc(cover)}')"`:''}></div>
-          <div class="profile-body"><div class="profile-head">${avatar(p.avatarUrl,p.fullName)}<button class="pill primary" data-interact="Follow">Follow</button></div>
-            <div class="identity"><h1>${esc(p.fullName||p.username)} ${verified(p)}</h1><div class="handle">@${esc(p.username)}</div>${p.headline?`<div class="headline">${esc(p.headline)}</div>`:''}${p.bio?`<p class="bio">${esc(p.bio)}</p>`:''}
-            <div class="meta">${[p.department,p.faculty,p.university].filter(Boolean).map(esc).join(' • ')}</div></div>
-            <div class="stats"><div class="stat"><strong>${number(p.postsCount)}</strong><span>Posts</span></div><div class="stat"><strong>${number(p.followerCount)}</strong><span>Followers</span></div><div class="stat"><strong>${number(p.followingCount)}</strong><span>Following</span></div></div>
-            <div class="actions"><button class="pill" data-interact="Message">Message</button><button class="pill" id="share-profile">Share profile</button></div>
-          </div>
-        </section>
-        <div class="section-title"><h2>Public posts & reels</h2><span>${items.length} recent</span></div>
-        ${items.length?`<div class="grid">${items.map(item=>`<a class="tile" data-route="/${item.type}/${item.id}" href="${routeHref(`/${item.type}/${item.id}`)}"><span class="tile-badge">${item.type==='reel'?'▶ Reel':'Post'}</span>${mediaHtml(item,true)}<span class="tile-stats">◉ ${number(item.viewCount)}</span></a>`).join('')}</div>`:`<div class="card empty"><h2>No public posts yet</h2><p>New public content will appear here.</p></div>`}
-        <div class="notice">You can browse public Blink content without installing the app. Following, messaging, liking and commenting require signing in to Blink.</div>`;
-      bindRoutes(); document.querySelectorAll('[data-interact]').forEach(b=>b.onclick=()=>openGate(b.dataset.interact,'profile',p.username||p.id)); document.getElementById('share-profile').onclick=()=>shareCurrent();
-    }catch(e){ console.error(e); notFound('Could not load profile','The public Blink service could not be reached. Please try again.'); }
-  }
-
-  async function visitorHash(){
-    let id=localStorage.getItem('blink_web_visitor'); if(!id){ id=(crypto.randomUUID?.()||`${Date.now()}-${Math.random()}`); localStorage.setItem('blink_web_visitor',id); }
-    const bytes=new TextEncoder().encode(`blink-web:${id}`); const digest=await crypto.subtle.digest('SHA-256',bytes); return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('');
-  }
-  async function recordView(id){ try{ const hash=await visitorHash(); return await rpc('record_public_web_view',{p_post_id:id,p_visitor_hash:hash}); }catch(e){ console.warn('View was not recorded',e); return null; } }
-
-  async function renderContent(type,id){
-    loading();
-    try{
-      const data=await rpc('get_public_web_content',{p_content_id:id,p_content_type:type}); if(!data?.available||!data.content)return notFound(type==='reel'?'Reel unavailable':'Post unavailable');
-      const c=data.content,a=c.author||{}; currentTarget={type,id}; document.title=`${type==='reel'?'Reel':'Post'} by @${a.username||'Blink'} • Blink`;
-      const text=[c.text,c.caption].filter(Boolean).filter((v,i,arr)=>arr.indexOf(v)===i).join('\n\n');
-      app.innerHTML=`<article class="card content"><a class="author" data-route="/@${encodeURIComponent(a.username||a.id)}" href="${routeHref(`/@${encodeURIComponent(a.username||a.id)}`)}">${avatar(a.avatarUrl,a.fullName||a.username,'author-avatar')}<div><strong>${esc(a.fullName||a.username)} ${verified(a)}</strong><small>@${esc(a.username||'')}</small></div><span style="margin-left:auto;color:var(--muted);font-size:12px">${esc(ago(c.createdAt))}</span></a>
-        ${text?`<p class="post-text">${esc(text)}</p>`:''}${mediaHtml(c,false)}
-        <div class="engagement"><span>♥ <b>${c.hideLikes?'—':number(c.likeCount)}</b></span><span>💬 <b>${number(c.commentCount)}</b></span><span>↻ <b>${number(c.repostCount)}</b></span><span>◉ <b id="view-count">${number(c.viewCount)}</b> views</span></div>
-        <div class="interaction-row"><button data-interact="Like">♡ Like</button><button data-interact="Comment">💬 Comment</button><button data-interact="Repost">↻ Repost</button><button id="share-content">↗ Share</button></div>
-        <div class="notice">Viewing this ${type} in Chrome counts as a Blink view. Interactions require logging into the Blink app.</div></article>`;
-      bindRoutes(); document.querySelectorAll('[data-interact]').forEach(b=>b.onclick=()=>openGate(b.dataset.interact,type,id)); document.getElementById('share-content').onclick=()=>shareCurrent();
-      const result=await recordView(id); if(result?.view_count!=null){ const el=document.getElementById('view-count'); if(el)el.textContent=number(result.view_count); }
-    }catch(e){ console.error(e); notFound('Could not load content','The public Blink service could not be reached, or this link is invalid.'); }
-  }
-
-  async function shareCurrent(){ const url=location.href; try{ if(navigator.share) await navigator.share({title:document.title,url}); else{await navigator.clipboard.writeText(url);toast('Link copied');} }catch(e){ if(e?.name!=='AbortError')toast('Could not share this link'); } }
-
-  function renderHome(){ currentTarget={type:'profile',id:''}; document.title='Blink • Public web'; app.innerHTML=`<section class="hero"><h1>See what’s happening<br><span class="gradient">on Blink.</span></h1><p>Browse public profiles, posts and reels directly in Chrome. You only need the Blink app when you want to interact.</p><form class="search" id="profile-search"><input id="username" autocomplete="off" placeholder="Enter a Blink username" aria-label="Blink username"><button>View profile</button></form></section><div class="card content"><h2 style="margin-top:0">Public web is live</h2><p style="color:var(--muted);line-height:1.6">Profile links use <b style="color:white">/@username</b>. Posts use <b style="color:white">/post/id</b>, and reels use <b style="color:white">/reel/id</b>. Private accounts are not exposed.</p><div class="actions"><a class="pill" data-route="/@futa_no1_blogger" href="${routeHref('/@futa_no1_blogger')}">Preview a profile</a><a class="pill" data-route="/reel/661cd2ac-935f-4c91-9b21-6cf6bf874485" href="${routeHref('/reel/661cd2ac-935f-4c91-9b21-6cf6bf874485')}">Preview a reel</a></div></div>`; bindRoutes(); document.getElementById('profile-search').onsubmit=e=>{e.preventDefault();const v=document.getElementById('username').value.trim().replace(/^@/,'');if(v)navigate(`/@${encodeURIComponent(v)}`);}; }
-
-  function render(path=currentPath()){
-    const clean=(path||'/').replace(/\/+$/,'')||'/';
-    if(clean==='/') return renderHome();
-    let m=clean.match(/^\/@([^/]+)$/); if(m)return renderProfile(decodeURIComponent(m[1]));
-    m=clean.match(/^\/profile\/([^/]+)$/); if(m)return renderProfile(decodeURIComponent(m[1]),true);
-    m=clean.match(/^\/(post|reel)\/([^/]+)$/); if(m)return renderContent(m[1],decodeURIComponent(m[2]));
-    return notFound('Page not found','Use a Blink profile, post or reel link.');
-  }
-
-  addEventListener('popstate',()=>render(currentPath())); render(currentPath());
-})();
-</script>
+  <div id="app" class="boot"><div class="spinner"></div><strong>Opening Blink…</strong></div>
+  <div id="toast" class="toast" aria-live="polite"></div>
+  <div id="modal-root"></div>
+  <script src="config.js"></script>
+  <script src="app.js" defer></script>
 </body>
 </html>
