@@ -44,6 +44,8 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
     }
 
     private fun recoverUnreadMessages(token: String) {
+        if (!NotificationPreferenceStore.isAllowed(applicationContext, BlinkNotificationType.MESSAGE)) return
+
         val endpoint = "${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/get_my_unread_message_notifications"
         val body = JSONObject().put("p_limit", 200).toString().toRequestBody(jsonType)
         val request = Request.Builder()
@@ -102,6 +104,8 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
             if (!response.isSuccessful) error("Social notification recovery failed (${response.code})")
             val rows = JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
             var newest = lastSeen
+            val candidates = mutableListOf<JSONObject>()
+
             for (index in 0 until rows.length()) {
                 val row = rows.optJSONObject(index) ?: continue
                 val created = row.optString("created_at")
@@ -112,21 +116,36 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
                 // Message rows are deliberately ignored here. Their authoritative read state
                 // comes from public.messages via get_my_unread_message_notifications().
                 if (title.contains(" sent you a message", ignoreCase = true)) continue
+                candidates += row
+            }
 
+            // Recovery should never turn a long offline period into hundreds of Android alerts.
+            // The full unread history still remains in Blink's notification screen.
+            candidates.takeLast(20).forEach { row ->
                 val notificationId = row.optString("id")
                 if (
                     notificationId.isNotBlank() &&
                     SocialNotificationRecovery.wasShown(applicationContext, uid, notificationId)
-                ) continue
+                ) return@forEach
+
+                val rawType = when {
+                    row.optString("target_type").equals("story", ignoreCase = true) &&
+                        row.optString("type").equals("like", ignoreCase = true) -> "story_like"
+                    row.optJSONObject("metadata")?.optBoolean("is_reply", false) == true -> "reply"
+                    else -> row.optString("type", "social")
+                }
+                val type = BlinkNotificationType.fromWire(rawType)
+                if (!NotificationPreferenceStore.isAllowed(applicationContext, type)) return@forEach
 
                 // Mark before posting so a process restart between posting and saving the
                 // cursor cannot reconstruct the exact same server notification again.
                 if (notificationId.isNotBlank()) {
                     SocialNotificationRecovery.markShown(applicationContext, uid, notificationId)
                 }
+
                 BlinkNotificationHelper.showSocialNotification(
                     applicationContext,
-                    title,
+                    row.optString("text", "Blink notification"),
                     row.optString("sub_text", ""),
                     row.optString("post_id").takeIf { it.isNotBlank() && it != "null" }
                 )
