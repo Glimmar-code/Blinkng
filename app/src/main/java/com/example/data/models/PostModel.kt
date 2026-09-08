@@ -112,8 +112,12 @@ data class Story(
     val likesCount: Int = 0,
     val isLiked: Boolean = false,
     val verificationBadge: VerificationBadge = VerificationBadge.NONE,
-    val isVip: Boolean = false
-)
+    val isVip: Boolean = false,
+    val displayName: String = ""
+) {
+    val displayLabel: String
+        get() = displayName.trim().ifBlank { username.trim().removePrefix("@") }
+}
 
 data class ActivityItem(
     val id: String,

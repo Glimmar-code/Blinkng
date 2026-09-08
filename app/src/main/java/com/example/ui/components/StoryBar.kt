@@ -725,7 +725,7 @@ private fun PremiumStoryItem(
             .semantics {
 
                 contentDescription =
-                    "${story.username}'s " +
+                    "${story.displayLabel}'s " +
                             if (story.hasUnseen)
                                 "unseen story"
                             else
@@ -778,7 +778,7 @@ private fun PremiumStoryItem(
                         error = painterResource(R.drawable.ic_default_profile),
                         fallback = painterResource(R.drawable.ic_default_profile),
                         contentDescription =
-                            story.username,
+                            story.displayLabel,
                         contentScale =
                             ContentScale.Crop,
                         modifier =
@@ -926,7 +926,7 @@ private fun PremiumStoryItem(
         ) {
 
             Text(
-                text = story.username,
+                text = story.displayLabel,
                 fontSize = 10.5.sp,
                 fontWeight =
                     if (story.hasUnseen)
