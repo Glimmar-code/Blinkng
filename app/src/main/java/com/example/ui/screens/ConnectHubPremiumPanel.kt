@@ -20,7 +20,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -36,6 +38,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -74,6 +77,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -103,6 +107,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
@@ -310,6 +316,7 @@ fun ConnectHubPremiumPanel(
         )
     }
     val pagerState = rememberPagerState(pageCount = { categories.size })
+    var openCategoryIndex by rememberSaveable { mutableStateOf<Int?>(null) }
 
     Column(
         modifier = Modifier
@@ -374,18 +381,115 @@ fun ConnectHubPremiumPanel(
             categories = categories,
             directoryCategories = directoryCategories,
             badgeCounts = badgeCounts,
-            pagerState = pagerState,
-            coroutineScope = coroutineScope
+            onOpenCategory = { targetIndex ->
+                coroutineScope.launch {
+                    pagerState.scrollToPage(targetIndex)
+                    openCategoryIndex = targetIndex
+                }
+            }
         )
 
         Spacer(Modifier.height(12.dp))
+
+
+        Spacer(Modifier.height(4.dp))
+        TextButton(onClick = actions.refresh, modifier = Modifier.align(Alignment.End)) {
+            Text("Refresh Connect Hub")
+        }
+    }
+
+
+    openCategoryIndex?.let { targetIndex ->
+        val openCategory = categories[targetIndex]
+        var panelVisible by remember(targetIndex) { mutableStateOf(false) }
+
+        LaunchedEffect(targetIndex) {
+            panelVisible = true
+        }
+
+        fun closeCategoryPanel() {
+            if (!panelVisible) return
+            panelVisible = false
+            coroutineScope.launch {
+                delay(230)
+                if (openCategoryIndex == targetIndex) {
+                    openCategoryIndex = null
+                }
+            }
+        }
+
+        Dialog(
+            onDismissRequest = { closeCategoryPanel() },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = .28f)),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                AnimatedVisibility(
+                    visible = panelVisible,
+                    modifier = Modifier.align(Alignment.CenterStart),
+                    enter = slideInHorizontally(
+                        initialOffsetX = { -it },
+                        animationSpec = tween(290, easing = FastOutSlowInEasing)
+                    ) + fadeIn(tween(180)),
+                    exit = slideOutHorizontally(
+                        targetOffsetX = { -it },
+                        animationSpec = tween(220, easing = FastOutSlowInEasing)
+                    ) + fadeOut(tween(180))
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth(.95f)
+                            .fillMaxHeight(),
+                        shape = RoundedCornerShape(topEnd = 30.dp, bottomEnd = 30.dp),
+                        color = MaterialTheme.colorScheme.background,
+                        shadowElevation = 18.dp
+                    ) {
+                        Column(Modifier.fillMaxSize()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 18.dp, end = 10.dp, top = 18.dp, bottom = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(15.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .65f)
+                                ) {
+                                    Icon(
+                                        openCategory.icon,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(10.dp).size(21.dp)
+                                    )
+                                }
+                                Spacer(Modifier.width(11.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(openCategory.label, fontSize = 19.sp, fontWeight = FontWeight.Black)
+                                    Text(
+                                        "Connect workflow",
+                                        fontSize = 10.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                IconButton(onClick = { closeCategoryPanel() }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Close ${openCategory.label}")
+                                }
+                            }
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .7f))
 
         HorizontalPager(
             state = pagerState,
             userScrollEnabled = false,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(PagerHeight),
+                .weight(1f),
             pageSpacing = 14.dp
         ) { page ->
             val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction)
@@ -695,10 +799,10 @@ fun ConnectHubPremiumPanel(
                 }
             }
         }
-
-        Spacer(Modifier.height(4.dp))
-        TextButton(onClick = actions.refresh, modifier = Modifier.align(Alignment.End)) {
-            Text("Refresh Connect Hub")
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1562,8 +1666,7 @@ private fun CategoryTabBar(
     categories: List<ConnectCategory>,
     directoryCategories: List<ConnectDirectoryCategory>,
     badgeCounts: List<Int>,
-    pagerState: PagerState,
-    coroutineScope: CoroutineScope
+    onOpenCategory: (Int) -> Unit
 ) {
     val visibleDirectory = remember(directoryCategories) {
         directoryCategories.sortedBy { it.displayOrder }.take(20)
@@ -1614,9 +1717,7 @@ private fun CategoryTabBar(
                     .fillMaxWidth()
                     .clickable {
                         selectedSlug = item.slug
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(targetIndex)
-                        }
+                        onOpenCategory(targetIndex)
                     },
                 shape = RoundedCornerShape(18.dp),
                 color = background,

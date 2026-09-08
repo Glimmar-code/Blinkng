@@ -1,5 +1,11 @@
 package com.blinkng.desktop.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -8,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Inventory2
@@ -459,40 +467,98 @@ fun ConnectScreen(state: DesktopAppState) {
     }
     LaunchedEffect(Unit) { reload() }
 
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                ScreenHeader("Connect", "Study circles, mentors, communities and campus connections")
-                Button(onClick = { showCreate = !showCreate }) { Text(if (showCreate) "Close" else "Create") }
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ScreenHeader("Connect", "Study circles, mentors, communities and campus connections")
+                    Button(onClick = { showCreate = true }) { Text("Create") }
+                }
             }
-        }
-        if (showCreate) item {
-            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
-                Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(type, { type = it }, label = { Text("Type") })
-                    OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Title") })
-                    OutlinedTextField(description, { description = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Description") })
-                    Button(onClick = {
-                        scope.launch {
-                            runCatching { state.client.createConnectListing(type, title, description) }
-                                .onSuccess { title = ""; description = ""; showCreate = false; reload() }
-                        }
-                    }, enabled = title.isNotBlank()) { Text("Publish") }
+            if (loading) item { LoadingRow() }
+            items(listings, key = { it.id }) { listing ->
+                Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(listing.title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                        Text(listing.description)
+                        Text(
+                            listOfNotNull(listing.listingType, listing.university, listing.department, listing.academicLevel, listing.location).joinToString(" • "),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                        )
+                        if (listing.tags.isNotEmpty()) Text(listing.tags.joinToString("  ") { "#$it" }, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+                    }
                 }
             }
         }
-        if (loading) item { LoadingRow() }
-        items(listings, key = { it.id }) { listing ->
-            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
-                Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(listing.title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                    Text(listing.description)
-                    Text(
-                        listOfNotNull(listing.listingType, listing.university, listing.department, listing.academicLevel, listing.location).joinToString(" • "),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp,
-                    )
-                    if (listing.tags.isNotEmpty()) Text(listing.tags.joinToString("  ") { "#$it" }, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+
+        if (showCreate) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = .24f)),
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showCreate,
+            modifier = Modifier.align(Alignment.CenterStart),
+            enter = slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(290)) + fadeIn(tween(180)),
+            exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(220)) + fadeOut(tween(160)),
+            label = "desktopConnectSlidePanel",
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(.95f).fillMaxHeight(),
+                shape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
+                color = MaterialTheme.colorScheme.background,
+                shadowElevation = 16.dp,
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Create Connect listing", fontWeight = FontWeight.Black, fontSize = 24.sp)
+                            Text(
+                                "Create without pushing the form to the end of the Connect list.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(onClick = { showCreate = false }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Close Connect create panel")
+                        }
+                    }
+                    HorizontalDivider()
+                    OutlinedTextField(type, { type = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Type") }, singleLine = true)
+                    OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Title") })
+                    OutlinedTextField(description, { description = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Description") }, minLines = 4)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    runCatching { state.client.createConnectListing(type, title, description) }
+                                        .onSuccess {
+                                            title = ""
+                                            description = ""
+                                            showCreate = false
+                                            reload()
+                                        }
+                                }
+                            },
+                            enabled = title.isNotBlank(),
+                        ) { Text("Publish") }
+                        OutlinedButton(onClick = { showCreate = false }) { Text("Cancel") }
+                    }
                 }
             }
         }
