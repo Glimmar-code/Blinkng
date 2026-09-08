@@ -7,8 +7,8 @@ import com.example.data.models.UserProfile
 /**
  * Stable public entry point used by MainActivity.
  *
- * The production Discover implementation lives in ProfessionalSearchScreen so the
- * navigation contract remains unchanged while the UI can evolve independently.
+ * Search is intentionally routed through the premium discovery implementation so
+ * navigation and ViewModel contracts remain stable while the experience evolves.
  */
 @Composable
 fun SearchScreen(
@@ -30,7 +30,7 @@ fun SearchScreen(
     onBackToHome: () -> Unit = {},
     isDark: Boolean
 ) {
-    ProfessionalSearchScreen(
+    PremiumSearchExperience(
         profiles = profiles,
         posts = posts,
         currentUsername = currentUsername,
@@ -47,6 +47,6 @@ fun SearchScreen(
         onOptionsClick = onOptionsClick,
         onDeletePost = onDeletePost,
         onBackToHome = onBackToHome,
-        isDark = isDark
+        isDark = isDark,
     )
 }

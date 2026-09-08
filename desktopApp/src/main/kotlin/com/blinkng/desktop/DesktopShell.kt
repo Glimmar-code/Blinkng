@@ -86,7 +86,7 @@ import com.blinkng.desktop.ui.MessagesScreen
 import com.blinkng.desktop.ui.NotificationsScreen
 import com.blinkng.desktop.ui.ProfileScreen
 import com.blinkng.desktop.ui.ReelsScreen
-import com.blinkng.desktop.ui.SearchScreen
+import com.blinkng.desktop.ui.PremiumSearchScreen
 import com.blinkng.desktop.ui.SettingsScreen
 import com.blinkng.desktop.ui.StoreProScreen
 import kotlinx.coroutines.delay
@@ -291,7 +291,7 @@ private fun AuthenticatedShell(state: DesktopAppState) {
                         "profile" -> ProfileScreen(state)
                         "admin" -> AdminProScreen(state)
                         "settings" -> SettingsScreen(state)
-                        "search" -> SearchScreen(state)
+                        "search" -> PremiumSearchScreen(state)
                         else -> HomeScreen(state)
                     }
                 }
