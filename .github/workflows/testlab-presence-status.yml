@@ -8,6 +8,7 @@ on:
       - '.github/workflows/testlab-presence-status.yml'
       - '.github/scripts/apply_presence_status.py'
       - '.github/scripts/continue_presence_status.py'
+      - '.github/scripts/fix_presence_compile_issues.py'
 
 permissions:
   contents: write
@@ -39,6 +40,9 @@ jobs:
         if: steps.apply_presence.outcome == 'failure'
         run: python .github/scripts/continue_presence_status.py
 
+      - name: Apply presence compile fixes
+        run: python .github/scripts/fix_presence_compile_issues.py
+
       - name: Verify patch shape
         run: |
           git diff --check
@@ -47,6 +51,7 @@ jobs:
           grep -q 'Color(0xFF8B5A2B)' app/src/main/java/com/example/ui/screens/ProfileScreen.kt
           grep -q 'online: Boolean? = null' app/src/main/java/com/example/ui/screens/PremiumMessagesScreen.kt
           grep -q 'authorOnline = authorPresenceByKey' app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt
+          grep -q 'profiles: List<UserProfile>' app/src/main/java/com/example/ui/screens/PremiumFeedScreen.kt
           grep -q 'desktopPresenceStatus' desktopApp/src/main/kotlin/com/blinkng/desktop/ui/PresenceUi.kt
           grep -q 'partner_last_seen' desktopApp/src/main/kotlin/com/blinkng/desktop/data/DesktopSupabaseClient.kt
           grep -q 'Presence and last-seen identity' platform-parity/changes.md
@@ -77,24 +82,7 @@ jobs:
           git commit -m "feat: add active and last-seen presence status"
 
       - name: Android Kotlin compile
-        id: android_compile
-        continue-on-error: true
-        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon > /tmp/presence_compile.log 2>&1
-
-      - name: Persist Android compile diagnostics on failure
-        if: steps.android_compile.outcome == 'failure'
-        run: |
-          cat /tmp/presence_compile.log
-          cp /tmp/presence_compile.log presence_compile_error.txt
-          git reset --hard "$GITHUB_SHA"
-          git clean -fd
-          cp /tmp/presence_compile.log presence_compile_error.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add presence_compile_error.txt
-          git commit -m "testlab: capture presence compile failure"
-          git push origin HEAD:"$GITHUB_REF_NAME"
-          exit 1
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
 
       - name: Android unit tests
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
