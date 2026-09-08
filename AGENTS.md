@@ -61,3 +61,18 @@ Feature parity does not mean pixel-for-pixel phone stretching. Windows should us
 ## Compatibility rule
 
 Never break the Android APK just to make desktop compile. Platform migration must be incremental, tested, and backward-compatible with existing Supabase data and released Android clients.
+
+## REQUIRED TESTLAB SAFETY RULE
+
+`main` is the production / known-good branch. Risky, experimental, large, destructive, or potentially breaking work must not be developed directly on `main`.
+
+For risky changes:
+
+1. make the change in `Testlab` first, or in a feature branch that targets `Testlab`;
+2. build and test the affected Android, Windows, backend, and Supabase behavior as applicable;
+3. fix or revert failures in the test branch while keeping `main` untouched;
+4. merge into `main` only after the relevant tests pass and the change is confirmed to work correctly.
+
+Supabase/database changes must also be tested safely before production. Prefer versioned migrations and rollback-aware changes instead of untracked destructive production edits.
+
+This Testlab-first policy is the default for future Blinkng development unless the repository owner explicitly instructs otherwise.
