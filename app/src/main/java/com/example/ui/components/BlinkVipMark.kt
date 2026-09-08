@@ -6,6 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -98,6 +99,13 @@ private object BlinkPublicPremiumCache {
         val current = values[key]?.identity ?: BlinkPublicPremiumIdentity()
         values[key] = Entry(current.copy(isVip = current.isVip || active), System.currentTimeMillis())
     }
+
+    fun clear() = values.clear()
+}
+
+/** Call after any Store equip/activate action so returning to profile/feed shows it immediately. */
+fun invalidateBlinkPublicPremiumIdentityCache() {
+    BlinkPublicPremiumCache.clear()
 }
 
 @Composable
@@ -218,7 +226,7 @@ fun BlinkVipMarkForUsername(
         val catalogId = identity.catalogId
         val label = identity.publicLabel
         if (!catalogId.isNullOrBlank() && !label.isNullOrBlank()) {
-            if (identity.isVip) Box(Modifier.width(3.dp))
+            if (identity.isVip) Spacer(Modifier.width(3.dp))
             BlinkPremiumIdentityMark(
                 catalogId = catalogId,
                 label = label,
