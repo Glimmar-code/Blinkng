@@ -7,6 +7,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.example.data.supabase.SupabaseService
 import java.util.concurrent.TimeUnit
 
 /**
@@ -26,6 +27,7 @@ class CallTimeoutWorker(appContext: Context, params: WorkerParameters) : Corouti
         val callType = CallType.fromWire(inputData.getString(KEY_CALL_TYPE))
 
         return runCatching {
+            SupabaseService.initialize(applicationContext)
             val call = CallRepository().expireCall(callId).getOrThrow()
             if (call.status == CallStatus.MISSED) {
                 IncomingCallNotification.cancel(applicationContext, callId)
