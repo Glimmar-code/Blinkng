@@ -1,0 +1,61 @@
+name: Web Parity Testlab Gate
+
+on:
+  push:
+    branches:
+      - Testlab-web-app-parity-500
+  pull_request:
+    paths:
+      - 'web/**'
+      - '.github/workflows/web-parity-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  web-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JavaScript syntax
+        run: |
+          node --check web/app.js
+          node --check web/parity.js
+          node --check web/sw.js
+          node --check web/config.js
+
+      - name: Manifest JSON
+        run: node -e "JSON.parse(require('fs').readFileSync('web/manifest.webmanifest','utf8')); console.log('manifest valid')"
+
+      - name: Verify parity wiring and 500 registry
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const js = fs.readFileSync('web/parity.js','utf8');
+          const html = fs.readFileSync('web/index.html','utf8');
+          const sw = fs.readFileSync('web/sw.js','utf8');
+          const css = fs.readFileSync('web/parity.css','utf8');
+          const modules = [...js.matchAll(/^\s*\['[^']+','[^']+','[^']+','[^']+','[^']+'\],?$/gm)].length;
+          const layersBlock = js.match(/const LAYERS = \[([\s\S]*?)\]\.map/);
+          if (!layersBlock) throw new Error('Could not find parity layers');
+          const layers = [...layersBlock[1].matchAll(/^\s*\['[^']+','[^']+','[^']+'\],?$/gm)].length;
+          if (modules !== 50) throw new Error(`Expected 50 app modules, found ${modules}`);
+          if (layers !== 10) throw new Error(`Expected 10 parity layers, found ${layers}`);
+          if (modules * layers !== 500) throw new Error(`Expected 500 capabilities, found ${modules * layers}`);
+          for (const asset of ['parity.css','parity.js']) {
+            if (!html.includes(asset)) throw new Error(`index.html does not load ${asset}`);
+            if (!sw.includes(`./${asset}`)) throw new Error(`service worker does not cache ${asset}`);
+          }
+          if (!css.includes('.parity-root')) throw new Error('Parity stylesheet root missing');
+          console.log(`Verified ${modules} modules × ${layers} layers = ${modules * layers} capabilities`);
+          NODE
+
+      - name: Guard against privileged secrets in web assets
+        run: |
+          if grep -RInE 'service[_-]?role|sb_secret_|SUPABASE_SERVICE_ROLE' web --exclude='*.map'; then
+            echo 'Privileged server secret reference detected in web assets.'
+            exit 1
+          fi
+          echo 'No privileged secret references found in web assets.'
