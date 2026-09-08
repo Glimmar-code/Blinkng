@@ -31,8 +31,8 @@ import kotlinx.coroutines.launch
  * validates that token and creates the normal Supabase access/refresh session used
  * by the rest of the app.
  *
- * Important: Google Credential Manager expects the nonce placed in the ID token to
- * be the same nonce that the relying party validates. Do not SHA-256 this nonce here.
+ * The raw nonce is kept by Blink for Supabase validation while its SHA-256 form is
+ * sent to Google, matching Supabase's recommended native Google sign-in flow.
  */
 class GoogleAuthCallbackActivity : ComponentActivity() {
 
@@ -58,7 +58,7 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
             .trim()
 
         if (webClientId.isBlank()) {
-            failAndFinish("Google Sign-In is not configured for this build.")
+            failAndReturnToSignIn("Google Sign-In is not configured for this build.")
             return
         }
 
@@ -91,7 +91,7 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
                 customCredential == null ||
                 customCredential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
             ) {
-                failAndFinish("Google returned an unsupported credential.")
+                failAndReturnToSignIn("Google returned an unsupported credential. Please try again.")
                 return
             }
 
@@ -99,13 +99,13 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
                 GoogleIdTokenCredential.createFrom(customCredential.data)
             } catch (error: Exception) {
                 Log.e(TAG, "Unable to parse Google ID token", error)
-                failAndFinish("Google returned an invalid sign-in response.")
+                failAndReturnToSignIn("Google returned an invalid sign-in response. Please try again.")
                 return
             }
 
             val idToken = googleCredential.idToken
             if (idToken.isBlank()) {
-                failAndFinish("Google did not return an ID token.")
+                failAndReturnToSignIn("Google did not return an ID token. Please try again.")
                 return
             }
 
@@ -115,7 +115,7 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
             )
 
             if (!result.isSuccess) {
-                failAndFinish(result.errorMessage ?: "Google authentication failed.")
+                failAndReturnToSignIn(result.errorMessage ?: "Google authentication failed. Please try again.")
                 return
             }
 
@@ -130,21 +130,39 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
             finish()
         } catch (error: GetCredentialCancellationException) {
             Log.i(TAG, "Google credential flow cancelled by user")
-            finish()
+            failAndReturnToSignIn("Google sign-in was cancelled. Tap Continue with Google to try again.")
         } catch (error: GetCredentialException) {
             // Keep the provider error type in Logcat. It is especially useful for
             // distinguishing a device/Play-services problem from a package/SHA OAuth
             // registration mismatch without exposing implementation details to users.
             Log.e(TAG, "Google Credential Manager failed: ${error.type}", error)
-            failAndFinish("Google sign-in could not start. Please update Google Play services and try again.")
+            failAndReturnToSignIn(
+                "Google sign-in could not start. Update Google Play services, make sure you have internet, then try again."
+            )
         } catch (error: Exception) {
             Log.e(TAG, "Native Google sign-in failed", error)
-            failAndFinish(error.message ?: "Unable to complete Google sign-in.")
+            failAndReturnToSignIn(error.message ?: "Unable to complete Google sign-in. Please try again.")
         }
     }
 
-    private fun failAndFinish(message: String) {
+    /**
+     * A failed Google attempt must never expose the stale Sign Up screen underneath.
+     * Reset the partial auth attempt, force a fresh Sign In destination, and rebuild
+     * MainActivity from a clean task. A later successful Google login clears the
+     * sign-in-required flag again in AuthRepository.persistSession().
+     */
+    private fun failAndReturnToSignIn(message: String) {
+        Log.w(TAG, "Returning to Blink sign-in after Google auth failure: $message")
+        SupabaseService.clearSession()
+        AccountSessionStore.setSignInRequired(applicationContext, true)
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        startActivity(
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+        )
         finish()
     }
 
@@ -152,5 +170,4 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
         if (isFinishing) GoogleAuthLaunchGate.end()
         super.onDestroy()
     }
-
 }
