@@ -25,7 +25,25 @@ Implemented in `feature/premium-search-discovery`:
 - premium people cards, two-column reel results, existing interactive post cards, trending discovery, skeletons and no-result guidance
 - Android ↔ Windows parity entry
 
-## Phase 2 — Backend search expansion
+## Phase 2A — Cross-platform discovery collections
+
+Implemented in `feature/premium-search-phase2-collections` and staged for Testlab validation:
+
+- dedicated Search / Trending / Places discovery collections
+- 240 ms Android and 180 ms Windows collection transitions
+- Android back navigation returns from Trending/Places to Search before leaving the screen
+- trend ranking from real post/reel engagement signals rather than placeholder percentages
+- trending hashtag/topic aggregation from live Blink content
+- rising post/reel collection ordered by views, likes, comments and shares; Android additionally uses reposts already present in its model
+- Android trending creators ranked from current profile follower/points/online signals
+- Places discovery derived from real location-bearing data already available on each client
+- Android Places uses post locations and profile city/state metadata
+- Windows Places uses active Marketplace and Connect listing locations already exposed by the desktop data client
+- compact K/M metric formatting shared conceptually across both experiences
+- corrected Windows blank-search discovery so trending topics use the loaded discovery feed instead of an empty search result set
+- no fake Saved collection on Windows and no Android-only Saved collection: Saved remains staged until a truthful cross-platform bookmark contract exists
+
+## Phase 2B — Backend search expansion
 
 Requires explicit backend/data-contract work before the UI can truthfully expose these categories:
 
