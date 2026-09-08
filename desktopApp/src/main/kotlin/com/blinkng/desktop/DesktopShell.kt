@@ -292,7 +292,7 @@ private fun AuthenticatedShell(state: DesktopAppState) {
                 Box(modifier = Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)))
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                     when (state.selectedRoute) {
-                        "home" -> HomeScreen(state)
+                        "home" -> com.blinkng.desktop.ui.HomeWithBlinkAiScreen(state)
                         "reels" -> ReelsScreen(state)
                         "connect" -> ConnectScreen(state)
                         "messages" -> MessagesScreen(state)
@@ -305,7 +305,7 @@ private fun AuthenticatedShell(state: DesktopAppState) {
                         "admin" -> AdminProScreen(state)
                         "settings" -> SettingsScreen(state)
                         "search" -> SearchScreen(state)
-                        else -> HomeScreen(state)
+                        else -> com.blinkng.desktop.ui.HomeWithBlinkAiScreen(state)
                     }
                 }
                 if (showRightPanel) {
