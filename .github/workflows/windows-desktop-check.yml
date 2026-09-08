@@ -40,6 +40,15 @@ jobs:
         with:
           gradle-version: '8.12.1'
 
+      - name: Isolate Testlab backend
+        if: github.ref_name == 'Testlab' || github.base_ref == 'Testlab' || github.head_ref == 'Testlab'
+        shell: pwsh
+        run: |
+          "BLINK_ENV=staging" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SUPABASE_URL=https://testlab-not-configured.invalid" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SUPABASE_ANON_KEY=testlab_not_configured" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Testlab backend isolation enabled; packaged test installers cannot silently fall back to production Supabase."
+
       - name: Compile and test desktop app
         run: gradle -p desktopApp build --stacktrace --no-daemon
 
