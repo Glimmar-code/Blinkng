@@ -1,12 +1,23 @@
 package com.example
 
-import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +30,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -71,6 +83,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.graphicsLayer
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -79,12 +93,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.auth.AccountSwitcherActivity
-import com.example.data.models.BlinkInventoryStatus
 import com.example.data.models.BlinkStoreCatalog
 import com.example.data.models.BlinkStoreItem
 import com.example.data.models.BlinkStoreItemType
 import com.example.data.models.BlinkStoreTarget
 import com.example.data.supabase.BlinkEconomyService
+import com.example.ui.components.invalidateBlinkPublicPremiumIdentityCache
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
 import kotlinx.coroutines.delay
@@ -141,9 +155,12 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
         scope.launch {
             working = true
             block().onSuccess {
+                invalidateBlinkPublicPremiumIdentityCache()
                 message = successMessage
                 refresh()
-            }.onFailure { message = it.message ?: "That action could not be completed." }
+            }.onFailure {
+                message = it.message ?: "That Blink Store action could not be completed."
+            }
             working = false
         }
     }
@@ -159,14 +176,19 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
     val balance = snapshot.optLong("balance", 0L)
     val inventory = snapshot.optJSONArray("inventory").objects()
     val vip = snapshot.optJSONObject("vip") ?: JSONObject()
+    val equippedIds = snapshot.optJSONArray("equipped").objects().map { it.optString("catalog_id") }.toSet()
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Blink Store", fontWeight = FontWeight.Bold)
-                        Text("🪙 $balance Blink Coins", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Blink Store", fontWeight = FontWeight.Black)
+                        Text(
+                            "🪙 $balance Blink Coins • Premium lives on your identity",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 },
                 navigationIcon = {
@@ -178,25 +200,40 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
             )
         },
         bottomBar = {
-            Surface(shadowElevation = 8.dp) {
+            Surface(shadowElevation = 10.dp) {
                 Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(vertical = 6.dp)
-        ) {
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(vertical = 6.dp)
+                ) {
                     BlinkStoreTab.entries.forEach { item ->
+                        val selected = tab == item
+                        val scale by animateFloatAsState(
+                            targetValue = if (selected) 1.08f else 1f,
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                            label = "storeTabScale"
+                        )
                         Column(
-                            modifier = Modifier.weight(1f).clickable { tab = item }.padding(vertical = 4.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { tab = item }
+                                .padding(vertical = 4.dp)
+                                .graphicsLayer { scaleX = scale; scaleY = scale },
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Icon(
                                 imageVector = tabIcon(item),
                                 contentDescription = item.label,
-                                tint = if (tab == item) BlinkPink else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (selected) BlinkPink else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(22.dp)
                             )
-                            Text(item.label, fontSize = 10.sp, color = if (tab == item) BlinkPink else MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                item.label,
+                                fontSize = 10.sp,
+                                fontWeight = if (selected) FontWeight.Black else FontWeight.Medium,
+                                color = if (selected) BlinkPink else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -206,49 +243,90 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
         Box(Modifier.fillMaxSize().padding(padding)) {
             when {
                 loading && snapshot.length() == 0 -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                else -> when (tab) {
-                    BlinkStoreTab.STORE -> StoreTab(snapshot, inventory, vip, onBuy = { purchaseItem = it })
-                    BlinkStoreTab.VAULT -> VaultTab(
-                        inventory = inventory,
-                        snapshot = snapshot,
-                        onUse = { row ->
-                            val item = BlinkStoreCatalog.items.firstOrNull { it.id == row.optString("catalog_id") }
-                            if (item == null) return@VaultTab
-                            if (item.type == BlinkStoreItemType.PERMANENT) {
-                                val equipped = snapshot.optJSONArray("equipped").objects().any { it.optString("catalog_id") == item.id }
-                                runAction(if (equipped) "Item removed." else "Item applied.") {
-                                    service.equip(row.optString("id"), item.id, !equipped)
+                else -> AnimatedContent(
+                    targetState = tab,
+                    transitionSpec = { (fadeIn(tween(180)) + scaleIn(initialScale = .985f)) togetherWith fadeOut(tween(120)) },
+                    label = "blinkStoreTabContent"
+                ) { selectedTab ->
+                    when (selectedTab) {
+                        BlinkStoreTab.STORE -> StoreTab(
+                            inventory = inventory,
+                            vip = vip,
+                            equippedIds = equippedIds,
+                            onBuy = { purchaseItem = it }
+                        )
+                        BlinkStoreTab.VAULT -> VaultTab(
+                            inventory = inventory,
+                            snapshot = snapshot,
+                            equippedIds = equippedIds,
+                            onUse = { row ->
+                                val item = BlinkStoreCatalog.items.firstOrNull { it.id == row.optString("catalog_id") }
+                                    ?: return@VaultTab
+                                val experience = item.premiumExperience()
+                                if (item.type == BlinkStoreItemType.PERMANENT) {
+                                    val equipped = item.id in equippedIds
+                                    runAction(
+                                        if (equipped) "${item.name} removed from your active premium look."
+                                        else "${item.name} applied. ${experience.visibleAt} can now show the effect."
+                                    ) {
+                                        service.equip(row.optString("id"), equipSlot(item), !equipped)
+                                    }
+                                } else if (
+                                    item.type == BlinkStoreItemType.CONTENT_SPECIFIC ||
+                                    item.id == "digital_gift" ||
+                                    item.id == "story_highlight"
+                                ) {
+                                    scope.launch {
+                                        working = true
+                                        service.boostableContent()
+                                            .onSuccess { targets = it }
+                                            .onFailure { message = it.message ?: "Unable to load eligible content." }
+                                        working = false
+                                        activateRow = row
+                                    }
+                                } else {
+                                    runAction(
+                                        "${item.name} is live. ${experience.visibleAt} now receives its premium effect."
+                                    ) { service.activate(row.optString("id")) }
                                 }
-                            } else if (item.type == BlinkStoreItemType.CONTENT_SPECIFIC || item.id == "digital_gift" || item.id == "story_highlight") {
-                                scope.launch {
-                                    working = true
-                                    service.boostableContent().onSuccess { targets = it }.onFailure { message = it.message }
-                                    working = false
-                                    activateRow = row
-                                }
-                            } else {
-                                runAction("${item.name} activated.") { service.activate(row.optString("id")) }
                             }
-                        }
-                    )
-                    BlinkStoreTab.VIP -> VipTab(
-                        vip = vip,
-                        balance = balance,
-                        working = working,
-                        onClaim = { benefit -> runAction("VIP benefit added to your Vault.") { service.claimVip(benefit) } },
-                        onRenew = { runAction("Blink VIP extended by 10 days.") { service.renewVip() } },
-                        onAutoRenew = { enabled -> runAction(if (enabled) "VIP auto-renew enabled." else "VIP auto-renew disabled.") { service.setAutoRenew(enabled) } },
-                        onGift = { username -> runAction("Blink VIP gift sent to @$username.") { service.giftVip(username) } },
-                        onBuyVip = { purchaseItem = BlinkStoreCatalog.items.first { it.id == "blink_vip_10d" } }
-                    )
-                    BlinkStoreTab.HISTORY -> HistoryTab(snapshot.optJSONArray("transactions").objects())
-                    BlinkStoreTab.MORE -> MoreTab(onClose)
+                        )
+                        BlinkStoreTab.VIP -> VipTab(
+                            vip = vip,
+                            balance = balance,
+                            working = working,
+                            onClaim = { benefit -> runAction("VIP benefit added to your Vault.") { service.claimVip(benefit) } },
+                            onRenew = { runAction("Blink VIP extended by 10 days.") { service.renewVip() } },
+                            onAutoRenew = { enabled ->
+                                runAction(if (enabled) "VIP auto-renew enabled." else "VIP auto-renew disabled.") {
+                                    service.setAutoRenew(enabled)
+                                }
+                            },
+                            onGift = { username -> runAction("Blink VIP gift sent to @$username.") { service.giftVip(username) } },
+                            onBuyVip = { purchaseItem = BlinkStoreCatalog.items.first { it.id == "blink_vip_10d" } }
+                        )
+                        BlinkStoreTab.HISTORY -> HistoryTab(snapshot.optJSONArray("transactions").objects())
+                        BlinkStoreTab.MORE -> MoreTab(onClose)
+                    }
                 }
             }
 
-            if (working) {
-                Surface(Modifier.fillMaxSize(), color = Color.Black.copy(alpha = .18f)) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+            AnimatedVisibility(
+                visible = working,
+                enter = fadeIn(tween(120)),
+                exit = fadeOut(tween(120))
+            ) {
+                Surface(Modifier.fillMaxSize(), color = Color.Black.copy(alpha = .22f)) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surface,
+                            shadowElevation = 12.dp,
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            CircularProgressIndicator(Modifier.padding(18.dp), color = BlinkPink)
+                        }
+                    }
                 }
             }
         }
@@ -262,7 +340,9 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
             onDismiss = { purchaseItem = null },
             onConfirm = { quantity, multiplier ->
                 purchaseItem = null
-                runAction("${item.name} added to your Vault.") { service.purchase(item.id, quantity, multiplier) }
+                runAction("${item.name} purchased. Open Vault when you are ready to use or apply it.") {
+                    service.purchase(item.id, quantity, multiplier)
+                }
             }
         )
     }
@@ -276,11 +356,13 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
                 onDismiss = { activateRow = null },
                 onSelect = { targetId ->
                     activateRow = null
-                    runAction("${item.name} activated.") { service.activate(row.optString("id"), targetId) }
+                    runAction("${item.name} is now active on the selected ${item.target.name.lowercase()}.") {
+                        service.activate(row.optString("id"), targetId)
+                    }
                 },
                 onDigitalGift = { username, giftMessage ->
                     activateRow = null
-                    runAction("Digital gift sent to @${username.trim().removePrefix("@")}.") {
+                    runAction("Premium digital gift sent to @${username.trim().removePrefix("@")}.") {
                         service.sendDigitalGift(row.optString("id"), username, giftMessage)
                     }
                 }
@@ -291,8 +373,8 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
     message?.let { text ->
         AlertDialog(
             onDismissRequest = { message = null },
-            confirmButton = { Button(onClick = { message = null }) { Text("OK") } },
-            title = { Text("Blink Store") },
+            confirmButton = { Button(onClick = { message = null }) { Text("Done") } },
+            title = { Text("Blink Store", fontWeight = FontWeight.Black) },
             text = { Text(text) }
         )
     }
@@ -300,138 +382,405 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
 
 @Composable
 private fun StoreTab(
-    snapshot: JSONObject,
     inventory: List<JSONObject>,
     vip: JSONObject,
+    equippedIds: Set<String>,
     onBuy: (BlinkStoreItem) -> Unit
 ) {
     var category by remember { mutableStateOf("All") }
-    val categories = listOf("All") + BlinkStoreCatalog.items.map { it.category }.distinct()
+    val categories = remember { listOf("All") + BlinkStoreCatalog.items.map { it.category }.distinct() }
     val items = BlinkStoreCatalog.items.filter { category == "All" || it.category == category }
+    val vipActive = vip.optBoolean("active", false)
+
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Text("Spend your Blink Coins", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-                Text("Purchases go to your Vault first. Timers start only when you activate them.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (vip.optBoolean("active", false)) {
-                    Spacer(Modifier.height(10.dp))
-                    AssistChip(onClick = {}, label = { Text("👑 VIP active • 10% Store discount") })
-                }
-            }
+            PremiumStoreHero(vipActive = vipActive, itemCount = BlinkStoreCatalog.items.size)
         }
         item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 16.dp)) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 16.dp)
+            ) {
                 items(categories) { name ->
-                    FilterChip(selected = category == name, onClick = { category = name }, label = { Text(name) })
+                    FilterChip(
+                        selected = category == name,
+                        onClick = { category = name },
+                        label = { Text(name) }
+                    )
                 }
             }
         }
         items(items, key = { it.id }) { item ->
-            val owned = item.type == BlinkStoreItemType.PERMANENT && inventory.any { it.optString("catalog_id") == item.id && it.optString("status") == "PERMANENT" }
-            val vipLocked = item.vipOnly && !vip.optBoolean("active", false)
-            StoreItemCard(item, owned, vipLocked, vip.optBoolean("active", false), onBuy)
+            val owned = item.type == BlinkStoreItemType.PERMANENT &&
+                inventory.any { it.optString("catalog_id") == item.id && it.optString("status") == "PERMANENT" }
+            val active = inventory.any { it.optString("catalog_id") == item.id && it.optString("status") == "ACTIVE" }
+            val equipped = item.id in equippedIds
+            val vipLocked = item.vipOnly && !vipActive
+            StoreItemCard(
+                item = item,
+                owned = owned,
+                active = active,
+                equipped = equipped,
+                vipLocked = vipLocked,
+                vipActive = vipActive,
+                onBuy = onBuy
+            )
         }
-        item { Spacer(Modifier.height(16.dp)) }
+        item { Spacer(Modifier.height(18.dp)) }
     }
 }
 
 @Composable
-private fun StoreItemCard(item: BlinkStoreItem, owned: Boolean, vipLocked: Boolean, vipActive: Boolean, onBuy: (BlinkStoreItem) -> Unit) {
-    val displayPrice = if (vipActive) max(0, (item.price * .9).toInt()) else item.price
+private fun PremiumStoreHero(vipActive: Boolean, itemCount: Int) {
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val scale by animateFloatAsState(
+        targetValue = if (shown) 1f else .94f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "blinkStoreHeroScale"
+    )
+
     Card(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale },
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        shape = RoundedCornerShape(26.dp)
     ) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = RoundedCornerShape(14.dp), color = BlinkPink.copy(alpha = .12f), modifier = Modifier.size(48.dp)) {
-                Box(contentAlignment = Alignment.Center) { Icon(storeIcon(item), null, tint = BlinkPink) }
-            }
-            Spacer(Modifier.size(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(item.name, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    if (item.vipOnly) Text("👑", fontSize = 15.sp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFF4C1D95), Color(0xFF7C3AED), Color(0xFFDB2777))
+                    )
+                )
+                .padding(20.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = Color.White.copy(alpha = .16f)) {
+                    Icon(
+                        Icons.Filled.Storefront,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.padding(10.dp).size(24.dp)
+                    )
                 }
-                Text(item.description, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("🪙 $displayPrice", fontWeight = FontWeight.Bold)
-                    Text(itemTypeLabel(item), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (item.boostMultipliers.isNotEmpty()) Text(item.boostMultipliers.joinToString("/") { "${it}×" }, fontSize = 11.sp, color = BlinkPink)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Make premium visible", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black)
+                    Text(
+                        "$itemCount real Store experiences • buy → Vault → use/apply",
+                        color = Color.White.copy(alpha = .82f),
+                        fontSize = 11.sp
+                    )
                 }
             }
-            Spacer(Modifier.size(8.dp))
-            Button(onClick = { onBuy(item) }, enabled = !owned && !vipLocked) {
-                Text(if (owned) "Owned" else if (vipLocked) "VIP" else "Buy")
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "Public cosmetics now follow your Blink identity, so supported profile/feed name surfaces can show what you actually equipped or activated.",
+                color = Color.White.copy(alpha = .92f),
+                fontSize = 12.sp
+            )
+            if (vipActive) {
+                Spacer(Modifier.height(10.dp))
+                Surface(shape = RoundedCornerShape(100.dp), color = Color.White.copy(alpha = .16f)) {
+                    Text(
+                        "👑 VIP ACTIVE • 10% Store discount",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun VaultTab(inventory: List<JSONObject>, snapshot: JSONObject, onUse: (JSONObject) -> Unit) {
+private fun StoreItemCard(
+    item: BlinkStoreItem,
+    owned: Boolean,
+    active: Boolean,
+    equipped: Boolean,
+    vipLocked: Boolean,
+    vipActive: Boolean,
+    onBuy: (BlinkStoreItem) -> Unit
+) {
+    val experience = item.premiumExperience()
+    val displayPrice = if (vipActive) max(0, (BlinkStoreCatalog.priceFor(item) * .9).toInt()) else BlinkStoreCatalog.priceFor(item)
+    val accent = premiumAccent(experience)
+    var visible by remember(item.id) { mutableStateOf(false) }
+    LaunchedEffect(item.id) { visible = true }
+    val scale by animateFloatAsState(
+        targetValue = if (visible) 1f else .97f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "storeItemReveal"
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        border = BorderStroke(1.dp, accent.copy(alpha = .32f)),
+        shape = RoundedCornerShape(22.dp)
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = accent.copy(alpha = .12f),
+                    modifier = Modifier.size(52.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(storeIcon(item), null, tint = accent, modifier = Modifier.size(25.dp))
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(item.name, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+                        if (item.vipOnly) Text("👑", fontSize = 15.sp)
+                    }
+                    Text(
+                        experience.benefit,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                PremiumPill(
+                    if (experience.publiclyVisible) "PUBLIC • ${experience.publicLabel}" else "PRIVATE • ${experience.publicLabel}",
+                    accent
+                )
+                PremiumPill(itemTypeLabel(item), MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(7.dp))
+            Text(
+                "Seen/used on: ${experience.visibleAt}",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = accent
+            )
+            Text(
+                experience.activationHint,
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("🪙 $displayPrice", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                    if (item.boostMultipliers.isNotEmpty()) {
+                        Text(
+                            item.boostMultipliers.joinToString(" • ") { "${it}×" } + " strengths",
+                            fontSize = 10.sp,
+                            color = BlinkPink
+                        )
+                    }
+                }
+                when {
+                    equipped -> PremiumPill("APPLIED", Color(0xFF16A34A))
+                    active -> PremiumPill("LIVE", Color(0xFF16A34A))
+                    owned -> PremiumPill("IN VAULT", accent)
+                }
+                Spacer(Modifier.width(8.dp))
+                Button(onClick = { onBuy(item) }, enabled = !owned && !vipLocked) {
+                    Text(if (owned) "Owned" else if (vipLocked) "VIP" else "Buy")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PremiumPill(text: String, color: Color) {
+    Surface(
+        shape = RoundedCornerShape(100.dp),
+        color = color.copy(alpha = .10f),
+        border = BorderStroke(1.dp, color.copy(alpha = .25f))
+    ) {
+        Text(
+            text,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            fontSize = 8.sp,
+            fontWeight = FontWeight.Black,
+            color = color,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun VaultTab(
+    inventory: List<JSONObject>,
+    snapshot: JSONObject,
+    equippedIds: Set<String>,
+    onUse: (JSONObject) -> Unit
+) {
     var filter by remember { mutableStateOf("AVAILABLE") }
     val filters = listOf("AVAILABLE", "ACTIVE", "PERMANENT", "USED", "EXPIRED")
     val rows = inventory.filter { it.optString("status") == filter }
+
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Column(Modifier.padding(16.dp)) {
-                Text("Blink Vault", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-                Text("Everything you buy is stored here until you use, activate or apply it.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Blink Vault", fontSize = 25.sp, fontWeight = FontWeight.Black)
+                Text(
+                    "Your premium locker. Nothing timed starts until you press Use; permanent cosmetics stay yours and can be applied again.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
             }
         }
         item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 16.dp)) {
-                items(filters) { name -> FilterChip(selected = filter == name, onClick = { filter = name }, label = { Text(name.lowercase().replaceFirstChar(Char::uppercase)) }) }
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 16.dp)
+            ) {
+                items(filters) { name ->
+                    FilterChip(
+                        selected = filter == name,
+                        onClick = { filter = name },
+                        label = { Text(name.lowercase().replaceFirstChar(Char::uppercase)) }
+                    )
+                }
             }
         }
+
         if (filter == "ACTIVE") {
             val boosts = snapshot.optJSONArray("active_boosts").objects()
             if (boosts.isNotEmpty()) {
-                item { Text("Active boosts", modifier = Modifier.padding(horizontal = 16.dp), fontWeight = FontWeight.Bold, fontSize = 18.sp) }
+                item {
+                    Text(
+                        "Live boost performance",
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        fontWeight = FontWeight.Black,
+                        fontSize = 18.sp
+                    )
+                }
                 items(boosts, key = { it.optString("id") }) { BoostCard(it) }
             }
         }
+
         if (rows.isEmpty()) {
-            item { Text("Nothing here yet.", modifier = Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item {
+                Card(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+                ) {
+                    Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Outlined.Inventory2, null, tint = BlinkPink, modifier = Modifier.size(32.dp))
+                        Spacer(Modifier.height(8.dp))
+                        Text("Nothing here yet", fontWeight = FontWeight.Bold)
+                        Text(
+                            "Buy an item from Store and it will appear in Vault.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         } else {
             items(rows, key = { it.optString("id") }) { row ->
                 val item = BlinkStoreCatalog.items.firstOrNull { it.id == row.optString("catalog_id") }
-                Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(item?.let(::storeIcon) ?: Icons.Filled.Apps, null, tint = BlinkPink, modifier = Modifier.size(34.dp))
-                        Spacer(Modifier.size(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(item?.name ?: row.optString("name"), fontWeight = FontWeight.Bold)
-                            Text("${row.optString("status").lowercase().replaceFirstChar(Char::uppercase)} • Qty ${row.optInt("quantity", 1)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            row.stringOrNull("expires_at")?.let { Text("Expires: ${shortDate(it)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            if (row.has("boost_multiplier") && !row.isNull("boost_multiplier")) Text("${row.optInt("boost_multiplier")}× boost", color = BlinkPink, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                val experience = item?.premiumExperience()
+                val accent = experience?.let(::premiumAccent) ?: BlinkPink
+                val equipped = item?.id in equippedIds
+
+                Card(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    border = BorderStroke(1.dp, accent.copy(alpha = .25f)),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Column(Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(item?.let(::storeIcon) ?: Icons.Filled.Apps, null, tint = accent, modifier = Modifier.size(34.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(item?.name ?: row.optString("name"), fontWeight = FontWeight.Black)
+                                Text(
+                                    "${row.optString("status").lowercase().replaceFirstChar(Char::uppercase)} • Qty ${row.optInt("quantity", 1)}",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                row.stringOrNull("expires_at")?.let {
+                                    Text("Expires ${shortDate(it)}", fontSize = 11.sp, color = accent, fontWeight = FontWeight.SemiBold)
+                                }
+                                if (row.has("boost_multiplier") && !row.isNull("boost_multiplier")) {
+                                    Text("${row.optInt("boost_multiplier")}× boost strength", color = BlinkPink, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                }
+                            }
+                            if (equipped) PremiumPill("APPLIED", Color(0xFF16A34A))
                         }
+
+                        if (experience != null) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(experience.benefit, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                if (experience.publiclyVisible) "Visible effect: ${experience.visibleAt}" else "Personal feature: ${experience.visibleAt}",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = accent
+                            )
+                        }
+
                         if (row.optString("status") in listOf("AVAILABLE", "PERMANENT")) {
-                            Button(onClick = { onUse(row) }) { Text(if (row.optString("status") == "PERMANENT") "Apply" else "Use") }
+                            Spacer(Modifier.height(10.dp))
+                            Button(onClick = { onUse(row) }, modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    when {
+                                        row.optString("status") != "PERMANENT" -> "Use now"
+                                        equipped -> "Remove from premium look"
+                                        else -> "Apply to my premium look"
+                                    }
+                                )
+                            }
                         }
                     }
                 }
             }
         }
-        item { Spacer(Modifier.height(16.dp)) }
+        item { Spacer(Modifier.height(18.dp)) }
     }
 }
 
 @Composable
 private fun BoostCard(row: JSONObject) {
-    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp), border = BorderStroke(1.dp, BlinkPink.copy(alpha = .35f))) {
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        border = BorderStroke(1.dp, BlinkPink.copy(alpha = .35f)),
+        shape = RoundedCornerShape(20.dp)
+    ) {
         Column(Modifier.padding(14.dp)) {
-            Text("${row.optInt("multiplier", 1)}× ${row.optString("content_type").lowercase().replaceFirstChar(Char::uppercase)} Boost", fontWeight = FontWeight.Bold)
-            Text("Ends ${shortDate(row.optString("ends_at"))}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
+            Text(
+                "${row.optInt("multiplier", 1)}× ${row.optString("content_type").lowercase().replaceFirstChar(Char::uppercase)} Boost",
+                fontWeight = FontWeight.Black
+            )
+            Text("Live until ${shortDate(row.optString("ends_at"))}", fontSize = 11.sp, color = BlinkPink)
+            Spacer(Modifier.height(9.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Metric("Extra impressions", row.optLong("extra_impressions"))
                 Metric("Profile visits", row.optLong("profile_visits"))
                 Metric("Followers", row.optLong("followers_attributed"))
             }
-            Text("Boost changes distribution opportunity only. It never creates fake likes, views, comments or followers.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+            Text(
+                "Boost improves eligible distribution opportunity only. It never manufactures likes, comments, views or followers.",
+                fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp)
+            )
         }
     }
 }
@@ -439,7 +788,7 @@ private fun BoostCard(row: JSONObject) {
 @Composable
 private fun Metric(label: String, value: Long) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value.toString(), fontWeight = FontWeight.Bold)
+        Text(value.toString(), fontWeight = FontWeight.Black)
         Text(label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -457,37 +806,57 @@ private fun VipTab(
 ) {
     var giftUser by remember { mutableStateOf("") }
     val active = vip.optBoolean("active", false)
-    val perks = remember { vipPerks }
+
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Card(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
-                colors = CardDefaults.cardColors(containerColor = BlinkPink.copy(alpha = .10f)),
-                border = BorderStroke(1.dp, BlinkPink.copy(alpha = .35f))
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                shape = RoundedCornerShape(26.dp)
             ) {
-                Column(Modifier.padding(18.dp)) {
-                    Text("👑 Blink VIP — 10 Days", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Brush.linearGradient(listOf(Color(0xFF4C1D95), Color(0xFF7C3AED), Color(0xFFF59E0B))))
+                        .padding(19.dp)
+                ) {
+                    Text("👑 Blink VIP — 10 Days", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
                     if (active) {
-                        Text("Active • ${durationText(vip.optLong("remaining_seconds", 0))} remaining", fontWeight = FontWeight.SemiBold, color = BlinkPink)
-                        vip.stringOrNull("expires_at")?.let { Text("Expires ${shortDate(it)}", fontSize = 12.sp) }
+                        Text(
+                            "LIVE • ${durationText(vip.optLong("remaining_seconds", 0))} remaining",
+                            fontWeight = FontWeight.Black,
+                            color = Color.White
+                        )
+                        vip.stringOrNull("expires_at")?.let {
+                            Text("Expires ${shortDate(it)}", fontSize = 11.sp, color = Color.White.copy(alpha = .82f))
+                        }
                         Spacer(Modifier.height(10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Auto-renew", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                            Text("Auto-renew", Modifier.weight(1f), color = Color.White, fontWeight = FontWeight.Bold)
                             Switch(checked = vip.optBoolean("auto_renew", false), onCheckedChange = onAutoRenew, enabled = !working)
                         }
                         Button(onClick = onRenew, enabled = !working) { Text("Renew +10 days") }
                     } else {
-                        Text("VIP starts only when you activate it from your Vault. Auto-renew is OFF by default.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Buy into Vault first. Your 10-day timer starts only when you activate the pass.",
+                            color = Color.White.copy(alpha = .86f),
+                            fontSize = 12.sp
+                        )
                         Spacer(Modifier.height(10.dp))
                         Button(onClick = onBuyVip, enabled = balance >= 350 && !working) { Text("Buy for 🪙 350") }
                     }
-                    Spacer(Modifier.height(10.dp))
-                    Text("Passes completed: ${vip.optInt("completed_passes", 0)} • Cumulative VIP days: ${vip.optInt("cumulative_vip_days", 0)}", fontSize = 12.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Passes completed ${vip.optInt("completed_passes", 0)} • Cumulative VIP ${vip.optInt("cumulative_vip_days", 0)} days",
+                        color = Color.White.copy(alpha = .82f),
+                        fontSize = 10.sp
+                    )
                 }
             }
         }
+
         if (active) {
-            item { Text("Claimable benefits", modifier = Modifier.padding(horizontal = 16.dp), fontSize = 19.sp, fontWeight = FontWeight.Bold) }
+            item { Text("Claimable VIP value", modifier = Modifier.padding(horizontal = 16.dp), fontSize = 19.sp, fontWeight = FontWeight.Black) }
             item { VipClaimRow("Daily VIP coin bonus", if (vip.optBoolean("daily_coin_bonus_claimed")) 0 else 1, "daily_coin_bonus", onClaim) }
             item { VipClaimRow("2× Post Boost", vip.optInt("post_boosts_2x"), "post_boost_2x", onClaim) }
             item { VipClaimRow("2× Reel Boost", vip.optInt("reel_boosts_2x"), "reel_boost_2x", onClaim) }
@@ -496,36 +865,56 @@ private fun VipTab(
             item { VipClaimRow("Reel Spotlight", vip.optInt("reel_spotlights"), "reel_spotlight", onClaim) }
             item { VipClaimRow("Marketplace Highlight", vip.optInt("marketplace_highlights"), "marketplace_highlight", onClaim) }
         }
+
         item {
-            Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp), shape = RoundedCornerShape(20.dp)) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("Gift Blink VIP", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("The recipient receives a 10-day pass in their Vault and chooses when to activate it.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedTextField(value = giftUser, onValueChange = { giftUser = it }, label = { Text("Blink username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Text("Gift Blink VIP", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                    Text(
+                        "The recipient gets a 10-day pass in Vault and chooses when to activate it.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onClick = { onGift(giftUser) }, enabled = giftUser.isNotBlank() && !working) { Text("Gift VIP") }
+                    OutlinedTextField(
+                        value = giftUser,
+                        onValueChange = { giftUser = it.take(64) },
+                        label = { Text("Blink username") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { onGift(giftUser.trim().removePrefix("@")) },
+                        enabled = giftUser.trim().removePrefix("@").isNotBlank() && !working
+                    ) { Text("Gift VIP") }
                 }
             }
         }
-        item { Text("VIP benefits", modifier = Modifier.padding(horizontal = 16.dp), fontSize = 19.sp, fontWeight = FontWeight.Bold) }
-        items(perks) { perk ->
+
+        item { Text("VIP benefits", modifier = Modifier.padding(horizontal = 16.dp), fontSize = 19.sp, fontWeight = FontWeight.Black) }
+        items(vipPerks) { perk ->
             Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 5.dp), verticalAlignment = Alignment.Top) {
                 Icon(Icons.Filled.CheckCircle, null, tint = BlinkPink, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.size(10.dp))
-                Text(perk, fontSize = 13.sp)
+                Spacer(Modifier.width(10.dp))
+                Text(perk, fontSize = 12.sp)
             }
         }
-        item { Spacer(Modifier.height(16.dp)) }
+        item { Spacer(Modifier.height(18.dp)) }
     }
 }
 
 @Composable
 private fun VipClaimRow(title: String, remaining: Int, key: String, onClaim: (String) -> Unit) {
-    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+    Card(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = RoundedCornerShape(18.dp)
+    ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(title, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-            Text("$remaining left", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.size(8.dp))
+            Text("$remaining left", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(8.dp))
             Button(onClick = { onClaim(key) }, enabled = remaining > 0) { Text("Claim") }
         }
     }
@@ -536,20 +925,31 @@ private fun HistoryTab(rows: List<JSONObject>) {
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             Column(Modifier.padding(16.dp)) {
-                Text("Purchase History", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-                Text("Your Blink Coin receipts, rewards and VIP renewals.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Purchase History", fontSize = 25.sp, fontWeight = FontWeight.Black)
+                Text("Real Blink Coin receipts, rewards and renewals.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         items(rows, key = { it.optString("id") }) { row ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(Icons.Outlined.AccountBalanceWallet, null, tint = BlinkPink)
-                Spacer(Modifier.size(12.dp))
+                Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(row.optString("item_name"), fontWeight = FontWeight.SemiBold)
-                    Text("${row.optString("kind").replace('_', ' ')} • ${shortDate(row.optString("created_at"))}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "${row.optString("kind").replace('_', ' ')} • ${shortDate(row.optString("created_at"))}",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 val amount = row.optLong("amount")
-                Text(if (amount > 0) "+🪙 $amount" else "-🪙 ${-amount}", fontWeight = FontWeight.Bold, color = if (amount > 0) Color(0xFF16A34A) else MaterialTheme.colorScheme.onSurface)
+                Text(
+                    if (amount > 0) "+🪙 $amount" else "-🪙 ${-amount}",
+                    fontWeight = FontWeight.Black,
+                    color = if (amount > 0) Color(0xFF16A34A) else MaterialTheme.colorScheme.onSurface
+                )
             }
             HorizontalDivider(Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.outlineVariant)
         }
@@ -565,8 +965,8 @@ private fun MoreTab(onClose: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Column(Modifier.padding(16.dp)) {
-                Text("More", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-                Text("Your existing Blink tools and settings remain available.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("More", fontSize = 25.sp, fontWeight = FontWeight.Black)
+                Text("Blink tools and settings.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item { MoreRoute("Back to Blink", Icons.Filled.Apps) { onClose() } }
@@ -583,9 +983,12 @@ private fun MoreTab(onClose: () -> Unit) {
 
 @Composable
 private fun MoreRoute(title: String, icon: ImageVector, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Icon(icon, null, tint = BlinkPink)
-        Spacer(Modifier.size(14.dp))
+        Spacer(Modifier.width(14.dp))
         Text(title, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
         Icon(Icons.Filled.MoreHoriz, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -593,37 +996,70 @@ private fun MoreRoute(title: String, icon: ImageVector, onClick: () -> Unit) {
 }
 
 @Composable
-private fun PurchaseDialog(item: BlinkStoreItem, balance: Long, vipActive: Boolean, onDismiss: () -> Unit, onConfirm: (Int, Int) -> Unit) {
+private fun PurchaseDialog(
+    item: BlinkStoreItem,
+    balance: Long,
+    vipActive: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (Int, Int) -> Unit
+) {
     var quantity by remember { mutableIntStateOf(1) }
     var multiplier by remember { mutableIntStateOf(item.boostMultipliers.firstOrNull() ?: 1) }
+    val experience = item.premiumExperience()
     val unit = BlinkStoreCatalog.priceFor(item, multiplier).let { if (vipActive) max(0, (it * .9).toInt()) else it }
     val total = unit * quantity
+    val accent = premiumAccent(experience)
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(item.name) },
+        title = { Text(item.name, fontWeight = FontWeight.Black) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(item.description)
-                Text("Type: ${itemTypeLabel(item)}")
-                item.durationSeconds?.let { Text("Duration: ${durationText(it)} after activation") }
-                if (item.target != BlinkStoreTarget.NONE) Text("Applies to: ${item.target.name.lowercase().replaceFirstChar(Char::uppercase)}")
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = accent.copy(alpha = .10f),
+                    border = BorderStroke(1.dp, accent.copy(alpha = .25f))
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("What you get", fontWeight = FontWeight.Black, color = accent)
+                        Text(experience.benefit, fontSize = 12.sp)
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            if (experience.publiclyVisible) "People can see/use it on: ${experience.visibleAt}" else "Personal use: ${experience.visibleAt}",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                Text(experience.activationHint, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Type: ${itemTypeLabel(item)}", fontSize = 11.sp)
+                item.durationSeconds?.let { Text("Duration after activation: ${durationText(it)}", fontSize = 11.sp) }
+
                 if (item.boostMultipliers.isNotEmpty()) {
-                    Text("Boost strength", fontWeight = FontWeight.SemiBold)
+                    Text("Choose strength", fontWeight = FontWeight.SemiBold)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        item.boostMultipliers.forEach { value -> FilterChip(selected = multiplier == value, onClick = { multiplier = value }, label = { Text("${value}×") }) }
+                        item.boostMultipliers.forEach { value ->
+                            FilterChip(selected = multiplier == value, onClick = { multiplier = value }, label = { Text("${value}×") })
+                        }
                     }
                 }
                 if (item.stackable && item.type != BlinkStoreItemType.PERMANENT) {
                     Text("Quantity", fontWeight = FontWeight.SemiBold)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedButton(onClick = { quantity = max(1, quantity - 1) }) { Text("−") }
-                        Text(quantity.toString(), fontWeight = FontWeight.Bold)
+                        Text(quantity.toString(), fontWeight = FontWeight.Black)
                         OutlinedButton(onClick = { quantity = (quantity + 1).coerceAtMost(20) }) { Text("+") }
                     }
                 }
-                Text("🪙 $total", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                if (balance < total) Text("Need ${total - balance} more Blink Coins", color = MaterialTheme.colorScheme.error)
-                Text("This purchase will be stored in Blink Vault. It will not activate automatically.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("🪙 $total", fontSize = 20.sp, fontWeight = FontWeight.Black)
+                if (balance < total) {
+                    Text("Need ${total - balance} more Blink Coins", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                }
+                Text(
+                    "Purchase goes to Vault first. Timed items and passes never start automatically.",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         },
         confirmButton = { Button(onClick = { onConfirm(quantity, multiplier) }, enabled = balance >= total) { Text("Buy") } },
@@ -641,6 +1077,7 @@ private fun TargetDialog(
 ) {
     var recipientUsername by remember(item.id) { mutableStateOf("") }
     var giftMessage by remember(item.id) { mutableStateOf("") }
+    val experience = item.premiumExperience()
     val key = when (item.target) {
         BlinkStoreTarget.POST, BlinkStoreTarget.REEL -> "posts"
         BlinkStoreTarget.MARKETPLACE -> "market"
@@ -654,13 +1091,14 @@ private fun TargetDialog(
             else -> true
         }
     }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Use ${item.name}") },
+        title = { Text("Use ${item.name}", fontWeight = FontWeight.Black) },
         text = {
             if (item.id == "digital_gift") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Send this Vault gift directly to another Blink account.")
+                    Text(experience.benefit, fontSize = 12.sp)
                     OutlinedTextField(
                         value = recipientUsername,
                         onValueChange = { recipientUsername = it.take(64) },
@@ -677,21 +1115,32 @@ private fun TargetDialog(
                         maxLines = 4,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Text(
-                        "The gift is consumed only after the server validates the recipient and records the transfer.",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             } else if (rows.isEmpty()) {
-                Text("No eligible ${item.target.name.lowercase()} found yet.")
+                Column {
+                    Text("No eligible ${item.target.name.lowercase()} found yet.")
+                    Spacer(Modifier.height(6.dp))
+                    Text(experience.activationHint, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             } else {
-                LazyColumn(Modifier.height(360.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(rows, key = { it.optString("id") }) { row ->
-                        Card(Modifier.fillMaxWidth().clickable { onSelect(row.optString("id")) }) {
-                            Column(Modifier.padding(12.dp)) {
-                                Text(row.optString("type").lowercase().replaceFirstChar(Char::uppercase), fontWeight = FontWeight.Bold)
-                                Text(row.optString("text").ifBlank { "Untitled" }, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 12.sp)
+                Column {
+                    Text("Choose exactly where the premium effect should appear.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(8.dp))
+                    LazyColumn(Modifier.height(360.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(rows, key = { it.optString("id") }) { row ->
+                            Card(
+                                Modifier.fillMaxWidth().clickable { onSelect(row.optString("id")) },
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text(row.optString("type").lowercase().replaceFirstChar(Char::uppercase), fontWeight = FontWeight.Black)
+                                    Text(
+                                        row.optString("text").ifBlank { "Untitled" },
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        fontSize = 11.sp
+                                    )
+                                }
                             }
                         }
                     }
@@ -712,6 +1161,26 @@ private fun TargetDialog(
             if (item.id == "digital_gift") OutlinedButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+}
+
+private fun equipSlot(item: BlinkStoreItem): String = when (item.id) {
+    "profile_ring", "animated_profile_ring", "premium_profile_frame" -> "profile_frame"
+    "profile_background", "profile_theme_bundle" -> "profile_theme"
+    "username_font", "animated_name" -> "name_style"
+    "custom_profile_badge", "creator_badge" -> "profile_badge"
+    "chat_bubble_theme", "special_dm_theme" -> "chat_theme"
+    "reaction_pack", "emoji_pack", "sticker_pack" -> "social_pack_${item.id}"
+    else -> item.id
+}
+
+private fun premiumAccent(experience: BlinkStoreExperience): Color = when (experience.visibility) {
+    BlinkExperienceVisibility.PUBLIC_IDENTITY -> Color(0xFF7C3AED)
+    BlinkExperienceVisibility.PUBLIC_CONTENT -> Color(0xFFDB2777)
+    BlinkExperienceVisibility.SHARED_SOCIAL -> Color(0xFF2563EB)
+    BlinkExperienceVisibility.DISTRIBUTION -> Color(0xFFF59E0B)
+    BlinkExperienceVisibility.PRIVATE_UTILITY -> Color(0xFF64748B)
+    BlinkExperienceVisibility.RECIPIENT_VISIBLE -> Color(0xFF0EA5E9)
+    BlinkExperienceVisibility.BUNDLE -> Color(0xFF8B5CF6)
 }
 
 private fun tabIcon(tab: BlinkStoreTab): ImageVector = when (tab) {
@@ -736,9 +1205,9 @@ private fun storeIcon(item: BlinkStoreItem): ImageVector = when (item.category) 
 
 private fun itemTypeLabel(item: BlinkStoreItem): String = when (item.type) {
     BlinkStoreItemType.CONSUMABLE -> "One-time use"
-    BlinkStoreItemType.TIMED -> "Timed • manual activation"
+    BlinkStoreItemType.TIMED -> "Timed • manual start"
     BlinkStoreItemType.PERMANENT -> "Permanent unlock"
-    BlinkStoreItemType.CONTENT_SPECIFIC -> "Use on one ${item.target.name.lowercase()}"
+    BlinkStoreItemType.CONTENT_SPECIFIC -> "Choose one ${item.target.name.lowercase()}"
     BlinkStoreItemType.PASS -> "10-day pass"
 }
 
@@ -747,7 +1216,8 @@ private fun JSONArray?.objects(): List<JSONObject> {
     return buildList { for (i in 0 until length()) optJSONObject(i)?.let(::add) }
 }
 
-private fun JSONObject.stringOrNull(key: String): String? = if (isNull(key)) null else optString(key).takeIf { it.isNotBlank() && it != "null" }
+private fun JSONObject.stringOrNull(key: String): String? =
+    if (isNull(key)) null else optString(key).takeIf { it.isNotBlank() && it != "null" }
 
 private fun durationText(seconds: Long): String {
     if (seconds <= 0) return "0m"
@@ -764,54 +1234,20 @@ private fun durationText(seconds: Long): String {
 private fun shortDate(raw: String): String = raw.replace('T', ' ').take(16).ifBlank { "—" }
 
 private val vipPerks = listOf(
-    "VIP badge across profile, comments, replies, reels, search, notifications, leaderboard, marketplace and chat surfaces that consume VIP status.",
-    "Special VIP interaction notifications when a VIP likes, comments, replies, follows, mentions or reposts.",
-    "VIP notification priority styling without hiding normal notifications.",
+    "VIP badge on public identity surfaces that consume VIP status.",
+    "10% Blink Store discount while VIP is active.",
     "Two claimable 2× Post Boosts per pass.",
     "Two claimable 2× Reel Boosts per pass.",
-    "One Profile Spotlight per pass.",
-    "One Post Spotlight per pass.",
-    "One Reel Spotlight per pass.",
-    "One Marketplace Highlight per pass.",
-    "VIP profile frame and animated profile ring entitlement.",
-    "VIP username effect, comment badge, reply styling and mention styling.",
-    "Exclusive VIP reactions, stickers, chat themes and profile themes.",
-    "Custom profile background and profile entrance animation entitlement.",
-    "Follower celebration animation and VIP notification sound entitlement.",
-    "VIP-only digital gift styling and gift animation entitlement.",
+    "Profile, Post, Reel and Marketplace spotlight credits.",
     "Daily VIP Blink Coin bonus.",
-    "10% Blink Store discount while VIP is active.",
-    "10% eligible activity coin bonus entitlement.",
-    "Early access to new Store items, reactions and themes.",
-    "Access to limited-time VIP drops.",
-    "Extra pinned-post and pinned-reel capacity entitlement.",
-    "Extra saved drafts, profile links, customization slots and featured media entitlement.",
+    "VIP interaction-notification styling and priority treatment.",
+    "VIP profile frame, ring, username and theme entitlements.",
+    "Exclusive reactions, stickers, chat themes and profile themes.",
     "Profile visitor insights during the active VIP period.",
-    "Content performance summary, best post/reel indicators and follower-growth summary entitlement.",
-    "VIP analytics card entitlement.",
-    "Enhanced marketplace seller card and VIP seller badge entitlement.",
-    "VIP badge in Connect and discovery surfaces.",
-    "VIP discovery styling without guaranteed ranking or fake engagement.",
-    "VIP-created room badge entitlement for room/live features.",
-    "VIP chat accent and group/admin badge styling entitlement.",
-    "Profile music/theme slot entitlement.",
-    "Collectible badge for completed VIP passes.",
-    "VIP streak and cumulative VIP history.",
-    "Gift a 10-day VIP pass using Blink Coins.",
-    "Receive gifted VIP in Vault and choose when to activate it.",
-    "24-hour VIP expiry reminder.",
-    "Live VIP time-remaining card.",
-    "VIP benefit tracker and unused boost counters.",
-    "Manual claim for included boosts/rewards so benefits are not wasted.",
-    "VIP Store category and VIP-exclusive item access.",
-    "VIP-exclusive pricing via active-pass discount.",
-    "Birthday/profile celebration effect entitlement.",
-    "VIP leaderboard decoration without altering earned rank.",
-    "VIP challenge reward and cosmetic activity-reward entitlement.",
-    "Milestone badge entitlement based on cumulative VIP days.",
-    "VIP profile-card sharing and QR/profile-link design entitlement.",
-    "Exclusive app accent selection entitlement.",
-    "Full Blink Coin purchase receipts and history.",
-    "Renew from the VIP screen with one tap.",
-    "Optional auto-renew; OFF by default and disabled automatically if balance is insufficient."
+    "VIP analytics and content-performance summary entitlements.",
+    "Enhanced Marketplace seller identity treatment.",
+    "VIP styling in Connect/discovery surfaces without fake ranking.",
+    "Cumulative VIP history, streak and completed-pass badges.",
+    "Gift a 10-day VIP pass; recipient chooses when it starts.",
+    "Optional auto-renew, OFF by default."
 )
