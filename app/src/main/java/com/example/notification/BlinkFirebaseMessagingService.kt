@@ -271,14 +271,16 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             }
 
             else -> {
-                // The REST recovery worker reads the same unread rows after reconnect/login.
-                // Record the delivery time before rendering so an already-shown admin/social
-                // push is not reconstructed as a second notification on the next login.
-                val uid = runCatching {
-                    SupabaseService.initialize(applicationContext)
-                    SupabaseService().getCurrentUserId().orEmpty()
-                }.getOrDefault("")
-                SocialNotificationRecovery.markPushReceived(applicationContext, uid)
+                // When a social/admin push carries its server notification id, remember it
+                // before rendering. The reconnect worker can then skip the same unread row.
+                val notificationId = data["notification_id"].orEmpty()
+                if (notificationId.isNotBlank()) {
+                    val uid = runCatching {
+                        SupabaseService.initialize(applicationContext)
+                        SupabaseService().getCurrentUserId().orEmpty()
+                    }.getOrDefault("")
+                    SocialNotificationRecovery.markShown(applicationContext, uid, notificationId)
+                }
                 BlinkNotificationHelper.showSocialNotification(
                     context = this,
                     title = title,
