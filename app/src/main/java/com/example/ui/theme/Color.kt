@@ -1,83 +1,92 @@
 package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import com.blinkng.shared.BlinkDesignTokens
 
 // ============================================================
-// BLINK PREMIUM FUTURISTIC PALETTE
+// BLINK PREMIUM DESIGN SYSTEM
 // ============================================================
+// These platform colors are mapped from the shared Blink design contract so the
+// Android and Windows clients can use the same visual language.
 
-val FeedBackground = Color(0xFF05060B)
-val FeedCardSurface = Color(0xFF10131A)
-val FeedElevatedSurface = Color(0xFF141824)
-val FeedBorder = Color(0xFF272C3A)
-val FeedBorderSoft = Color(0xFF1C2130)
+val FeedBackground = Color(BlinkDesignTokens.Dark.Background)
+val FeedCardSurface = Color(BlinkDesignTokens.Dark.Surface)
+val FeedElevatedSurface = Color(BlinkDesignTokens.Dark.SurfaceElevated)
+val FeedInputSurface = Color(BlinkDesignTokens.Dark.Input)
+val FeedBorder = Color(BlinkDesignTokens.Dark.Border)
+val FeedBorderSoft = Color(BlinkDesignTokens.Dark.BorderSoft)
 
-val FeedTextPrimary = Color(0xFFF7F5FF)
-val FeedTextSecondary = Color(0xFFAAA9BD)
-val FeedTextMuted = Color(0xFF777A91)
+val FeedTextPrimary = Color(BlinkDesignTokens.Dark.TextPrimary)
+val FeedTextSecondary = Color(BlinkDesignTokens.Dark.TextSecondary)
+val FeedTextMuted = Color(BlinkDesignTokens.Dark.TextMuted)
 
-val FeedPurple = Color(0xFF8B5CF6)
-val FeedDeepPurple = Color(0xFF6D28D9)
-val FeedBlue = Color(0xFF3B82F6)
-val FeedGradientStart = Color(0xFFA855F7)
-val FeedGradientMiddle = Color(0xFF7C3AED)
-val FeedGradientEnd = Color(0xFF2F80ED)
+val FeedPurple = Color(BlinkDesignTokens.Brand.Primary)
+val FeedPurpleBright = Color(BlinkDesignTokens.Brand.PrimaryBright)
+val FeedDeepPurple = Color(BlinkDesignTokens.Brand.PrimaryDeep)
+val FeedBlue = Color(BlinkDesignTokens.Brand.Blue)
+val FeedGradientStart = FeedPurpleBright
+val FeedGradientMiddle = FeedPurple
+val FeedGradientEnd = FeedBlue
 
-// Existing brand names stay available so the rest of the app keeps compiling.
-// Their values now align with the premium purple/cobalt visual system.
+// Existing names stay available so older screens keep compiling while they are
+// migrated to semantic MaterialTheme/Blink tokens screen-by-screen.
 val BlinkBlack = FeedBackground
 val BlinkBlackSoft = FeedCardSurface
 val BlinkBlackElevated = FeedElevatedSurface
 val BlinkCream = FeedTextPrimary
 val BlinkCreamSoft = FeedTextSecondary
-val BlinkCreamBright = Color(0xFFFFFFFF)
-val BlinkGold = Color(0xFFF5C451)
+val BlinkCreamBright = Color.White
+val BlinkGold = Color(BlinkDesignTokens.Semantic.Gold)
 val BlinkGoldSoft = Color(0xFFFFD978)
 
-val BlinkRed = Color(0xFFFF5D73)
+val BlinkRed = Color(BlinkDesignTokens.Semantic.Error)
 val BlinkBlue = FeedBlue
-val BlinkCyan = Color(0xFF35C7E8)
-val BlinkOnlineGreen = Color(0xFF22C55E)
+val BlinkCyan = Color(BlinkDesignTokens.Brand.Cyan)
+val BlinkOnlineGreen = Color(BlinkDesignTokens.Semantic.Success)
 val BlinkPink = FeedPurple
 val BlinkPinkDeep = FeedDeepPurple
 val BlinkPurple = FeedPurple
-val BlinkLavender = Color(0xFFC4B5FD)
+val BlinkLavender = Color(BlinkDesignTokens.Brand.Lavender)
 val BlinkAccentSoft = Color(0xFFDDD6FE)
+val BlinkWarning = Color(BlinkDesignTokens.Semantic.Warning)
+val BlinkSuccess = Color(BlinkDesignTokens.Semantic.Success)
 
 // ============================================================
 // DARK THEME
 // ============================================================
 
-val DarkBackground = FeedBackground
-val DarkSurface = FeedCardSurface
-val DarkSurfaceElevated = FeedElevatedSurface
-val DarkSurfaceHighest = Color(0xFF191E2C)
-val DarkBorder = FeedBorder
-val DarkBorderSoft = FeedBorderSoft
-val DarkTextPrimary = FeedTextPrimary
-val DarkTextSecondary = FeedTextSecondary
-val DarkTextMuted = FeedTextMuted
+val DarkBackground = Color(BlinkDesignTokens.Dark.Background)
+val DarkSurface = Color(BlinkDesignTokens.Dark.Surface)
+val DarkSurfaceElevated = Color(BlinkDesignTokens.Dark.SurfaceElevated)
+val DarkInput = Color(BlinkDesignTokens.Dark.Input)
+val DarkSurfaceHighest = Color(BlinkDesignTokens.Dark.SurfaceHighest)
+val DarkBorder = Color(BlinkDesignTokens.Dark.Border)
+val DarkBorderSoft = Color(BlinkDesignTokens.Dark.BorderSoft)
+val DarkTextPrimary = Color(BlinkDesignTokens.Dark.TextPrimary)
+val DarkTextSecondary = Color(BlinkDesignTokens.Dark.TextSecondary)
+val DarkTextMuted = Color(BlinkDesignTokens.Dark.TextMuted)
 
 // ============================================================
 // LIGHT THEME
 // ============================================================
 
-val LightBackground = Color(0xFFF7F6FB)
-val LightSurface = Color(0xFFFFFFFF)
-val LightSurfaceElevated = Color(0xFFFFFFFF)
-val LightSurfaceCream = Color(0xFFF1EFF8)
-val LightBorder = Color(0xFFE0DDEA)
-val LightBorderSoft = Color(0xFFECE9F3)
-val LightTextPrimary = Color(0xFF16141D)
-val LightTextSecondary = Color(0xFF625F70)
-val LightTextMuted = Color(0xFF8A8795)
+val LightBackground = Color(BlinkDesignTokens.Light.Background)
+val LightSurface = Color(BlinkDesignTokens.Light.Surface)
+val LightSurfaceElevated = Color(BlinkDesignTokens.Light.SurfaceElevated)
+val LightInput = Color(BlinkDesignTokens.Light.Input)
+val LightSurfaceCream = Color(BlinkDesignTokens.Light.SurfaceHighest)
+val LightBorder = Color(BlinkDesignTokens.Light.Border)
+val LightBorderSoft = Color(BlinkDesignTokens.Light.BorderSoft)
+val LightTextPrimary = Color(BlinkDesignTokens.Light.TextPrimary)
+val LightTextSecondary = Color(BlinkDesignTokens.Light.TextSecondary)
+val LightTextMuted = Color(BlinkDesignTokens.Light.TextMuted)
 
 // ============================================================
 // SPECIAL COLORS
 // ============================================================
 
-val PureWhite = Color(0xFFFFFFFF)
-val PureBlack = Color(0xFF000000)
+val PureWhite = Color.White
+val PureBlack = Color.Black
 val Transparent = Color.Transparent
 
 // ============================================================

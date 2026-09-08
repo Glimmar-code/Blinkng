@@ -46,8 +46,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -77,7 +75,9 @@ import com.blinkng.desktop.data.DesktopCall
 import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.ui.AdminProScreen
 import com.blinkng.desktop.ui.BlinkAuthScreen
+import com.blinkng.desktop.ui.BlinkDesktopTheme
 import com.blinkng.desktop.ui.ConnectScreen
+import com.blinkng.desktop.ui.DesktopBlinkPurple
 import com.blinkng.desktop.ui.GamesScreen
 import com.blinkng.desktop.ui.HomeScreen
 import com.blinkng.desktop.ui.LeaderboardScreen
@@ -92,18 +92,7 @@ import com.blinkng.desktop.ui.StoreProScreen
 import kotlinx.coroutines.delay
 import java.awt.Dimension
 
-private val BlinkPurple = Color(0xFF6D3DF5)
-private val BlinkBackground = Color(0xFF0B0B0F)
-private val BlinkSurface = Color(0xFF121218)
-private val BlinkSurfaceRaised = Color(0xFF191920)
-
-private val BlinkDarkColors = darkColorScheme(
-    primary = BlinkPurple,
-    background = BlinkBackground,
-    surface = BlinkSurface,
-    surfaceVariant = BlinkSurfaceRaised,
-)
-private val BlinkLightColors = lightColorScheme(primary = BlinkPurple)
+private val BlinkPurple = DesktopBlinkPurple
 
 private data class DesktopDestination(
     val id: String,
@@ -204,9 +193,7 @@ fun runBlinkDesktopApplication() = application {
                 window.minimumSize = Dimension(960, 640)
             }
 
-            val theme = appState.settings?.theme?.lowercase()
-            val colors = if (theme == "light") BlinkLightColors else BlinkDarkColors
-            MaterialTheme(colorScheme = colors) {
+            BlinkDesktopTheme(appearance = appState.settings?.theme) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     when {
                         !appState.initialized -> InitializingScreen()
