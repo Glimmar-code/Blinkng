@@ -1,0 +1,11 @@
+{
+  "name": "Blink",
+  "short_name": "Blink",
+  "description": "Blink social, campus and creator experience on the web.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#08070d",
+  "theme_color": "#08070d",
+  "categories": ["social", "education", "productivity"]
+}
