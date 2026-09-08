@@ -98,13 +98,20 @@ class BlinkEconomyService {
 
     /**
      * Returns only public-safe premium identity state for another Blink account.
-     * The database function never exposes balances, inventory quantities, purchase
-     * history, private analytics or target content ids.
+     * It may include a public Collection count/level, but never coin balances,
+     * inventory quantities, spend totals, private analytics or target content ids.
      */
     suspend fun publicPremiumStyleByUsername(username: String) = runCatching {
         val clean = username.trim().removePrefix("@")
         require(clean.isNotBlank()) { "Blink username is required." }
         rpc("get_blink_public_premium_style", JSONObject().put("p_username", clean))
+    }
+
+    /** Fetches the public-safe list of items another user owns for Blink Collection. */
+    suspend fun publicCollectionByUsername(username: String) = runCatching {
+        val clean = username.trim().removePrefix("@")
+        require(clean.isNotBlank()) { "Blink username is required." }
+        rpc("get_blink_public_collection", JSONObject().put("p_username", clean))
     }
 
     suspend fun vipStatusByUsername(username: String) = runCatching {
