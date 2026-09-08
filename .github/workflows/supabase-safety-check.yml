@@ -1,0 +1,38 @@
+name: Supabase safety gate
+
+on:
+  push:
+    branches: [Testlab, main]
+  pull_request:
+    branches: [Testlab, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-safety-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migration-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate Supabase changes
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: python3 scripts/check_supabase_safety.py
+
+      - name: Confirm staging-first policy
+        shell: bash
+        run: |
+          echo "Supabase production changes must be promoted only after Testlab + staging verification."
