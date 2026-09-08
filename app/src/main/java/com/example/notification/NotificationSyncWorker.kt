@@ -89,10 +89,7 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
     private fun recoverSocialNotifications(token: String, uid: String) {
         val prefs = applicationContext.getSharedPreferences("blink_notification_sync", Context.MODE_PRIVATE)
         val cursorKey = "last_social_created_at_$uid"
-        val persistedCursor = prefs.getString(cursorKey, "") ?: ""
-        // If FCM already displayed a social/admin alert, recovery must never reconstruct
-        // server rows from before that delivery time on a later login.
-        val lastSeen = SocialNotificationRecovery.effectiveCursor(applicationContext, uid, persistedCursor)
+        val lastSeen = prefs.getString(cursorKey, "") ?: ""
         val endpoint = "${SupabaseConfig.url.trimEnd('/')}/rest/v1/notifications?select=*&is_read=eq.false&order=created_at.asc&limit=1000"
         val request = Request.Builder()
             .url(endpoint)
@@ -116,6 +113,17 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
                 // comes from public.messages via get_my_unread_message_notifications().
                 if (title.contains(" sent you a message", ignoreCase = true)) continue
 
+                val notificationId = row.optString("id")
+                if (
+                    notificationId.isNotBlank() &&
+                    SocialNotificationRecovery.wasShown(applicationContext, uid, notificationId)
+                ) continue
+
+                // Mark before posting so a process restart between posting and saving the
+                // cursor cannot reconstruct the exact same server notification again.
+                if (notificationId.isNotBlank()) {
+                    SocialNotificationRecovery.markShown(applicationContext, uid, notificationId)
+                }
                 BlinkNotificationHelper.showSocialNotification(
                     applicationContext,
                     title,
