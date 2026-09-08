@@ -75,4 +75,20 @@ For risky changes:
 
 Supabase/database changes must also be tested safely before production. Prefer versioned migrations and rollback-aware changes instead of untracked destructive production edits.
 
-This Testlab-first policy is the default for future Blinkng development unless the repository owner explicitly instructs otherwise.
+## REQUIRED SUPABASE PREVIEW / STAGING RULE
+
+Any risky or production-affecting Supabase change must be validated in a Supabase preview/staging environment before it is applied to the production Supabase project whenever a preview/staging environment is available.
+
+This includes, where applicable:
+
+- database schema and migration changes;
+- RLS policies and permissions;
+- Auth configuration and auth flows;
+- Edge Functions, triggers, RPC/functions, cron jobs, and webhooks;
+- Storage buckets and Storage policies;
+- Realtime behavior;
+- destructive data operations or backfills.
+
+Use production-compatible test data without copying unnecessary sensitive user data. Run the relevant app/backend tests against staging, confirm migrations and rollback/recovery behavior, and only promote the change to production after staging passes. Production must not be used as the first place to experiment with a risky Supabase change.
+
+This Supabase preview/staging-first policy and the Testlab-first policy are the defaults for future Blinkng development unless the repository owner explicitly instructs otherwise.
