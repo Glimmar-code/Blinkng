@@ -2,7 +2,10 @@ package com.example.data.supabase
 
 import android.util.Log
 import com.example.auth.SupabaseSessionRefresher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -28,6 +31,25 @@ class ReelRecommendationService {
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
             .build()
+        private val telemetryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    }
+
+    fun recordReelEngagementAsync(
+        postId: String,
+        watchedMs: Long,
+        durationMs: Long,
+        completed: Boolean,
+        rewatched: Boolean
+    ) {
+        telemetryScope.launch {
+            recordReelEngagement(
+                postId = postId,
+                watchedMs = watchedMs,
+                durationMs = durationMs,
+                completed = completed,
+                rewatched = rewatched
+            )
+        }
     }
 
     suspend fun recordReelEngagement(
