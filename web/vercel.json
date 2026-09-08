@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/@:username", "destination": "/index.html" },
+    { "source": "/profile/:path*", "destination": "/index.html" },
+    { "source": "/post/:path*", "destination": "/index.html" },
+    { "source": "/reel/:path*", "destination": "/index.html" },
+    { "source": "/feed", "destination": "/index.html" },
+    { "source": "/reels", "destination": "/index.html" },
+    { "source": "/search", "destination": "/index.html" },
+    { "source": "/messages/:path*", "destination": "/index.html" },
+    { "source": "/activity", "destination": "/index.html" },
+    { "source": "/market", "destination": "/index.html" },
+    { "source": "/connect", "destination": "/index.html" },
+    { "source": "/games", "destination": "/index.html" },
+    { "source": "/scheduled", "destination": "/index.html" },
+    { "source": "/settings/:path*", "destination": "/index.html" },
+    { "source": "/login", "destination": "/index.html" }
+  ]
+}
