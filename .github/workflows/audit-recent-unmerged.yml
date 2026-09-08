@@ -1,0 +1,59 @@
+name: Audit recent unmerged branches
+
+on:
+  push:
+    branches:
+      - automation/recent-branch-audit
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan recent branch-only commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+          since='2026-09-08T00:00:00Z'
+          echo "Audit cutoff: $since"
+          echo "Main: $(git rev-parse origin/main)"
+          found=0
+          while IFS= read -r ref; do
+            branch="${ref#origin/}"
+            case "$branch" in
+              main|automation/*) continue ;;
+            esac
+            tip_date="$(git show -s --format=%cI "$ref")"
+            if [[ "$tip_date" < "$since" ]]; then
+              continue
+            fi
+            if git merge-base --is-ancestor "$ref" origin/main; then
+              continue
+            fi
+            recent_plus="$(git cherry origin/main "$ref" | awk '$1=="+" {print $2}' | while read -r sha; do
+              [[ -z "$sha" ]] && continue
+              cdate="$(git show -s --format=%cI "$sha")"
+              if [[ "$cdate" > "$since" || "$cdate" == "$since" ]]; then
+                echo "$sha"
+              fi
+            done)"
+            if [[ -z "$recent_plus" ]]; then
+              continue
+            fi
+            found=$((found+1))
+            echo "::group::UNMERGED $branch"
+            echo "TIP $tip_date $(git rev-parse "$ref")"
+            while read -r sha; do
+              [[ -z "$sha" ]] && continue
+              echo "COMMIT $(git show -s --format='%H|%cI|%s' "$sha")"
+              git show --stat --oneline --no-renames "$sha" | sed -n '1,40p'
+            done <<< "$recent_plus"
+            echo "::endgroup::"
+          done < <(git for-each-ref --format='%(refname:short)' refs/remotes/origin | sort)
+          echo "UNMERGED_RECENT_BRANCH_COUNT=$found"
