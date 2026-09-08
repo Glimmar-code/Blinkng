@@ -1,0 +1,59 @@
+name: Apply chat swipe direct reply
+
+on:
+  push:
+    branches: [Testlab-chat-swipe-direct-reply]
+    paths:
+      - '.github/scripts/apply_chat_swipe_direct_reply.py'
+      - '.github/workflows/apply-chat-swipe-direct-reply.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chat-swipe-direct-reply
+  cancel-in-progress: false
+
+jobs:
+  apply-validate-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply chat swipe gesture fix
+        run: python3 .github/scripts/apply_chat_swipe_direct_reply.py
+
+      - name: Verify patch formatting
+        run: git diff --check
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile Kotlin
+        run: gradle :app:compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Run unit tests
+        run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Commit validated chat gesture fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/screens/MessagesScreen.kt platform-parity/changes.md
+          if git diff --cached --quiet; then
+            echo "Chat swipe source is already up to date."
+            exit 0
+          fi
+          git commit -m "fix: make chat swipes direct and reply-only left"
+          git pull --rebase origin Testlab-chat-swipe-direct-reply
+          git push origin HEAD:Testlab-chat-swipe-direct-reply
