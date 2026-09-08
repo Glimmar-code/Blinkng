@@ -10,16 +10,41 @@ plugins {
   alias(libs.plugins.firebase.crashlytics) apply false
 }
 
-// google-services.json is intentionally optional in source control.
-// When the Firebase config file is supplied locally, apply the Google Services plugin.
 if (file("google-services.json").exists()) {
   apply(plugin = "com.google.gms.google-services")
   apply(plugin = "com.google.firebase.crashlytics")
 }
 
-// Release versioning is deterministic in CI and still safe for local release builds.
-// GitHub's signed-release workflow supplies VERSION_CODE/VERSION_NAME. When they are
-// absent locally, the Git commit count is used so versionCode no longer stays at 1.
+val releaseTaskRequested = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+val requestedVersionCodeRaw = providers.environmentVariable("VERSION_CODE").orNull?.trim()
+val requestedVersionCode = requestedVersionCodeRaw?.toIntOrNull()
+val requestedVersionName = providers.environmentVariable("VERSION_NAME").orNull
+  ?.trim()
+  ?.takeIf { it.isNotEmpty() }
+
+if (releaseTaskRequested) {
+  if (requestedVersionCodeRaw.isNullOrBlank()) {
+    throw GradleException(
+      "Release VERSION_CODE is required. Build production APK/AAB files through the signed-release workflow " +
+        "or provide an explicit monotonically increasing VERSION_CODE."
+    )
+  }
+  if (requestedVersionCode == null) {
+    throw GradleException("Release VERSION_CODE must be a valid integer, got '$requestedVersionCodeRaw'.")
+  }
+  if (requestedVersionCode < 10_000_000) {
+    throw GradleException(
+      "Release VERSION_CODE must be >= 10000000. Small fallback codes are blocked to prevent Android downgrade/update mismatch errors."
+    )
+  }
+  if (requestedVersionName.isNullOrBlank()) {
+    throw GradleException(
+      "Release VERSION_NAME is required. Build production APK/AAB files through the signed-release workflow " +
+        "or provide an explicit VERSION_NAME."
+    )
+  }
+}
+
 val gitCommitCount = providers.exec {
   workingDir(rootDir)
   commandLine("git", "rev-list", "--count", "HEAD")
@@ -27,7 +52,7 @@ val gitCommitCount = providers.exec {
 }.standardOutput.asText.get().trim().toIntOrNull()
 
 val resolvedVersionCode = (
-  providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull()
+  requestedVersionCode
     ?: gitCommitCount
     ?: 2
 ).coerceAtLeast(2)
@@ -36,14 +61,8 @@ require(resolvedVersionCode <= 2_100_000_000) {
   "VERSION_CODE must be <= 2100000000, got $resolvedVersionCode"
 }
 
-val resolvedVersionName = providers.environmentVariable("VERSION_NAME").orNull
-  ?.trim()
-  ?.takeIf { it.isNotEmpty() }
-  ?: "1.0.$resolvedVersionCode"
+val resolvedVersionName = requestedVersionName ?: "1.0.$resolvedVersionCode"
 
-// Until the production domain is supplied, public shares use the live Supabase
-// web-preview function. Override later with -PBLINK_SHARE_BASE_URL=https://blink.ng
-// or the matching environment variable; no Kotlin source edit is required.
 val configuredShareBaseUrl = providers.gradleProperty("BLINK_SHARE_BASE_URL").orNull
   ?: providers.environmentVariable("BLINK_SHARE_BASE_URL").orNull
 val resolvedShareBaseUrl = configuredShareBaseUrl
@@ -56,9 +75,6 @@ val resolvedShareHost = resolvedShareUri.host
   ?: throw GradleException("BLINK_SHARE_BASE_URL must contain a valid HTTPS host")
 val resolvedSharePathPrefix = resolvedShareUri.path.orEmpty().trimEnd('/')
 
-// WebRTC can connect peer-to-peer through STUN. Production calls also need a TURN relay
-// for carrier-grade NAT/firewalls. Keep credentials out of source control and inject them
-// with Gradle properties or environment variables in CI/release environments.
 fun buildConfigString(value: String): String =
   "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
@@ -79,9 +95,7 @@ val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
 val releaseStorePassword = System.getenv("STORE_PASSWORD")
 val releaseKeyAlias = System.getenv("KEY_ALIAS")
 val releaseKeyPassword = System.getenv("KEY_PASSWORD")
-val releaseTaskRequested = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
 
-// Never silently build a production APK/AAB with a missing or accidental signing key.
 if (releaseTaskRequested) {
   val missing = buildList {
     if (releaseKeystorePath.isNullOrBlank()) add("KEYSTORE_PATH")
@@ -131,9 +145,6 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      // Firebase is registered for com.aistudio.blink.appvtwo. Keep the debug
-      // applicationId identical so processDebugGoogleServices can resolve this client.
-      // Register a second Firebase Android app before reintroducing a .debug suffix.
       versionNameSuffix = "-debug"
     }
   }
