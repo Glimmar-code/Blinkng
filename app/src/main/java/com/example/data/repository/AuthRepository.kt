@@ -259,6 +259,9 @@ class AuthRepository(private val context: Context, private val supabaseService: 
         AccountSessionStore.rememberIdentifier(context.applicationContext, rememberedIdentifier)
         AccountSessionStore.setSignInRequired(context.applicationContext, true)
 
+        runCatching { BlinkFirebaseMessagingService.unregisterCurrentToken(context.applicationContext) }
+            .onFailure { Log.w("AuthRepository", "Unable to unregister FCM token during logout", it) }
+
         try {
             supabaseService.revokeCurrentSupabaseSession()
         } catch (e: Exception) {

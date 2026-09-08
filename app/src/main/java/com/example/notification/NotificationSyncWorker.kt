@@ -113,6 +113,17 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
                 // comes from public.messages via get_my_unread_message_notifications().
                 if (title.contains(" sent you a message", ignoreCase = true)) continue
 
+                val notificationId = row.optString("id")
+                if (
+                    notificationId.isNotBlank() &&
+                    SocialNotificationRecovery.wasShown(applicationContext, uid, notificationId)
+                ) continue
+
+                // Mark before posting so a process restart between posting and saving the
+                // cursor cannot reconstruct the exact same server notification again.
+                if (notificationId.isNotBlank()) {
+                    SocialNotificationRecovery.markShown(applicationContext, uid, notificationId)
+                }
                 BlinkNotificationHelper.showSocialNotification(
                     applicationContext,
                     title,

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Forward
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Report
@@ -46,10 +47,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.call.CallHistoryActivity
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
 import com.example.ui.theme.MessagePalette
@@ -258,6 +261,7 @@ internal fun ChatOverflowSheet(
     onReport: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = palette.glass,
@@ -266,6 +270,10 @@ internal fun ChatOverflowSheet(
         Text(conversation.partnerName, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
         OverflowRow("View profile", Icons.Default.Person, palette, onProfile)
         OverflowRow("Search in chat", Icons.Default.Search, palette, onSearch)
+        OverflowRow("Call history", Icons.Default.Phone, palette) {
+            onDismiss()
+            context.startActivity(Intent(context, CallHistoryActivity::class.java))
+        }
         OverflowRow(if (pinnedOnly) "Show all messages" else "Pinned messages", Icons.Default.Place, palette, onPinned)
         OverflowRow(if (starredOnly) "Show all messages" else "Starred messages", Icons.Default.Star, palette, onStarred)
         OverflowRow(if (conversation.isMuted) "Unmute notifications" else "Mute notifications", Icons.Default.VolumeOff, palette, onMute)
