@@ -267,7 +267,7 @@ class DesktopBlinkAiService(
         }
     }
 
-    private fun executeRest(
+    private suspend fun executeRest(
         path: String,
         method: String = "GET",
         body: JSONObject? = null,
