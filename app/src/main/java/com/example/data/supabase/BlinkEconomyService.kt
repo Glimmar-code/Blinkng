@@ -96,6 +96,17 @@ class BlinkEconomyService {
             .put("p_message", message.trim().takeIf { it.isNotBlank() } ?: JSONObject.NULL))
     }
 
+    /**
+     * Returns only public-safe premium identity state for another Blink account.
+     * The database function never exposes balances, inventory quantities, purchase
+     * history, private analytics or target content ids.
+     */
+    suspend fun publicPremiumStyleByUsername(username: String) = runCatching {
+        val clean = username.trim().removePrefix("@")
+        require(clean.isNotBlank()) { "Blink username is required." }
+        rpc("get_blink_public_premium_style", JSONObject().put("p_username", clean))
+    }
+
     suspend fun vipStatusByUsername(username: String) = runCatching {
         rpc("get_blink_vip_status_by_username", JSONObject().put("p_username", username.trim()))
     }
