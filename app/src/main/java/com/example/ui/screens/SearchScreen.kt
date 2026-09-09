@@ -5,10 +5,10 @@ import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
 
 /**
- * Stable public entry point used by MainActivity.
+ * Stable public Search entry point used by MainActivity.
  *
- * Phase 3 remains capability-gated: if the new backend contracts are unavailable,
- * PremiumSearchPhase3Host falls back to the proven Phase 2 experience automatically.
+ * Phase 1, Phase 2 and Phase 3 are intentionally exposed together through
+ * UnifiedPremiumSearchHost so newer discovery work never hides useful earlier tools.
  */
 @Composable
 fun SearchScreen(
@@ -30,7 +30,7 @@ fun SearchScreen(
     onBackToHome: () -> Unit = {},
     isDark: Boolean
 ) {
-    PremiumSearchPhase3Host(
+    UnifiedPremiumSearchHost(
         profiles = profiles,
         posts = posts,
         currentUsername = currentUsername,
