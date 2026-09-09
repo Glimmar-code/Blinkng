@@ -304,7 +304,7 @@ private fun AuthenticatedShell(state: DesktopAppState) {
                         "profile" -> ProfileScreen(state)
                         "admin" -> AdminProScreen(state)
                         "settings" -> SettingsScreen(state)
-                        "search" -> SearchScreen(state)
+                        "search" -> com.blinkng.desktop.ui.PremiumSearchScreen(state)
                         else -> com.blinkng.desktop.ui.HomeWithBlinkAiScreen(state)
                     }
                 }
