@@ -4,10 +4,10 @@ Every pull request that changes a user-facing Android feature must update Window
 
 | Date | Feature | Android | Windows | Shared/adapter note |
 |---|---|---|---|---|
-| 2026-09-08 | Presence and last-seen identity | Profiles, people search, direct messages and feed avatars use server-backed presence; known avatars show green when active and brown when offline, while profile/chat status reads Active now then minute/hour/day/date last seen | Desktop profile, people search, feed identity and direct messages use the same green/brown presence treatment and minute/hour/day/date status from Supabase presence fields | Existing set_my_presence heartbeat and 2-minute server presence lease remain authoritative; no Supabase schema or production migration change |
-| 2026-09-08 | Connect slide-over workflows | Connect directory choices now open a left-entering 95%-width animated workflow page instead of rendering the selected workflow after the full directory list; existing listing, request, form, messaging and Supabase actions are preserved | Desktop Connect creation now opens in the equivalent left-entering 95%-width animated slide-over instead of injecting inputs into the scrolling list | Presentation/navigation-only change; existing Connect backend contracts and server-authoritative behavior are unchanged |
-| 2026-09-08 | Blink AI organized chat interface | Main sheet reorganized into header/actions, mode selector, compact state summary, conversation area, error/media state, and composer; context/privacy controls moved into Settings | Desktop dialog mirrors the same organization and Settings grouping | Same Blink AI modes, web/context/temporary-chat semantics, history, media, response settings, and backend contracts retained |
 | 2026-09-07 | Windows desktop foundation | Existing production client | Desktop shell + EXE/MSI build foundation | Initial migration foundation; existing Android routes still need incremental porting |
+| 2026-09-08 | Premium Blink design system foundation | Material 3 dark/light palette mapped to shared tokens; semantic surfaces, shapes, spacing, motion and premium bottom navigation | Desktop Material 3 theme mapped to the same shared palette with System/Light/Dark resolution | `BlinkDesignSystem.kt` is the cross-platform source of truth; no backend, Supabase schema, ranking, messaging, coin, auth, call or moderation behavior changed |
+| 2026-09-08 | Premium Search & Discovery phase 1 | Debounced live search, rotating prompts, voice query entry, category/count chips, recents with pin/remove/privacy/expiry, autocomplete, typo correction, advanced filters/sorting, people/post/reel/hashtag/campus results, trending discovery and skeleton/empty states | Debounced live search, category/count chips, persisted recents, autocomplete, verified/university filtering, relevance/popularity sorting, people/post/reel/hashtag results and trending discovery | Both clients consume their existing search data contracts; no Supabase schema/RPC or ranking/feed algorithm change. Android-only speech recognition uses the native `RecognizerIntent` adapter; Windows retains keyboard-first search. |
+| 2026-09-08 | Premium Search & Discovery phase 2A | Search/Trending/Places collection dock, smooth collection transitions, back-to-Search behavior, live engagement-ranked topics/posts/reels, trending creators, and Places derived from post/profile location metadata | Search/Trending/Places collection chips, smooth transitions, live discovery-feed trends, rising content, and Places derived from active Marketplace/Connect locations | Both clients expose only truthful collections backed by existing data. Saved is intentionally deferred until a real cross-platform bookmark contract exists; Communities/Events/global Marketplace search remain Phase 2B backend work. No Supabase schema or production ranking algorithm is changed. |
 
 ## Platform exception policy
 
@@ -31,36 +31,14 @@ Examples of potentially valid platform-specific adapters include Android Activit
 
 Business rules, accounts, permissions, posts, reels, messages, coins, verification, marketplace behavior, Connect behavior, ranking, moderation, notifications semantics, and admin rules are not platform exceptions and must remain equivalent across Android and Windows.
 
-## Approved platform-specific changes
+---
 
-PARITY-EXCEPTION: android-legacy-foreground-call-ringtone-loop
+PARITY-EXCEPTION: android-call-history-intent-compile-fix
 Date: 2026-09-08
-Feature: Foreground incoming-call ringtone looping on Android 7–8
-Android behavior: Replays the selected Android Ringtone after each completed cycle on API 24–27 so a foreground incoming call continues ringing until Answer, Decline, replacement call, timeout, or activity destruction.
-Why this is genuinely Android-only: This compensates for the Android platform Ringtone API, where native Ringtone.isLooping is unavailable before Android 9 (API 28).
-Windows equivalent or reason no equivalent is needed: No equivalent is required because the Windows client does not use Android Activity, Ringtone, or API-level compatibility behavior. Windows call ringing remains implemented through its own desktop audio adapter when that route is active.
-Backend/shared behavior preserved: Call signaling, call status transitions, timeout semantics, missed-call persistence, notification deduplication, and shared backend behavior are unchanged.
-Tests/validation: Require the Android quality gate, Windows parity gate, and Windows desktop build to pass before merging.
-Owner/reviewer note: Keep this exception limited to Android legacy ringtone playback; any shared call-semantic change still requires Windows parity.
-
-
-PARITY-EXCEPTION: android-touch-chat-swipe-navigation
-Date: 2026-09-08
-Feature: Touch gestures for direct chat navigation and reply
-Android behavior: Swipe left on any incoming or outgoing message bubble to reply. Swipe right across the open chat to return directly to Messages. The former interactive 70/30 inbox reveal is removed.
-Why this is genuinely Android-only: This change is specifically a touchscreen gesture adapter implemented with Jetpack Compose pointer input.
-Windows equivalent or reason no equivalent is needed: Windows retains direct full-screen chat/inbox navigation through desktop pointer/keyboard controls; no touch-drag pane is required. Message reply semantics remain the same shared product behavior.
-Backend/shared behavior preserved: Message storage, reply state semantics, conversation identity, delivery/read receipts, notification routing, and backend APIs are unchanged.
-Tests/validation: Android compile/unit/lint/APK quality gate plus Windows parity/build gate must pass before merge.
-Owner/reviewer note: Only the Android touch interaction is excepted; any change to message/reply business semantics still requires Windows parity.
-
-
-PARITY-EXCEPTION: android-duplicate-source-cleanup-20260908
-Date: 2026-09-08
-Feature: Android duplicate and legacy source cleanup
-Android behavior: Removes inactive legacy Messages/Admin V2 implementations and exact duplicate maintenance scripts, while PasswordResetActivity now renders the existing shared Android ResetPasswordScreen instead of maintaining a second reset form.
-Why this is genuinely Android-only: The removed files are Android-only legacy/duplicate source implementations and repository maintenance scripts. This cleanup does not add or alter a cross-platform product feature.
-Windows equivalent or reason no equivalent is needed: No Windows UI or business-rule change is required because Windows behavior is unchanged; there is no corresponding duplicate Android source to remove from the desktop client.
-Backend/shared behavior preserved: Message transport, admin backend rules, authentication/recovery semantics, Supabase state, and Windows/shared feature behavior are unchanged.
-Tests/validation: Android quality gate, Windows parity gate, migration safety, and Windows desktop build must pass before merge.
-Owner/reviewer note: This exception covers source cleanup only. Any future user-facing Messages, Admin, or password-recovery behavior change still requires Windows parity.
+Feature: Chat overflow → Call history Android navigation adapter compile correction
+Android behavior: Corrects the existing Android `OverflowRow` call so its `onClick` lambda is passed explicitly and can launch `CallHistoryActivity` through Android `Intent` without a Kotlin argument-binding compile failure.
+Why this is genuinely Android-only: The corrected code is specifically an Android `Activity`/`Intent` navigation adapter. It does not add or change shared call-history business rules, backend contracts, data models, or user permissions.
+Windows equivalent or reason no equivalent is needed: No Windows code change is required for this compile-only Android adapter correction. Windows must use its own desktop navigation mechanism when the corresponding call-history surface is implemented/updated; Android `Intent` cannot be shared with desktop.
+Backend/shared behavior preserved: No Supabase schema, RPC, call-history data contract, shared business logic, or permission behavior is changed.
+Tests/validation: Android quality gate rerun on `Testlab`; Windows desktop build remains independently validated by the Windows quality gate; parity exception recorded for the Android-only adapter correction.
+Owner/reviewer note: This exception covers only the Android Activity/Intent compile fix. It must not be used to waive Windows parity for any future user-visible call-history feature or backend behavior change.

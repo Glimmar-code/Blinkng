@@ -1,8 +1,6 @@
 package com.example.ui.theme
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Brush
@@ -10,55 +8,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 
-// Keep the app at a balanced, standard mobile typography scale.
-// The previous 0.5x override made every Compose text style (including hard-coded sp sizes)
-// render at half-size. 1.0x keeps headings, chat names, previews, labels and navigation
-// close to the reference sizing while still respecting the user's system font setting.
+// Keep a standard readable type scale while respecting the device accessibility font scale.
 private const val APP_FONT_SCALE = 1.0f
-
-private val DarkColorScheme = darkColorScheme(
-    primary = FeedPurple,
-    onPrimary = Color.White,
-    primaryContainer = FeedDeepPurple,
-    onPrimaryContainer = Color.White,
-    secondary = FeedBlue,
-    onSecondary = Color.White,
-    secondaryContainer = FeedElevatedSurface,
-    onSecondaryContainer = FeedTextPrimary,
-    tertiary = BlinkCyan,
-    background = FeedBackground,
-    onBackground = FeedTextPrimary,
-    surface = FeedCardSurface,
-    onSurface = FeedTextPrimary,
-    surfaceVariant = FeedElevatedSurface,
-    onSurfaceVariant = FeedTextSecondary,
-    outline = FeedBorder,
-    outlineVariant = FeedBorderSoft,
-    error = BlinkRed,
-    onError = Color.White
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = FeedDeepPurple,
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFE8DFFF),
-    onPrimaryContainer = Color(0xFF241047),
-    secondary = FeedBlue,
-    onSecondary = Color.White,
-    secondaryContainer = LightSurfaceCream,
-    onSecondaryContainer = LightTextPrimary,
-    tertiary = BlinkCyan,
-    background = LightBackground,
-    onBackground = LightTextPrimary,
-    surface = LightSurface,
-    onSurface = LightTextPrimary,
-    surfaceVariant = LightSurfaceCream,
-    onSurfaceVariant = LightTextSecondary,
-    outline = LightBorder,
-    outlineVariant = LightBorderSoft,
-    error = BlinkRed,
-    onError = Color.White
-)
 
 fun feedAccentBrush(): Brush = Brush.linearGradient(
     colors = listOf(FeedGradientStart, FeedGradientMiddle, FeedGradientEnd)
@@ -67,9 +18,9 @@ fun feedAccentBrush(): Brush = Brush.linearGradient(
 fun blinkBackgroundBrush(isDark: Boolean): Brush = if (isDark) {
     Brush.radialGradient(
         colors = listOf(
-            FeedElevatedSurface.copy(alpha = 0.72f),
-            FeedBackground,
-            FeedBackground
+            DarkSurfaceElevated.copy(alpha = 0.74f),
+            DarkBackground,
+            DarkBackground
         ),
         radius = 1200f
     )
@@ -84,21 +35,33 @@ fun blinkBackgroundBrush(isDark: Boolean): Brush = if (isDark) {
     )
 }
 
+/**
+ * Root Blink Material 3 theme.
+ *
+ * Existing screens that already use MaterialTheme inherit the premium palette immediately.
+ * New/migrated components can additionally consume BlinkThemeTokens for elevated surfaces,
+ * input surfaces, muted text, semantic status colors and the shared spacing/motion scale.
+ */
 @Composable
 fun BlinkTheme(
     darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val systemDensity = LocalDensity.current
-    val compactTextDensity = Density(
+    val appDensity = Density(
         density = systemDensity.density,
         fontScale = systemDensity.fontScale * APP_FONT_SCALE
     )
+    val semanticColors = if (darkTheme) BlinkDarkSemanticColors else BlinkLightSemanticColors
 
-    CompositionLocalProvider(LocalDensity provides compactTextDensity) {
+    CompositionLocalProvider(
+        LocalDensity provides appDensity,
+        LocalBlinkSemanticColors provides semanticColors
+    ) {
         MaterialTheme(
-            colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme,
-            typography = Typography,
+            colorScheme = if (darkTheme) BlinkDarkColorScheme else BlinkLightColorScheme,
+            typography = BlinkTypography,
+            shapes = BlinkShapes,
             content = content
         )
     }
