@@ -64,6 +64,7 @@ import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.theme.*
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
+import com.example.util.TimeFormatters
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -434,15 +435,16 @@ fun ProfileScreen(
                                         }
                                     }
 
-                                    if (profile.onlineNow) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(19.dp)
-                                                .align(Alignment.BottomEnd)
-                                                .background(Color(0xFF22C55E), CircleShape)
-                                                .border(3.dp, bgColor, CircleShape)
-                                        )
-                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(19.dp)
+                                            .align(Alignment.BottomEnd)
+                                            .background(
+                                                if (profile.onlineNow) Color(0xFF22C55E) else Color(0xFF8B5A2B),
+                                                CircleShape
+                                            )
+                                            .border(3.dp, bgColor, CircleShape)
+                                    )
                                 }
                             }
 
@@ -562,6 +564,24 @@ fun ProfileScreen(
                             color = BlinkPink,
                             fontWeight = FontWeight.SemiBold
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier
+                                    .size(7.dp)
+                                    .background(
+                                        if (profile.onlineNow) Color(0xFF22C55E) else Color(0xFF8B5A2B),
+                                        CircleShape
+                                    )
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = TimeFormatters.presenceStatus(profile.onlineNow, profile.lastSeenAt),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (profile.onlineNow) Color(0xFF22C55E) else textSecondary
+                            )
+                        }
 
                         if (profile.professionalHeadline.isNotBlank()) {
                             Spacer(modifier = Modifier.height(7.dp))

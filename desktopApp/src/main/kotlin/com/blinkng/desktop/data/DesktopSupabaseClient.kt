@@ -164,7 +164,7 @@ class DesktopSupabaseClient(
     suspend fun fetchProfile(userId: String = requireSession().userId): DesktopProfile = withContext(Dispatchers.IO) {
         profileCache[userId]?.let { return@withContext it }
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,is_online&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
@@ -262,7 +262,7 @@ class DesktopSupabaseClient(
         if (clean.isBlank()) return@withContext DesktopSearchResults(emptyList(), emptyList())
         val encodedPattern = encode("*$clean*")
         val profiles = getArray(
-            "/rest/v1/profiles?or=${encode("(full_name.ilike.*$clean*,username.ilike.*$clean*,handle.ilike.*$clean*)")}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,is_online&limit=30",
+            "/rest/v1/profiles?or=${encode("(full_name.ilike.*$clean*,username.ilike.*$clean*,handle.ilike.*$clean*)")}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at&limit=30",
         )
         DesktopSearchResults(
             profiles = (0 until profiles.length()).mapNotNull { profiles.optJSONObject(it)?.let(::parseProfile) },
@@ -300,6 +300,34 @@ class DesktopSupabaseClient(
     }
 
     suspend fun fetchConversations(): List<DesktopConversation> = withContext(Dispatchers.IO) {
+        val summaryResponse = runCatching {
+            postObject(
+                "/rest/v1/rpc/get_conversation_summaries_page",
+                JSONObject()
+                    .put("p_limit", 100)
+                    .put("p_before", JSONObject.NULL)
+                    .put("p_before_id", JSONObject.NULL),
+            )
+        }.getOrNull()
+        val summaryRows = summaryResponse as? JSONArray
+        if (summaryRows != null) {
+            return@withContext (0 until summaryRows.length()).mapNotNull { i ->
+                summaryRows.optJSONObject(i)?.let { row ->
+                    DesktopConversation(
+                        id = row.optString("conversation_id"),
+                        title = row.optString("partner_name").ifBlank {
+                            row.optString("partner_username").ifBlank { "Conversation" }
+                        },
+                        avatarUrl = row.optNullableString("partner_avatar"),
+                        isGroup = row.optBoolean("is_group", false),
+                        lastMessageAt = row.optNullableString("last_message_at"),
+                        isOnline = row.optBoolean("partner_online", false),
+                        lastSeenAt = row.optNullableString("partner_last_seen"),
+                    )
+                }
+            }
+        }
+
         val rows = getArray(
             "/rest/v1/conversations?select=id,title,avatar_url,is_group,last_message_at&order=last_message_at.desc.nullslast&limit=100",
         )
@@ -542,7 +570,8 @@ class DesktopSupabaseClient(
         followingCount = row.optInt("following_count"),
         postsCount = row.optInt("posts_count"),
         coinBalance = row.optLong("current_wallet_balance"),
-        isOnline = row.optBoolean("is_online"),
+        isOnline = row.optBoolean("online_now", row.optBoolean("is_online")),
+        lastSeenAt = row.optNullableString("last_seen_at"),
     )
 
     private fun parseFeedPost(row: JSONObject, profile: DesktopProfile?, liked: Boolean) = DesktopFeedPost(
@@ -552,6 +581,7 @@ class DesktopSupabaseClient(
         authorUsername = profile?.username ?: "user",
         authorVerified = profile?.isVerified == true,
         authorVerificationTier = profile?.verificationTier.orEmpty(),
+        authorOnline = profile?.isOnline == true,
         text = row.optNullableString("text"),
         caption = row.optNullableString("caption"),
         imageUrl = row.optNullableString("image_url"),

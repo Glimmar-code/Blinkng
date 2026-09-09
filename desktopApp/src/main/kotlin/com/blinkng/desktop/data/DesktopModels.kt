@@ -24,6 +24,7 @@ data class DesktopProfile(
     val postsCount: Int,
     val coinBalance: Long,
     val isOnline: Boolean,
+    val lastSeenAt: String?,
 )
 
 data class DesktopFeedPost(
@@ -33,6 +34,7 @@ data class DesktopFeedPost(
     val authorUsername: String,
     val authorVerified: Boolean,
     val authorVerificationTier: String,
+    val authorOnline: Boolean,
     val text: String?,
     val caption: String?,
     val imageUrl: String?,
@@ -65,6 +67,8 @@ data class DesktopConversation(
     val avatarUrl: String?,
     val isGroup: Boolean,
     val lastMessageAt: String?,
+    val isOnline: Boolean = false,
+    val lastSeenAt: String? = null,
 )
 
 data class DesktopMessage(

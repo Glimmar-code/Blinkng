@@ -81,6 +81,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -903,15 +904,13 @@ private fun ProfessionalProfileAvatar(person: UserProfile, size: Int) {
             contentScale = ContentScale.Crop,
             modifier = Modifier.size(size.dp).clip(CircleShape)
         )
-        if (person.onlineNow) {
-            Box(
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(14.dp)
-                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                    .background(BlinkOnlineGreen, CircleShape)
-            )
-        }
+        Box(
+            Modifier
+                .align(Alignment.BottomEnd)
+                .size(14.dp)
+                .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                .background(if (person.onlineNow) BlinkOnlineGreen else Color(0xFF8B5A2B), CircleShape)
+        )
     }
 }
 

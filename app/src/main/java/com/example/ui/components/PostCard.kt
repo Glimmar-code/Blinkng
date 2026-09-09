@@ -17,6 +17,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -153,6 +154,7 @@ fun PostCard(
     onRoommateRequestAuthor: (String) -> Unit = {},
     onStudyMateRequestAuthor: (String) -> Unit = {},
     onConnectHubAuthor: () -> Unit = {},
+    authorOnline: Boolean? = null,
     modifier: Modifier = Modifier
 ) {
     val resolvedAuthorName = authorName.trim().ifBlank { post.author.trim() }
@@ -278,6 +280,15 @@ fun PostCard(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize().clip(CircleShape)
                     )
+                    authorOnline?.let { active ->
+                        Box(
+                            modifier = Modifier
+                                .size(13.dp)
+                                .align(Alignment.BottomEnd)
+                                .background(if (active) Color(0xFF22C55E) else Color(0xFF8B5A2B), CircleShape)
+                                .border(2.dp, surfaceColor, CircleShape)
+                        )
+                    }
                 }
 
                 Spacer(Modifier.width(10.dp))
