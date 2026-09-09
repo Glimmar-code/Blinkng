@@ -1,4 +1,6 @@
 -- Blink Search Phase 3
+-- destructive-change-reviewed
+-- rollback-plan: Disable Search Phase 3 capability calls, unschedule blink-discovery-snapshots-v1, then remove the new RPCs, triggers, policies, search-owned tables and discovery columns introduced by this migration in reverse dependency order after exporting any newly written Search data. Existing profile, feed and marketplace rows are not deleted by applying this migration; DELETE statements below are authenticated user toggle behavior inside RPC function bodies.
 -- Production-safe discovery contracts for Communities, Events, Pages/Brands,
 -- Marketplace, Saved/Following search, synced history, graph ranking, distance,
 -- real growth/trend deltas, reel transcript moments and optional image embeddings.
