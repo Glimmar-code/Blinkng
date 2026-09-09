@@ -4,13 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -30,9 +24,17 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.blinkng.shared.BlinkUnifiedSearchMode
 import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
 import com.example.ui.theme.BlinkThemeTokens
+
+private val BlinkUnifiedSearchMode.icon: ImageVector
+    get() = when (this) {
+        BlinkUnifiedSearchMode.UNIVERSAL -> Icons.Rounded.AutoAwesome
+        BlinkUnifiedSearchMode.ADVANCED -> Icons.Rounded.Tune
+        BlinkUnifiedSearchMode.EXPLORE -> Icons.Rounded.Explore
+    }
 
 /**
  * Unified Search entry point that keeps Phase 1, Phase 2 and Phase 3 available together.
@@ -41,15 +43,6 @@ import com.example.ui.theme.BlinkThemeTokens
  * Advanced = Phase 1 power search, filters, hashtags, campus and autocomplete.
  * Explore = Phase 2 Search / Trending / Places collections.
  */
-private enum class UnifiedSearchMode(
-    val label: String,
-    val icon: ImageVector,
-) {
-    UNIVERSAL("Universal", Icons.Rounded.AutoAwesome),
-    ADVANCED("Advanced", Icons.Rounded.Tune),
-    EXPLORE("Explore", Icons.Rounded.Explore),
-}
-
 @Composable
 internal fun UnifiedPremiumSearchHost(
     profiles: List<UserProfile>,
@@ -70,10 +63,10 @@ internal fun UnifiedPremiumSearchHost(
     onBackToHome: () -> Unit,
     isDark: Boolean,
 ) {
-    var mode by rememberSaveable { mutableStateOf(UnifiedSearchMode.UNIVERSAL) }
+    var mode by rememberSaveable { mutableStateOf(BlinkUnifiedSearchMode.UNIVERSAL) }
 
-    BackHandler(enabled = mode != UnifiedSearchMode.UNIVERSAL) {
-        mode = UnifiedSearchMode.UNIVERSAL
+    BackHandler(enabled = mode != BlinkUnifiedSearchMode.UNIVERSAL) {
+        mode = BlinkUnifiedSearchMode.UNIVERSAL
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -88,7 +81,7 @@ internal fun UnifiedPremiumSearchHost(
                 label = "unifiedSearchPhase",
             ) { selected ->
                 when (selected) {
-                    UnifiedSearchMode.UNIVERSAL -> PremiumSearchPhase3Host(
+                    BlinkUnifiedSearchMode.UNIVERSAL -> PremiumSearchPhase3Host(
                         profiles = profiles,
                         posts = posts,
                         currentUsername = currentUsername,
@@ -108,7 +101,7 @@ internal fun UnifiedPremiumSearchHost(
                         isDark = isDark,
                     )
 
-                    UnifiedSearchMode.ADVANCED -> PremiumSearchExperience(
+                    BlinkUnifiedSearchMode.ADVANCED -> PremiumSearchExperience(
                         profiles = profiles,
                         posts = posts,
                         currentUsername = currentUsername,
@@ -128,7 +121,7 @@ internal fun UnifiedPremiumSearchHost(
                         isDark = isDark,
                     )
 
-                    UnifiedSearchMode.EXPLORE -> PremiumSearchPhase2Host(
+                    BlinkUnifiedSearchMode.EXPLORE -> PremiumSearchPhase2Host(
                         profiles = profiles,
                         posts = posts,
                         currentUsername = currentUsername,
@@ -164,8 +157,8 @@ internal fun UnifiedPremiumSearchHost(
 
 @Composable
 private fun UnifiedSearchModeDock(
-    selected: UnifiedSearchMode,
-    onSelect: (UnifiedSearchMode) -> Unit,
+    selected: BlinkUnifiedSearchMode,
+    onSelect: (BlinkUnifiedSearchMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = BlinkThemeTokens.colors
@@ -182,7 +175,7 @@ private fun UnifiedSearchModeDock(
                 .fillMaxWidth()
                 .padding(5.dp),
         ) {
-            UnifiedSearchMode.entries.forEach { item ->
+            BlinkUnifiedSearchMode.entries.forEach { item ->
                 val active = item == selected
                 Surface(
                     onClick = { onSelect(item) },
