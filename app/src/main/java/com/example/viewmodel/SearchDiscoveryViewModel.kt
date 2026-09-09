@@ -3,6 +3,7 @@ package com.example.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.models.DiscoveryCapabilities
+import com.example.data.models.DiscoveryCursor
 import com.example.data.models.DiscoveryResult
 import com.example.data.models.DiscoveryResultType
 import com.example.data.models.DiscoverySearchRequest
@@ -37,6 +38,7 @@ data class SearchDiscoveryUiState(
     val hasMore: Boolean = false,
     val errorMessage: String? = null,
     val autoplayPreviews: Boolean = true,
+    val imageSearchActive: Boolean = false,
 )
 
 class SearchDiscoveryViewModel : ViewModel() {
@@ -46,7 +48,7 @@ class SearchDiscoveryViewModel : ViewModel() {
 
     private var debounceJob: Job? = null
     private var requestGeneration: Long = 0L
-    private var nextCursor: com.example.data.models.DiscoveryCursor? = null
+    private var nextCursor: DiscoveryCursor? = null
 
     init {
         bootstrap()
@@ -70,6 +72,9 @@ class SearchDiscoveryViewModel : ViewModel() {
                 capabilities = resolved,
             )
             if (!resolved.phase3Ready) return@launch
+
+            // Durable DB queues make this safe: a failed wake-up does not lose work.
+            launch { repository.kickIndexers() }
             repository.fetchHistory().onSuccess { rows ->
                 _state.value = _state.value.copy(history = rows)
             }
@@ -79,7 +84,11 @@ class SearchDiscoveryViewModel : ViewModel() {
 
     fun setQuery(value: String) {
         val normalized = value.take(200)
-        _state.value = _state.value.copy(query = normalized, errorMessage = null)
+        _state.value = _state.value.copy(
+            query = normalized,
+            imageSearchActive = false,
+            errorMessage = null,
+        )
         debounceJob?.cancel()
         debounceJob = viewModelScope.launch {
             delay(280)
@@ -89,7 +98,7 @@ class SearchDiscoveryViewModel : ViewModel() {
 
     fun selectType(type: DiscoveryResultType?) {
         if (_state.value.selectedType == type) return
-        _state.value = _state.value.copy(selectedType = type, errorMessage = null)
+        _state.value = _state.value.copy(selectedType = type, imageSearchActive = false, errorMessage = null)
         loadFirst(persistHistory = false)
     }
 
@@ -98,19 +107,27 @@ class SearchDiscoveryViewModel : ViewModel() {
             _state.value = _state.value.copy(errorMessage = "Enable location for closest-first results.")
             return
         }
-        _state.value = _state.value.copy(sort = sort, errorMessage = null)
+        _state.value = _state.value.copy(sort = sort, imageSearchActive = false, errorMessage = null)
         loadFirst(persistHistory = false)
     }
 
     fun toggleFollowingOnly() {
         if (!_state.value.capabilities.following) return
-        _state.value = _state.value.copy(followingOnly = !_state.value.followingOnly, errorMessage = null)
+        _state.value = _state.value.copy(
+            followingOnly = !_state.value.followingOnly,
+            imageSearchActive = false,
+            errorMessage = null,
+        )
         loadFirst(persistHistory = false)
     }
 
     fun toggleSavedOnly() {
         if (!_state.value.capabilities.saved) return
-        _state.value = _state.value.copy(savedOnly = !_state.value.savedOnly, errorMessage = null)
+        _state.value = _state.value.copy(
+            savedOnly = !_state.value.savedOnly,
+            imageSearchActive = false,
+            errorMessage = null,
+        )
         loadFirst(persistHistory = false)
     }
 
@@ -123,7 +140,11 @@ class SearchDiscoveryViewModel : ViewModel() {
         _state.value = if (valid) {
             _state.value.copy(latitude = latitude, longitude = longitude, errorMessage = null)
         } else {
-            _state.value.copy(latitude = null, longitude = null, sort = if (_state.value.sort == DiscoverySort.DISTANCE) DiscoverySort.RELEVANT else _state.value.sort)
+            _state.value.copy(
+                latitude = null,
+                longitude = null,
+                sort = if (_state.value.sort == DiscoverySort.DISTANCE) DiscoverySort.RELEVANT else _state.value.sort,
+            )
         }
         if (_state.value.sort == DiscoverySort.DISTANCE) loadFirst(persistHistory = false)
     }
@@ -134,16 +155,77 @@ class SearchDiscoveryViewModel : ViewModel() {
 
     fun useHistory(entry: SearchHistoryEntry) {
         val type = DiscoveryResultType.entries.firstOrNull { it.backendValue == entry.category }
-        _state.value = _state.value.copy(query = entry.query, selectedType = type, errorMessage = null)
+        _state.value = _state.value.copy(
+            query = entry.query,
+            selectedType = type,
+            imageSearchActive = false,
+            errorMessage = null,
+        )
         debounceJob?.cancel()
         loadFirst(persistHistory = false)
     }
 
-    fun refresh() = loadFirst(persistHistory = false)
+    fun searchByImage(embedding: FloatArray) {
+        if (!_state.value.backendAvailable || !_state.value.capabilities.imageSimilarity) {
+            _state.value = _state.value.copy(errorMessage = "Visual search is not available yet.")
+            return
+        }
+        if (embedding.isEmpty()) {
+            _state.value = _state.value.copy(errorMessage = "Blink could not read that image. Try another image.")
+            return
+        }
+        debounceJob?.cancel()
+        requestGeneration += 1
+        val generation = requestGeneration
+        nextCursor = null
+        _state.value = _state.value.copy(
+            query = "",
+            selectedType = null,
+            imageSearchActive = true,
+            isLoading = true,
+            isLoadingMore = false,
+            hasMore = false,
+            errorMessage = null,
+        )
+        viewModelScope.launch {
+            repository.searchByImageEmbedding(embedding)
+                .onSuccess { page ->
+                    if (generation != requestGeneration) return@onSuccess
+                    _state.value = _state.value.copy(
+                        results = page.results,
+                        isLoading = false,
+                        isLoadingMore = false,
+                        hasMore = false,
+                    )
+                }
+                .onFailure { error ->
+                    if (generation != requestGeneration) return@onFailure
+                    _state.value = _state.value.copy(
+                        results = emptyList(),
+                        isLoading = false,
+                        errorMessage = error.message ?: "Visual search is temporarily unavailable.",
+                    )
+                }
+        }
+    }
+
+    fun clearImageSearch() {
+        if (!_state.value.imageSearchActive) return
+        _state.value = _state.value.copy(imageSearchActive = false, errorMessage = null)
+        loadFirst(persistHistory = false)
+    }
+
+    fun refresh() {
+        if (_state.value.imageSearchActive) {
+            _state.value = _state.value.copy(errorMessage = "Choose the image again to refresh visual results.")
+        } else {
+            loadFirst(persistHistory = false)
+        }
+    }
 
     fun loadMore() {
         val current = _state.value
-        if (!current.backendAvailable || current.isLoading || current.isLoadingMore || !current.hasMore || nextCursor == null) return
+        if (current.imageSearchActive || !current.backendAvailable || current.isLoading || current.isLoadingMore || !current.hasMore || nextCursor == null) return
         val generation = requestGeneration
         _state.value = current.copy(isLoadingMore = true, errorMessage = null)
         viewModelScope.launch {
@@ -192,7 +274,13 @@ class SearchDiscoveryViewModel : ViewModel() {
         requestGeneration += 1
         val generation = requestGeneration
         nextCursor = null
-        _state.value = _state.value.copy(isLoading = true, isLoadingMore = false, hasMore = false, errorMessage = null)
+        _state.value = _state.value.copy(
+            imageSearchActive = false,
+            isLoading = true,
+            isLoadingMore = false,
+            hasMore = false,
+            errorMessage = null,
+        )
         viewModelScope.launch {
             val snapshot = _state.value
             repository.search(buildRequest(snapshot, null))
@@ -229,10 +317,7 @@ class SearchDiscoveryViewModel : ViewModel() {
         }
     }
 
-    private fun buildRequest(
-        state: SearchDiscoveryUiState,
-        cursor: com.example.data.models.DiscoveryCursor?,
-    ): DiscoverySearchRequest {
+    private fun buildRequest(state: SearchDiscoveryUiState, cursor: DiscoveryCursor?): DiscoverySearchRequest {
         val types = state.selectedType?.let(::setOf) ?: buildSet {
             add(DiscoveryResultType.PROFILE)
             add(DiscoveryResultType.POST)
