@@ -7,8 +7,8 @@ import com.example.data.models.UserProfile
 /**
  * Stable public entry point used by MainActivity.
  *
- * Search remains routed through a stable wrapper so navigation and ViewModel
- * contracts do not churn while premium discovery collections evolve in Testlab.
+ * Phase 3 remains capability-gated: if the new backend contracts are unavailable,
+ * PremiumSearchPhase3Host falls back to the proven Phase 2 experience automatically.
  */
 @Composable
 fun SearchScreen(
@@ -30,7 +30,7 @@ fun SearchScreen(
     onBackToHome: () -> Unit = {},
     isDark: Boolean
 ) {
-    PremiumSearchPhase2Host(
+    PremiumSearchPhase3Host(
         profiles = profiles,
         posts = posts,
         currentUsername = currentUsername,
