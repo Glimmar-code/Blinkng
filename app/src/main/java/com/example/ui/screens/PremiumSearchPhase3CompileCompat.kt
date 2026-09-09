@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.models.DiscoveryResult
 import com.example.ui.theme.BlinkThemeTokens
+import kotlin.reflect.KFunction0
 
 /**
  * Compose-typed overload used by the Phase 3 hero transition.
@@ -30,18 +31,18 @@ internal inline fun DiscoveryResult?.let(block: @Composable (DiscoveryResult) ->
 }
 
 /**
- * Zero-argument toggle overload for ViewModel toggle actions.
+ * Callable-reference overload for ViewModel toggle commands.
  *
- * The normal row in PremiumSearchPhase3Screen accepts `(Boolean) -> Unit` for setters.
- * Following/Saved use deliberate toggle commands instead, so this overload adapts the
- * Switch callback without pretending those ViewModel methods accept a Boolean value.
+ * Following/Saved expose zero-argument toggle functions, while the normal row in
+ * PremiumSearchPhase3Screen accepts `(Boolean) -> Unit` setters. KFunction0 keeps
+ * method references unambiguous without capturing ordinary lambdas such as autoplay.
  */
 @Composable
 internal fun ToggleRow(
     title: String,
     subtitle: String,
     checked: Boolean,
-    onToggle: () -> Unit,
+    onToggle: KFunction0<Unit>,
 ) {
     val colors = BlinkThemeTokens.colors
     Row(
