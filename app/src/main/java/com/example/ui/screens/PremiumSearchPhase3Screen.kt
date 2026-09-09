@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,6 +16,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -29,12 +31,14 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -54,6 +58,7 @@ import com.example.data.models.DiscoveryResultType
 import com.example.data.models.DiscoverySort
 import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
+import com.example.search.BlinkVisualSearchEngine
 import com.example.ui.theme.BlinkThemeTokens
 import com.example.viewmodel.SearchDiscoveryViewModel
 import com.google.android.gms.location.LocationServices
@@ -64,8 +69,8 @@ import java.util.Locale
 import kotlin.math.abs
 
 /**
- * Phase 3 entry point. Until search_discovery_v2 is deployed, the existing Phase 2 UI
- * remains the fallback so Testlab never exposes controls that cannot work.
+ * Phase 3 Search is capability-gated. Older/staged backends automatically fall back
+ * to the proven Phase 2 UI instead of exposing controls that cannot work.
  */
 @Composable
 internal fun PremiumSearchPhase3Host(
@@ -123,6 +128,7 @@ internal fun PremiumSearchPhase3Host(
         viewModel = searchVm,
         onProfileClick = onProfileClick,
         onPostClick = onPostClick,
+        onBack = onBackToHome,
     )
 }
 
@@ -135,9 +141,7 @@ private fun Phase3SearchLoading() {
     ) {
         Text("Search Blink", fontSize = 26.sp, fontWeight = FontWeight.Black, color = colors.textPrimary)
         Surface(Modifier.fillMaxWidth().height(54.dp), RoundedCornerShape(18.dp), colors.input) {}
-        repeat(5) {
-            Surface(Modifier.fillMaxWidth().height(86.dp), RoundedCornerShape(18.dp), colors.surfaceElevated) {}
-        }
+        repeat(5) { Surface(Modifier.fillMaxWidth().height(86.dp), RoundedCornerShape(18.dp), colors.surfaceElevated) {} }
     }
 }
 
@@ -150,6 +154,7 @@ private fun Phase3SearchContent(
     viewModel: SearchDiscoveryViewModel,
     onProfileClick: (String) -> Unit,
     onPostClick: (FeedPost) -> Unit,
+    onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val colors = BlinkThemeTokens.colors
@@ -159,8 +164,10 @@ private fun Phase3SearchContent(
 
     var showFilters by remember { mutableStateOf(false) }
     var showSort by remember { mutableStateOf(false) }
-    var showImageSheet by remember { mutableStateOf(false) }
-    var selectedImage by remember { mutableStateOf<android.net.Uri?>(null) }
+    var showImageSource by remember { mutableStateOf(false) }
+    var selectedImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var cameraBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var visualProcessing by remember { mutableStateOf(false) }
     var detailResult by remember { mutableStateOf<DiscoveryResult?>(null) }
     var heroResult by remember { mutableStateOf<DiscoveryResult?>(null) }
     var placeholderIndex by remember { mutableIntStateOf(0) }
@@ -184,10 +191,7 @@ private fun Phase3SearchContent(
     val voiceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                ?.firstOrNull()
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?.let(viewModel::setQuery)
+                ?.firstOrNull()?.trim()?.takeIf(String::isNotBlank)?.let(viewModel::setQuery)
         }
     }
     fun launchVoiceSearch() {
@@ -202,9 +206,28 @@ private fun Phase3SearchContent(
         }
     }
 
+    fun runVisualDescriptor(block: suspend () -> FloatArray) {
+        scope.launch {
+            visualProcessing = true
+            runCatching { block() }
+                .onSuccess(viewModel::searchByImage)
+                .onFailure { viewModel.searchByImage(FloatArray(0)) }
+            visualProcessing = false
+            showImageSource = false
+        }
+    }
+
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        selectedImage = uri
-        showImageSheet = uri != null
+        uri ?: return@rememberLauncherForActivityResult
+        selectedImageUri = uri
+        cameraBitmap = null
+        runVisualDescriptor { BlinkVisualSearchEngine.descriptor(context, uri) }
+    }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+        bitmap ?: return@rememberLauncherForActivityResult
+        cameraBitmap = bitmap
+        selectedImageUri = null
+        runVisualDescriptor { BlinkVisualSearchEngine.descriptor(bitmap) }
     }
 
     val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -234,14 +257,13 @@ private fun Phase3SearchContent(
     val visibleResultKeys by remember(listState) {
         derivedStateOf { listState.layoutInfo.visibleItemsInfo.map { it.key?.toString().orEmpty() }.toSet() }
     }
-
-    LaunchedEffect(listState, state.hasMore, state.results.size) {
+    LaunchedEffect(listState, state.hasMore, state.results.size, state.imageSearchActive) {
         snapshotFlow {
             val info = listState.layoutInfo
             val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
             info.totalItemsCount > 0 && last >= info.totalItemsCount - 5
         }.distinctUntilChanged().collect { nearEnd ->
-            if (nearEnd && state.hasMore) viewModel.loadMore()
+            if (nearEnd && state.hasMore && !state.imageSearchActive) viewModel.loadMore()
         }
     }
 
@@ -264,9 +286,17 @@ private fun Phase3SearchContent(
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack, modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = colors.textSecondary)
+                    }
                     Column(Modifier.weight(1f)) {
                         Text("Search Blink", fontSize = 27.sp, fontWeight = FontWeight.Black, color = colors.textPrimary)
-                        Text("Live universal discovery · account-synced history", fontSize = 10.sp, color = colors.textMuted)
+                        Text(
+                            if (state.imageSearchActive) "Private visual descriptor search · original image stays on device"
+                            else "Live universal discovery · account-synced history",
+                            fontSize = 10.sp,
+                            color = colors.textMuted,
+                        )
                     }
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -280,36 +310,33 @@ private fun Phase3SearchContent(
                 Spacer(Modifier.height(11.dp))
                 Phase3SearchField(
                     query = state.query,
-                    placeholder = placeholders[placeholderIndex],
+                    placeholder = if (state.imageSearchActive) "Visual results" else placeholders[placeholderIndex],
                     activeFilterCount = listOf(state.followingOnly, state.savedOnly, state.sort != DiscoverySort.RELEVANT).count { it },
+                    visualActive = state.imageSearchActive,
                     onQuery = viewModel::setQuery,
                     onVoice = ::launchVoiceSearch,
-                    onImage = { imagePicker.launch("image/*") },
+                    onImage = { showImageSource = true },
                     onFilters = { showFilters = true },
+                    onClearVisual = viewModel::clearImageSearch,
                 )
 
                 Spacer(Modifier.height(9.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     items(categories, key = { it.label }) { category ->
-                        Phase3Chip(category.label, category.icon, state.selectedType == category.type) {
+                        Phase3Chip(category.label, category.icon, !state.imageSearchActive && state.selectedType == category.type) {
                             viewModel.selectType(category.type)
                         }
                     }
                 }
-
                 Spacer(Modifier.height(8.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     item { Phase3FilterChip(state.sort.label, Icons.Rounded.Sort, state.sort != DiscoverySort.RELEVANT) { showSort = true } }
                     if (state.capabilities.following) item { Phase3FilterChip("Following", Icons.Rounded.Person, state.followingOnly) { viewModel.toggleFollowingOnly() } }
                     if (state.capabilities.saved) item { Phase3FilterChip("Saved", Icons.Rounded.Bookmark, state.savedOnly) { viewModel.toggleSavedOnly() } }
                     if (state.capabilities.distanceSort) item {
-                        Phase3FilterChip(
-                            if (state.latitude == null) "Near me" else "Location on",
-                            Icons.Rounded.LocationOn,
-                            state.latitude != null,
-                            ::requestNearMe,
-                        )
+                        Phase3FilterChip(if (state.latitude == null) "Near me" else "Location on", Icons.Rounded.LocationOn, state.latitude != null, ::requestNearMe)
                     }
+                    if (state.imageSearchActive) item { Phase3FilterChip("Visual", Icons.Rounded.ImageSearch, true) { showImageSource = true } }
                 }
             }
 
@@ -319,10 +346,8 @@ private fun Phase3SearchContent(
                 contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 30.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (state.query.isBlank() && state.history.isNotEmpty() && !state.privateHistory) {
-                    item(key = "history-title") {
-                        SearchSectionTitle("Recent searches", "Synced privately to your Blink account")
-                    }
+                if (state.query.isBlank() && !state.imageSearchActive && state.history.isNotEmpty() && !state.privateHistory) {
+                    item(key = "history-title") { SearchSectionTitle("Recent searches", "Synced privately to your Blink account") }
                     item(key = "history-row") {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                             items(state.history.take(12), key = { it.id }) { entry ->
@@ -346,6 +371,7 @@ private fun Phase3SearchContent(
                 item(key = "results-title") {
                     SearchSectionTitle(
                         when {
+                            state.imageSearchActive -> "Visual matches"
                             state.query.isNotBlank() -> "Results"
                             state.savedOnly -> "Saved discovery"
                             state.followingOnly -> "From people you follow"
@@ -353,11 +379,12 @@ private fun Phase3SearchContent(
                             state.sort == DiscoverySort.TRENDING -> "Trending now"
                             else -> "Discover"
                         },
-                        "${state.results.size} loaded · ${state.selectedType?.label ?: "all categories"} · cursor pagination",
+                        if (state.imageSearchActive) "${state.results.size} privacy-preserving image matches"
+                        else "${state.results.size} loaded · ${state.selectedType?.label ?: "all categories"} · cursor pagination",
                     )
                 }
 
-                state.errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
+                state.errorMessage?.takeIf(String::isNotBlank)?.let { message ->
                     item(key = "error") {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
@@ -374,8 +401,8 @@ private fun Phase3SearchContent(
                 }
 
                 when {
-                    state.isLoading -> items(6, key = { "skeleton-$it" }) { SearchSkeleton() }
-                    state.results.isEmpty() -> item(key = "empty") { SearchEmptyState(state.query, state.savedOnly, state.followingOnly) }
+                    state.isLoading || visualProcessing -> items(6, key = { "skeleton-$it" }) { SearchSkeleton() }
+                    state.results.isEmpty() -> item(key = "empty") { SearchEmptyState(state.query, state.savedOnly, state.followingOnly, state.imageSearchActive) }
                     else -> itemsIndexed(
                         items = state.results,
                         key = { _, item -> "result-${item.type.backendValue}-${item.id}" },
@@ -388,7 +415,6 @@ private fun Phase3SearchContent(
                         )
                     }
                 }
-
                 if (state.isLoadingMore) {
                     item(key = "loading-more") {
                         Box(Modifier.fillMaxWidth().padding(18.dp), contentAlignment = Alignment.Center) {
@@ -402,11 +428,9 @@ private fun Phase3SearchContent(
         AnimatedVisibility(
             visible = heroResult != null,
             modifier = Modifier.fillMaxSize().zIndex(20f),
-            enter = fadeIn(tween(120)) + scaleIn(tween(170), initialScale = 0.94f),
-            exit = fadeOut(tween(90)) + scaleOut(tween(90), targetScale = 1.02f),
-        ) {
-            heroResult?.let { SearchHeroCard(it) }
-        }
+            enter = fadeIn(tween(120)) + scaleIn(tween(170), initialScale = 0.90f),
+            exit = fadeOut(tween(90)) + scaleOut(tween(90), targetScale = 1.03f),
+        ) { heroResult?.let(::SearchHeroCard) }
     }
 
     if (showSort) {
@@ -447,9 +471,9 @@ private fun Phase3SearchContent(
                 Text("Search preferences", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = colors.textPrimary)
                 Text("Privacy and result scope", fontSize = 10.sp, color = colors.textMuted)
                 Spacer(Modifier.height(10.dp))
-                ToggleRow("Following only", "Only connected accounts and their content", state.followingOnly) { viewModel.toggleFollowingOnly() }
-                ToggleRow("Saved only", "Bookmarks and marketplace wishlist", state.savedOnly) { viewModel.toggleSavedOnly() }
-                ToggleRow("Private search", "New searches are not synced", state.privateHistory) { viewModel.setPrivateHistory(it) }
+                ToggleRow("Following only", "Only connected accounts and their content", state.followingOnly, viewModel::toggleFollowingOnly)
+                ToggleRow("Saved only", "Bookmarks and marketplace wishlist", state.savedOnly, viewModel::toggleSavedOnly)
+                ToggleRow("Private search", "New searches are not synced", state.privateHistory, viewModel::setPrivateHistory)
                 ToggleRow("Autoplay reel previews", "Muted and only while a result is visible", state.autoplayPreviews) { viewModel.toggleAutoplay() }
                 if (state.capabilities.distanceSort) {
                     Spacer(Modifier.height(8.dp))
@@ -470,6 +494,49 @@ private fun Phase3SearchContent(
         }
     }
 
+    if (showImageSource) {
+        ModalBottomSheet(onDismissRequest = { showImageSource = false }, containerColor = colors.surfaceElevated) {
+            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Visual search", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = colors.textPrimary)
+                Text("Blink compares a compact visual descriptor. Your chosen image is not uploaded for search.", fontSize = 10.sp, color = colors.textSecondary)
+                selectedImageUri?.let {
+                    AsyncImage(it, "Selected search image", Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
+                }
+                cameraBitmap?.let {
+                    Image(it.asImageBitmap(), "Camera search image", Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
+                }
+                Button(
+                    onClick = { cameraLauncher.launch(null) },
+                    enabled = !visualProcessing,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Icon(Icons.Rounded.PhotoCamera, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Take a photo")
+                }
+                OutlinedButton(
+                    onClick = { imagePicker.launch("image/*") },
+                    enabled = !visualProcessing,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Icon(Icons.Rounded.ImageSearch, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Choose an image")
+                }
+                if (visualProcessing) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Creating visual descriptor…", fontSize = 10.sp, color = colors.textSecondary)
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+        }
+    }
+
     detailResult?.let { original ->
         val result = state.results.firstOrNull { it.type == original.type && it.id == original.id } ?: original
         ModalBottomSheet(onDismissRequest = { detailResult = null }, containerColor = colors.surfaceElevated) {
@@ -483,29 +550,6 @@ private fun Phase3SearchContent(
             )
         }
     }
-
-    if (showImageSheet) {
-        ModalBottomSheet(onDismissRequest = { showImageSheet = false }, containerColor = colors.surfaceElevated) {
-            Column(Modifier.fillMaxWidth().padding(18.dp)) {
-                selectedImage?.let { uri ->
-                    AsyncImage(uri, "Selected search image", Modifier.fillMaxWidth().height(210.dp).clip(RoundedCornerShape(18.dp)), contentScale = ContentScale.Crop)
-                    Spacer(Modifier.height(12.dp))
-                }
-                Text("Visual search", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = colors.textPrimary)
-                Text(
-                    if (state.capabilities.imageSimilarity) "Blink can compare this image against indexed media."
-                    else "The image-similarity database contract is prepared, but no production visual-embedding model is connected yet. Your selected image was not uploaded.",
-                    fontSize = 11.sp,
-                    color = colors.textSecondary,
-                )
-                Spacer(Modifier.height(8.dp))
-                Surface(shape = RoundedCornerShape(11.dp), color = colors.primaryBright.copy(alpha = 0.10f)) {
-                    Text("No fake matches · capability-gated", Modifier.padding(horizontal = 9.dp, vertical = 7.dp), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.primaryBright)
-                }
-                Spacer(Modifier.height(22.dp))
-            }
-        }
-    }
 }
 
 @Composable
@@ -513,37 +557,42 @@ private fun Phase3SearchField(
     query: String,
     placeholder: String,
     activeFilterCount: Int,
+    visualActive: Boolean,
     onQuery: (String) -> Unit,
     onVoice: () -> Unit,
     onImage: () -> Unit,
     onFilters: () -> Unit,
+    onClearVisual: () -> Unit,
 ) {
     val colors = BlinkThemeTokens.colors
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(19.dp),
         color = colors.input,
-        border = BorderStroke(1.dp, if (query.isNotBlank()) colors.primaryBright.copy(alpha = 0.42f) else colors.borderSoft),
-        shadowElevation = if (query.isNotBlank()) 5.dp else 0.dp,
+        border = BorderStroke(1.dp, if (query.isNotBlank() || visualActive) colors.primaryBright.copy(alpha = 0.42f) else colors.borderSoft),
+        shadowElevation = if (query.isNotBlank() || visualActive) 5.dp else 0.dp,
     ) {
         Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.Search, null, Modifier.size(19.dp), tint = if (query.isNotBlank()) colors.primaryBright else colors.textMuted)
+            Icon(if (visualActive) Icons.Rounded.ImageSearch else Icons.Rounded.Search, null, Modifier.size(19.dp), tint = if (query.isNotBlank() || visualActive) colors.primaryBright else colors.textMuted)
             Spacer(Modifier.width(8.dp))
             Box(Modifier.weight(1f)) {
                 if (query.isBlank()) Text(placeholder, fontSize = 11.sp, color = colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                BasicTextField(
-                    value = query,
-                    onValueChange = onQuery,
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    textStyle = TextStyle(fontSize = 13.sp, color = colors.textPrimary, fontWeight = FontWeight.Medium),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = {}),
-                )
+                if (!visualActive) {
+                    BasicTextField(
+                        value = query,
+                        onValueChange = onQuery,
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        textStyle = TextStyle(fontSize = 13.sp, color = colors.textPrimary, fontWeight = FontWeight.Medium),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = {}),
+                    )
+                }
             }
-            if (query.isNotBlank()) IconButton({ onQuery("") }, Modifier.size(33.dp)) { Icon(Icons.Rounded.Close, "Clear", Modifier.size(16.dp), tint = colors.textSecondary) }
-            IconButton(onVoice, Modifier.size(33.dp)) { Icon(Icons.Rounded.Mic, "Voice search", Modifier.size(17.dp), tint = colors.textSecondary) }
-            IconButton(onImage, Modifier.size(33.dp)) { Icon(Icons.Rounded.PhotoCamera, "Image search", Modifier.size(17.dp), tint = colors.textSecondary) }
+            if (visualActive) IconButton(onClearVisual, Modifier.size(33.dp)) { Icon(Icons.Rounded.Close, "Clear visual search", Modifier.size(16.dp), tint = colors.textSecondary) }
+            else if (query.isNotBlank()) IconButton({ onQuery("") }, Modifier.size(33.dp)) { Icon(Icons.Rounded.Close, "Clear", Modifier.size(16.dp), tint = colors.textSecondary) }
+            if (!visualActive) IconButton(onVoice, Modifier.size(33.dp)) { Icon(Icons.Rounded.Mic, "Voice search", Modifier.size(17.dp), tint = colors.textSecondary) }
+            IconButton(onImage, Modifier.size(33.dp)) { Icon(Icons.Rounded.PhotoCamera, "Visual search", Modifier.size(17.dp), tint = if (visualActive) colors.primaryBright else colors.textSecondary) }
             Box {
                 IconButton(onFilters, Modifier.size(33.dp)) { Icon(Icons.Rounded.FilterList, "Filters", Modifier.size(17.dp), tint = if (activeFilterCount > 0) colors.primaryBright else colors.textSecondary) }
                 if (activeFilterCount > 0) {
@@ -625,7 +674,6 @@ private fun DiscoveryCard(result: DiscoveryResult, autoplay: Boolean, onClick: (
                 }
                 SearchTypeBadge(result.type)
             }
-
             if (result.type == DiscoveryResultType.REEL && !result.videoUrl.isNullOrBlank()) {
                 Spacer(Modifier.height(9.dp))
                 SearchMutedAutoplayPreview(result.videoUrl, autoplay, result.matchedMomentMs)
@@ -633,15 +681,13 @@ private fun DiscoveryCard(result: DiscoveryResult, autoplay: Boolean, onClick: (
                 Spacer(Modifier.height(9.dp))
                 AsyncImage(result.imageUrl, null, Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(15.dp)), contentScale = ContentScale.Crop)
             }
-
             if (result.body.isNotBlank() && result.type != DiscoveryResultType.REEL) {
                 Spacer(Modifier.height(8.dp))
                 Text(result.body, fontSize = 10.sp, lineHeight = 15.sp, color = colors.textSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
-
             Spacer(Modifier.height(8.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (result.reason.isNotBlank()) item { SearchMetric(result.reason, Icons.Rounded.TrendingUp) }
+                if (result.reason.isNotBlank()) item { SearchMetric(result.reason, if (result.reason.contains("Visual", true)) Icons.Rounded.ImageSearch else Icons.Rounded.TrendingUp) }
                 if (result.mutualCount > 0) item { SearchMetric("${result.mutualCount} mutual", Icons.Rounded.Groups) }
                 result.distanceKm?.let { item { SearchMetric(formatSearchDistance(it), Icons.Rounded.LocationOn) } }
                 if (abs(result.trendPercent) >= 0.1) item { SearchMetric(formatSearchTrend(result.trendPercent), Icons.Rounded.TrendingUp) }
@@ -706,16 +752,17 @@ private fun SearchSkeleton() {
 }
 
 @Composable
-private fun SearchEmptyState(query: String, saved: Boolean, following: Boolean) {
+private fun SearchEmptyState(query: String, saved: Boolean, following: Boolean, visual: Boolean) {
     val colors = BlinkThemeTokens.colors
     Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 42.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(Modifier.size(56.dp), CircleShape, colors.primaryBright.copy(alpha = 0.10f)) {
-            Box(contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Search, null, Modifier.size(25.dp), tint = colors.primaryBright) }
+            Box(contentAlignment = Alignment.Center) { Icon(if (visual) Icons.Rounded.ImageSearch else Icons.Rounded.Search, null, Modifier.size(25.dp), tint = colors.primaryBright) }
         }
         Spacer(Modifier.height(11.dp))
-        Text("No results yet", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
+        Text(if (visual) "No close visual matches" else "No results yet", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
         Text(
             when {
+                visual -> "Try a clearer image or a different angle. Blink only returns indexed media above the similarity threshold."
                 saved -> "No saved content matches these filters."
                 following -> "Try a broader search or turn off Following only."
                 query.isNotBlank() -> "Check the spelling, switch categories, or use fewer words."
@@ -728,7 +775,7 @@ private fun SearchEmptyState(query: String, saved: Boolean, following: Boolean) 
 }
 
 @Composable
-private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
+private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
     val colors = BlinkThemeTokens.colors
     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
@@ -736,7 +783,7 @@ private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onCheck
             Text(subtitle, fontSize = 9.sp, color = colors.textMuted)
         }
         Spacer(Modifier.width(10.dp))
-        Switch(checked, onChecked)
+        Switch(checked = checked, onCheckedChange = onToggle)
     }
 }
 
@@ -744,7 +791,7 @@ private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onCheck
 private fun SearchEntitySheet(result: DiscoveryResult, onToggle: () -> Unit, onSeller: () -> Unit) {
     val colors = BlinkThemeTokens.colors
     Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp)) {
-        result.imageUrl?.takeIf { it.isNotBlank() }?.let {
+        result.imageUrl?.takeIf(String::isNotBlank)?.let {
             AsyncImage(it, null, Modifier.fillMaxWidth().height(205.dp).clip(RoundedCornerShape(18.dp)), contentScale = ContentScale.Crop)
             Spacer(Modifier.height(12.dp))
         }
@@ -779,7 +826,7 @@ private fun SearchEntitySheet(result: DiscoveryResult, onToggle: () -> Unit, onS
 @Composable
 private fun SearchActionButton(label: String, onClick: () -> Unit) {
     val colors = BlinkThemeTokens.colors
-    Button(onClick, Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = colors.primary)) {
+    Button(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = colors.primary)) {
         Text(label, fontWeight = FontWeight.Bold)
     }
 }
@@ -819,7 +866,6 @@ private fun formatSearchMoment(ms: Int): String {
     val seconds = ms.coerceAtLeast(0) / 1000
     return "%d:%02d".format(seconds / 60, seconds % 60)
 }
-
 private fun formatSearchDistance(km: Double): String = if (km < 1) "${(km * 1000).toInt().coerceAtLeast(1)} m" else if (km < 10) "%.1f km".format(km) else "%.0f km".format(km)
 private fun formatSearchTrend(value: Double): String = if (value >= 0) "+%.1f%% / 24h".format(value) else "%.1f%% / 24h".format(value)
 private fun compactSearchCount(value: Int): String = when {
