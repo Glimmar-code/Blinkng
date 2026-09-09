@@ -1,5 +1,6 @@
 package com.example.data.repository
 
+import com.blinkng.shared.BlinkSearchPhase3
 import com.example.data.models.DiscoveryCapabilities
 import com.example.data.models.DiscoveryCursor
 import com.example.data.models.DiscoveryResult
@@ -20,11 +21,9 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Isolated Phase 3 Search gateway.
- *
- * It intentionally talks only to search-owned RPC contracts. The existing feed/profile
- * repositories stay untouched, so Testlab can fall back to Phase 2 if the migration has
- * not yet been deployed to its backend.
+ * Server-authoritative Phase 3 Search gateway shared semantically with Windows.
+ * The existing feed/profile repositories remain untouched so Search can safely
+ * fall back to Phase 2 if a deployment is temporarily behind the client.
  */
 class SearchDiscoveryRepository {
     private val baseUrl = SupabaseConfig.url.trimEnd('/')
@@ -32,13 +31,13 @@ class SearchDiscoveryRepository {
     private val json = "application/json; charset=utf-8".toMediaType()
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(35, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
+        .writeTimeout(25, TimeUnit.SECONDS)
         .build()
 
     suspend fun fetchCapabilities(): Result<DiscoveryCapabilities> = withContext(Dispatchers.IO) {
         runCatching {
-            val raw = rpc("search_capabilities_v2", JSONObject())
+            val raw = rpc(BlinkSearchPhase3.CAPABILITIES_RPC, JSONObject())
             val obj = when {
                 raw.trim().startsWith("{") -> JSONObject(raw)
                 raw.trim().startsWith("[") -> JSONArray(raw).optJSONObject(0) ?: JSONObject()
@@ -58,9 +57,7 @@ class SearchDiscoveryRepository {
                 trendMetrics = obj.optBoolean("trend_metrics"),
                 cursorPagination = obj.optBoolean("cursor_pagination"),
                 reelMatchedMoments = obj.optBoolean("reel_matched_moments"),
-                // A vector table alone is not enough: Blink still needs a real client/server
-                // embedding producer. Keep UI capability-gated until that producer ships.
-                imageSimilarity = false,
+                imageSimilarity = obj.optBoolean("image_similarity"),
                 autoplayPreviews = obj.optBoolean("autoplay_previews"),
                 heroTransitions = obj.optBoolean("hero_transitions"),
             )
@@ -84,32 +81,30 @@ class SearchDiscoveryRepository {
                 putNullable("p_cursor_id", cursor?.id)
                 putNullable("p_as_of", cursor?.asOf)
             }
-            val rows = JSONArray(rpc("search_discovery_v2", body))
-            val results = buildList {
-                for (index in 0 until rows.length()) {
-                    parseResult(rows.optJSONObject(index) ?: continue)?.let(::add)
-                }
+            val rows = JSONArray(rpc(BlinkSearchPhase3.DISCOVERY_RPC, body))
+            pageFromRows(rows, request.limit)
+        }
+    }
+
+    suspend fun searchByImageEmbedding(
+        embedding: FloatArray,
+        limit: Int = 24,
+    ): Result<DiscoverySearchPage> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(embedding.size == BlinkSearchPhase3.VISUAL_DESCRIPTOR_DIMENSIONS) {
+                "Visual descriptor is unavailable for this image."
             }
-            val last = results.lastOrNull()
-            val nextCursor = last?.let {
-                DiscoveryCursor(
-                    score = it.score,
-                    type = it.type.backendValue,
-                    id = it.id,
-                    asOf = it.asOf,
-                )
-            }
-            DiscoverySearchPage(
-                results = results,
-                nextCursor = nextCursor,
-                hasMore = results.size >= request.limit.coerceIn(1, 60) && nextCursor != null,
-            )
+            val body = JSONObject()
+                .put("p_embedding", JSONArray(embedding.map { it.toDouble() }))
+                .put("p_limit", limit.coerceIn(1, 60))
+            val rows = JSONArray(rpc(BlinkSearchPhase3.IMAGE_SEARCH_RPC, body))
+            pageFromRows(rows, limit, imageSearch = true)
         }
     }
 
     suspend fun fetchHistory(limit: Int = 20): Result<List<SearchHistoryEntry>> = withContext(Dispatchers.IO) {
         runCatching {
-            val rows = JSONArray(rpc("get_search_history_v2", JSONObject().put("p_limit", limit.coerceIn(1, 50))))
+            val rows = JSONArray(rpc(BlinkSearchPhase3.HISTORY_GET_RPC, JSONObject().put("p_limit", limit.coerceIn(1, 50))))
             buildList {
                 for (index in 0 until rows.length()) {
                     val row = rows.optJSONObject(index) ?: continue
@@ -137,7 +132,7 @@ class SearchDiscoveryRepository {
         runCatching {
             if (query.isBlank() || privateSearch) return@runCatching Unit
             rpc(
-                "upsert_search_history_v2",
+                BlinkSearchPhase3.HISTORY_UPSERT_RPC,
                 JSONObject()
                     .put("p_query", query.trim())
                     .put("p_category", category.ifBlank { "all" })
@@ -161,32 +156,43 @@ class SearchDiscoveryRepository {
         }
     }
 
-    /** Contract for the future visual model. UI does not call this until a real embedding producer exists. */
-    suspend fun searchByImageEmbedding(embedding: FloatArray, limit: Int = 24): Result<List<DiscoveryResult>> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val body = JSONObject()
-                    .put("p_embedding", JSONArray(embedding.map { it.toDouble() }))
-                    .put("p_limit", limit.coerceIn(1, 60))
-                val rows = JSONArray(rpc("search_image_similarity_v2", body))
-                buildList {
-                    for (index in 0 until rows.length()) {
-                        val row = rows.optJSONObject(index) ?: continue
-                        val type = DiscoveryResultType.fromBackend(row.optString("result_type")) ?: continue
-                        add(
-                            DiscoveryResult(
-                                type = type,
-                                id = row.optString("result_id"),
-                                title = "Visual match",
-                                imageUrl = row.optString("image_url").takeIf(String::isNotBlank),
-                                score = row.optDouble("similarity", 0.0),
-                                reason = "Visual similarity",
-                            )
-                        )
-                    }
-                }
+    /**
+     * Best-effort queue draining. Database triggers create the durable jobs; opening
+     * Search gives the authenticated clients a safe opportunity to wake the workers.
+     */
+    suspend fun kickIndexers(): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            invokeEdgeFunction(BlinkSearchPhase3.MEDIA_INDEXER_FUNCTION, JSONObject().put("limit", 6))
+            invokeEdgeFunction(BlinkSearchPhase3.REEL_INDEXER_FUNCTION, JSONObject().put("limit", 1))
+            Unit
+        }
+    }
+
+    private fun pageFromRows(
+        rows: JSONArray,
+        requestedLimit: Int,
+        imageSearch: Boolean = false,
+    ): DiscoverySearchPage {
+        val results = buildList {
+            for (index in 0 until rows.length()) {
+                parseResult(rows.optJSONObject(index) ?: continue)?.let(::add)
             }
         }
+        val last = results.lastOrNull()
+        val nextCursor = if (imageSearch) null else last?.asOf?.takeIf(String::isNotBlank)?.let {
+            DiscoveryCursor(
+                score = last.score,
+                type = last.type.backendValue,
+                id = last.id,
+                asOf = it,
+            )
+        }
+        return DiscoverySearchPage(
+            results = results,
+            nextCursor = nextCursor,
+            hasMore = !imageSearch && results.size >= requestedLimit.coerceIn(1, 60) && nextCursor != null,
+        )
+    }
 
     private fun parseResult(row: JSONObject): DiscoveryResult? {
         val type = DiscoveryResultType.fromBackend(row.optString("result_type")) ?: return null
@@ -247,7 +253,7 @@ class SearchDiscoveryRepository {
             asOf = row.optString("as_of"),
             mutualCount = row.optInt("mutual_count", payload.optInt("mutual_count", 0)),
             distanceKm = row.optNullableDouble("distance_km") ?: payload.optNullableDouble("distance_km"),
-            trendPercent = row.optDouble("trend_percent", payload.optDouble("trend_percent", 0.0)),
+            trendPercent = row.optDouble("trend_percent", payload.optDouble("trend_percent", payload.optDouble("growth_percent", 0.0))),
             matchedMomentMs = row.optNullableInt("matched_moment_ms") ?: payload.optNullableInt("matched_moment_ms"),
             saved = row.optBoolean("is_saved", payload.optBoolean("is_saved", payload.optBoolean("saved"))),
             following = row.optBoolean("is_following", payload.optBoolean("is_following", payload.optBoolean("following", payload.optBoolean("joined", payload.optBoolean("attending"))))),
@@ -306,6 +312,23 @@ class SearchDiscoveryRepository {
                 )
             }
             return raw
+        }
+    }
+
+    private fun invokeEdgeFunction(name: String, body: JSONObject) {
+        val token = SupabaseService.accessToken()?.takeIf(String::isNotBlank) ?: return
+        val request = Request.Builder()
+            .url("$baseUrl/functions/v1/$name")
+            .addHeader("apikey", anonKey)
+            .addHeader("Authorization", "Bearer $token")
+            .addHeader("Content-Type", "application/json")
+            .post(body.toString().toRequestBody(json))
+            .build()
+        client.newCall(request).execute().use { response ->
+            // Queue draining is best-effort. Durable DB jobs remain pending on failure.
+            if (!response.isSuccessful && response.code !in 400..499) {
+                throw IllegalStateException("Search indexing worker returned HTTP ${response.code}.")
+            }
         }
     }
 }
