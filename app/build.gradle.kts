@@ -51,6 +51,21 @@ val gitCommitCount = providers.exec {
   isIgnoreExitValue = true
 }.standardOutput.asText.get().trim().toIntOrNull()
 
+val gitCommitSha = providers.environmentVariable("GITHUB_SHA").orNull
+  ?.trim()
+  ?.takeIf { it.matches(Regex("^[0-9a-fA-F]{40}$")) }
+  ?: providers.exec {
+    workingDir(rootDir)
+    commandLine("git", "rev-parse", "--verify", "HEAD")
+    isIgnoreExitValue = true
+  }.standardOutput.asText.get().trim()
+
+if (releaseTaskRequested && !gitCommitSha.matches(Regex("^[0-9a-fA-F]{40}$"))) {
+  throw GradleException(
+    "Release builds require an exact 40-character Git commit SHA so every APK/AAB can be traced to source."
+  )
+}
+
 val resolvedVersionCode = (
   requestedVersionCode
     ?: gitCommitCount
@@ -126,6 +141,7 @@ android {
     buildConfigField("String", "BLINK_TURN_URL", buildConfigString(resolvedTurnUrl))
     buildConfigField("String", "BLINK_TURN_USERNAME", buildConfigString(resolvedTurnUsername))
     buildConfigField("String", "BLINK_TURN_CREDENTIAL", buildConfigString(resolvedTurnCredential))
+    buildConfigField("String", "BUILD_COMMIT_SHA", buildConfigString(gitCommitSha))
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
   signingConfigs {
