@@ -164,6 +164,21 @@ jobs:
           VERSION_NAME: ${{ steps.version.outputs.name }}
         run: gradle :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
 
+      - name: Verify embedded source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_CONFIG="$(find app/build/generated -path '*/release/*/BuildConfig.java' -type f | head -n 1)"
+          if [ -z "$BUILD_CONFIG" ]; then
+            echo "::error::Release BuildConfig.java was not generated."
+            exit 1
+          fi
+          grep -F "BUILD_COMMIT_SHA = \"$GITHUB_SHA\"" "$BUILD_CONFIG" >/dev/null || {
+            echo "::error::The release does not embed its exact Git source revision."
+            exit 1
+          }
+          echo "Embedded source revision verified: $GITHUB_SHA"
+
       - name: Verify production package, version and APK signature
         shell: bash
         env:
