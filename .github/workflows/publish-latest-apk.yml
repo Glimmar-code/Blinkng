@@ -1,0 +1,91 @@
+name: Publish latest APK
+
+on:
+  workflow_run:
+    workflows:
+      - Signed Android release
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-latest-apk
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Download signed production artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          path: downloaded-release
+
+      - name: Prepare stable APK asset and release metadata
+        id: release_meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK="$(find downloaded-release -type f -name '*.apk' | head -n 1)"
+          INFO="$(find downloaded-release -type f -name 'release-info.txt' | head -n 1)"
+
+          if [ -z "$APK" ] || [ ! -f "$APK" ]; then
+            echo "::error::No signed APK was found in the successful production workflow artifact."
+            exit 1
+          fi
+
+          if [ -z "$INFO" ] || [ ! -f "$INFO" ]; then
+            echo "::error::release-info.txt was not found in the successful production workflow artifact."
+            exit 1
+          fi
+
+          VERSION_NAME="$(sed -n 's/^versionName=//p' "$INFO" | head -n 1)"
+          VERSION_CODE="$(sed -n 's/^versionCode=//p' "$INFO" | head -n 1)"
+          APK_SHA256="$(sed -n 's/^apkSha256=//p' "$INFO" | head -n 1)"
+
+          if [ -z "$VERSION_NAME" ] || [ -z "$VERSION_CODE" ]; then
+            echo "::error::Release metadata is missing versionName or versionCode."
+            exit 1
+          fi
+
+          mkdir -p public-release
+          cp "$APK" public-release/Blink-latest.apk
+          cp "$INFO" public-release/release-info.txt
+
+          ACTUAL_SHA256="$(sha256sum public-release/Blink-latest.apk | awk '{print $1}')"
+          if [ -n "$APK_SHA256" ] && [ "$ACTUAL_SHA256" != "$APK_SHA256" ]; then
+            echo "::error::APK SHA-256 does not match the signed build metadata."
+            exit 1
+          fi
+
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$ACTUAL_SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.release_meta.outputs.version_name }}
+          target_commitish: ${{ github.event.workflow_run.head_sha }}
+          name: Blink ${{ steps.release_meta.outputs.version_name }}
+          body: |
+            Latest signed Blink production build from main.
+
+            Version code: ${{ steps.release_meta.outputs.version_code }}
+            APK SHA-256: ${{ steps.release_meta.outputs.apk_sha256 }}
+          make_latest: true
+          files: |
+            public-release/Blink-latest.apk
+            public-release/release-info.txt
