@@ -2,17 +2,34 @@ name: Android release smoke test
 
 on:
   push:
-    branches: [main, Testlab, Testlab-apk-update-continuity]
+    branches:
+      - main
+      - Testlab
+      - 'Testlab-*'
     paths:
+      - 'app/src/**'
+      - 'shared/src/**'
       - 'app/build.gradle.kts'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
       - 'app/google-services.json'
       - 'app/proguard-rules.pro'
       - '.github/workflows/signed-release.yml'
       - '.github/workflows/release-smoke-test.yml'
   pull_request:
-    branches: [main, Testlab]
+    branches:
+      - main
+      - Testlab
     paths:
+      - 'app/src/**'
+      - 'shared/src/**'
       - 'app/build.gradle.kts'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
       - 'app/google-services.json'
       - 'app/proguard-rules.pro'
       - '.github/workflows/signed-release.yml'
