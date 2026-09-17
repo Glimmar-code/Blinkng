@@ -87,6 +87,15 @@ jobs:
           VERSION_NAME: 'ci-smoke'
         run: gradle :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
 
+      - name: Verify embedded source revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_CONFIG="$(find app/build/generated -path '*/release/*/BuildConfig.java' -type f | head -n 1)"
+          test -n "$BUILD_CONFIG"
+          grep -F "BUILD_COMMIT_SHA = \"$GITHUB_SHA\"" "$BUILD_CONFIG" >/dev/null
+          echo "Release smoke build embeds source revision: $GITHUB_SHA"
+
       - name: Verify generated release identity and signatures
         shell: bash
         run: |
