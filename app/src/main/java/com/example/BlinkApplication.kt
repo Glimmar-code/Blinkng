@@ -16,6 +16,7 @@ import com.example.notification.BlinkFirebaseMessagingService
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.NotificationSyncWorker
 import com.example.performance.HighRefreshRateController
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import java.util.concurrent.TimeUnit
 
 class BlinkApplication : Application(), ImageLoaderFactory {
@@ -24,6 +25,16 @@ class BlinkApplication : Application(), ImageLoaderFactory {
 
         // Apply Blink's 120 Hz-class preference to every Activity before its UI is created.
         HighRefreshRateController.install(this)
+
+        // Keep every production crash report traceable to the exact source revision that
+        // produced the installed APK. This value is generated from Git at build time.
+        runCatching {
+            FirebaseCrashlytics.getInstance().apply {
+                setCustomKey("build_commit_sha", BuildConfig.BUILD_COMMIT_SHA)
+                setCustomKey("build_version_name", BuildConfig.VERSION_NAME)
+                setCustomKey("build_version_code", BuildConfig.VERSION_CODE)
+            }
+        }
 
         SupabaseService.initialize(this)
         BlinkNotificationHelper.createNotificationChannels(this)
