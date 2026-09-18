@@ -39,6 +39,11 @@ data class AchievementBadge(
     val iconName: String = "trophy"
 )
 
+data class FollowerGrowthPoint(
+    val date: String,
+    val followerCount: Int
+)
+
 data class UserProfile(
     var id: String = "",
     var fullName: String = "",
@@ -83,5 +88,7 @@ data class UserProfile(
     var isSellerActive: Boolean = false,
     var sellerStoreName: String = "",
     var points: Int = 0,
-    var badges: List<AchievementBadge> = listOf()
+    var badges: List<AchievementBadge> = listOf(),
+    // Appended to preserve positional constructor compatibility for older call sites.
+    var showOnlineStatus: Boolean = true
 )
