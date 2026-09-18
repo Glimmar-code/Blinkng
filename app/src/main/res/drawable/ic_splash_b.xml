@@ -4,17 +4,14 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-
-    <!-- Compact Blink B kept inside Android 12+'s system splash safe area. -->
+    <!-- Official BLINK three-piece mark: two rounded motion bars + play wedge. -->
     <path
         android:fillColor="@color/blink_splash_mark"
-        android:pathData="M39,32 L58,32 C69,32 75,38 75,48 C75,54 72,58 67,60 C73,62 77,68 77,75 C77,85 70,90 58,90 L39,90 Z" />
-
+        android:pathData="M38,25 C33,23 28,25 26,30 C24,35 26,40 31,42 L69,58 C74,60 79,58 81,53 C83,48 81,43 76,41 Z" />
     <path
-        android:fillColor="@color/blink_splash_background"
-        android:pathData="M50,42 L58,42 C63,42 66,45 66,49 C66,53 63,56 58,56 L50,56 Z" />
-
+        android:fillColor="@color/blink_splash_mark"
+        android:pathData="M31,66 L69,50 C74,48 79,50 81,55 C83,60 81,65 76,67 L38,83 C33,85 28,83 26,78 C24,73 26,68 31,66 Z" />
     <path
-        android:fillColor="@color/blink_splash_background"
-        android:pathData="M50,65 L59,65 C64,65 67,68 67,73 C67,78 64,81 59,81 L50,81 Z" />
+        android:fillColor="@color/blink_splash_mark"
+        android:pathData="M31,47 L53,54 L31,61 Z" />
 </vector>
