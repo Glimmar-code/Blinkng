@@ -71,7 +71,7 @@ jobs:
             'https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk',
             'get_conversation_summaries_page',
             'mark_conversation_read',
-            'send_conversation_message_v3',
+            'send_group_message',
             'data-connect-receiver',
             'p_viewed_for_seconds:60',
             '60000',
