@@ -94,8 +94,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Public HTTPS links. sharePathPrefix is /Blinkng for the temporary
-                 GitHub Pages preview and becomes empty when the final root domain is set. -->
+            <!-- Verified public BLINK links. Production builds resolve shareHost to
+                 www.blink.com.ng; sharePathPrefix is empty on the canonical domain. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
