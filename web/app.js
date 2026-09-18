@@ -5,6 +5,7 @@
   const SUPABASE_URL = String(C.supabaseUrl || '').replace(/\/$/, '');
   const KEY = C.publishableKey || '';
   const PREVIEW_BASE = location.hostname.endsWith('github.io') ? '/Blinkng' : '';
+  const SITE_URL = String(C.siteUrl || location.origin).replace(/\/$/, '');
   const ROOT = document.getElementById('app');
   const MODALS = document.getElementById('modal-root');
   const toastEl = document.getElementById('toast');
@@ -378,7 +379,8 @@
     vids.forEach(v=>state.mediaObserver.observe(v));
   }
   async function sharePath(path){
-    const url=location.origin+routeHref(path);
+    const normalizedPath = String(path || '/').startsWith('/') ? String(path || '/') : `/${String(path || '')}`;
+    const url = SITE_URL + normalizedPath;
     if(navigator.share){
       try{await navigator.share({title:'Blink',url});return;}
       catch(err){if(err?.name==='AbortError')return;}
