@@ -58,8 +58,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -77,6 +81,7 @@ import com.blinkng.desktop.data.DesktopCall
 import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.ui.AdminProScreen
 import com.blinkng.desktop.ui.BlinkAuthScreen
+import com.blinkng.desktop.ui.BlinkDesktopLogo
 import com.blinkng.desktop.ui.ConnectScreen
 import com.blinkng.desktop.ui.GamesScreen
 import com.blinkng.desktop.ui.HomeScreen
@@ -263,7 +268,7 @@ private fun IncomingCallBanner(
 private fun InitializingScreen() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("BLINKNG", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Black, fontSize = 28.sp)
+            BlinkDesktopLogo(size = 48.dp, showText = true)
             Text("Restoring your secure session…", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -331,11 +336,7 @@ private fun DesktopTopBar(state: DesktopAppState) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Box(
-                modifier = Modifier.size(36.dp).clip(RoundedCornerShape(12.dp)).background(BlinkPurple),
-                contentAlignment = Alignment.Center,
-            ) { Text("B", color = Color.White, fontWeight = FontWeight.Black, fontSize = 19.sp) }
-            Text("BLINKNG", fontWeight = FontWeight.Black, fontSize = 20.sp)
+            BlinkDesktopLogo(size = 36.dp, showText = true)
         }
 
         OutlinedTextField(
@@ -434,8 +435,47 @@ private fun DesktopRightPanel(state: DesktopAppState) {
 
 private object BlinkTrayIcon : Painter() {
     override val intrinsicSize: Size = Size(256f, 256f)
+
     override fun DrawScope.onDraw() {
-        drawCircle(BlinkPurple, radius = size.minDimension / 2f)
-        drawCircle(Color.White.copy(alpha = 0.18f), radius = size.minDimension / 3.2f)
+        val side = size.minDimension
+        val origin = Offset((size.width - side) / 2f, (size.height - side) / 2f)
+        drawRoundRect(
+            color = Color.Black,
+            topLeft = origin,
+            size = Size(side, side),
+            cornerRadius = CornerRadius(side * 0.24f, side * 0.24f),
+        )
+
+        val w = side
+        val h = side
+        val left = origin.x + w * 0.29f
+        val top = origin.y
+        val barW = w * 0.54f
+        val barH = h * 0.20f
+        val radius = barH / 2f
+
+        rotate(24f, Offset(origin.x + w * 0.55f, origin.y + h * 0.37f)) {
+            drawRoundRect(
+                Color.White,
+                Offset(left, top + h * 0.27f),
+                Size(barW, barH),
+                CornerRadius(radius, radius),
+            )
+        }
+        rotate(-24f, Offset(origin.x + w * 0.55f, origin.y + h * 0.64f)) {
+            drawRoundRect(
+                Color.White,
+                Offset(left, top + h * 0.54f),
+                Size(barW, barH),
+                CornerRadius(radius, radius),
+            )
+        }
+        val play = Path().apply {
+            moveTo(origin.x + w * 0.29f, origin.y + h * 0.42f)
+            lineTo(origin.x + w * 0.53f, origin.y + h * 0.50f)
+            lineTo(origin.x + w * 0.29f, origin.y + h * 0.58f)
+            close()
+        }
+        drawPath(play, Color.White)
     }
 }

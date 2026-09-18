@@ -99,6 +99,7 @@ import com.example.data.models.BlinkStoreItemType
 import com.example.data.models.BlinkStoreTarget
 import com.example.data.supabase.BlinkEconomyService
 import com.example.ui.components.invalidateBlinkPublicPremiumIdentityCache
+import com.example.ui.components.BlinkMark
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
 import kotlinx.coroutines.delay
@@ -182,13 +183,17 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BlinkMark(size = 32.dp, showText = false)
+                        Spacer(Modifier.width(10.dp))
+                        Column {
                         Text("Blink Store", fontWeight = FontWeight.Black)
                         Text(
                             "🪙 $balance Blink Coins • Premium lives on your identity",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        }
                     }
                 },
                 navigationIcon = {

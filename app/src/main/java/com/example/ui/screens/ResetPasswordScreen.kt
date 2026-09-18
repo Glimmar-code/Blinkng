@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.components.BlinkMark
 import com.example.ui.theme.BlinkCream
 import com.example.ui.theme.BlinkBlack
 import com.example.ui.theme.DarkBackground
@@ -69,6 +70,7 @@ fun ResetPasswordScreen(
                 .align(Alignment.Center),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            BlinkMark(size = 42.dp, showText = true)
             Text(
                 text = "Create a new password",
                 color = BlinkCream,

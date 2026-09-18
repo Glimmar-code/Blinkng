@@ -132,7 +132,7 @@ object IncomingCallNotification {
         val vibrate = CallSoundPreferences.vibrateEnabled(context)
 
         val builder = NotificationCompat.Builder(context, incomingChannelId(context, callType))
-            .setSmallIcon(android.R.drawable.ic_menu_call)
+            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
             .setContentTitle(peerName.ifBlank { "Blink user" })
             .setContentText(label)
             .setStyle(
@@ -192,7 +192,7 @@ object IncomingCallNotification {
         )
         val kind = if (callType == CallType.VIDEO) "video" else "voice"
         val notification = NotificationCompat.Builder(context, CHANNEL_MISSED_CALLS)
-            .setSmallIcon(android.R.drawable.ic_menu_call)
+            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
             .setContentTitle("Missed $kind call")
             .setContentText("From ${peerName.ifBlank { "Blink user" }}")
             .setCategory(NotificationCompat.CATEGORY_MISSED_CALL)
@@ -254,7 +254,7 @@ object IncomingCallNotification {
         )
         val kind = if (callType == CallType.VIDEO) "Video call" else "Voice call"
         return NotificationCompat.Builder(context, CHANNEL_ONGOING_CALLS)
-            .setSmallIcon(android.R.drawable.ic_menu_call)
+            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
             .setContentTitle(peerName.ifBlank { "Blink call" })
             .setContentText("$kind • $status")
             .setCategory(NotificationCompat.CATEGORY_CALL)

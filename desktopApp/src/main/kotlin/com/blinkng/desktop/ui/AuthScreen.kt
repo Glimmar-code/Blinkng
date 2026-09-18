@@ -58,7 +58,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                 modifier = Modifier.padding(32.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Text("BLINKNG", fontWeight = FontWeight.Black, fontSize = 30.sp, color = MaterialTheme.colorScheme.primary)
+                BlinkDesktopLogo(size = 46.dp, showText = true)
                 Text(
                     when (mode) {
                         AuthMode.SIGN_IN -> "Sign in to your Blink account"
