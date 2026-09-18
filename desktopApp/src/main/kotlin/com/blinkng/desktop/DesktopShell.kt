@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -135,6 +136,7 @@ private val desktopDestinations = listOf(
 
 fun runBlinkDesktopApplication() = application {
     val windowState = rememberWindowState(width = 1440.dp, height = 900.dp)
+    val blinkWindowIcon = painterResource("blink-logo.png")
     val appState = remember { DesktopAppState() }
     val rpc = remember(appState.client) { DesktopRpcActions(appState.client) }
     val trayState = rememberTrayState()
@@ -181,7 +183,7 @@ fun runBlinkDesktopApplication() = application {
 
     Tray(
         state = trayState,
-        icon = BlinkTrayIcon,
+        icon = blinkWindowIcon,
         tooltip = "Blinkng",
         onAction = { isWindowVisible = true },
         menu = {
@@ -204,7 +206,7 @@ fun runBlinkDesktopApplication() = application {
             onCloseRequest = { isWindowVisible = false },
             title = "Blinkng",
             state = windowState,
-            icon = BlinkTrayIcon,
+            icon = blinkWindowIcon,
         ) {
             LaunchedEffect(Unit) {
                 window.minimumSize = Dimension(960, 640)
@@ -439,49 +441,4 @@ private fun DesktopRightPanel(state: DesktopAppState) {
     }
 }
 
-private object BlinkTrayIcon : Painter() {
-    override val intrinsicSize: Size = Size(256f, 256f)
 
-    override fun DrawScope.onDraw() {
-        val side = size.minDimension
-        val origin = Offset((size.width - side) / 2f, (size.height - side) / 2f)
-        drawRoundRect(
-            color = Color.Black,
-            topLeft = origin,
-            size = Size(side, side),
-            cornerRadius = CornerRadius(side * 0.24f, side * 0.24f),
-        )
-
-        val w = side
-        val h = side
-        val left = origin.x + w * 0.29f
-        val top = origin.y
-        val barW = w * 0.54f
-        val barH = h * 0.20f
-        val radius = barH / 2f
-
-        rotate(24f, Offset(origin.x + w * 0.55f, origin.y + h * 0.37f)) {
-            drawRoundRect(
-                Color.White,
-                Offset(left, top + h * 0.27f),
-                Size(barW, barH),
-                CornerRadius(radius, radius),
-            )
-        }
-        rotate(-24f, Offset(origin.x + w * 0.55f, origin.y + h * 0.64f)) {
-            drawRoundRect(
-                Color.White,
-                Offset(left, top + h * 0.54f),
-                Size(barW, barH),
-                CornerRadius(radius, radius),
-            )
-        }
-        val play = Path().apply {
-            moveTo(origin.x + w * 0.29f, origin.y + h * 0.42f)
-            lineTo(origin.x + w * 0.53f, origin.y + h * 0.50f)
-            lineTo(origin.x + w * 0.29f, origin.y + h * 0.58f)
-            close()
-        }
-        drawPath(play, Color.White)
-    }
-}
