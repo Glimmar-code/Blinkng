@@ -110,41 +110,85 @@ class DesktopSupabaseClient(
         authPost("/auth/v1/recover", body)
     }
 
-    /** Google OAuth using a localhost PKCE callback; no client secret is stored in the app. */
+    /**
+     * Google OAuth for Windows.
+     *
+     * Supabase redirects the PKCE authorization code through the stable BLINK web origin,
+     * which immediately relays that one-time code to this loopback listener. This avoids
+     * relying on a random localhost port being present in Supabase's redirect allow-list.
+     * No Google client secret or Supabase service-role credential is stored in the EXE.
+     */
     suspend fun signInWithGoogle(): DesktopSession = withContext(Dispatchers.IO) {
         require(Desktop.isDesktopSupported()) { "The default browser is unavailable." }
+
         val verifierBytes = ByteArray(64).also(SecureRandom()::nextBytes)
         val verifier = Base64.getUrlEncoder().withoutPadding().encodeToString(verifierBytes)
         val challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
             MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(StandardCharsets.US_ASCII)),
         )
+        val relayToken = Base64.getUrlEncoder().withoutPadding().encodeToString(
+            ByteArray(32).also(SecureRandom()::nextBytes),
+        )
+
         val codeFuture = CompletableFuture<String>()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/callback") { exchange ->
             val params = parseQuery(exchange.requestURI.rawQuery.orEmpty())
+            val returnedRelay = params["relay"].orEmpty()
             val code = params["code"]
             val error = params["error_description"] ?: params["error"]
-            val success = !code.isNullOrBlank()
+            val relayMatches = MessageDigest.isEqual(
+                returnedRelay.toByteArray(StandardCharsets.UTF_8),
+                relayToken.toByteArray(StandardCharsets.UTF_8),
+            )
+            val success = relayMatches && !code.isNullOrBlank()
+            val message = when {
+                !relayMatches -> "The Google sign-in callback could not be verified."
+                !error.isNullOrBlank() -> error
+                code.isNullOrBlank() -> "No authorization code returned."
+                else -> "Sign-in complete. You can return to BLINK."
+            }
             val html = if (success) {
-                "<html><body><h2>Blinkng sign-in complete</h2><p>You can return to Blinkng.</p></body></html>"
+                "<html><body><h2>BLINK sign-in complete</h2><p>You can close this browser tab and return to BLINK.</p></body></html>"
             } else {
-                "<html><body><h2>Blinkng sign-in failed</h2><p>${escapeHtml(error ?: "No authorization code returned.")}</p></body></html>"
+                "<html><body><h2>BLINK sign-in failed</h2><p>${escapeHtml(message)}</p></body></html>"
             }
             val bytes = html.toByteArray(StandardCharsets.UTF_8)
             exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+            exchange.responseHeaders.add("Cache-Control", "no-store")
             exchange.sendResponseHeaders(if (success) 200 else 400, bytes.size.toLong())
             exchange.responseBody.use { it.write(bytes) }
-            if (success) codeFuture.complete(code) else codeFuture.completeExceptionally(IllegalStateException(error ?: "Google sign-in failed."))
+            if (success) {
+                codeFuture.complete(code)
+            } else {
+                codeFuture.completeExceptionally(IllegalStateException(message))
+            }
         }
         server.start()
+
         try {
-            val redirect = "http://127.0.0.1:${server.address.port}/callback"
+            val configuredWebUrl = (System.getenv("BLINK_WEB_URL") ?: "https://www.blink.com.ng")
+                .trim()
+                .trimEnd('/')
+            require(
+                configuredWebUrl.startsWith("https://") ||
+                    configuredWebUrl.startsWith("http://localhost") ||
+                    configuredWebUrl.startsWith("http://127.0.0.1"),
+            ) { "BLINK_WEB_URL must use HTTPS outside local development." }
+
+            val relayRedirect = buildString {
+                append(configuredWebUrl)
+                append("/?desktop_oauth=1")
+                append("&port=${server.address.port}")
+                append("&relay=${encode(relayToken)}")
+            }
             val authorizeUrl = buildString {
                 append("$baseUrl/auth/v1/authorize?provider=google")
-                append("&redirect_to=${encode(redirect)}")
+                append("&redirect_to=${encode(relayRedirect)}")
                 append("&code_challenge=${encode(challenge)}")
                 append("&code_challenge_method=s256")
             }
+
             Desktop.getDesktop().browse(URI(authorizeUrl))
             val code = codeFuture.get(3, TimeUnit.MINUTES)
             val response = authPost(
