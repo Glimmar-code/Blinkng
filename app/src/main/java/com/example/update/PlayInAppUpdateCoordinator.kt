@@ -3,10 +3,10 @@ package com.example.update
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
-import com.google.android.play.appupdate.AppUpdateManager
-import com.google.android.play.appupdate.AppUpdateManagerFactory
-import com.google.android.play.appupdate.AppUpdateOptions
-import com.google.android.play.appupdate.AppUpdateType
+import com.google.android.play.core.appupdate.AppUpdateManager
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.appupdate.AppUpdateOptions
+import com.google.android.play.core.appupdate.AppUpdateType
 import com.google.android.play.core.install.InstallStateUpdatedListener
 import com.google.android.play.core.install.model.InstallStatus
 import com.google.android.play.core.install.model.UpdateAvailability
