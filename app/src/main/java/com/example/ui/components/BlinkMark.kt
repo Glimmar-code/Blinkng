@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -16,7 +17,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -34,82 +40,58 @@ fun BlinkMark(
     size: Dp = 38.dp,
     showText: Boolean = true
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "BlinkAnimation")
-    val scaleY by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 0.15f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 2800
-                1f at 0
-                1f at 2400
-                0.15f at 2500
-                1f at 2600
-                1f at 2800
-            },
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "EyeScaleY"
-    )
-
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier = modifier
     ) {
-        Box(
+        Canvas(
             modifier = Modifier
                 .size(size)
-                .clip(RoundedCornerShape(size * 0.32f))
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            BlinkPink,
-                            BlinkPinkDeep,
-                            BlinkPurple
-                        )
-                    )
-                ),
-            contentAlignment = Alignment.Center
+                .clip(RoundedCornerShape(size * 0.24f))
+                .background(Color.Black)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(size * 0.52f)
-                    .scale(scaleX = 1f, scaleY = scaleY),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Visibility,
-                    contentDescription = "Blink",
-                    tint = Color.White,
-                    modifier = Modifier.fillMaxSize()
+            val w = this.size.width
+            val h = this.size.height
+            val barW = w * 0.54f
+            val barH = h * 0.20f
+            val left = w * 0.29f
+            val radius = barH / 2f
+
+            rotate(degrees = 24f, pivot = Offset(w * 0.55f, h * 0.37f)) {
+                drawRoundRect(
+                    color = Color.White,
+                    topLeft = Offset(left, h * 0.27f),
+                    size = Size(barW, barH),
+                    cornerRadius = CornerRadius(radius, radius)
                 )
             }
+
+            rotate(degrees = -24f, pivot = Offset(w * 0.55f, h * 0.64f)) {
+                drawRoundRect(
+                    color = Color.White,
+                    topLeft = Offset(left, h * 0.54f),
+                    size = Size(barW, barH),
+                    cornerRadius = CornerRadius(radius, radius)
+                )
+            }
+
+            val play = Path().apply {
+                moveTo(w * 0.29f, h * 0.42f)
+                lineTo(w * 0.53f, h * 0.50f)
+                lineTo(w * 0.29f, h * 0.58f)
+                close()
+            }
+            drawPath(path = play, color = Color.White)
         }
 
         if (showText) {
-            val glowIntensity by infiniteTransition.animateFloat(
-                initialValue = 0f,
-                targetValue = 1f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(2000, easing = LinearEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "GlowIntensity"
-            )
-
             Text(
-                text = "Bl!nk",
-                fontSize = 26.sp,
+                text = "BLINK",
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Black,
-                letterSpacing = 0.5.sp,
-                color = BlinkPink,
-                style = androidx.compose.ui.text.TextStyle(
-                    shadow = androidx.compose.ui.graphics.Shadow(
-                        color = BlinkPink.copy(alpha = 0.4f + 0.4f * glowIntensity),
-                        blurRadius = 12f + 12f * glowIntensity
-                    )
-                )
+                letterSpacing = 0.8.sp,
+                color = MaterialTheme.colorScheme.onBackground
             )
         }
     }
