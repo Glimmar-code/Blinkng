@@ -42,35 +42,27 @@ fun BlinkDesktopLogo(
         ) {
             val w = this.size.width
             val h = this.size.height
-            val barW = w * 0.54f
-            val barH = h * 0.20f
-            val left = w * 0.29f
-            val radius = barH / 2f
+            val p = Path().apply {
+                moveTo(w * 0.267f, h * 0.133f)
+                lineTo(w * 0.600f, h * 0.133f)
+                cubicTo(w * 0.700f, h * 0.133f, w * 0.783f, h * 0.208f, w * 0.783f, h * 0.317f)
+                cubicTo(w * 0.783f, h * 0.425f, w * 0.700f, h * 0.500f, w * 0.600f, h * 0.500f)
+                lineTo(w * 0.383f, h * 0.500f)
+                lineTo(w * 0.217f, h * 0.633f)
+                lineTo(w * 0.217f, h * 0.200f)
+                cubicTo(w * 0.217f, h * 0.158f, w * 0.233f, h * 0.133f, w * 0.267f, h * 0.133f)
+                close()
 
-            rotate(24f, Offset(w * 0.55f, h * 0.37f)) {
-                drawRoundRect(
-                    color = Color.White,
-                    topLeft = Offset(left, h * 0.27f),
-                    size = Size(barW, barH),
-                    cornerRadius = CornerRadius(radius, radius),
-                )
-            }
-            rotate(-24f, Offset(w * 0.55f, h * 0.64f)) {
-                drawRoundRect(
-                    color = Color.White,
-                    topLeft = Offset(left, h * 0.54f),
-                    size = Size(barW, barH),
-                    cornerRadius = CornerRadius(radius, radius),
-                )
-            }
-
-            val play = Path().apply {
-                moveTo(w * 0.29f, h * 0.42f)
-                lineTo(w * 0.53f, h * 0.50f)
-                lineTo(w * 0.29f, h * 0.58f)
+                moveTo(w * 0.383f, h * 0.533f)
+                lineTo(w * 0.608f, h * 0.533f)
+                cubicTo(w * 0.717f, h * 0.533f, w * 0.800f, h * 0.608f, w * 0.800f, h * 0.717f)
+                cubicTo(w * 0.800f, h * 0.825f, w * 0.717f, h * 0.900f, w * 0.608f, h * 0.900f)
+                lineTo(w * 0.383f, h * 0.900f)
+                lineTo(w * 0.217f, h * 0.967f)
+                lineTo(w * 0.217f, h * 0.617f)
                 close()
             }
-            drawPath(play, Color.White)
+            drawPath(path = p, color = Color.White)
         }
 
         if (showText) {

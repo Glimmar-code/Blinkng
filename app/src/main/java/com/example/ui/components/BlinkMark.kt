@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -24,6 +25,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +34,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.data.models.VerificationBadge
 import com.example.ui.theme.*
 
@@ -45,45 +49,12 @@ fun BlinkMark(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier = modifier
     ) {
-        Canvas(
-            modifier = Modifier
-                .size(size)
-                .clip(RoundedCornerShape(size * 0.24f))
-                .background(Color.Black)
-        ) {
-            val w = this.size.width
-            val h = this.size.height
-            val barW = w * 0.54f
-            val barH = h * 0.20f
-            val left = w * 0.29f
-            val radius = barH / 2f
-
-            rotate(degrees = 24f, pivot = Offset(w * 0.55f, h * 0.37f)) {
-                drawRoundRect(
-                    color = Color.White,
-                    topLeft = Offset(left, h * 0.27f),
-                    size = Size(barW, barH),
-                    cornerRadius = CornerRadius(radius, radius)
-                )
-            }
-
-            rotate(degrees = -24f, pivot = Offset(w * 0.55f, h * 0.64f)) {
-                drawRoundRect(
-                    color = Color.White,
-                    topLeft = Offset(left, h * 0.54f),
-                    size = Size(barW, barH),
-                    cornerRadius = CornerRadius(radius, radius)
-                )
-            }
-
-            val play = Path().apply {
-                moveTo(w * 0.29f, h * 0.42f)
-                lineTo(w * 0.53f, h * 0.50f)
-                lineTo(w * 0.29f, h * 0.58f)
-                close()
-            }
-            drawPath(path = play, color = Color.White)
-        }
+        Image(
+            painter = painterResource(id = R.drawable.app_icon),
+            contentDescription = "BLINK logo",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.size(size)
+        )
 
         if (showText) {
             Text(
