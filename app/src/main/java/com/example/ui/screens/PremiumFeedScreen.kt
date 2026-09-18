@@ -480,8 +480,9 @@ private fun PremiumHomeFeed(
     val authorPresenceByKey = remember(profiles) {
         buildMap<String, Boolean> {
             profiles.forEach { profile ->
-                profile.username.trim().removePrefix("@").lowercase().takeIf(String::isNotBlank)?.let { put(it, profile.onlineNow) }
-                profile.fullName.trim().lowercase().takeIf(String::isNotBlank)?.let { put(it, profile.onlineNow) }
+                val visibleOnline = profile.showOnlineStatus && profile.onlineNow
+                profile.username.trim().removePrefix("@").lowercase().takeIf(String::isNotBlank)?.let { put(it, visibleOnline) }
+                profile.fullName.trim().lowercase().takeIf(String::isNotBlank)?.let { put(it, visibleOnline) }
             }
         }
     }
