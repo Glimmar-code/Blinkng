@@ -491,20 +491,226 @@
     }catch(e){ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load reels</h2><p>${esc(e.message)}</p></div>`,'Reels');bindCommon();}
   }
 
-  async function renderPublicProfile(identifier){ROOT.innerHTML='<div class="boot"><div class="spinner"></div></div>';try{const data=await anonRpc('get_public_web_profile',{p_username:identifier});if(!data?.available)throw new Error('Profile not available');const p=data.profile,items=data.items||[];if(p.username&&currentPath()!==`/@${p.username}`)history.replaceState({},'',routeHref(`/@${p.username}`));const actions=isAuthed()?`<button class="btn primary" id="follow-profile">${state.following.has(p.id)?'Following':'Follow'}</button><button class="btn" id="message-profile">Message</button>`:`<button class="btn primary" data-nav="/login">Log in to follow</button><button class="btn" data-open-app-profile>Open app</button>`;const html=`<div class="profile-card card"><div class="profile-cover" ${p.coverPhotoUrl?`style="background-image:url('${esc(safeUrl(p.coverPhotoUrl))}')"`:''}></div><div class="profile-content"><div class="profile-top">${avatar(p.avatarUrl,p.fullName,'profile-avatar')}<div>${actions}</div></div><div class="profile-info"><h2>${esc(p.fullName||p.username)}${verifyMark(p)}</h2><div class="handle">@${esc(p.username)}</div>${p.headline?`<div class="profile-meta">${esc(p.headline)}</div>`:''}${p.bio?`<p class="profile-bio">${esc(p.bio)}</p>`:''}<div class="profile-meta">${[p.university,p.faculty,p.department].filter(Boolean).map(esc).join(' · ')}</div><div class="stats-grid"><div class="stat"><strong>${fmt(p.postsCount)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.followerCount)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.followingCount)}</strong><span>Following</span></div></div></div></div></div><div class="profile-grid">${items.map(i=>{const media=safeUrl(i.videoUrl||(i.imageUrls||[])[0]);return `<button class="profile-tile" data-nav="/${i.type}/${i.id}">${media?(i.videoUrl?`<video src="${esc(media)}" muted preload="metadata"></video>`:`<img src="${esc(media)}" loading="lazy">`):`<div class="tile-text">${esc((i.text||i.caption||'Post').slice(0,120))}</div>`}<span class="tile-badge">${i.type==='reel'?'▶ Reel':'Post'} · ${fmt(i.viewCount)} views</span></button>`;}).join('')}</div>`;ROOT.innerHTML=isAuthed()?shell(html,p.fullName||`@${p.username}`):`<div style="width:min(100%,760px);margin:0 auto;padding:14px"><header class="topbar"><button class="brand nav-btn" data-nav="/"><span class="mark">B</span>Blink</button><div><button class="btn" data-nav="/login">Log in</button></div></header>${html}</div>`;bindCommon();document.querySelector('[data-open-app-profile]')?.addEventListener('click',()=>openAndroid('profile',p.username));document.getElementById('follow-profile')?.addEventListener('click',async e=>{try{const following=state.following.has(p.id);await rpc(following?'unfollow_user':'follow_user',{p_following_id:p.id});if(following)state.following.delete(p.id);else state.following.add(p.id);e.currentTarget.textContent=following?'Follow':'Following';toast(following?'Unfollowed':'Following');}catch(err){toast(err.message);}});document.getElementById('message-profile')?.addEventListener('click',()=>{navigate(`/messages/new?user=${encodeURIComponent(p.username)}`);});}catch(e){ROOT.innerHTML=`<div class="auth-wrap"><div class="card empty"><h2>Profile unavailable</h2><p>This account may be private, removed or the username may be incorrect.</p><button class="btn" data-nav="/">Back to Blink</button></div></div>`;bindCommon();}}
+  async function renderPublicProfile(identifier){
+    ROOT.innerHTML='<div class="boot"><div class="spinner"></div></div>';
+    try{
+      const cleanIdentifier=String(identifier||'').trim().replace(/^@/,'');
+      if(!cleanIdentifier)throw new Error('Profile not available');
+      const data=await anonRpc('get_public_web_profile',{p_username:cleanIdentifier});
+      if(!data?.available||!data.profile)throw new Error('Profile not available');
+      const p=data.profile,items=Array.isArray(data.items)?data.items:[];
+      if(p.username&&currentPath()!==`/@${p.username}`)history.replaceState({},'',routeHref(`/@${p.username}`));
+      const actions=isAuthed()
+        ? `<button type="button" class="btn primary" id="follow-profile">${state.following.has(p.id)?'Following':'Follow'}</button><button type="button" class="btn" id="message-profile">Message</button>`
+        : `<button type="button" class="btn primary" data-nav="/login">Log in to follow</button><button type="button" class="btn" data-open-app-profile>Open app</button>`;
+      const cover=safeUrl(p.coverPhotoUrl||p.cover_photo_url||p.coverPhoto||p.cover_photo);
+      const tiles=items.map(i=>{
+        const media=safeUrl(i.videoUrl||(i.imageUrls||[])[0]||i.imageUrl);
+        const itemType=String(i.type||'').toLowerCase()==='reel'||i.isReel||!!i.videoUrl?'reel':'post';
+        return `<button type="button" class="profile-tile" data-nav="/${itemType}/${esc(i.id)}">${media?(i.videoUrl?`<video src="${esc(media)}" muted preload="metadata"></video>`:`<img src="${esc(media)}" alt="" loading="lazy">`):`<div class="tile-text">${esc((i.text||i.caption||'Post').slice(0,120))}</div>`}<span class="tile-badge">${itemType==='reel'?'▶ Reel':'Post'} · ${fmt(i.viewCount)} views</span></button>`;
+      }).join('');
+      const html=`<div class="profile-card card"><div class="profile-cover">${cover?`<img class="profile-cover-image" src="${esc(cover)}" alt="" loading="lazy">`:''}</div><div class="profile-content"><div class="profile-top">${avatar(p.avatarUrl,p.fullName,'profile-avatar')}<div>${actions}</div></div><div class="profile-info"><h2>${esc(p.fullName||p.username)}${verifyMark(p)}</h2><div class="handle">@${esc(p.username)}</div>${p.headline?`<div class="profile-meta">${esc(p.headline)}</div>`:''}${p.bio?`<p class="profile-bio">${esc(p.bio)}</p>`:''}<div class="profile-meta">${[p.university,p.faculty,p.department].filter(Boolean).map(esc).join(' · ')}</div><div class="stats-grid"><div class="stat"><strong>${fmt(p.postsCount)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.followerCount)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.followingCount)}</strong><span>Following</span></div></div></div></div></div><div class="profile-grid">${tiles}</div>`;
+      ROOT.innerHTML=isAuthed()?shell(html,p.fullName||`@${p.username}`):`<div style="width:min(100%,760px);margin:0 auto;padding:14px"><header class="topbar"><button type="button" class="brand nav-btn" data-nav="/"><span class="mark">B</span>Blink</button><div><a class="btn download-app" href="${APK_URL}">Download app</a><button type="button" class="btn" data-nav="/login">Log in</button></div></header>${html}</div>`;
+      bindCommon();
+      document.querySelector('[data-open-app-profile]')?.addEventListener('click',()=>openAndroid('profile',p.username));
+      document.getElementById('follow-profile')?.addEventListener('click',async e=>{
+        const button=e.currentTarget;button.disabled=true;
+        try{
+          const following=state.following.has(p.id);
+          await rpc(following?'unfollow_user':'follow_user',{p_following_id:p.id});
+          if(following)state.following.delete(p.id);else state.following.add(p.id);
+          button.textContent=following?'Follow':'Following';
+          toast(following?'Unfollowed':'Following');
+        }catch(err){toast(err.message);}
+        finally{button.disabled=false;}
+      });
+      document.getElementById('message-profile')?.addEventListener('click',()=>navigate(`/messages/new?user=${encodeURIComponent(p.username)}`));
+    }catch(e){
+      ROOT.innerHTML=`<div class="auth-wrap"><div class="card empty"><h2>Profile unavailable</h2><p>This account may be private, removed or the username may be incorrect.</p><button type="button" class="btn" data-nav="/">Back to Blink</button></div></div>`;bindCommon();
+    }
+  }
 
   async function renderPublicContent(type,id){ROOT.innerHTML='<div class="boot"><div class="spinner"></div></div>';try{const data=await anonRpc('get_public_web_content',{p_content_id:id,p_content_type:type});if(!data?.available)throw new Error('Unavailable');const c=data.content,a=c.author||{};const normalized={id:c.id,user_id:a.id,text:c.text||c.caption,caption:c.caption,images:c.imageUrls||[],video_url:c.videoUrl,created_at:c.createdAt,like_count:c.likeCount,comment_count:c.commentCount,share_count:c.shareCount,repost_count:c.repostCount,view_count:c.viewCount,is_reel:type==='reel',allow_comments:c.allowComments,hide_likes:c.hideLikes,author:{id:a.id,username:a.username,full_name:a.fullName,avatar_url:a.avatarUrl,is_verified:a.isVerified,verification_badge:a.verificationBadge}};const extra=`<div class="card" style="padding:13px;margin-top:12px;display:flex;gap:8px;align-items:center;justify-content:space-between"><span class="muted small">${isAuthed()?'Interact with this content using your Blink account.':'Log in to like, comment, follow and message.'}</span><button class="btn primary small-btn" id="open-content-app">Open in Blink</button></div>`;ROOT.innerHTML=isAuthed()?shell(postCard(normalized)+extra,type==='reel'?'Reel':'Post'):`<div style="width:min(100%,760px);margin:0 auto;padding:14px"><header class="topbar"><button class="brand nav-btn" data-nav="/"><span class="mark">B</span>Blink</button><button class="btn primary" data-nav="/login">Log in</button></header>${postCard(normalized)}${extra}</div>`;bindCommon();bindPostCards();document.getElementById('open-content-app').onclick=()=>openAndroid(type,id);}catch{ROOT.innerHTML=`<div class="auth-wrap"><div class="card empty"><h2>Content unavailable</h2><p>This ${esc(type)} may be private or removed.</p><button class="btn" data-nav="/">Back to Blink</button></div></div>`;bindCommon();}}
 
-  async function openComments(postId){if(!requireAuth())return;modal('Comments','<div id="comments-body"><div class="spinner"></div></div>');try{const rows=await rpc('get_post_comments',{p_post_id:postId});document.getElementById('comments-body').innerHTML=`<div class="comment-list">${(rows||[]).map(c=>`<div class="comment"><div class="meta"><strong>${esc(c.display_name||c.username||'Blink user')}</strong> @${esc(c.username||'')} · ${esc(ago(c.created_at))}</div><div>${esc(c.content)}</div><button class="btn small-btn ghost" data-reply-comment="${esc(c.id)}">Reply · ${fmt(c.likes_count)} likes</button></div>`).join('')||'<p class="muted">No comments yet.</p>'}</div><form id="comment-form" class="chat-compose" style="margin-top:12px"><input class="field" name="text" placeholder="Write a comment…" required><button class="btn primary">Send</button></form>`;let parent=null;document.querySelectorAll('[data-reply-comment]').forEach(x=>x.onclick=()=>{parent=x.dataset.replyComment;document.querySelector('#comment-form input').placeholder='Write a reply…';document.querySelector('#comment-form input').focus();});document.getElementById('comment-form').onsubmit=async e=>{e.preventDefault();const text=new FormData(e.currentTarget).get('text').trim();try{await rpc('create_comment',{p_post_id:postId,p_content:text,p_parent_comment_id:parent||null});toast('Comment posted');closeModal();openComments(postId);}catch(err){toast(err.message);}};}catch(e){document.getElementById('comments-body').innerHTML=`<div class="error">${esc(e.message)}</div>`;}}
+  async function openComments(postId){
+    if(!requireAuth())return;
+    modal('Comments','<div id="comments-body"><div class="spinner"></div></div>');
+    try{
+      const rows=await rpc('get_post_comments',{p_post_id:postId});
+      const body=document.getElementById('comments-body');if(!body)return;
+      body.innerHTML=`<div class="comment-list">${(rows||[]).map(comment=>`<div class="comment"><div class="meta"><strong>${esc(comment.display_name||comment.username||'Blink user')}</strong> @${esc(comment.username||'')} · ${esc(ago(comment.created_at))}</div><div>${esc(comment.content)}</div><button type="button" class="btn small-btn ghost" data-reply-comment="${esc(comment.id)}">Reply · ${fmt(comment.likes_count)} likes</button></div>`).join('')||'<p class="muted">No comments yet.</p>'}</div><form id="comment-form" class="chat-compose" style="margin-top:12px"><input class="field" name="text" maxlength="2000" placeholder="Write a comment…" required><button type="submit" class="btn primary">Send</button></form>`;
+      let parent=null;
+      document.querySelectorAll('[data-reply-comment]').forEach(x=>x.onclick=()=>{parent=x.dataset.replyComment;const input=document.querySelector('#comment-form input');input.placeholder='Write a reply…';input.focus();});
+      document.getElementById('comment-form').onsubmit=async e=>{
+        e.preventDefault();
+        const input=e.currentTarget.elements.text;
+        const text=String(input.value||'').trim();
+        if(!text){toast('Write a comment first.');return;}
+        const submit=e.currentTarget.querySelector('button[type="submit"]');submit.disabled=true;
+        try{await rpc('create_comment',{p_post_id:postId,p_content:text,p_parent_comment_id:parent||null});toast('Comment posted');closeModal();openComments(postId);}
+        catch(err){toast(err.message);submit.disabled=false;}
+      };
+    }catch(e){const body=document.getElementById('comments-body');if(body)body.innerHTML=`<div class="error">${esc(e.message)}</div>`;}
+  }
 
-  async function renderSearch(){if(!requireAuth())return;const q=new URLSearchParams(location.search).get('q')||'';const form=`<form id="search-form" style="display:flex;gap:8px;margin-bottom:13px"><input class="search-input" name="q" value="${esc(q)}" placeholder="Search people, posts, tags…"><button class="btn primary">Search</button></form><div id="search-results"></div>`;ROOT.innerHTML=shell(form,'Search');bindCommon();document.getElementById('search-form').onsubmit=e=>{e.preventDefault();const v=new FormData(e.currentTarget).get('q').trim();const u=new URL(location.href);u.searchParams.set('q',v);history.pushState({},'',u);runSearch(v);};if(q)runSearch(q);else document.getElementById('search-results').innerHTML='<div class="card empty"><h2>Find anything on Blink</h2><p>Search profiles and public feed content.</p></div>';}
-  async function runSearch(q){const out=document.getElementById('search-results');out.innerHTML='<div class="spinner"></div>';try{const [profiles,posts]=await Promise.all([rpc('search_profiles_page',{p_query:q,p_limit:20,p_after_username:null,p_after_id:null}),rpc('search_feed_page',{p_query:q,p_limit:30,p_before:null,p_before_id:null})]);const pmap=await fetchProfiles((posts||[]).map(x=>x.user_id));out.innerHTML=`<h3>People</h3><div class="list">${(profiles||[]).map(p=>`<button class="card list-item" data-nav="/@${esc(p.username)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>'}</div><h3>Posts</h3><div class="feed">${(posts||[]).map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>'}</div>`;bindPostCards();}catch(e){out.innerHTML=`<div class="error">${esc(e.message)}</div>`;}}
+  async function renderSearch(){
+    if(!requireAuth())return;
+    const q=new URLSearchParams(location.search).get('q')||'';
+    const form=`<form id="search-form" style="display:flex;gap:8px;margin-bottom:13px"><input class="search-input" name="q" maxlength="120" value="${esc(q)}" placeholder="Search people, posts, tags…" autocomplete="off"><button class="btn primary">Search</button></form><div id="search-results"></div>`;
+    ROOT.innerHTML=shell(form,'Search');bindCommon();
+    document.getElementById('search-form').onsubmit=e=>{
+      e.preventDefault();const v=String(new FormData(e.currentTarget).get('q')||'').trim();
+      const u=new URL(location.href);if(v)u.searchParams.set('q',v);else u.searchParams.delete('q');history.pushState({},'',u);runSearch(v);
+    };
+    if(q)runSearch(q);else document.getElementById('search-results').innerHTML='<div class="card empty"><h2>Find anything on Blink</h2><p>Search profiles and public feed content.</p></div>';
+  }
+  async function runSearch(query){
+    const q=String(query||'').trim();
+    const out=document.getElementById('search-results');if(!out)return;
+    if(!q){out.innerHTML='<div class="card empty"><h2>Find anything on Blink</h2><p>Enter a name, username, post or tag.</p></div>';return;}
+    const requestId=++state.searchRequestId;
+    out.innerHTML='<div class="spinner"></div>';
+    try{
+      const [profiles,posts]=await Promise.all([
+        rpc('search_profiles_page',{p_query:q,p_limit:20,p_after_username:null,p_after_id:null}),
+        rpc('search_feed_page',{p_query:q,p_limit:30,p_before:null,p_before_id:null})
+      ]);
+      if(requestId!==state.searchRequestId||currentPath()!=='/search')return;
+      const pmap=await fetchProfiles((posts||[]).map(x=>x.user_id));
+      if(requestId!==state.searchRequestId||!document.getElementById('search-results'))return;
+      out.innerHTML=`<h3>People</h3><div class="list">${(profiles||[]).map(p=>`<button type="button" class="card list-item" data-nav="/@${esc(p.username)}">${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${esc(p.full_name||p.username)}${verifyMark(p)}</span><span class="sub">@${esc(p.username)} · ${esc(p.university||'Blink')}</span></span></button>`).join('')||'<p class="muted">No people found.</p>'}</div><h3>Posts</h3><div class="feed">${(posts||[]).map(x=>postCard(normalizeFeedItem(x,pmap))).join('')||'<p class="muted">No posts found.</p>'}</div>`;
+      bindPostCards();
+    }catch(e){if(requestId===state.searchRequestId&&out.isConnected)out.innerHTML=`<div class="error">${esc(e.message)}</div>`;}
+  }
 
-  async function renderActivity(){if(!requireAuth())return;ROOT.innerHTML=shell('<div class="spinner"></div>','Activity');bindCommon();try{const [notifications,activities]=await Promise.all([table('notifications',`user_id=eq.${encodeQ(uid())}&select=id,actor_id,type,post_id,text,sub_text,is_read,created_at,actor_is_vip,vip_priority&order=created_at.desc&limit=80`),table('activities',`recipient_id=eq.${encodeQ(uid())}&select=id,actor_id,activity_type,entity_type,entity_id,message,is_read,created_at&order=created_at.desc&limit=80`)]);const rows=[...(notifications||[]).map(x=>({...x,kind:'notification'})),...(activities||[]).map(x=>({...x,text:x.message,kind:'activity'}))].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));const profiles=await fetchProfiles(rows.map(x=>x.actor_id));ROOT.innerHTML=shell(`<div class="tabs"><button class="tab active">All</button><button class="tab" id="mark-read">Mark all read</button></div><div class="list">${rows.map(n=>{const p=profiles.get(n.actor_id)||{};return `<button class="card list-item notification ${n.is_read?'':'unread'}" data-activity="${esc(n.id)}" data-kind="${n.kind}" ${n.post_id?`data-nav="/post/${esc(n.post_id)}"`:''}>${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${n.actor_is_vip?'◆ ':''}${esc(n.text||n.type||n.activity_type||'Activity')}</span><span class="sub">${esc(n.sub_text||'')} ${ago(n.created_at)}</span></span></button>`;}).join('')||'<div class="card empty"><h2>No activity yet</h2></div>'}</div>`,'Activity');bindCommon();document.getElementById('mark-read').onclick=async()=>{try{await patch('notifications',`user_id=eq.${encodeQ(uid())}`,{is_read:true});await patch('activities',`recipient_id=eq.${encodeQ(uid())}`,{is_read:true});state.notificationsUnread=0;toast('Marked as read');renderActivity();}catch(e){toast(e.message);}};}catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Activity');bindCommon();}}
+  async function renderActivity(){
+    if(!requireAuth())return;
+    ROOT.innerHTML=shell('<div class="spinner"></div>','Activity');bindCommon();
+    try{
+      const [notifications,activities]=await Promise.all([
+        table('notifications',`user_id=eq.${encodeQ(uid())}&select=id,actor_id,type,post_id,text,sub_text,is_read,created_at,actor_is_vip,vip_priority&order=created_at.desc&limit=80`),
+        table('activities',`recipient_id=eq.${encodeQ(uid())}&select=id,actor_id,activity_type,entity_type,entity_id,message,is_read,created_at&order=created_at.desc&limit=80`)
+      ]);
+      const rows=[...(notifications||[]).map(x=>({...x,kind:'notification'})),...(activities||[]).map(x=>({...x,text:x.message,kind:'activity'}))].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+      const profiles=await fetchProfiles(rows.map(x=>x.actor_id));
+      const list=rows.map(n=>{
+        const p=profiles.get(n.actor_id)||{};
+        const entity=String(n.entity_type||'').toLowerCase();
+        let dest=n.post_id?`/post/${n.post_id}`:'';
+        if(!dest&&n.entity_id&&(entity.includes('reel')||entity.includes('post')))dest=`/${entity.includes('reel')?'reel':'post'}/${n.entity_id}`;
+        if(!dest&&p.username&&(String(n.type||n.activity_type||'').toLowerCase().includes('follow')||entity.includes('profile')))dest=`/@${p.username}`;
+        return `<button type="button" class="card list-item notification ${n.is_read?'':'unread'}" data-activity="${esc(n.id)}" data-kind="${n.kind}" data-was-unread="${n.is_read?'0':'1'}" ${dest?`data-nav="${esc(dest)}"`:''}>${avatar(p.avatar_url,p.full_name)}<span class="grow"><span class="title">${n.actor_is_vip?'◆ ':''}${esc(n.text||n.type||n.activity_type||'Activity')}</span><span class="sub">${esc(n.sub_text||'')} ${ago(n.created_at)}</span></span></button>`;
+      }).join('');
+      ROOT.innerHTML=shell(`<div class="tabs"><button type="button" class="tab active">All</button><button type="button" class="tab" id="mark-read">Mark all read</button></div><div class="list">${list||'<div class="card empty"><h2>No activity yet</h2></div>'}</div>`,'Activity');
+      bindCommon();
+      document.querySelectorAll('[data-activity]').forEach(el=>el.addEventListener('click',()=>{
+        if(el.dataset.wasUnread!=='1')return;
+        el.dataset.wasUnread='0';el.classList.remove('unread');
+        const id=el.dataset.activity,kind=el.dataset.kind;
+        if(kind==='notification'){patch('notifications',`id=eq.${encodeQ(id)}&user_id=eq.${encodeQ(uid())}`,{is_read:true}).catch(()=>{});state.notificationsUnread=Math.max(0,state.notificationsUnread-1);}
+        else patch('activities',`id=eq.${encodeQ(id)}&recipient_id=eq.${encodeQ(uid())}`,{is_read:true}).catch(()=>{});
+      }));
+      document.getElementById('mark-read').onclick=async()=>{
+        try{await Promise.all([patch('notifications',`user_id=eq.${encodeQ(uid())}`,{is_read:true}),patch('activities',`recipient_id=eq.${encodeQ(uid())}`,{is_read:true})]);state.notificationsUnread=0;toast('Marked as read');renderActivity();}
+        catch(e){toast(e.message);}
+      };
+    }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Activity');bindCommon();}
+  }
 
-  async function renderMessages(path){if(!requireAuth())return;const parts=path.split('/').filter(Boolean);const convId=parts[1];const target=new URLSearchParams(location.search).get('user')||'';if(convId==='new'){renderNewMessage(target);return;}if(convId){renderConversation(convId,target);return;}ROOT.innerHTML=shell('<div class="spinner"></div>','Messages');bindCommon();try{const unread=await rpc('get_my_unread_message_notifications',{p_limit:80});const html=`<div style="display:flex;gap:8px;margin-bottom:12px"><button class="btn primary" id="new-message">New message</button></div><div class="list">${(unread||[]).map(m=>`<button class="card list-item" data-nav="/messages/${esc(m.conversation_id)}?user=${encodeURIComponent(m.sender_username||'')}">${avatar(m.sender_avatar,m.sender_name)}<span class="grow"><span class="title">${esc(m.sender_name||m.sender_username||'Blink user')}</span><span class="sub">${esc(m.content||'')} · ${ago(m.created_at)}</span></span></button>`).join('')||'<div class="card empty"><h2>No unread messages</h2><p>Start a conversation with a Blink user.</p></div>'}</div>`;ROOT.innerHTML=shell(html,'Messages');bindCommon();document.getElementById('new-message').onclick=()=>navigate('/messages/new');}catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Messages');bindCommon();}}
-  function renderNewMessage(prefill=''){ROOT.innerHTML=shell(`<div class="card" style="padding:15px"><form id="new-message-form" class="form-stack"><label class="form-label">Username</label><input class="field" name="username" value="${esc(prefill)}" placeholder="@username" required><label class="form-label">Message</label><textarea class="field" name="text" placeholder="Write a message" required></textarea><button class="btn primary">Send</button><div id="message-status"></div></form></div>`,'New message');bindCommon();document.getElementById('new-message-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),status=document.getElementById('message-status');try{const rows=await rpc('send_message_v2',{p_receiver_username:String(f.get('username')).replace(/^@/,''),p_content:f.get('text')});const r=Array.isArray(rows)?rows[0]:rows;toast('Message sent');if(r?.conversation_id)navigate(`/messages/${r.conversation_id}?user=${encodeURIComponent(String(f.get('username')).replace(/^@/,''))}`);else navigate('/messages');}catch(err){status.innerHTML=`<div class="error">${esc(err.message)}</div>`;}};}
-  async function renderConversation(id,target=''){ROOT.innerHTML=shell('<div class="spinner"></div>','Chat');bindCommon();try{const rows=await rpc('get_conversation_messages_page',{p_conversation_id:id,p_limit:100,p_before:null,p_before_id:null});const profiles=await fetchProfiles((rows||[]).map(x=>x.sender_id));const html=`<div class="card chat-window"><div class="post-head"><button class="btn small-btn" data-nav="/messages">← Messages</button><div class="grow"><strong>${esc(target?`@${target}`:'Conversation')}</strong><span class="handle">Synced with Blink</span></div></div><div class="chat-messages" id="chat-messages">${(rows||[]).slice().reverse().map(m=>{const mine=m.sender_id===uid();const p=profiles.get(m.sender_id)||{};return `<div class="bubble ${mine?'me':''}">${esc(m.deleted_for_everyone?'Message deleted':m.content||'')}${m.media_url?`<br><a href="${esc(safeUrl(m.media_url))}" target="_blank">Attachment</a>`:''}<small>${mine?'You':`@${esc(p.username||'user')}`} · ${ago(m.created_at)}${m.edited_at?' · edited':''}</small></div>`;}).join('')}</div><form id="chat-form" class="chat-compose"><input class="field" name="text" placeholder="Message" required><button class="btn primary">Send</button></form></div>`;ROOT.innerHTML=shell(html,target?`@${target}`:'Chat');bindCommon();document.getElementById('chat-messages').scrollTop=999999;document.getElementById('chat-form').onsubmit=async e=>{e.preventDefault();if(!target){toast('Open this conversation from a message notification to reply.');return;}const text=new FormData(e.currentTarget).get('text').trim();try{await rpc('send_message_v2',{p_receiver_username:target,p_content:text});e.currentTarget.reset();renderConversation(id,target);}catch(err){toast(err.message);}};}catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Chat');bindCommon();}}
+  async function renderMessages(path){
+    if(!requireAuth())return;
+    const parts=path.split('/').filter(Boolean),convId=parts[1],target=new URLSearchParams(location.search).get('user')||'';
+    if(convId==='new'){renderNewMessage(target);return;}
+    if(convId){renderConversation(convId,target);return;}
+    ROOT.innerHTML=shell('<div class="spinner"></div>','Messages');bindCommon();
+    try{
+      let summaries;
+      try{summaries=await rpc('get_conversation_summaries_page',{p_limit:100,p_before:null,p_before_id:null});}
+      catch{
+        const unread=await rpc('get_my_unread_message_notifications',{p_limit:100});
+        summaries=(unread||[]).map(m=>({conversation_id:m.conversation_id,partner_id:m.sender_id,partner_username:m.sender_username,partner_name:m.sender_name,partner_avatar:m.sender_avatar,last_message:m.content,last_message_at:m.created_at,unread_count:1}));
+      }
+      const byConversation=new Map();
+      for(const row of summaries||[]){
+        const key=String(row.conversation_id||'');if(!key)continue;
+        const prev=byConversation.get(key);
+        if(!prev)byConversation.set(key,{...row});
+        else prev.unread_count=Math.max(Number(prev.unread_count||0),Number(row.unread_count||0));
+      }
+      const rows=[...byConversation.values()];
+      let meta=new Map();
+      if(rows.length){
+        try{
+          const ids=rows.map(x=>x.conversation_id).filter(Boolean);
+          const list=await table('conversations',`id=in.(${ids.map(encodeQ).join(',')})&select=id,is_group,title,avatar_url`);
+          meta=new Map((list||[]).map(x=>[String(x.id),x]));
+        }catch{}
+      }
+      const html=`<div style="display:flex;gap:8px;margin-bottom:12px"><button type="button" class="btn primary" id="new-message">New message</button></div><div class="list">${rows.map(m=>{
+        const group=meta.get(String(m.conversation_id));
+        const isGroup=!!group?.is_group;
+        const title=isGroup?(group.title||'Group chat'):(m.partner_name||m.partner_username||'Blink user');
+        const picture=isGroup?group.avatar_url:m.partner_avatar;
+        const targetQuery=!isGroup&&m.partner_username?`?user=${encodeURIComponent(m.partner_username)}`:'';
+        const unread=Number(m.unread_count||0);
+        return `<button type="button" class="card list-item ${unread?'notification unread':''}" data-nav="/messages/${esc(m.conversation_id)}${targetQuery}">${avatar(picture,title)}<span class="grow"><span class="title">${esc(title)}${m.partner_online&&!isGroup?' <span class="online-dot" title="Online"></span>':''}</span><span class="sub">${esc(m.last_message||'No messages yet')} · ${ago(m.last_message_at)}</span></span>${unread?`<span class="badge">${fmt(unread)}</span>`:''}</button>`;
+      }).join('')||'<div class="card empty"><h2>No conversations yet</h2><p>Start a conversation with a Blink user.</p></div>'}</div>`;
+      ROOT.innerHTML=shell(html,'Messages');bindCommon();document.getElementById('new-message').onclick=()=>navigate('/messages/new');
+    }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Messages');bindCommon();}
+  }
+  function renderNewMessage(prefill=''){
+    ROOT.innerHTML=shell(`<div class="card" style="padding:15px"><form id="new-message-form" class="form-stack"><label class="form-label">Username</label><input class="field" name="username" maxlength="64" value="${esc(prefill)}" placeholder="@username" required autocomplete="off"><label class="form-label">Message</label><textarea class="field" name="text" maxlength="8000" placeholder="Write a message" required></textarea><button type="submit" class="btn primary">Send</button><div id="message-status"></div></form></div>`,'New message');bindCommon();
+    document.getElementById('new-message-form').onsubmit=async e=>{
+      e.preventDefault();const form=e.currentTarget,status=document.getElementById('message-status');
+      const f=new FormData(form),username=String(f.get('username')||'').trim().replace(/^@/,''),text=String(f.get('text')||'').trim();
+      if(!username||!text){status.innerHTML='<div class="error">Enter a username and message.</div>';return;}
+      const submit=form.querySelector('button[type="submit"]');submit.disabled=true;
+      try{
+        const rows=await rpc('send_message_v2',{p_receiver_username:username,p_content:text});
+        const r=Array.isArray(rows)?rows[0]:rows;toast('Message sent');
+        if(r?.conversation_id)navigate(`/messages/${r.conversation_id}?user=${encodeURIComponent(username)}`);else navigate('/messages');
+      }catch(err){status.innerHTML=`<div class="error">${esc(err.message)}</div>`;submit.disabled=false;}
+    };
+  }
+  async function renderConversation(id,target=''){
+    ROOT.innerHTML=shell('<div class="spinner"></div>','Chat');bindCommon();
+    try{
+      let partner=String(target||'').trim().replace(/^@/,'');
+      let conversationMeta=null;
+      try{const meta=await table('conversations',`id=eq.${encodeQ(id)}&select=id,is_group,title,avatar_url&limit=1`);conversationMeta=meta?.[0]||null;}catch{}
+      const isGroup=!!conversationMeta?.is_group;
+      if(!partner&&!isGroup){
+        try{const summaries=await rpc('get_conversation_summaries_page',{p_limit:100,p_before:null,p_before_id:null});partner=String((summaries||[]).find(x=>String(x.conversation_id)===String(id))?.partner_username||'');}catch{}
+      }
+      if(partner&&!isGroup){await rpc('mark_conversation_read',{p_partner_username:partner}).catch(()=>{});refreshUnreadCount();}
+      else if(isGroup){patch('conversation_participants',`conversation_id=eq.${encodeQ(id)}&user_id=eq.${encodeQ(uid())}`,{last_read_at:new Date().toISOString()}).catch(()=>{});}
+      const rows=await rpc('get_conversation_messages_page',{p_conversation_id:id,p_limit:100,p_before:null,p_before_id:null});
+      const profiles=await fetchProfiles((rows||[]).map(x=>x.sender_id));
+      const title=isGroup?(conversationMeta?.title||'Group chat'):(partner?`@${partner}`:'Conversation');
+      const messages=(rows||[]).slice().reverse().map(m=>{
+        const mine=m.sender_id===uid(),p=profiles.get(m.sender_id)||{},attachment=safeUrl(m.media_url);
+        return `<div class="bubble ${mine?'me':''}">${esc(m.deleted_for_everyone?'Message deleted':m.content||'')}${attachment?`<br><a href="${esc(attachment)}" target="_blank" rel="noopener noreferrer">Attachment</a>`:''}<small>${mine?'You':`@${esc(p.username||'user')}`} · ${ago(m.created_at)}${m.edited_at?' · edited':''}</small></div>`;
+      }).join('');
+      const html=`<div class="card chat-window"><div class="post-head"><button type="button" class="btn small-btn" data-nav="/messages">← Messages</button><div class="grow"><strong>${esc(title)}</strong><span class="handle">Synced with Blink</span></div></div><div class="chat-messages" id="chat-messages">${messages||'<div class="muted small">No messages yet.</div>'}</div><form id="chat-form" class="chat-compose"><input class="field" name="text" maxlength="8000" placeholder="Message" required autocomplete="off"><button type="submit" class="btn primary">Send</button></form></div>`;
+      ROOT.innerHTML=shell(html,title);bindCommon();
+      const scroll=document.getElementById('chat-messages');scroll.scrollTop=scroll.scrollHeight;
+      document.getElementById('chat-form').onsubmit=async e=>{
+        e.preventDefault();const form=e.currentTarget,text=String(new FormData(form).get('text')||'').trim();if(!text){return;}
+        const submit=form.querySelector('button[type="submit"]');submit.disabled=true;
+        try{
+          if(isGroup){
+            const clientId=globalThis.crypto?.randomUUID?.()||null;
+            if(!clientId)throw new Error('This browser cannot create a secure message identifier.');
+            await rpc('send_conversation_message_v3',{p_conversation_id:id,p_content:text,p_client_message_id:clientId,p_reply_to_message_id:null,p_media_url:null,p_message_type:'text'});
+          }else{
+            if(!partner)throw new Error('Could not identify the conversation partner.');
+            await rpc('send_message_v2',{p_receiver_username:partner,p_content:text});
+          }
+          form.reset();renderConversation(id,partner);
+        }catch(err){toast(err.message);submit.disabled=false;}
+      };
+    }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Chat');bindCommon();}
+  }
 
   async function renderMarket(){if(!requireAuth())return;ROOT.innerHTML=shell('<div class="spinner"></div>','Marketplace');bindCommon();try{const q=new URLSearchParams(location.search).get('q')||null;const rows=await rpc('get_ranked_market_page',{p_query:q,p_category:null,p_min_price:null,p_max_price:null,p_limit:40,p_cursor_score:null,p_cursor_created_at:null,p_cursor_id:null,p_as_of:null});const items=(rows||[]).map(r=>r.item||r);ROOT.innerHTML=shell(`<form id="market-search" style="display:flex;gap:8px;margin-bottom:12px"><input class="field" name="q" value="${esc(q||'')}" placeholder="Search marketplace"><button class="btn">Search</button></form><div class="market-grid">${items.map(i=>`<article class="card market-card">${safeUrl((i.image_urls||[])[0]||i.image_url)?`<img src="${esc(safeUrl((i.image_urls||[])[0]||i.image_url))}" alt="${esc(i.title||'Item')}" loading="lazy">`:''}<h3>${esc(i.title||'Item')}</h3><div class="price">${money(i.price,i.currency)}</div><p class="muted small">${esc(i.condition||'')} · ${esc(i.location||i.university||'')}</p><p>${esc((i.description||'').slice(0,180))}</p><button class="btn primary" data-message-seller="${esc(i.seller_username||'')}">Message seller</button></article>`).join('')||'<div class="card empty"><h2>No items found</h2></div>'}</div>`,'Marketplace');bindCommon();document.getElementById('market-search').onsubmit=e=>{e.preventDefault();const v=new FormData(e.currentTarget).get('q').trim();const u=new URL(location.href);u.searchParams.set('q',v);history.pushState({},'',u);renderMarket();};document.querySelectorAll('[data-message-seller]').forEach(x=>x.onclick=()=>navigate(`/messages/new?user=${encodeURIComponent(x.dataset.messageSeller)}`));}catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Marketplace');bindCommon();}}
 
