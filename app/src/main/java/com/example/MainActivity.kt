@@ -31,6 +31,8 @@ import com.example.ads.BlinkRewardedAdManager
 import com.example.auth.AccountSessionStore
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.BlinkFirebaseMessagingService
+import com.example.notification.BlinkInAppNotification
+import com.example.notification.BlinkInAppNotificationDestination
 import com.example.sharing.DeepLinkRouter
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
@@ -139,6 +141,75 @@ class MainActivity : ComponentActivity() {
         }
 
         intent.removeExtra(BlinkNotificationHelper.EXTRA_ACTION)
+    }
+
+    private fun handleInAppNotification(event: BlinkInAppNotification) {
+        event.activity?.let { activity ->
+            viewModel.handleNotificationClick(activity)
+            activity.targetPostId?.let { postId ->
+                val state = viewModel.uiState.value
+                val isReel = state.reels.any { it.id == postId }
+                viewModel.handleDeepLink(
+                    com.example.sharing.AppDeepLink(
+                        type = if (isReel) ShareContentType.REEL else ShareContentType.POST,
+                        id = postId
+                    )
+                )
+            }
+            return
+        }
+
+        when (event.destination) {
+            BlinkInAppNotificationDestination.CHAT -> {
+                if (event.senderUsername.isNotBlank()) {
+                    viewModel.setTab(MainTab.MESSAGES)
+                    viewModel.openChatWithUser(
+                        event.senderUsername,
+                        event.senderName.takeIf { it.isNotBlank() },
+                        event.senderAvatar.takeIf { it.isNotBlank() }
+                    )
+                } else {
+                    viewModel.openActivity(true)
+                }
+            }
+
+            BlinkInAppNotificationDestination.POST -> {
+                val postId = event.postId
+                if (!postId.isNullOrBlank()) {
+                    val state = viewModel.uiState.value
+                    val isReel = state.reels.any { it.id == postId }
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(if (isReel) 1 else 0)
+                    viewModel.handleDeepLink(
+                        com.example.sharing.AppDeepLink(
+                            type = if (isReel) ShareContentType.REEL else ShareContentType.POST,
+                            id = postId
+                        )
+                    )
+                } else {
+                    viewModel.openActivity(true)
+                }
+            }
+
+            BlinkInAppNotificationDestination.PROFILE -> {
+                val identifier = event.senderUsername.ifBlank { event.senderId }
+                if (identifier.isNotBlank()) viewModel.openProfile(identifier)
+                else viewModel.openActivity(true)
+            }
+
+            BlinkInAppNotificationDestination.MARKET -> {
+                viewModel.setTab(MainTab.MARKET)
+                event.marketId?.let { marketId ->
+                    viewModel.uiState.value.marketItems
+                        .firstOrNull { it.id == marketId }
+                        ?.let(viewModel::openProductDetail)
+                }
+            }
+
+            BlinkInAppNotificationDestination.NOTIFICATIONS -> {
+                viewModel.openActivity(true)
+            }
+        }
     }
 
     override fun onResume() {
@@ -316,6 +387,15 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             }
+                        }
+
+                        if (uiState.destination == AppDestination.MAIN) {
+                            BlinkInAppNotificationHost(
+                                onOpen = ::handleInAppNotification,
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .zIndex(100f)
+                            )
                         }
                     }
                 }
