@@ -11,6 +11,9 @@
   const SESSION_KEY = 'blink_web_session_v3';
   const DRAFT_KEY = 'blink_web_post_draft_v2';
   const VISITOR_KEY = 'blink_web_visitor_v2';
+  const PARITY_PREF_KEY = 'blink_web_parity_prefs_v1';
+  const APK_URL = 'https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk';
+  const API_TIMEOUT_MS = 20000;
 
   const state = {
     session: null,
@@ -24,7 +27,12 @@
     notificationsUnread: 0,
     currentTitle: 'Blink',
     qualifiedTimers: new Map(),
+    viewObserver: null,
+    mediaObserver: null,
+    searchRequestId: 0,
   };
+
+  let refreshPromise = null;
 
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const safeUrl = (v) => { try { const u = new URL(String(v || ''), location.origin); return ['http:','https:','blob:'].includes(u.protocol) ? u.href : ''; } catch { return ''; } };
@@ -36,6 +44,24 @@
   const isAuthed = () => !!token();
   const routeHref = (path) => `${PREVIEW_BASE}${path}` || '/';
   const encodeQ = encodeURIComponent;
+  const storageGet = (key, fallback='') => { try { const v=localStorage.getItem(key); return v == null ? fallback : v; } catch { return fallback; } };
+  const storageSet = (key, value) => { try { localStorage.setItem(key, value); return true; } catch { return false; } };
+  const storageRemove = (key) => { try { localStorage.removeItem(key); } catch {} };
+  const safeDecodeUri = (value) => { try { return decodeURI(value); } catch { return value; } };
+  const draftKey = () => `${DRAFT_KEY}:${uid() || 'anonymous'}`;
+
+  async function fetchWithTimeout(url, options={}, timeoutMs=API_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, {...options, signal: options.signal || controller.signal});
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('Request timed out. Check your connection and try again.');
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   function toast(message, ms=2400){ toastEl.textContent=message; toastEl.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>toastEl.classList.remove('show'),ms); }
   function setTitle(title){ state.currentTitle=title || 'Blink'; document.title = title && title !== 'Blink' ? `${title} · Blink` : 'Blink'; }
@@ -44,26 +70,51 @@
   function verifyMark(p){ const badge=String(p?.verification_badge||p?.verificationBadge||'').toLowerCase(); const verified=p?.is_verified ?? p?.isVerified; return verified ? `<span class="verified" title="Verified">●</span>${badge.includes('gold')?'<span class="vip" title="Gold verified">★</span>':''}`:''; }
   function vipMark(p){ const until=p?.blink_vip_until; return until && new Date(until)>new Date() ? '<span class="vip" title="Blink VIP">◆</span>':''; }
 
-  function loadSession(){ try { const raw=localStorage.getItem(SESSION_KEY); if(!raw)return null; const s=JSON.parse(raw); if(!s?.access_token)return null; return s; } catch { return null; } }
-  function saveSession(s){ state.session=s; if(s)localStorage.setItem(SESSION_KEY,JSON.stringify(s)); else localStorage.removeItem(SESSION_KEY); }
-  function clearSession(){ saveSession(null); state.profile=null; state.following=new Set(); }
+  function loadSession(){ try { const raw=storageGet(SESSION_KEY,''); if(!raw)return null; const s=JSON.parse(raw); if(!s?.access_token)return null; return s; } catch { return null; } }
+  function saveSession(s){ state.session=s; if(s)storageSet(SESSION_KEY,JSON.stringify(s)); else storageRemove(SESSION_KEY); }
+  function clearSession(){ saveSession(null); state.profile=null; state.following=new Set(); state.notificationsUnread=0; }
 
   async function parseJsonSafe(res){ const text=await res.text(); if(!text)return null; try{return JSON.parse(text);}catch{return text;} }
   function headers(auth=true, extra={}){ const h={apikey:KEY,Accept:'application/json',...extra}; if(auth && token())h.Authorization=`Bearer ${token()}`; else h.Authorization=`Bearer ${KEY}`; return h; }
   async function refreshSession(){
+    if (refreshPromise) return refreshPromise;
     const rt=state.session?.refresh_token; if(!rt)return false;
-    const res=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:headers(false,{'Content-Type':'application/json'}),body:JSON.stringify({refresh_token:rt})});
-    if(!res.ok){clearSession();return false;} const data=await res.json(); saveSession({...data,user:data.user||state.session.user}); return true;
+    const previousUser=state.session?.user||null;
+    refreshPromise=(async()=>{
+      const res=await fetchWithTimeout(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,{
+        method:'POST',
+        headers:headers(false,{'Content-Type':'application/json'}),
+        body:JSON.stringify({refresh_token:rt})
+      });
+      if(!res.ok){
+        if(res.status===400||res.status===401)clearSession();
+        return false;
+      }
+      const data=await res.json();
+      saveSession({...data,user:data.user||previousUser});
+      return true;
+    })();
+    try{return await refreshPromise;}finally{refreshPromise=null;}
   }
-  async function api(path,{method='GET',body=null,auth=true,prefer=null,raw=false}={}){
-    const h=headers(auth); if(body!=null && !(body instanceof Blob) && !(body instanceof ArrayBuffer) && !(body instanceof FormData))h['Content-Type']='application/json'; if(prefer)h.Prefer=prefer;
-    const req=()=>fetch(`${SUPABASE_URL}${path}`,{method,headers:h,body:body==null?undefined:(h['Content-Type']==='application/json'?JSON.stringify(body):body)});
+  async function api(path,{method='GET',body=null,auth=true,prefer=null,raw=false,timeoutMs=API_TIMEOUT_MS}={}){
+    const h=headers(auth);
+    const isJson=body!=null && !(body instanceof Blob) && !(body instanceof ArrayBuffer) && !(body instanceof FormData);
+    if(isJson)h['Content-Type']='application/json';
+    if(prefer)h.Prefer=prefer;
+    const requestBody=body==null?undefined:(isJson?JSON.stringify(body):body);
+    const req=()=>fetchWithTimeout(`${SUPABASE_URL}${path}`,{method,headers:h,body:requestBody},timeoutMs);
     let res=await req();
-    if(auth && res.status===401 && state.session?.refresh_token && await refreshSession()){
-      h.Authorization=`Bearer ${token()}`; res=await fetch(`${SUPABASE_URL}${path}`,{method,headers:h,body:body==null?undefined:(h['Content-Type']==='application/json'?JSON.stringify(body):body)});
+    if(auth && res.status===401 && state.session?.refresh_token){
+      const refreshed=await refreshSession().catch(()=>false);
+      if(refreshed){h.Authorization=`Bearer ${token()}`;res=await req();}
     }
-    if(!res.ok){ const err=await parseJsonSafe(res); const msg=err?.message||err?.error_description||err?.error||`${method} ${path} failed (${res.status})`; throw new Error(msg); }
-    if(raw)return res; return parseJsonSafe(res);
+    if(!res.ok){
+      const err=await parseJsonSafe(res);
+      const msg=err?.message||err?.error_description||err?.error||`${method} ${path} failed (${res.status})`;
+      throw new Error(msg);
+    }
+    if(raw)return res;
+    return parseJsonSafe(res);
   }
   async function rpc(name, body={}, auth=true){ return api(`/rest/v1/rpc/${name}`,{method:'POST',body,auth}); }
   async function anonRpc(name,body={}){ return rpc(name,body,false); }
@@ -92,10 +143,22 @@
 
   function currentPath(){
     const redirected=new URLSearchParams(location.search).get('p');
-    if(redirected){ const clean=redirected.startsWith('/')?redirected:`/${redirected}`; history.replaceState({},'',routeHref(clean)); return clean.split('?')[0].split('#')[0]; }
-    let path=location.pathname; if(PREVIEW_BASE&&path.startsWith(PREVIEW_BASE))path=path.slice(PREVIEW_BASE.length)||'/'; return decodeURI(path||'/');
+    if(redirected){
+      const clean=(redirected.startsWith('/')?redirected:`/${redirected}`).replace(/^\/\/+/, '/');
+      history.replaceState({},'',routeHref(clean));
+      return safeDecodeUri(clean.split('?')[0].split('#')[0]);
+    }
+    let path=location.pathname||'/';
+    if(PREVIEW_BASE&&path.startsWith(PREVIEW_BASE))path=path.slice(PREVIEW_BASE.length)||'/';
+    return safeDecodeUri(path||'/');
   }
-  function navigate(path,replace=false){ const href=routeHref(path); history[replace?'replaceState':'pushState']({},'',href); render(currentPath()); window.scrollTo({top:0,behavior:'instant'}); }
+  function navigate(path,replace=false){
+    const next=typeof path==='string'&&path.startsWith('/')&&!path.startsWith('//')?path:'/';
+    const href=routeHref(next);
+    history[replace?'replaceState':'pushState']({},'',href);
+    render(currentPath());
+    window.scrollTo({top:0,behavior:'instant'});
+  }
   window.addEventListener('popstate',()=>render(currentPath()));
 
   function navItem(path,key,label,badge=''){ const active=currentPath()===path || (path!=='/'&&currentPath().startsWith(path)); return `<button class="nav-btn ${active?'active':''}" data-nav="${esc(path)}"><span class="icon">${icon(key)}</span><span>${esc(label)}</span>${badge?`<span class="badge">${esc(badge)}</span>`:''}</button>`; }
