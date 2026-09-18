@@ -13,6 +13,15 @@ object DeepLinkRouter {
     private val configuredBase: Uri
         get() = Uri.parse(BuildConfig.SHARE_BASE_URL)
 
+    private val acceptedWebBases: List<Uri>
+        get() = listOf(
+            configuredBase,
+            Uri.parse("https://www.blink.com.ng"),
+            Uri.parse("https://blink.com.ng"),
+            Uri.parse("https://jhwgifrlxwspoedxjaly.supabase.co/functions/v1/blink-web"),
+            Uri.parse("https://glimmar-code.github.io/Blinkng")
+        ).distinctBy { "${it.host.orEmpty().lowercase()}${it.path.orEmpty().trimEnd('/')}" }
+
     fun parse(uri: Uri?): AppDeepLink? {
         if (uri == null) return null
 
@@ -30,14 +39,16 @@ object DeepLinkRouter {
     }
 
     private fun parseWebUrl(uri: Uri): AppDeepLink? {
-        val base = configuredBase
-        if (!uri.host.equals(base.host, ignoreCase = true)) return null
+        val incoming = uri.pathSegments.filter { it.isNotBlank() }
+        val base = acceptedWebBases.firstOrNull { candidate ->
+            if (!uri.host.equals(candidate.host, ignoreCase = true)) return@firstOrNull false
+            val candidateSegments = candidate.pathSegments.filter { it.isNotBlank() }
+            incoming.size >= candidateSegments.size &&
+                incoming.take(candidateSegments.size).map { it.lowercase() } ==
+                    candidateSegments.map { it.lowercase() }
+        } ?: return null
 
         val baseSegments = base.pathSegments.filter { it.isNotBlank() }
-        val incoming = uri.pathSegments.filter { it.isNotBlank() }
-        if (incoming.size < baseSegments.size) return null
-        if (incoming.take(baseSegments.size).map { it.lowercase() } != baseSegments.map { it.lowercase() }) return null
-
         val segments = incoming.drop(baseSegments.size)
         if (segments.size == 1 && segments[0].startsWith("@")) {
             return validated(ShareContentType.PROFILE, segments[0].removePrefix("@"))
