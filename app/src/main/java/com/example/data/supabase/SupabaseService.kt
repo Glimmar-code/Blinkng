@@ -3726,6 +3726,12 @@ suspend fun uploadPostMedia(
                             time = formatTimeAgo(o.optString("created_at")),
                             rawTimestamp = o.optString("created_at"),
                             isUnread = !o.optBoolean("is_read", false),
+                            category = when (type.uppercase(Locale.US)) {
+                                "LIKE", "LIKES", "BOOKMARK", "SAVE" -> NotificationFilter.LIKES
+                                "COMMENT", "COMMENTS", "REPLY", "MENTION" -> NotificationFilter.COMMENTS
+                                "MARKET", "ORDER", "MARKET_ORDER" -> NotificationFilter.MARKET
+                                else -> NotificationFilter.ALL
+                            },
                             targetPostId = o.optString("entity_id").takeIf { o.optString("entity_type").equals("post", true) },
                             targetMarketId = o.optString("entity_id").takeIf { o.optString("entity_type").equals("market", true) },
                             targetType = o.optString("entity_type").takeIf { it.isNotBlank() }
