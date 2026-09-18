@@ -52,6 +52,17 @@ jobs:
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 
+      - name: Build debug App Bundle
+        run: gradle :app:bundleDebug --stacktrace --no-daemon
+
+      - name: Upload debug App Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: blinkng-debug-aab-${{ github.sha }}
+          path: app/build/outputs/bundle/debug/app-debug.aab
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload latest debug APK
         uses: actions/upload-artifact@v4
         with:
