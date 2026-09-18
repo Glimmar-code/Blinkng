@@ -1,13 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="120"
-    android:viewportHeight="120">
-    <path
-        android:fillColor="@color/blink_splash_mark"
-        android:pathData="M32,16 H72 C84,16 94,25 94,38 C94,51 84,60 72,60 H46 L26,76 V24 C26,19 28,16 32,16 Z" />
-    <path
-        android:fillColor="@color/blink_splash_mark"
-        android:pathData="M46,64 H73 C86,64 96,73 96,86 C96,99 86,108 73,108 H46 L26,116 V74 Z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="108dp"
+        android:height="108dp"
+        android:drawable="@drawable/blink_logo_foreground"
+        android:gravity="center" />
+</layer-list>
