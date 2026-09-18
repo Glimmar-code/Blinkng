@@ -94,6 +94,9 @@ data class DesktopNotification(
     val actorIsVip: Boolean,
     val vipPriority: Boolean,
     val createdAt: String,
+    val actorId: String? = null,
+    val targetType: String? = null,
+    val targetId: String? = null,
 )
 
 data class DesktopMarketItem(
