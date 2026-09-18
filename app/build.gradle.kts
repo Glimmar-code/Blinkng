@@ -221,6 +221,8 @@ dependencies {
   implementation(libs.googleid)
   implementation(libs.accompanist.permissions)
   implementation(libs.play.services.location)
+  implementation(libs.play.app.update)
+  implementation(libs.play.app.update.ktx)
   implementation("com.google.android.gms:play-services-ads:25.5.0")
   implementation(libs.androidx.camera.camera2)
   implementation(libs.androidx.camera.lifecycle)
