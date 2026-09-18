@@ -51,6 +51,18 @@ class BlinkEconomyService {
     suspend fun state() = runCatching { rpc("get_blink_store_state") }
     suspend fun boostableContent() = runCatching { rpc("get_my_blink_boostable_content") }
 
+    suspend fun beginRewardedAdClaim() = runCatching {
+        rpc("begin_blink_rewarded_ad_claim")
+    }
+
+    suspend fun completeRewardedAdClaim(claimId: String) = runCatching {
+        require(claimId.isNotBlank()) { "Reward claim is missing." }
+        rpc(
+            "complete_blink_rewarded_ad_claim",
+            JSONObject().put("p_claim_id", claimId)
+        )
+    }
+
     suspend fun purchase(catalogId: String, quantity: Int = 1, multiplier: Int = 1) = runCatching {
         rpc("purchase_blink_item", JSONObject()
             .put("p_catalog_id", catalogId)
@@ -127,6 +139,9 @@ class BlinkEconomyService {
             message.contains("TARGET_REQUIRED") -> "Choose where you want to use this item."
             message.contains("BENEFIT_EXHAUSTED") -> "That VIP benefit has already been used for this pass."
             message.contains("ALREADY_CLAIMED_TODAY") -> "Today's VIP coin bonus is already claimed."
+            message.contains("REWARDED_AD_CLAIM_EXPIRED") -> "That ad reward expired. Please watch another ad."
+            message.contains("REWARDED_AD_TOO_SOON") -> "The ad reward is not ready yet."
+            message.contains("REWARDED_AD_DAILY_LIMIT") -> "You've reached today's rewarded-ad coin limit."
             message.contains("INVALID_RECIPIENT") -> "That account cannot receive this gift."
             message.contains("RECIPIENT_REQUIRED") -> "Enter the recipient's Blink username."
             message.contains("DIGITAL_GIFT_NOT_AVAILABLE") -> "This digital gift is no longer available in your Vault."
