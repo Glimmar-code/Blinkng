@@ -2,20 +2,137 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/@:username", "destination": "/index.html" },
-    { "source": "/profile/:path*", "destination": "/index.html" },
-    { "source": "/post/:path*", "destination": "/index.html" },
-    { "source": "/reel/:path*", "destination": "/index.html" },
-    { "source": "/feed", "destination": "/index.html" },
-    { "source": "/reels", "destination": "/index.html" },
-    { "source": "/search", "destination": "/index.html" },
-    { "source": "/messages/:path*", "destination": "/index.html" },
-    { "source": "/activity", "destination": "/index.html" },
-    { "source": "/market", "destination": "/index.html" },
-    { "source": "/connect", "destination": "/index.html" },
-    { "source": "/games", "destination": "/index.html" },
-    { "source": "/scheduled", "destination": "/index.html" },
-    { "source": "/settings/:path*", "destination": "/index.html" },
-    { "source": "/login", "destination": "/index.html" }
+    {
+      "source": "/@:username",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/profile/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/post/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/reel/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/feed",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/reels",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/search",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/messages/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/activity",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/market",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/connect",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/games",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/scheduled",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/ai",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/settings",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/settings/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/login",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/more",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/store",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/vault",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/vip",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/boosts",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/gifts",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/calls",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/offline",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/drafts",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/verification",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/analytics",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/study",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/accounts",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/professional",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/leaderboard",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/seller",
+      "destination": "/index.html"
+    }
   ]
 }
