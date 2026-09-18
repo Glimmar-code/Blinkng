@@ -93,6 +93,7 @@ import com.example.data.models.UserProfile
 import com.example.data.repository.ProfessionalRepository
 import com.example.data.repository.ScheduledPostRepository
 import com.example.data.supabase.SupabaseService
+import com.example.ui.components.BlinkMark
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
 import com.example.ui.theme.BlinkTheme
@@ -164,9 +165,13 @@ private fun ProfessionalCenterScreen(initialSection: String, onBack: () -> Unit)
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BlinkMark(size = 32.dp, showText = false)
+                        Spacer(Modifier.width(10.dp))
+                        Column {
                         Text("Professional Center", fontWeight = FontWeight.Black)
                         Text("Privacy • safety • marketplace • account", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 },
                 navigationIcon = {
