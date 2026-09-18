@@ -163,6 +163,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     val chatRepository = ChatRepository(supabaseService)
     private val connectHubRepository = ConnectHubRepository(supabaseService)
     private val scheduledPostRepository = ScheduledPostRepository()
+    private val blinkEconomyService = BlinkEconomyService()
     val realtimeManager = SupabaseRealtimeManager.getInstance()
     private val offlineContentStore = OfflineContentStore(appContext)
     private val networkMonitor = NetworkMonitor(appContext)
@@ -939,8 +940,54 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun watchAdForBlinkCoins() {
-        showToast("Rewarded ads need an ad provider configured before coins can be granted.")
+    suspend fun beginRewardedAdClaim(): String? {
+        val state = _uiState.value
+        if (!state.isOnline || state.myProfile.id.isBlank()) {
+            showToast("Connect to the internet and sign in before watching a rewarded ad.")
+            return null
+        }
+
+        val result = blinkEconomyService.beginRewardedAdClaim()
+        return result.fold(
+            onSuccess = { payload ->
+                payload.optString("claim_id").takeIf { it.isNotBlank() }
+                    ?: run {
+                        showToast("Unable to prepare the ad reward. Please try again.")
+                        null
+                    }
+            },
+            onFailure = { error ->
+                Log.w(TAG, "Rewarded ad claim start failed", error)
+                showToast(error.message ?: "Unable to prepare the ad reward. Please try again.")
+                null
+            }
+        )
+    }
+
+    fun completeRewardedAdClaim(claimId: String) {
+        if (claimId.isBlank()) return
+
+        viewModelScope.launch {
+            val result = blinkEconomyService.completeRewardedAdClaim(claimId)
+            result.fold(
+                onSuccess = { payload ->
+                    val reward = payload.optInt("reward_amount", 10)
+                    val balance = payload.optLong("balance", _uiState.value.blinkCoinBalance + reward)
+                    _uiState.value = _uiState.value.copy(blinkCoinBalance = balance)
+                    persistExtendedCache()
+                    showToast("+$reward Blink Coins")
+                },
+                onFailure = { error ->
+                    Log.w(TAG, "Rewarded ad coin credit failed", error)
+                    showToast(error.message ?: "Your ad finished, but the coin reward could not be credited. Please try again.")
+                    refreshProfileRewards()
+                }
+            )
+        }
+    }
+
+    fun rewardedAdUnavailable(message: String) {
+        showToast(message)
     }
 
     fun buyBlinkCoins() {
