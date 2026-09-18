@@ -92,12 +92,9 @@ fun SplashScreen(
             .background(DarkBackground),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "B",
-            color = BlinkCream,
-            fontSize = 52.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = (-1).sp,
+        BlinkMark(
+            size = 86.dp,
+            showText = false,
             modifier = Modifier
                 .alpha(bAlpha)
                 .scale(bScale)
