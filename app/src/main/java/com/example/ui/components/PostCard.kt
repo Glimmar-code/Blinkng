@@ -286,15 +286,12 @@ fun PostCard(
                         )
                     }
 
-                    authorOnline?.let { active ->
+                    if (authorOnline == true) {
                         Box(
                             modifier = Modifier
                                 .size(14.dp)
                                 .align(Alignment.BottomEnd)
-                                .background(
-                                    if (active) Color(0xFF22C55E) else Color(0xFF6B7280),
-                                    CircleShape
-                                )
+                                .background(Color(0xFF22C55E), CircleShape)
                                 .border(2.dp, surfaceColor, CircleShape)
                         )
                     }
