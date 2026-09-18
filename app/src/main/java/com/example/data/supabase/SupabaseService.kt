@@ -3704,21 +3704,50 @@ suspend fun uploadPostMedia(
     suspend fun fetchActivities(): Result<List<ActivityItem>> = withContext(Dispatchers.IO) {
         try {
             val uid = getCurrentUserId() ?: return@withContext Result.success(emptyList())
-            val request = newRequestBuilder(
-                "/rest/v1/activities?recipient_id=eq.${encodeValue(uid)}&order=created_at.desc&limit=100",
-                authenticated = true
-            ).get().build()
-            executeRequest(request).use { response ->
-                val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    return@withContext Result.failure(Exception(parseSupabaseError(raw, "Activity fetch failed.")))
+
+            fun semanticKey(item: ActivityItem): String = listOf(
+                item.user.trim().lowercase(Locale.US),
+                item.action.trim().lowercase(Locale.US),
+                item.targetPostId.orEmpty(),
+                item.targetMarketId.orEmpty(),
+                item.targetType.orEmpty().uppercase(Locale.US),
+                item.rawTimestamp.trim().take(19)
+            ).joinToString("|")
+
+            suspend fun fetchArray(path: String, label: String, required: Boolean): JSONArray {
+                return try {
+                    val request = newRequestBuilder(path, authenticated = true).get().build()
+                    executeRequest(request).use { response ->
+                        val raw = response.body?.string().orEmpty()
+                        if (!response.isSuccessful) {
+                            throw IllegalStateException(parseSupabaseError(raw, "$label fetch failed."))
+                        }
+                        JSONArray(if (raw.isBlank()) "[]" else raw)
+                    }
+                } catch (error: Exception) {
+                    if (required) throw error
+                    Log.w(TAG, "$label fetch unavailable; continuing with remaining notification sources.", error)
+                    JSONArray()
                 }
-                val array = JSONArray(if (raw.isBlank()) "[]" else raw)
-                val items = buildList {
-                    for (i in 0 until array.length()) {
-                        val o = array.getJSONObject(i)
-                        val type = o.optString("activity_type")
-                        add(ActivityItem(
+            }
+
+            val activityArray = fetchArray(
+                "/rest/v1/activities?recipient_id=eq.${encodeValue(uid)}&order=created_at.desc&limit=100",
+                "Activity",
+                required = true
+            )
+            val notificationArray = fetchArray(
+                "/rest/v1/notifications?user_id=eq.${encodeValue(uid)}&order=created_at.desc&limit=100",
+                "Notification",
+                required = false
+            )
+
+            val activityItems = buildList {
+                for (i in 0 until activityArray.length()) {
+                    val o = activityArray.getJSONObject(i)
+                    val type = o.optString("activity_type")
+                    add(
+                        ActivityItem(
                             id = o.optString("id"),
                             user = o.optString("actor_id"),
                             avatar = "",
@@ -3726,19 +3755,88 @@ suspend fun uploadPostMedia(
                             time = formatTimeAgo(o.optString("created_at")),
                             rawTimestamp = o.optString("created_at"),
                             isUnread = !o.optBoolean("is_read", false),
-                            targetPostId = o.optString("entity_id").takeIf { o.optString("entity_type").equals("post", true) },
-                            targetMarketId = o.optString("entity_id").takeIf { o.optString("entity_type").equals("market", true) },
+                            category = when (type.uppercase(Locale.US)) {
+                                "LIKE", "LIKES", "BOOKMARK", "SAVE" -> NotificationFilter.LIKES
+                                "COMMENT", "COMMENTS", "REPLY", "MENTION" -> NotificationFilter.COMMENTS
+                                "MARKET", "ORDER", "MARKET_ORDER" -> NotificationFilter.MARKET
+                                else -> NotificationFilter.ALL
+                            },
+                            targetPostId = o.optString("entity_id")
+                                .takeIf { o.optString("entity_type").equals("post", true) },
+                            targetMarketId = o.optString("entity_id")
+                                .takeIf { o.optString("entity_type").equals("market", true) },
                             targetType = o.optString("entity_type").takeIf { it.isNotBlank() }
-                        ))
-                    }
+                        )
+                    )
                 }
-                Result.success(items)
             }
+
+            val notificationItems = buildList {
+                for (i in 0 until notificationArray.length()) {
+                    val o = notificationArray.getJSONObject(i)
+                    val id = o.optString("id")
+                    if (id.isBlank()) continue
+
+                    val type = o.optString("type").trim()
+                    val text = o.optString("text")
+                        .ifBlank { o.optString("title") }
+                        .ifBlank { type.replace('_', ' ') }
+                    val isMessage = type.equals("system", true) &&
+                        text.contains("sent you a message", ignoreCase = true)
+                    val postId = o.optString("post_id").takeIf { it.isNotBlank() }
+                    val optionalTargetType = o.optString("target_type").takeIf { it.isNotBlank() }
+                    val optionalTargetId = o.optString("target_id").takeIf { it.isNotBlank() }
+
+                    add(
+                        ActivityItem(
+                            id = "notification:$id",
+                            user = o.optString("actor_id"),
+                            avatar = "",
+                            action = text,
+                            time = formatTimeAgo(o.optString("created_at")),
+                            rawTimestamp = o.optString("created_at"),
+                            isUnread = !o.optBoolean("is_read", false),
+                            category = when (type.uppercase(Locale.US)) {
+                                "LIKE", "REPOST", "SAVE" -> NotificationFilter.LIKES
+                                "COMMENT", "REPLY", "MENTION" -> NotificationFilter.COMMENTS
+                                "MARKET", "MARKET_ORDER", "ORDER" -> NotificationFilter.MARKET
+                                else -> NotificationFilter.ALL
+                            },
+                            targetPostId = postId ?: optionalTargetId.takeIf {
+                                optionalTargetType.equals("post", ignoreCase = true)
+                            },
+                            targetMarketId = optionalTargetId.takeIf {
+                                optionalTargetType.equals("market", ignoreCase = true)
+                            },
+                            targetType = when {
+                                isMessage -> "CHAT"
+                                type.equals("follow", true) -> "PROFILE"
+                                !optionalTargetType.isNullOrBlank() -> optionalTargetType
+                                else -> "NOTIFICATION"
+                            },
+                            previewText = o.optString("sub_text").takeIf { it.isNotBlank() },
+                            actorIsVip = o.optBoolean("actor_is_vip", false),
+                            vipPriority = o.optBoolean("vip_priority", false)
+                        )
+                    )
+                }
+            }
+
+            val activityKeys = activityItems.asSequence().map(::semanticKey).toHashSet()
+            val merged = (activityItems + notificationItems.filterNot {
+                semanticKey(it) in activityKeys
+            })
+                .sortedByDescending { it.rawTimestamp }
+                .distinctBy { it.id }
+                .take(150)
+
+            Result.success(merged)
         } catch (e: Exception) {
             Log.e(TAG, "fetchActivities exception", e)
             Result.failure(e)
         }
     }
+
     suspend fun recordActivity(
         recipientUsername: String,
         action: String,
@@ -3783,8 +3881,64 @@ suspend fun uploadPostMedia(
         }
     }
 
-    suspend fun markActivityRead(activityId:String):Boolean=withContext(Dispatchers.IO){try{val uid=getCurrentUserId()?:throw IllegalStateException("Not authenticated.");val body=JSONObject().put("is_read",true);executeRequest(newRequestBuilder("/rest/v1/activities?id=eq.${encodeValue(activityId)}&recipient_id=eq.${encodeValue(uid)}",true).patch(body.toString().toRequestBody(jsonMediaType)).build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Could not mark activity read."));true}}catch(e:Exception){Log.e(TAG,"markActivityRead failed",e);false}}
-    suspend fun markAllActivitiesRead(): Boolean = withContext(Dispatchers.IO){try{val uid=getCurrentUserId()?:throw IllegalStateException("Not authenticated.");val body=JSONObject().put("is_read",true);executeRequest(newRequestBuilder("/rest/v1/activities?recipient_id=eq.${encodeValue(uid)}&is_read=eq.false",true).patch(body.toString().toRequestBody(jsonMediaType)).build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Could not mark activities read."));true}}catch(e:Exception){Log.e(TAG,"markAllActivitiesRead failed",e);false}}
+    suspend fun markActivityRead(activityId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            val isNotification = activityId.startsWith("notification:")
+            val rowId = activityId.removePrefix("notification:")
+            if (rowId.isBlank()) return@withContext false
+
+            val table = if (isNotification) "notifications" else "activities"
+            val ownerField = if (isNotification) "user_id" else "recipient_id"
+            val body = JSONObject().put("is_read", true)
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/$table?id=eq.${encodeValue(rowId)}&$ownerField=eq.${encodeValue(uid)}",
+                    true
+                ).patch(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Could not mark notification read."))
+                }
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "markActivityRead failed", e)
+            false
+        }
+    }
+
+    suspend fun markAllActivitiesRead(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            val body = JSONObject().put("is_read", true)
+            val targets = listOf(
+                "activities" to "recipient_id",
+                "notifications" to "user_id"
+            )
+
+            for ((table, ownerField) in targets) {
+                executeRequest(
+                    newRequestBuilder(
+                        "/rest/v1/$table?$ownerField=eq.${encodeValue(uid)}&is_read=eq.false",
+                        true
+                    ).patch(body.toString().toRequestBody(jsonMediaType)).build()
+                ).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        throw IllegalStateException(
+                            parseSupabaseError(raw, "Could not mark all notifications read.")
+                        )
+                    }
+                }
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "markAllActivitiesRead failed", e)
+            false
+        }
+    }
     suspend fun recordSkillEndorsement(targetUsername:String,skillName:String,endorserUsername:String):Boolean=withContext(Dispatchers.IO){try{val actor=getCurrentUserId()?:throw IllegalStateException("Not authenticated.");val profile=fetchProfileByUsername(targetUsername.removePrefix("@"))?:return@withContext false;val skillsRaw=executeRequest(newRequestBuilder("/rest/v1/skills?normalized_name=eq.${encodeValue(skillName.trim().lowercase(Locale.US))}&select=id&limit=1",true).get().build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Skill lookup failed."));b};val skillId=JSONArray(if(skillsRaw.isBlank())"[]" else skillsRaw).optJSONObject(0)?.optString("id")?:return@withContext false;val body=JSONObject().apply{put("skill_id",skillId);put("profile_user_id",profile.id);put("endorser_user_id",actor)};executeRequest(newRequestBuilder("/rest/v1/skill_endorsements",true).addHeader("Prefer","resolution=merge-duplicates").post(body.toString().toRequestBody(jsonMediaType)).build()).use{r->val b=r.body?.string().orEmpty();if(!r.isSuccessful)throw IllegalStateException(parseSupabaseError(b,"Skill endorsement failed."));true}}catch(e:Exception){Log.e(TAG,"recordSkillEndorsement failed",e);false}}
 
     suspend fun submitVerificationRequest(
