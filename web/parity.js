@@ -169,17 +169,12 @@
     }
     if (!res.ok) { const e=await parseJson(res); throw new Error(e?.message||e?.error_description||e?.error||`Blink request failed (${res.status})`); }
     return parseJson(res);
+  }
   const rpc=(name,body={})=>api(`/rest/v1/rpc/${name}`,{method:'POST',body});
   const table=(name,query='')=>api(`/rest/v1/${name}${query?`?${query}`:''}`);
 
-  function prefs() {
-    const defaults={theme:'system',density:'comfortable',fontScale:1,reduceMotion:false,dataSaver:false,autoplay:true};
-    try { return {...defaults,...JSON.parse(storageGet(PREF_KEY,'{}'))}; } catch { return defaults; }
-  }
-  function savePrefs(next) {
-    storageSet(PREF_KEY,JSON.stringify({...prefs(),...next}));
-    applyPrefs();
-  }
+  function prefs() { const defaults={theme:'system',density:'comfortable',fontScale:1,reduceMotion:false,dataSaver:false,autoplay:true}; try { return {...defaults,...JSON.parse(storageGet(PREF_KEY,'{}'))}; } catch { return defaults; } }
+  function savePrefs(next) { storageSet(PREF_KEY,JSON.stringify({...prefs(),...next})); applyPrefs(); }
   function applyPrefs() {
     const p=prefs();
     document.documentElement.dataset.blinkTheme=p.theme;
@@ -193,14 +188,8 @@
   function isParityRoute(path=currentPath()) { return PARITY_ROUTES.has(path); }
   function go(path) {
     const next=typeof path==='string'&&path.startsWith('/')&&!path.startsWith('//')?path:'/';
-    if (PARITY_ROUTES.has(next)) {
-      history.pushState({},'',routeHref(next));
-      renderParity(next);
-      window.scrollTo({top:0,behavior:prefs().reduceMotion?'auto':'smooth'});
-    } else {
-      history.pushState({},'',routeHref(next));
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    }
+    if (PARITY_ROUTES.has(next)) { history.pushState({},'',routeHref(next)); renderParity(next); window.scrollTo({top:0,behavior:prefs().reduceMotion?'auto':'smooth'}); }
+    else { history.pushState({},'',routeHref(next)); window.dispatchEvent(new PopStateEvent('popstate')); }
   }
 
   function appNav() {
@@ -353,11 +342,7 @@
   function renderDrafts() {
     const keys=storageKeys().filter(k=>/draft/i.test(k));
     shell('Drafts',`<section class="parity-panel"><h3>Persistent web drafts</h3><p class="muted">Draft storage is local to this browser and scoped by account where supported.</p></section><div class="parity-list">${keys.map(k=>{const v=storageGet(k,'');return `<article class="parity-panel"><span class="parity-chip">${esc(k)}</span><textarea class="parity-field" data-draft-key="${esc(k)}">${esc(v)}</textarea><div class="row-actions"><button class="parity-btn" data-save-draft="${esc(k)}">Save</button><button class="parity-btn danger" data-delete-draft="${esc(k)}">Delete</button></div></article>`;}).join('')||'<div class="parity-panel">No drafts saved in this browser.</div>'}</div>`);
-    document.querySelectorAll('[data-save-draft]').forEach(b=>b.onclick=()=>{
-      const k=b.dataset.saveDraft,input=document.querySelector(`[data-draft-key="${CSS.escape(k)}"]`);
-      if(!input)return;
-      if(storageSet(k,input.value))toast('Draft saved.','success');else toast('This browser blocked local draft storage.','error');
-    });
+    document.querySelectorAll('[data-save-draft]').forEach(b=>b.onclick=()=>{const k=b.dataset.saveDraft,input=document.querySelector(`[data-draft-key="${CSS.escape(k)}"]`);if(!input)return;if(storageSet(k,input.value))toast('Draft saved.','success');else toast('This browser blocked local draft storage.','error');});
     document.querySelectorAll('[data-delete-draft]').forEach(b=>b.onclick=()=>{storageRemove(b.dataset.deleteDraft);toast('Draft deleted.','success');renderDrafts();});
   }
 
@@ -398,13 +383,7 @@
   }
 
   async function renderAccounts() {
-    if (!authGuard()) return;
-    const p=await getProfile().catch(()=>null);
-    let recent=[];try{recent=JSON.parse(storageGet(RECENT_KEY,'[]'));if(!Array.isArray(recent))recent=[];}catch{recent=[];}
-    if(p?.username&&!recent.some(x=>x.username===p.username)){
-      recent=[{username:p.username,name:p.full_name||p.username,last:new Date().toISOString()},...recent].slice(0,8);
-      storageSet(RECENT_KEY,JSON.stringify(recent));
-    }
+    if (!authGuard()) return; const p=await getProfile().catch(()=>null); let recent=[]; try{recent=JSON.parse(storageGet(RECENT_KEY,'[]'));}catch{} if(p?.username&&!recent.some(x=>x.username===p.username)){recent=[{username:p.username,name:p.full_name||p.username,last:new Date().toISOString()},...recent].slice(0,8);storageSet(RECENT_KEY,JSON.stringify(recent));}
     shell('Accounts',`<section class="parity-panel"><h3>Current account</h3><div class="status-card"><div class="parity-avatar">${esc((p?.full_name||p?.username||'B')[0].toUpperCase())}</div><div class="grow"><strong>${esc(p?.full_name||p?.username||'Blink account')}</strong><p class="muted">@${esc(p?.username||'')}</p></div><button class="parity-btn" data-parity-go="/settings/profile">Edit profile</button></div></section><section class="parity-panel"><h3>Recent web accounts</h3><p class="muted">For security, the parity layer remembers account names only — not additional access tokens.</p>${recent.map(r=>`<div class="mini-row"><span>@${esc(r.username)}</span><span class="muted">${esc(r.name||'')}</span></div>`).join('')||'<p>No recent accounts.</p>'}<button class="parity-btn" data-parity-go="/login">Sign in with another account</button></section>`);
   }
 
@@ -438,12 +417,7 @@
 
   let installPrompt=null;
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;decorateExistingShell();});
-  async function installApp(){
-    if(!installPrompt){toast('Install is not available in this browser yet.','warn');return;}
-    try{await installPrompt.prompt();await installPrompt.userChoice;}
-    catch{toast('Could not open the install prompt.','error');}
-    finally{installPrompt=null;decorateExistingShell();}
-  }
+  async function installApp(){if(!installPrompt){toast('Install is not available in this browser yet.','warn');return;}try{await installPrompt.prompt();await installPrompt.userChoice;}catch{toast('Could not open the install prompt.','error');}finally{installPrompt=null;decorateExistingShell();}}
 
   function decorateExistingShell() {
     if (isParityRoute()) return;
