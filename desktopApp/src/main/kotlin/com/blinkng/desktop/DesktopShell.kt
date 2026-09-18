@@ -80,6 +80,7 @@ import androidx.compose.ui.window.rememberWindowState
 import com.blinkng.desktop.data.DesktopCall
 import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.ui.AdminProScreen
+import com.blinkng.desktop.ui.AndroidParityDesignDock
 import com.blinkng.desktop.ui.BlinkAuthScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
 import com.blinkng.desktop.ui.ConnectScreen
@@ -284,6 +285,11 @@ private fun AuthenticatedShell(state: DesktopAppState) {
     Column(modifier = Modifier.fillMaxSize()) {
         DesktopTopBar(state)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        AndroidParityDesignDock(
+            route = state.selectedRoute,
+            onNavigate = { state.selectedRoute = it },
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val compact = maxWidth < 1180.dp
             val showRightPanel = maxWidth >= 1420.dp && state.selectedRoute !in setOf("messages", "search")

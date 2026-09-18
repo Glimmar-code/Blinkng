@@ -212,6 +212,7 @@
       <nav class="parity-mobile"><button data-parity-go="/feed">⌂<span>Home</span></button><button data-parity-go="/messages">✉<span>Messages</span></button><button data-parity-go="/store">◆<span>Store</span></button><button data-parity-go="/more">•••<span>More</span></button></nav>
     </div>`;
     bindShell();
+    queueMicrotask(decorateAndroidUiParityDock);
   }
   function rightRail() {
     const p=prefs();
@@ -425,11 +426,118 @@
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;decorateExistingShell();});
   async function installApp(){if(!installPrompt){toast('Install is not available in this browser yet.','warn');return;}try{await installPrompt.prompt();await installPrompt.userChoice;}catch{toast('Could not open the install prompt.','error');}finally{installPrompt=null;decorateExistingShell();}}
 
+  const ANDROID_UI_NOTES = {
+    feed:'Stories, feed tabs, premium header actions, refresh/offline states, post-card metrics and Create Post entry.',
+    reels:'For You controls, mute state, caption expansion, progress, like/save/comment actions and playback states.',
+    search:'Voice, visual, near-me, saved/following scopes, filters, result entities and discovery sheets.',
+    messages:'Matches, chat search, pinned/starred, reply/edit, attachments, emoji, appearance and call controls.',
+    activity:'Search, unread/category filters, date sections, caught-up divider, offline and loading states.',
+    marketplace:'Market search, featured listings, seller state, verified selling, product detail and checkout affordances.',
+    connect:'Smart Match, compatibility reasons, roommates, mentoring, reading mates, housing, Study Circles and challenges.',
+    games:'Challenges, rewards, coin status, accept/play flows and campus game discovery.',
+    'scheduled-posts':'Draft cards, scheduled previews, publish timing, background posting, cancel and retry states.',
+    'blink-ai':'History, media/voice attachments, context/privacy settings, stop/retry and response states.',
+    'blink-store':'Premium catalog, owned/applied states, Vault actions, use/apply dialogs and VIP presentation.',
+    vault:'Inventory, expiry, activation, apply/remove actions and content-target selection.',
+    vip:'VIP identity, premium marks, collection presentation and profile cosmetics.',
+    boosts:'Post/Reel boost strength, duration, target selection and active status.',
+    'digital-gifts':'Recipient selection, optional message, gift status and premium delivery feedback.',
+    'account-switcher':'Current identity, remembered accounts, secure switching and session state.',
+    'google-signin':'Premium sign-in presentation, progress, fallback and account continuity.',
+    'password-recovery':'Forgot/reset password, strength, validation, mismatch and completion states.',
+    'remembered-login':'Remembered-login preference, secure continuity and explicit sign-out state.',
+    'session-refresh':'Restoring-session, retry, expired-session feedback and recovery.',
+    'call-launcher':'Voice/video entry points, active call controls, timer, speaker and end-call states.',
+    'call-history':'Incoming/outgoing/missed call rows, callback affordance and empty state.',
+    'call-realtime':'Incoming-call banner, caller identity, answer/decline and reconnect state.',
+    'call-sounds':'Voice/video tone cards, vibration, preview and system-setting bridges.',
+    'incoming-call-banner':'Prominent incoming-call surface with caller, call type and primary actions.',
+    'media-cache':'Cached-media status, storage feedback and safe clear controls.',
+    'offline-content':'No-internet banner, cached content, back-online state and refresh feedback.',
+    'offline-mutation-queue':'Queued posts/messages, retry feedback and connection-restored status.',
+    'persistent-drafts':'Durable draft cards, resume/delete and composer continuity.',
+    'post-comments':'Replies, mentions, avatars, like/report actions and empty states.',
+    'post-options':'Save, repost, share, report, delete and owner/non-owner action states.',
+    'create-post':'Text/color text, photos, video, polls, comments setting, drafts and scheduling.',
+    'story-bar':'Unseen rings, Add Story, counts, loading and empty treatment.',
+    'story-viewer':'Progress, author info, reply, like, close and multi-story navigation.',
+    'create-story':'Photo/video selection, preview, caption and 24-hour messaging.',
+    verification:'Blue/Gold cards, benefits, requirements, follower progress and payment choices.',
+    'profile-edit':'Avatar/cover editing, identity, academics, social links and completion feedback.',
+    'profile-follow':'Follow/interact actions, gifts, challenges, mentoring, roommate and study requests.',
+    'profile-analytics':'Follower growth, target projection, milestones and verification progress.',
+    seller:'Merchant onboarding, contact/location, trust policy, verification and seller-success state.',
+    'study-circles':'Search, create, join/request, member count and private/open state.',
+    'professional-center':'Privacy, safety, scheduled posts, orders, groups, export, cache and danger zone.',
+    'professional-search':'Discover cards, live filters, pinned result, people/posts/reels/hashtags and recents.',
+    leaderboard:'Top 10, scopes, search, podium, personal rank, streak/coins and share.',
+    'product-detail':'Seller identity, rating, DM, Buy Now, escrow and Paystack affordances.',
+    'notification-settings':'Categories, permissions, sounds, vibration, lock-screen and call settings.',
+    'instant-chat-notifications':'Unread badges, delivery/read semantics and duplicate-alert protection.',
+    'deep-links':'Safe route handoff, shared post/profile targets and unavailable-content feedback.',
+    'premium-feed':'Brand block, profile avatar, radial actions, tabs and floating Create Post control.',
+    'premium-messages':'Master/detail layout, theme surface, glass buttons, avatar rings and premium chat chrome.'
+  };
+
+  function androidParityModulesForPath(path=currentPath()) {
+    const alias = {
+      '/profile':['vip','verification','profile-edit','profile-follow','profile-analytics'],
+      '/settings':['professional-center','notification-settings','call-sounds','account-switcher','password-recovery','media-cache','deep-links'],
+      '/market':['marketplace','seller','product-detail'],
+      '/feed':['feed','scheduled-posts','blink-ai','offline-content','offline-mutation-queue','persistent-drafts','post-comments','post-options','create-post','story-bar','story-viewer','create-story','premium-feed'],
+      '/messages':['messages','call-launcher','call-history','call-realtime','incoming-call-banner','instant-chat-notifications','premium-messages'],
+      '/connect':['connect','study-circles'],
+      '/search':['search','profile-follow','professional-search'],
+      '/store':['blink-store','vault','vip','boosts','digital-gifts'],
+      '/professional':['professional-center'],
+      '/verification':['verification'],
+      '/analytics':['profile-analytics'],
+      '/seller':['seller'],
+      '/study':['study-circles'],
+      '/calls':['call-launcher','call-history','call-realtime','call-sounds','incoming-call-banner'],
+      '/settings/notifications':['notification-settings','call-sounds','instant-chat-notifications'],
+      '/settings/privacy':['professional-center'],
+      '/settings/data':['professional-center','media-cache'],
+      '/settings/appearance':['vip','premium-feed','premium-messages'],
+      '/settings/accessibility':['premium-feed','premium-messages'],
+      '/accounts':['account-switcher','remembered-login','session-refresh'],
+      '/drafts':['persistent-drafts','scheduled-posts','create-post'],
+      '/offline':['offline-content','offline-mutation-queue','media-cache'],
+      '/leaderboard':['leaderboard'],
+      '/reels':['reels'],
+      '/games':['games'],
+      '/activity':['activity']
+    };
+    const keys=new Set([...(alias[path]||[]),...MODULES.filter(m=>m.route===path).map(m=>m.key)]);
+    return MODULES.filter(m=>keys.has(m.key));
+  }
+
+  function decorateAndroidUiParityDock() {
+    const host=document.querySelector('.content-wrap,.parity-content');
+    if(!host || host.querySelector('[data-android-ui-parity]')) return;
+    const modules=androidParityModulesForPath();
+    if(!modules.length) return;
+    const dock=document.createElement('section');
+    dock.className='android-ui-parity-dock';
+    dock.dataset.androidUiParity='1';
+    dock.innerHTML=`<div class="android-ui-parity-head"><div><strong>Android UI parity</strong><span>${modules.length} design module${modules.length===1?'':'s'} on this screen · ${FEATURES.length} total checkpoints</span></div><button class="android-ui-parity-coverage" type="button">Coverage</button></div><div class="android-ui-parity-chips">${modules.map(m=>`<button type="button" class="android-ui-parity-chip" data-android-ui-module="${esc(m.key)}"><strong>${esc(m.title)}</strong><small>${esc(m.source)}</small></button>`).join('')}</div>`;
+    host.prepend(dock);
+    dock.querySelectorAll('[data-android-ui-module]').forEach(button=>button.onclick=()=>{
+      const m=MODULES.find(x=>x.key===button.dataset.androidUiModule); if(!m)return;
+      openMiniModal(`${m.title} · Android UI parity`,`<p>${esc(ANDROID_UI_NOTES[m.key]||'This Android design module is mapped to the equivalent web surface.')}</p><p class="muted">Android source: <code>${esc(m.source)}</code></p><div class="android-ui-parity-layer-list">${LAYERS.map(l=>`<div><strong>${esc(l.title)}</strong><span>${esc(l.description)}</span></div>`).join('')}</div>`);
+    });
+    dock.querySelector('.android-ui-parity-coverage').onclick=()=>{
+      const rows=modules.flatMap(m=>LAYERS.map(l=>({m,l})));
+      openMiniModal('UI parity coverage',`<p><strong>${FEATURES.length} checkpoints</strong> = ${MODULES.length} Android modules × ${LAYERS.length} parity dimensions.</p><div class="android-ui-parity-layer-list">${rows.map(({m,l})=>`<div><strong>${esc(m.title)} · ${esc(l.title)}</strong><span>${esc(l.description)}</span></div>`).join('')}</div>`);
+    };
+  }
+
   function decorateExistingShell() {
     if (isParityRoute()) return;
     const sidebar=document.querySelector('.sidebar'); if(sidebar&&!sidebar.querySelector('[data-parity-launcher]')){const b=document.createElement('button');b.className='nav-btn';b.dataset.parityLauncher='1';b.innerHTML='<span class="icon">•••</span><span>More app features</span><span class="badge">500</span>';b.onclick=()=>go('/more');const spacer=sidebar.querySelector('.sidebar-spacer');sidebar.insertBefore(b,spacer||null);}
     const top=document.querySelector('.top-actions'); if(top&&!top.querySelector('[data-parity-command]')){const b=document.createElement('button');b.className='btn small-btn ghost parity-command-small';b.dataset.parityCommand='1';b.textContent='⌘K';b.onclick=openCommand;top.prepend(b);}
     if(!document.getElementById('parity-network-pill')){const pill=document.createElement('button');pill.id='parity-network-pill';pill.className=`parity-network-pill ${navigator.onLine?'online':'offline'}`;pill.textContent=navigator.onLine?'Online':'Offline';pill.onclick=()=>go('/offline');document.body.appendChild(pill);}
+    decorateAndroidUiParityDock();
   }
 
   function renderParity(path=currentPath()) {
