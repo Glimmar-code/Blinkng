@@ -27,6 +27,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.ui.components.*
+import com.example.ads.BlinkAdConsentManager
+import com.example.ads.BlinkAdsRuntime
 import com.example.ads.BlinkRewardedAdManager
 import com.example.auth.AccountSessionStore
 import com.example.notification.BlinkNotificationHelper
@@ -52,6 +54,7 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: BlinkViewModel by viewModels()
     private lateinit var rewardedAdManager: BlinkRewardedAdManager
+    private lateinit var adConsentManager: BlinkAdConsentManager
     private var presenceHeartbeatJob: Job? = null
 
     private val inAppUpdateLauncher = registerForActivityResult(
@@ -63,6 +66,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun showRewardedAdForCoins() {
+        if (!BlinkAdsRuntime.canRequestAds.value) {
+            viewModel.rewardedAdUnavailable("Ads are unavailable until your privacy choices are complete.")
+            return
+        }
+        if (!rewardedAdManager.isReady) {
+            rewardedAdManager.load()
+            viewModel.rewardedAdUnavailable("The rewarded ad is still loading. Try again in a moment.")
+            return
+        }
+
         lifecycleScope.launch {
             val claimId = viewModel.beginRewardedAdClaim() ?: return@launch
             val userId = viewModel.uiState.value.myProfile.id
@@ -72,6 +85,17 @@ class MainActivity : ComponentActivity() {
                 onRewardEarned = { viewModel.completeRewardedAdClaim(claimId) },
                 onUnavailable = { viewModel.rewardedAdUnavailable(it) }
             )
+        }
+    }
+
+    private fun showAdPrivacyOptions() {
+        adConsentManager.showPrivacyOptions { error ->
+            if (error != null) {
+                viewModel.showToast("Unable to open ad privacy choices. Please try again.")
+            }
+            if (BlinkAdsRuntime.canRequestAds.value) {
+                rewardedAdManager.load()
+            }
         }
     }
 
@@ -247,7 +271,11 @@ class MainActivity : ComponentActivity() {
         rewardedAdManager = BlinkRewardedAdManager(
             activity = this,
             adUnitId = BuildConfig.ADMOB_REWARDED_AD_UNIT_ID
-        ).also { it.load() }
+        )
+        adConsentManager = BlinkAdConsentManager(this)
+        adConsentManager.gatherConsent {
+            if (BlinkAdsRuntime.canRequestAds.value) rewardedAdManager.load()
+        }
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
@@ -255,6 +283,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
 
@@ -413,7 +442,9 @@ class MainActivity : ComponentActivity() {
                                     MainAppContent(
                                         uiState = uiState,
                                         viewModel = viewModel,
-                                        onWatchAdForCoins = ::showRewardedAdForCoins
+                                        onWatchAdForCoins = ::showRewardedAdForCoins,
+                                        isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
+                                        onAdPrivacyOptions = ::showAdPrivacyOptions
                                     )
                                 }
                             }
@@ -441,7 +472,9 @@ class MainActivity : ComponentActivity() {
 fun MainAppContent(
     uiState: com.example.viewmodel.BlinkUiState,
     viewModel: BlinkViewModel,
-    onWatchAdForCoins: () -> Unit
+    onWatchAdForCoins: () -> Unit,
+    isAdPrivacyOptionsRequired: Boolean,
+    onAdPrivacyOptions: () -> Unit
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
@@ -1217,6 +1250,8 @@ fun MainAppContent(
                 onToggleTheme = { viewModel.toggleDarkMode() },
                 onLogout = { viewModel.logout() },
                 onShowToast = { viewModel.showToast(it) },
+                showAdPrivacyOptions = isAdPrivacyOptionsRequired,
+                onAdPrivacyOptions = onAdPrivacyOptions,
                 onSimulateNotification = { viewModel.simulateBackgroundNotification(context) }
             )
         }

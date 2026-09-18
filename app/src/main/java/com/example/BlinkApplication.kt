@@ -17,10 +17,6 @@ import com.example.notification.BlinkNotificationHelper
 import com.example.notification.NotificationSyncWorker
 import com.example.performance.HighRefreshRateController
 import com.google.firebase.crashlytics.FirebaseCrashlytics
-import com.google.android.gms.ads.MobileAds
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 class BlinkApplication : Application(), ImageLoaderFactory {
@@ -42,11 +38,8 @@ class BlinkApplication : Application(), ImageLoaderFactory {
 
         SupabaseService.initialize(this)
 
-        // Initialize Google Mobile Ads once per process. Keep initialization off the main thread
-        // so ad setup never blocks Blink startup.
-        CoroutineScope(Dispatchers.IO).launch {
-            MobileAds.initialize(this@BlinkApplication) {}
-        }
+        // Google Mobile Ads is initialized from MainActivity only after UMP says ad requests
+        // are allowed. Keeping it out of Application prevents ads from starting before consent.
 
         BlinkNotificationHelper.createNotificationChannels(this)
         // Create voice/video/missed-call channels on cold start as well, so users can tune

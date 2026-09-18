@@ -228,6 +228,7 @@ dependencies {
   implementation(libs.play.app.update)
   implementation(libs.play.app.update.ktx)
   implementation("com.google.android.gms:play-services-ads:25.5.0")
+  implementation("com.google.android.ump:user-messaging-platform:4.0.0")
   implementation(libs.androidx.camera.camera2)
   implementation(libs.androidx.camera.lifecycle)
   implementation(libs.androidx.camera.view)

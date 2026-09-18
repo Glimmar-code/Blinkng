@@ -128,6 +128,8 @@ fun AppMenuSheet(
     onToggleTheme: () -> Unit,
     onLogout: () -> Unit,
     onShowToast: (String) -> Unit,
+    showAdPrivacyOptions: Boolean,
+    onAdPrivacyOptions: () -> Unit,
     onSimulateNotification: () -> Unit
 ) {
     val context = LocalContext.current
@@ -222,6 +224,16 @@ fun AppMenuSheet(
                 ) {
                     onDismiss()
                     context.startActivity(Intent(context, CallHistoryActivity::class.java))
+                }
+                if (showAdPrivacyOptions) {
+                    MenuItemRow(
+                        Icons.Outlined.Security,
+                        "Ad privacy choices",
+                        "Manage consent choices used for advertising"
+                    ) {
+                        onDismiss()
+                        onAdPrivacyOptions()
+                    }
                 }
                 MenuItemRow(Icons.Outlined.Lock, "Privacy & DM settings", "Private account and messaging controls") {
                     openProfessional("privacy")
