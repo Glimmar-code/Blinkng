@@ -1,0 +1,70 @@
+name: BLINK domain integration check
+
+on:
+  push:
+    branches:
+      - 'Testlab*'
+    paths:
+      - 'app/build.gradle.kts'
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/src/main/java/com/example/sharing/**'
+      - 'web/**'
+      - '.github/workflows/domain-integration-check.yml'
+      - '.github/workflows/deploy-web-preview.yml'
+  pull_request:
+    paths:
+      - 'app/build.gradle.kts'
+      - 'app/src/main/AndroidManifest.xml'
+      - 'app/src/main/java/com/example/sharing/**'
+      - 'web/**'
+      - '.github/workflows/domain-integration-check.yml'
+      - '.github/workflows/deploy-web-preview.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate canonical domain files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(tr -d '\r\n' < web/CNAME)" = "www.blink.com.ng"
+          grep -F 'https://www.blink.com.ng' app/build.gradle.kts >/dev/null
+          grep -F 'siteUrl: "https://www.blink.com.ng"' web/config.js >/dev/null
+          grep -F 'const SITE_URL' web/app.js >/dev/null
+          grep -F 'const url = SITE_URL + normalizedPath;' web/app.js >/dev/null
+          grep -F '<link rel="canonical" href="https://www.blink.com.ng/" />' web/index.html >/dev/null
+          grep -F 'android:autoVerify="true"' app/src/main/AndroidManifest.xml >/dev/null
+          grep -F 'Uri.parse("https://www.blink.com.ng")' app/src/main/java/com/example/sharing/DeepLinkRouter.kt >/dev/null
+
+      - name: Validate web syntax and static files
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check web/config.js
+          node --check web/app.js
+          node --check web/sw.js
+          python3 -m json.tool web/manifest.webmanifest >/dev/null
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          ET.parse("web/sitemap.xml")
+          PY
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile, test, lint and build Android debug APK
+        run: gradle :app:compileDebugKotlin :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --stacktrace --no-daemon
