@@ -19,3 +19,10 @@
 .boot-logo{width:72px;height:72px;border-radius:18px;display:block;margin:0 auto 6px}
 .mark{font-size:0!important;background:#000 url('blink-icon.svg') center/100% 100% no-repeat!important;box-shadow:none!important}
 .brand .mark{flex:0 0 auto}
+
+
+/* Stable Android APK download CTA */
+.btn.download-app{display:inline-flex;align-items:center;justify-content:center;gap:7px;background:#fff;color:#08070d;border-color:#fff}
+.btn.download-app:hover{background:#ececf2;border-color:#ececf2}
+.side-card .download-app{width:100%;margin-bottom:8px}
+@media(max-width:760px){.top-actions .download-app{padding-inline:9px}.top-actions .download-app{font-size:0}.top-actions .download-app::after{content:"↓";font-size:14px}}
