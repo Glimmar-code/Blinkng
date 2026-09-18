@@ -8,6 +8,8 @@
   const SESSION_KEY = 'blink_web_session_v3';
   const PREF_KEY = 'blink_web_parity_prefs_v1';
   const RECENT_KEY = 'blink_web_recent_accounts_v1';
+  const API_TIMEOUT_MS = 20000;
+  let refreshPromise = null;
   const PARITY_ROUTES = new Set([
     '/more','/store','/vault','/vip','/boosts','/gifts','/calls','/offline','/drafts','/verification','/analytics','/study','/accounts','/professional','/leaderboard','/seller',
     '/settings/notifications','/settings/appearance','/settings/privacy','/settings/data','/settings/accessibility'
@@ -95,15 +97,52 @@
 
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt = (v) => new Intl.NumberFormat().format(Number(v || 0));
-  const money = (v, currency='BLINK') => currency === 'BLINK' ? `${fmt(v)} coins` : new Intl.NumberFormat('en-NG',{style:'currency',currency:currency||'NGN',maximumFractionDigits:0}).format(Number(v||0));
+  const money = (v, currency='BLINK') => {
+    if (currency === 'BLINK') return `${fmt(v)} coins`;
+    try { return new Intl.NumberFormat('en-NG',{style:'currency',currency:currency||'NGN',maximumFractionDigits:0}).format(Number(v||0)); }
+    catch { return `${currency||'NGN'} ${fmt(v)}`; }
+  };
   const safe = (v) => { try { const u = new URL(String(v || ''), location.origin); return ['http:','https:','blob:'].includes(u.protocol) ? u.href : ''; } catch { return ''; } };
-  const session = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; } };
+  const storageGet = (key, fallback='') => { try { const v=localStorage.getItem(key); return v==null?fallback:v; } catch { return fallback; } };
+  const storageSet = (key, value) => { try { localStorage.setItem(key,value); return true; } catch { return false; } };
+  const storageRemove = (key) => { try { localStorage.removeItem(key); } catch {} };
+  const session = () => { try { return JSON.parse(storageGet(SESSION_KEY,'null')); } catch { return null; } };
+  const saveSession = (value) => value ? storageSet(SESSION_KEY,JSON.stringify(value)) : storageRemove(SESSION_KEY);
   const token = () => session()?.access_token || '';
   const uid = () => session()?.user?.id || '';
   const authed = () => !!token();
   const routeHref = (path) => `${PREVIEW_BASE}${path}` || '/';
-  const currentPath = () => { let p = location.pathname || '/'; if (PREVIEW_BASE && p.startsWith(PREVIEW_BASE)) p = p.slice(PREVIEW_BASE.length) || '/'; return decodeURI(p); };
+  const currentPath = () => { let p=location.pathname||'/'; if(PREVIEW_BASE&&p.startsWith(PREVIEW_BASE))p=p.slice(PREVIEW_BASE.length)||'/'; try{return decodeURI(p);}catch{return p;} };
   const root = () => document.getElementById('app');
+
+  async function fetchWithTimeout(url,options={},timeoutMs=API_TIMEOUT_MS){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),timeoutMs);
+    try{return await fetch(url,{...options,signal:options.signal||controller.signal});}
+    catch(error){if(error?.name==='AbortError')throw new Error('Request timed out. Check your connection and try again.');throw error;}
+    finally{clearTimeout(timer);}
+  }
+
+  async function refreshSession(){
+    if(refreshPromise)return refreshPromise;
+    const existing=session(),rt=existing?.refresh_token;
+    if(!rt)return false;
+    refreshPromise=(async()=>{
+      const res=await fetchWithTimeout(`${BASE}/auth/v1/token?grant_type=refresh_token`,{
+        method:'POST',
+        headers:{apikey:KEY,Authorization:`Bearer ${KEY}`,'Content-Type':'application/json',Accept:'application/json'},
+        body:JSON.stringify({refresh_token:rt})
+      });
+      if(!res.ok){
+        if(res.status===400||res.status===401)saveSession(null);
+        return false;
+      }
+      const data=await res.json();
+      saveSession({...data,user:data.user||existing.user});
+      return true;
+    })();
+    try{return await refreshPromise;}finally{refreshPromise=null;}
+  }
 
   function toast(message, kind='info') {
     let el = document.getElementById('parity-toast');
@@ -114,7 +153,22 @@
   }
 
   async function parseJson(res) { const t=await res.text(); if (!t) return null; try { return JSON.parse(t); } catch { return t; } }
-  async function api(path,{method='GET',body=null,prefer='',auth=true}={}) {
+  async function api(path,{method='GET',body=null,prefer='',auth=true,timeoutMs=API_TIMEOUT_MS}={}) {
+    if (!BASE || !KEY) throw new Error('Blink web backend is not configured.');
+    const h={apikey:KEY,Accept:'application/json'};
+    h.Authorization=`Bearer ${auth && token() ? token() : KEY}`;
+    if (body != null) h['Content-Type']='application/json';
+    if (prefer) h.Prefer=prefer;
+    const requestBody=body==null?undefined:JSON.stringify(body);
+    const request=()=>fetchWithTimeout(`${BASE}${path}`,{method,headers:h,body:requestBody},timeoutMs);
+    let res=await request();
+    if(auth&&res.status===401&&session()?.refresh_token){
+      const refreshed=await refreshSession().catch(()=>false);
+      if(refreshed){h.Authorization=`Bearer ${token()}`;res=await request();}
+    }
+    if (!res.ok) { const e=await parseJson(res); throw new Error(e?.message||e?.error_description||e?.error||`Blink request failed (${res.status})`); }
+    return parseJson(res);
+  }={}) {
     if (!BASE || !KEY) throw new Error('Blink web backend is not configured.');
     const h={apikey:KEY,Accept:'application/json'};
     h.Authorization=`Bearer ${auth && token() ? token() : KEY}`;
@@ -127,8 +181,14 @@
   const rpc=(name,body={})=>api(`/rest/v1/rpc/${name}`,{method:'POST',body});
   const table=(name,query='')=>api(`/rest/v1/${name}${query?`?${query}`:''}`);
 
-  function prefs() { try { return {...{theme:'system',density:'comfortable',fontScale:1,reduceMotion:false,dataSaver:false,autoplay:true},...JSON.parse(localStorage.getItem(PREF_KEY)||'{}')}; } catch { return {theme:'system',density:'comfortable',fontScale:1,reduceMotion:false,dataSaver:false,autoplay:true}; } }
-  function savePrefs(next) { localStorage.setItem(PREF_KEY,JSON.stringify({...prefs(),...next})); applyPrefs(); }
+  function prefs() {
+    const defaults={theme:'system',density:'comfortable',fontScale:1,reduceMotion:false,dataSaver:false,autoplay:true};
+    try { return {...defaults,...JSON.parse(storageGet(PREF_KEY,'{}'))}; } catch { return defaults; }
+  }
+  function savePrefs(next) {
+    storageSet(PREF_KEY,JSON.stringify({...prefs(),...next}));
+    applyPrefs();
+  }
   function applyPrefs() {
     const p=prefs();
     document.documentElement.dataset.blinkTheme=p.theme;
@@ -141,8 +201,15 @@
 
   function isParityRoute(path=currentPath()) { return PARITY_ROUTES.has(path); }
   function go(path) {
-    if (PARITY_ROUTES.has(path)) { history.pushState({},'',routeHref(path)); renderParity(path); window.scrollTo({top:0,behavior:prefs().reduceMotion?'auto':'smooth'}); }
-    else { history.pushState({},'',routeHref(path)); window.dispatchEvent(new PopStateEvent('popstate')); }
+    const next=typeof path==='string'&&path.startsWith('/')&&!path.startsWith('//')?path:'/';
+    if (PARITY_ROUTES.has(next)) {
+      history.pushState({},'',routeHref(next));
+      renderParity(next);
+      window.scrollTo({top:0,behavior:prefs().reduceMotion?'auto':'smooth'});
+    } else {
+      history.pushState({},'',routeHref(next));
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
   }
 
   function appNav() {
@@ -369,7 +436,12 @@
 
   let installPrompt=null;
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;decorateExistingShell();});
-  async function installApp(){if(!installPrompt)return;await installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;decorateExistingShell();}
+  async function installApp(){
+    if(!installPrompt){toast('Install is not available in this browser yet.','warn');return;}
+    try{await installPrompt.prompt();await installPrompt.userChoice;}
+    catch{toast('Could not open the install prompt.','error');}
+    finally{installPrompt=null;decorateExistingShell();}
+  }
 
   function decorateExistingShell() {
     if (isParityRoute()) return;
