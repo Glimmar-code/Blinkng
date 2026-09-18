@@ -3,7 +3,10 @@ name: Web Parity Testlab Gate
 on:
   push:
     branches:
-      - Testlab-web-app-parity-500
+      - 'Testlab-web-*'
+    paths:
+      - 'web/**'
+      - '.github/workflows/web-parity-test.yml'
   pull_request:
     paths:
       - 'web/**'
@@ -15,6 +18,7 @@ permissions:
 jobs:
   web-parity:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,8 +30,9 @@ jobs:
           node --check web/sw.js
           node --check web/config.js
 
-      - name: Manifest JSON
-        run: node -e "JSON.parse(require('fs').readFileSync('web/manifest.webmanifest','utf8')); console.log('manifest valid')"
+      - name: JSON manifests
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('web/manifest.webmanifest','utf8')); JSON.parse(require('fs').readFileSync('web/vercel.json','utf8')); console.log('web JSON valid')"
 
       - name: Verify parity wiring and 500 registry
         run: |
@@ -44,12 +49,75 @@ jobs:
           if (modules !== 50) throw new Error(`Expected 50 app modules, found ${modules}`);
           if (layers !== 10) throw new Error(`Expected 10 parity layers, found ${layers}`);
           if (modules * layers !== 500) throw new Error(`Expected 500 capabilities, found ${modules * layers}`);
-          for (const asset of ['parity.css','parity.js']) {
-            if (!html.includes(asset)) throw new Error(`index.html does not load ${asset}`);
+          for (const asset of ['parity.css','parity.js','blink-icon.svg']) {
+            if (asset !== 'blink-icon.svg' && !html.includes(asset)) throw new Error(`index.html does not load ${asset}`);
             if (!sw.includes(`./${asset}`)) throw new Error(`service worker does not cache ${asset}`);
           }
           if (!css.includes('.parity-root')) throw new Error('Parity stylesheet root missing');
           console.log(`Verified ${modules} modules × ${layers} layers = ${modules * layers} capabilities`);
+          NODE
+
+      - name: Web regression safeguards
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const app = fs.readFileSync('web/app.js','utf8');
+          const parity = fs.readFileSync('web/parity.js','utf8');
+          const sw = fs.readFileSync('web/sw.js','utf8');
+          const vercel = JSON.parse(fs.readFileSync('web/vercel.json','utf8'));
+          const styles = fs.readFileSync('web/styles.css','utf8');
+
+          const requiredApp = [
+            'https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk',
+            'get_conversation_summaries_page',
+            'mark_conversation_read',
+            'send_conversation_message_v3',
+            'data-connect-receiver',
+            'p_viewed_for_seconds:60',
+            '60000',
+            'fetchWithTimeout',
+            'viewObserver',
+            'profile-cover-image'
+          ];
+          for (const marker of requiredApp) {
+            if (!app.includes(marker)) throw new Error(`Missing app regression marker: ${marker}`);
+          }
+
+          if (!styles.includes('.profile-cover-image')) throw new Error('Profile cover image style missing');
+          if (!styles.includes(':focus-visible')) throw new Error('Keyboard focus styling missing');
+
+          for (const marker of [
+            "url.origin!==self.location.origin",
+            "request.mode==='navigate'",
+            "'./blink-icon.svg'",
+            "'./index.html'"
+          ]) {
+            if (!sw.includes(marker)) throw new Error(`Service worker hardening missing: ${marker}`);
+          }
+
+          const requiredRoutes = [
+            '/feed','/reels','/search','/messages','/activity','/market','/connect','/games','/scheduled','/ai',
+            '/settings','/login','/more','/store','/vault','/vip','/boosts','/gifts','/calls','/offline','/drafts',
+            '/verification','/analytics','/study','/accounts','/professional','/leaderboard','/seller'
+          ];
+          const routes = new Set((vercel.rewrites||[]).map(x=>x.source));
+          for (const route of requiredRoutes) {
+            if (!routes.has(route)) throw new Error(`Missing Vercel SPA rewrite: ${route}`);
+          }
+
+          for (const source of [app, parity]) {
+            for (const tag of source.match(/<a\b[^>]*target=["']_blank["'][^>]*>/g) || []) {
+              if (!/rel=["'][^"']*noopener[^"']*noreferrer[^"']*["']/.test(tag)) {
+                throw new Error(`Unsafe target=_blank link: ${tag.slice(0,160)}`);
+              }
+            }
+            if (/onclick\s*=\s*["']/.test(source)) throw new Error('Inline onclick HTML attribute found');
+          }
+
+          if (/localStorage\.(?:getItem|setItem)\(DRAFT_KEY/.test(app)) {
+            throw new Error('Post drafts are no longer account scoped');
+          }
+          console.log('Web regression safeguards passed.');
           NODE
 
       - name: Guard against privileged secrets in web assets
