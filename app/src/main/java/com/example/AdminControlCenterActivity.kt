@@ -24,6 +24,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.models.NigerianUniversities
 import com.example.data.supabase.*
+import com.example.ui.components.BlinkMark
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
 import kotlinx.coroutines.delay
@@ -130,13 +131,17 @@ private fun AdminDashboardV3(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BlinkMark(size = 30.dp, showText = false)
+                        Spacer(Modifier.width(9.dp))
+                        Column {
                         Text("Blink Admin", fontWeight = FontWeight.Black, fontSize = 18.sp)
                         Text(
                             if (capability.isOwner) "Overall owner • permanent" else "${capability.role} • backend protected",
                             fontSize = 9.sp,
                             color = Color.LightGray
                         )
+                        }
                     }
                 },
                 actions = {
