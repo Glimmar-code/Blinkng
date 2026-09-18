@@ -27,6 +27,11 @@ create table if not exists public.notification_preferences (
 
 alter table public.notification_preferences enable row level security;
 
+-- Explicit Data API privileges: RLS still limits each authenticated user to their own row.
+revoke all on table public.notification_preferences from anon;
+grant select, insert, update on table public.notification_preferences to authenticated;
+grant all on table public.notification_preferences to service_role;
+
 drop policy if exists notification_preferences_select_own on public.notification_preferences;
 create policy notification_preferences_select_own
 on public.notification_preferences
@@ -76,6 +81,8 @@ create table if not exists public.notification_push_dispatches (
 
 alter table public.notification_push_dispatches enable row level security;
 -- No client policies: only service-role Edge Functions manage this table.
+revoke all on table public.notification_push_dispatches from anon, authenticated;
+grant all on table public.notification_push_dispatches to service_role;
 
 -- Give notification rows durable target/read metadata without breaking existing clients.
 alter table public.notifications
