@@ -29,6 +29,7 @@ class BlinkRewardedAdManager(
     private var loading = false
 
     fun load() {
+        if (!BlinkAdsRuntime.canRequestAds.value) return
         if (loading || rewardedAd != null) return
         loading = true
         RewardedAd.load(
@@ -39,12 +40,14 @@ class BlinkRewardedAdManager(
                 override fun onAdLoaded(ad: RewardedAd) {
                     loading = false
                     rewardedAd = ad
+                    BlinkAdAnalytics.loaded(activity, "coin_reward", "rewarded")
                     Log.d(TAG, "Rewarded ad loaded")
                 }
 
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     loading = false
                     rewardedAd = null
+                    BlinkAdAnalytics.failed(activity, "coin_reward", "rewarded", error.code)
                     Log.w(TAG, "Rewarded ad failed to load: ${error.code} ${error.message}")
                 }
             }
@@ -57,6 +60,11 @@ class BlinkRewardedAdManager(
         onRewardEarned: (Int) -> Unit,
         onUnavailable: (String) -> Unit
     ) {
+        if (!BlinkAdsRuntime.canRequestAds.value) {
+            onUnavailable("Ads are unavailable until your privacy choices are complete.")
+            return
+        }
+
         val ad = rewardedAd
         if (ad == null) {
             load()
@@ -79,14 +87,25 @@ class BlinkRewardedAdManager(
                 load()
             }
 
+            override fun onAdImpression() {
+                BlinkAdAnalytics.impression(activity, "coin_reward", "rewarded")
+            }
+
+            override fun onAdClicked() {
+                BlinkAdAnalytics.clicked(activity, "coin_reward", "rewarded")
+            }
+
             override fun onAdFailedToShowFullScreenContent(error: AdError) {
+                BlinkAdAnalytics.failed(activity, "coin_reward", "rewarded", error.code)
                 load()
                 onUnavailable("The ad could not be shown. Please try again.")
                 Log.w(TAG, "Rewarded ad failed to show: ${error.code} ${error.message}")
             }
         }
 
+        BlinkAdAnalytics.rewardedStarted(activity)
         ad.show(activity) {
+            BlinkAdAnalytics.rewardedEarned(activity, BLINK_COIN_REWARD)
             onRewardEarned(BLINK_COIN_REWARD)
         }
     }
