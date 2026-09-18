@@ -28,7 +28,7 @@ create table if not exists public.notification_preferences (
 alter table public.notification_preferences enable row level security;
 
 -- Explicit Data API privileges: RLS still limits each authenticated user to their own row.
-revoke all on table public.notification_preferences from anon;
+revoke all on table public.notification_preferences from anon, authenticated;
 grant select, insert, update on table public.notification_preferences to authenticated;
 grant all on table public.notification_preferences to service_role;
 
@@ -167,6 +167,8 @@ drop trigger if exists trg_dispatch_notification_push_after_insert on public.not
 create trigger trg_dispatch_notification_push_after_insert
 after insert on public.notifications
 for each row execute function public.dispatch_notification_push_after_insert();
+
+revoke all on function public.dispatch_notification_push_after_insert() from public, anon, authenticated;
 
 -- Keep the existing Activity feed and also create authoritative notification rows.
 create or replace function public.activity_from_post_like()
@@ -363,6 +365,8 @@ create trigger trg_notify_post_repost_created
 after insert on public.post_reposts
 for each row execute function public.notify_post_repost_created();
 
+revoke all on function public.notify_post_repost_created() from public, anon, authenticated;
+
 create or replace function public.notify_comment_like_created()
 returns trigger
 language plpgsql
@@ -403,6 +407,8 @@ create trigger trg_notify_comment_like_created
 after insert on public.comment_likes
 for each row execute function public.notify_comment_like_created();
 
+revoke all on function public.notify_comment_like_created() from public, anon, authenticated;
+
 create or replace function public.notify_story_like_created()
 returns trigger
 language plpgsql
@@ -435,6 +441,8 @@ drop trigger if exists trg_notify_story_like_created on public.story_likes;
 create trigger trg_notify_story_like_created
 after insert on public.story_likes
 for each row execute function public.notify_story_like_created();
+
+revoke all on function public.notify_story_like_created() from public, anon, authenticated;
 
 -- Follow notifications now carry a typed target while preserving current wording.
 create or replace function public.notify_follow_created()
