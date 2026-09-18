@@ -206,7 +206,7 @@
     document.title=`${title} · Blink`;
     root().innerHTML=`<div class="parity-root" data-parity-root>
       <a class="parity-skip" href="#parity-main">Skip to content</a>
-      <aside class="parity-left"><button class="parity-brand" data-parity-go="/feed"><span>B</span><strong>Blink</strong></button><nav>${appNav()}</nav><div class="parity-divider"></div><nav>${parityNav()}</nav></aside>
+      <aside class="parity-left"><button class="parity-brand" data-parity-go="/feed"><img class="parity-brand-logo" src="blink-logo.png" alt="" aria-hidden="true"><strong>Blink</strong></button><nav>${appNav()}</nav><div class="parity-divider"></div><nav>${parityNav()}</nav></aside>
       <main class="parity-main" id="parity-main"><header class="parity-top"><div><span class="parity-eyebrow">Web parity</span><h1>${esc(title)}</h1></div><div class="parity-top-actions"><button data-parity-command>⌘K</button><button data-parity-go="/more">500</button></div></header><div class="parity-content">${body}</div></main>
       <aside class="parity-right">${aside||rightRail()}</aside>
       <nav class="parity-mobile"><button data-parity-go="/feed">⌂<span>Home</span></button><button data-parity-go="/messages">✉<span>Messages</span></button><button data-parity-go="/store">◆<span>Store</span></button><button data-parity-go="/more">•••<span>More</span></button></nav>
