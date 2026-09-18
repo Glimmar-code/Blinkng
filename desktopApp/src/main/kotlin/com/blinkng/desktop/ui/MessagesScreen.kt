@@ -1,6 +1,7 @@
 package com.blinkng.desktop.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,8 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,6 +50,8 @@ import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
 import kotlinx.coroutines.launch
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 
 @Composable
 fun MessagesScreen(state: DesktopAppState) {
@@ -55,6 +61,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var draft by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var actionMessageId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val myUserId = state.session?.userId.orEmpty()
 
@@ -217,24 +224,79 @@ fun MessagesScreen(state: DesktopAppState) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    ) {
-                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).width(360.dp)) {
-                            Text(message.content)
-                            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text(
-                                    when {
-                                        message.readAt != null -> "Read"
-                                        message.deliveredAt != null -> "Delivered"
-                                        else -> "Sent"
-                                    },
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    Box {
+                        Surface(
+                            modifier = Modifier.pointerInput(message.id) {
+                                detectTapGestures(
+                                    onLongPress = { actionMessageId = message.id },
                                 )
-                                if (message.messageType != "text") Text(message.messageType, fontSize = 10.sp)
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).width(360.dp)) {
+                                Text(message.content)
+                                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    Text(
+                                        when {
+                                            message.readAt != null -> "Read"
+                                            message.deliveredAt != null -> "Delivered"
+                                            else -> "Sent"
+                                        },
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    if (message.messageType != "text") Text(message.messageType, fontSize = 10.sp)
+                                }
                             }
+                        }
+
+                        DropdownMenu(
+                            expanded = actionMessageId == message.id,
+                            onDismissRequest = { actionMessageId = null },
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                listOf("👍", "❤️", "😂", "😮", "😢", "🙏").forEach { emoji ->
+                                    Text(
+                                        emoji,
+                                        fontSize = 18.sp,
+                                        modifier = Modifier.clickable {
+                                            actionMessageId = null
+                                            error = "Reaction " + emoji + " selected on desktop. Sync support is not available yet."
+                                        },
+                                    )
+                                }
+                            }
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Reply") },
+                                onClick = {
+                                    draft = if (message.content.isBlank()) "" else "> " + message.content.take(80) + "\n"
+                                    actionMessageId = null
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Copy") },
+                                enabled = message.content.isNotBlank(),
+                                onClick = {
+                                    runCatching {
+                                        Toolkit.getDefaultToolkit().systemClipboard
+                                            .setContents(StringSelection(message.content), null)
+                                    }.onFailure { error = "Unable to copy this message." }
+                                    actionMessageId = null
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Forward") },
+                                onClick = {
+                                    draft = message.content
+                                    actionMessageId = null
+                                    error = "Message copied into the composer. Choose another chat to forward it."
+                                },
+                            )
                         }
                     }
                 }
