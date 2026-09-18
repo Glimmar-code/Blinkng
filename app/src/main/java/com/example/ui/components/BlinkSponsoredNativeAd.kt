@@ -5,7 +5,6 @@ import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.compose.foundation.background
@@ -23,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.unit.dp
 import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.AdLoader
 import com.google.android.gms.ads.AdRequest
@@ -87,7 +87,7 @@ fun BlinkSponsoredNativeAd(
                         if (placement == BlinkNativeAdPlacement.FEED) {
                             Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = androidx.compose.ui.unit.dp(280f))
+                                .heightIn(min = 280.dp)
                         } else {
                             Modifier.fillMaxSize()
                         }
@@ -166,10 +166,6 @@ private fun createBlinkNativeAdView(
                 marginStart = dp(10)
             }
         )
-    }
-
-    val icon = ImageView(context).apply {
-        scaleType = ImageView.ScaleType.CENTER_CROP
     }
 
     val headline = TextView(context).apply {
@@ -257,7 +253,6 @@ private fun createBlinkNativeAdView(
 
     // Register all advertiser-controlled assets with NativeAdView so the Google SDK owns
     // click handling and impression measurement. The explicit "Sponsored" label is Blink UI.
-    adView.iconView = icon
     adView.headlineView = headline
     adView.bodyView = body
     adView.callToActionView = cta
@@ -290,12 +285,6 @@ private fun bindBlinkNativeAd(
         val value = nativeAd.callToAction
         text = value.orEmpty()
         visibility = if (value.isNullOrBlank()) View.GONE else View.VISIBLE
-    }
-
-    (adView.iconView as? ImageView)?.apply {
-        val drawable = nativeAd.icon?.drawable
-        setImageDrawable(drawable)
-        visibility = if (drawable == null) View.GONE else View.VISIBLE
     }
 
     adView.mediaView?.mediaContent = nativeAd.mediaContent
