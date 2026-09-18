@@ -417,7 +417,7 @@
     const timer=setTimeout(async()=>{
       let recorded=false;
       try{
-        if(isAuthed())await rpc('record_qualified_post_view',{p_post_id:postId,p_viewer_username:state.profile?.username||'',p_viewed_for_seconds:30});
+        if(isAuthed())await rpc('record_qualified_post_view',{p_post_id:postId,p_viewer_username:state.profile?.username||'',p_viewed_for_seconds:60});
         else await anonRpc('record_public_web_view',{p_post_id:postId,p_visitor_hash:await hashVisitor()});
         recorded=true;
       }catch{}
@@ -425,7 +425,7 @@
         state.qualifiedTimers.delete(postId);
         if(recorded&&element)element.dataset.viewRecorded='1';
       }
-    },30000);
+    },60000);
     state.qualifiedTimers.set(postId,timer);
   }
 
