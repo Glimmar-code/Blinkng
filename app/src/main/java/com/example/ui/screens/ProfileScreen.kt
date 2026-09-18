@@ -999,8 +999,8 @@ fun ProfileScreen(
                             Icon(Icons.Default.PlayCircle, contentDescription = null, tint = BlinkPink)
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
-                                Text("Watch ad", fontWeight = FontWeight.Bold)
-                                Text("Watch a rewarded ad to earn coins", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Watch ad • +10 coins", fontWeight = FontWeight.Bold)
+                                Text("Finish the rewarded ad to receive 10 Blink Coins", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
