@@ -35,6 +35,18 @@ sealed class RealtimeEvent {
     data class MessageEvent(val eventType: String, val message: ChatMessage) : RealtimeEvent()
     data class ConversationEvent(val eventType: String, val conversationId: String, val lastMessage: String, val updatedAt: String) : RealtimeEvent()
     data class NotificationEvent(val eventType: String, val id: String, val userId: String, val username: String, val type: String, val title: String, val content: String) : RealtimeEvent()
+    data class ActivityEvent(
+        val eventType: String,
+        val id: String,
+        val recipientId: String,
+        val actorId: String,
+        val activityType: String,
+        val entityType: String,
+        val entityId: String,
+        val message: String,
+        val isRead: Boolean,
+        val createdAt: String
+    ) : RealtimeEvent()
     data class FeedPostEvent(val eventType: String, val postId: String) : RealtimeEvent()
     data class IncomingCallEvent(
         val eventType: String,
@@ -226,6 +238,24 @@ class SupabaseRealtimeManager private constructor() {
                 }
                 "conversations" -> publishEvent(RealtimeEvent.ConversationEvent(type, record.optString("id"), record.optString("last_message"), record.optString("updated_at", record.optString("last_message_at"))))
                 "notifications" -> publishEvent(RealtimeEvent.NotificationEvent(type, record.optString("id"), record.optString("user_id"), record.optString("username"), record.optString("type"), record.optString("title"), record.optString("content")))
+                "activities" -> {
+                    if (type.equals("INSERT", ignoreCase = true)) {
+                        publishEvent(
+                            RealtimeEvent.ActivityEvent(
+                                eventType = type,
+                                id = record.optString("id"),
+                                recipientId = record.optString("recipient_id"),
+                                actorId = record.optString("actor_id"),
+                                activityType = record.optString("activity_type"),
+                                entityType = record.optString("entity_type"),
+                                entityId = record.optString("entity_id"),
+                                message = record.optString("message"),
+                                isRead = record.optBoolean("is_read", false),
+                                createdAt = record.optString("created_at")
+                            )
+                        )
+                    }
+                }
                 "feed_posts" -> publishEvent(RealtimeEvent.FeedPostEvent(type, record.optString("id")))
                 "calls" -> {
                     val calleeId = record.optString("callee_id")
