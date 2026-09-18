@@ -2968,7 +2968,7 @@ private suspend fun restoreSupabaseSession() {
                     .onFailure { Log.w(TAG, "Conversation summary refresh failed", it) }
             }
             is RealtimeEvent.ActivityEvent -> handleIncomingRealtimeActivity(event)
-            is RealtimeEvent.NotificationEvent -> fetchSupabaseData()
+            is RealtimeEvent.NotificationEvent -> handleIncomingRealtimeNotification(event)
             is RealtimeEvent.IncomingCallEvent -> viewModelScope.launch {
                 val currentUserId = _uiState.value.myProfile.id
                 if (
@@ -3050,7 +3050,10 @@ private suspend fun restoreSupabaseSession() {
             targetType = entityType.takeIf { it.isNotBlank() }
         )
 
-        if (state.activities.none { it.id == activity.id }) {
+        val semanticKey = notificationSemanticKey(activity)
+        if (state.activities.none {
+                it.id == activity.id || notificationSemanticKey(it) == semanticKey
+            }) {
             _uiState.value = state.copy(activities = listOf(activity) + state.activities)
             persistExtendedCache()
         }
@@ -3094,6 +3097,119 @@ private suspend fun restoreSupabaseSession() {
                 senderAvatar = actorProfile?.avatarUrl.orEmpty(),
                 postId = postId,
                 marketId = marketId,
+                activity = activity
+            )
+        )
+    }
+
+    private fun notificationSemanticKey(item: ActivityItem): String = listOf(
+        item.user.trim().lowercase(),
+        item.action.trim().lowercase(),
+        item.targetPostId.orEmpty(),
+        item.targetMarketId.orEmpty(),
+        item.targetType.orEmpty().uppercase(),
+        item.rawTimestamp.trim().take(19)
+    ).joinToString("|")
+
+    private fun handleIncomingRealtimeNotification(event: RealtimeEvent.NotificationEvent) {
+        if (!event.eventType.equals("INSERT", ignoreCase = true) || event.isRead || event.id.isBlank()) return
+
+        val state = _uiState.value
+        val myId = state.myProfile.id
+        if (myId.isNotBlank() && event.userId.isNotBlank() && event.userId != myId) return
+
+        val normalizedType = event.type.trim().lowercase()
+        val action = event.text.ifBlank {
+            normalizedType.replace('_', ' ').ifBlank { "New notification" }
+        }
+        val isMessage = normalizedType == "system" &&
+            action.contains("sent you a message", ignoreCase = true)
+        val targetPostId = event.postId.takeIf { it.isNotBlank() }
+            ?: event.targetId.takeIf {
+                it.isNotBlank() && event.targetType.equals("post", ignoreCase = true)
+            }
+        val targetMarketId = event.targetId.takeIf {
+            it.isNotBlank() && event.targetType.equals("market", ignoreCase = true)
+        }
+        val targetType = when {
+            isMessage -> "CHAT"
+            normalizedType == "follow" -> "PROFILE"
+            event.targetType.isNotBlank() -> event.targetType
+            else -> "NOTIFICATION"
+        }
+        val activity = ActivityItem(
+            id = "notification:" + event.id,
+            user = event.actorId,
+            avatar = "",
+            action = action,
+            time = "Just now",
+            rawTimestamp = event.createdAt,
+            isUnread = true,
+            category = when (normalizedType) {
+                "like", "repost", "save" -> NotificationFilter.LIKES
+                "comment", "reply", "mention" -> NotificationFilter.COMMENTS
+                "market", "market_order", "order" -> NotificationFilter.MARKET
+                else -> NotificationFilter.ALL
+            },
+            targetPostId = targetPostId,
+            targetMarketId = targetMarketId,
+            targetType = targetType,
+            previewText = event.subText.takeIf { it.isNotBlank() }
+        )
+
+        val semanticKey = notificationSemanticKey(activity)
+        if (state.activities.none {
+                it.id == activity.id || notificationSemanticKey(it) == semanticKey
+            }) {
+            _uiState.value = state.copy(activities = listOf(activity) + state.activities)
+            persistExtendedCache()
+        }
+
+        // Direct messages have their own realtime + FCM pipeline. Keep the row in the
+        // Notifications page, but do not render a second foreground banner here.
+        if (isMessage) return
+
+        val notificationType = BlinkNotificationType.fromWire(normalizedType)
+        if (!NotificationPreferenceStore.isAllowed(appContext, notificationType)) return
+
+        val actorProfile = state.profiles.firstOrNull { it.id == event.actorId }
+        val actorName = actorProfile?.fullName?.takeIf { it.isNotBlank() }
+            ?: actorProfile?.username?.takeIf { it.isNotBlank() }
+            ?: ""
+        val actorUsername = actorProfile?.username.orEmpty()
+        val title = when {
+            action.startsWith("@") -> action
+            actorName.isNotBlank() && !action.contains(actorName, ignoreCase = true) -> "$actorName $action"
+            else -> action.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        }
+        val destination = when {
+            targetPostId != null -> BlinkInAppNotificationDestination.POST
+            targetMarketId != null -> BlinkInAppNotificationDestination.MARKET
+            normalizedType == "follow" || targetType.equals("profile", ignoreCase = true) ->
+                BlinkInAppNotificationDestination.PROFILE
+            else -> BlinkInAppNotificationDestination.NOTIFICATIONS
+        }
+        val targetKey = targetPostId
+            ?: targetMarketId
+            ?: event.targetId.takeIf { it.isNotBlank() }
+            ?: event.actorId.takeIf { it.isNotBlank() }
+            ?: event.id
+
+        BlinkInAppNotificationCenter.publish(
+            BlinkInAppNotification(
+                key = "social:" + normalizedType.ifBlank { "social" } + ":" +
+                    event.actorId + ":" + targetKey,
+                title = title,
+                body = event.subText.ifBlank {
+                    actorUsername.takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty()
+                },
+                destination = destination,
+                senderId = event.actorId,
+                senderUsername = actorUsername,
+                senderName = actorName,
+                senderAvatar = actorProfile?.avatarUrl.orEmpty(),
+                postId = targetPostId,
+                marketId = targetMarketId,
                 activity = activity
             )
         )
@@ -3545,6 +3661,39 @@ private suspend fun restoreSupabaseSession() {
             runCatching { supabaseService.markActivityRead(activity.id) }
         }
 
+        if (activity.targetType.equals("CHAT", ignoreCase = true)) {
+            val actorId = activity.user.trim()
+            val cached = cachedProfile(actorId)
+            if (cached != null && cached.username.isNotBlank()) {
+                setTab(MainTab.MESSAGES)
+                openChatWithUser(cached.username, cached.fullName, cached.avatarUrl)
+                return
+            }
+            if (actorId.isBlank() || !_uiState.value.isOnline) {
+                if (actorId.isBlank()) openActivity(true)
+                else showToast("This conversation isn't available offline yet.")
+                return
+            }
+            viewModelScope.launch {
+                val profile = runCatching { supabaseService.fetchProfileById(actorId) }.getOrNull()
+                if (profile != null && profile.username.isNotBlank()) {
+                    val latest = _uiState.value
+                    _uiState.value = latest.copy(
+                        profiles = listOf(profile) + latest.profiles.filterNot {
+                            it.id == profile.id || it.username.equals(profile.username, true)
+                        }
+                    )
+                    persistProfile(profile)
+                    setTab(MainTab.MESSAGES)
+                    openChatWithUser(profile.username, profile.fullName, profile.avatarUrl)
+                } else {
+                    openActivity(true)
+                    showToast("This conversation is no longer available.")
+                }
+            }
+            return
+        }
+
         activity.targetPostId?.let { postId ->
             val target = (_uiState.value.posts + _uiState.value.reels).find { it.id == postId }
             if (target != null) {
@@ -3565,7 +3714,11 @@ private suspend fun restoreSupabaseSession() {
             return
         }
 
-        openProfile(activity.user)
+        if (activity.user.isNotBlank()) {
+            openProfile(activity.user)
+        } else {
+            openActivity(true)
+        }
     }
 
     fun markAllActivitiesRead() {
