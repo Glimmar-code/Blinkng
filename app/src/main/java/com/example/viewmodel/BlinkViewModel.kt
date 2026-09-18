@@ -35,6 +35,8 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -117,7 +119,14 @@ data class BlinkUiState(
     val isLoadingMoreReels: Boolean = false,
     val messageHistoryHasMore: Map<String, Boolean> = emptyMap(),
     val loadingOlderConversationId: String? = null,
-    val loadingInitialConversationId: String? = null
+    val loadingInitialConversationId: String? = null,
+    val profilePostsByUserId: Map<String, List<FeedPost>> = emptyMap(),
+    val profilePostCountsByUserId: Map<String, Int> = emptyMap(),
+    val myLikedPosts: List<FeedPost> = emptyList(),
+    val mySavedPosts: List<FeedPost> = emptyList(),
+    val myFollowerGrowth: List<FollowerGrowthPoint> = emptyList(),
+    val profileSurfaceLoadingIds: Set<String> = emptySet(),
+    val profileSurfaceLoadedIds: Set<String> = emptySet()
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
@@ -1676,6 +1685,95 @@ private suspend fun restoreSupabaseSession() {
             it.username.equals(clean, true) ||
                 it.id.equals(clean, true) ||
                 it.fullName.equals(clean, true)
+        }
+    }
+
+    private suspend fun hydrateProfilePostIds(ids: List<String>): List<FeedPost> = coroutineScope {
+        val orderedIds = ids.distinct().take(500)
+        val output = mutableListOf<FeedPost>()
+        for (chunk in orderedIds.chunked(8)) {
+            output += chunk.map { postId ->
+                async(Dispatchers.IO) {
+                    runCatching { postRepository.fetchPostById(postId) }.getOrNull()
+                }
+            }.awaitAll().filterNotNull()
+        }
+        output
+    }
+
+    fun loadProfileSurfaceData(
+        profile: UserProfile,
+        isMe: Boolean,
+        force: Boolean = false
+    ) {
+        val profileKey = profile.id.takeIf { it.isNotBlank() }
+            ?: profile.username.trim().removePrefix("@").lowercase()
+        if (profileKey.isBlank() || !_uiState.value.isOnline) return
+
+        val current = _uiState.value
+        if (profileKey in current.profileSurfaceLoadingIds) return
+        if (!force && profileKey in current.profileSurfaceLoadedIds) return
+
+        _uiState.value = current.copy(
+            profileSurfaceLoadingIds = current.profileSurfaceLoadingIds + profileKey
+        )
+
+        viewModelScope.launch {
+            try {
+                val resolvedProfile = if (profile.id.isNotBlank()) {
+                    profile
+                } else {
+                    profileRepository.fetchByUsername(profile.username) ?: profile
+                }
+                val resolvedId = resolvedProfile.id
+                if (resolvedId.isBlank()) return@launch
+
+                val postMetaDeferred = async {
+                    supabaseService.fetchProfilePostIdsAndCount(resolvedId)
+                }
+                val likedIdsDeferred = if (isMe) async {
+                    supabaseService.fetchMyLikedPostIds()
+                } else null
+                val savedIdsDeferred = if (isMe) async {
+                    supabaseService.fetchMySavedPostIds()
+                } else null
+                val growthDeferred = if (isMe) async {
+                    supabaseService.fetchMyFollowerGrowth(30)
+                } else null
+
+                val (postIds, totalPostCount) = postMetaDeferred.await()
+                val posts = hydrateProfilePostIds(postIds)
+
+                val likedPosts = if (isMe) {
+                    hydrateProfilePostIds(likedIdsDeferred?.await().orEmpty())
+                } else {
+                    emptyList()
+                }
+                val savedPosts = if (isMe) {
+                    hydrateProfilePostIds(savedIdsDeferred?.await().orEmpty())
+                } else {
+                    emptyList()
+                }
+                val growth = growthDeferred?.await().orEmpty()
+
+                val latest = _uiState.value
+                val canonicalKey = resolvedProfile.id.ifBlank { profileKey }
+                _uiState.value = latest.copy(
+                    profilePostsByUserId = latest.profilePostsByUserId + (canonicalKey to posts),
+                    profilePostCountsByUserId = latest.profilePostCountsByUserId + (canonicalKey to totalPostCount),
+                    myLikedPosts = if (isMe) likedPosts else latest.myLikedPosts,
+                    mySavedPosts = if (isMe) savedPosts else latest.mySavedPosts,
+                    myFollowerGrowth = if (isMe) growth else latest.myFollowerGrowth,
+                    profileSurfaceLoadedIds = latest.profileSurfaceLoadedIds + canonicalKey + profileKey
+                )
+            } catch (error: Exception) {
+                Log.w(TAG, "PROFILE_SURFACE_LOAD failed for ${profile.username}", error)
+            } finally {
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    profileSurfaceLoadingIds = latest.profileSurfaceLoadingIds - profileKey
+                )
+            }
         }
     }
 
