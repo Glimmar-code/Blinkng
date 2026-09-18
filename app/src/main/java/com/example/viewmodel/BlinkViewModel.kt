@@ -1759,8 +1759,10 @@ private suspend fun restoreSupabaseSession() {
                 val latest = _uiState.value
                 val canonicalKey = resolvedProfile.id.ifBlank { profileKey }
                 _uiState.value = latest.copy(
-                    profilePostsByUserId = latest.profilePostsByUserId + (canonicalKey to posts),
-                    profilePostCountsByUserId = latest.profilePostCountsByUserId + (canonicalKey to totalPostCount),
+                    profilePostsByUserId = latest.profilePostsByUserId +
+                        mapOf(canonicalKey to posts, profileKey to posts),
+                    profilePostCountsByUserId = latest.profilePostCountsByUserId +
+                        mapOf(canonicalKey to totalPostCount, profileKey to totalPostCount),
                     myLikedPosts = if (isMe) likedPosts else latest.myLikedPosts,
                     mySavedPosts = if (isMe) savedPosts else latest.mySavedPosts,
                     myFollowerGrowth = if (isMe) growth else latest.myFollowerGrowth,
