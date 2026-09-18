@@ -1,4 +1,4 @@
-const CACHE='blink-web-v9-blink-domain';
+const CACHE='blink-web-v10-logo-display-fix';
 const SHELL=[
   './',
   './index.html',
@@ -10,6 +10,7 @@ const SHELL=[
   './parity.js',
   './blink-icon.svg',
   './blink-logo.png',
+  './blink-logo-v2.png',
   './manifest.webmanifest'
 ];
 
