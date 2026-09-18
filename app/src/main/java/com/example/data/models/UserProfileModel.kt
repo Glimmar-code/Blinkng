@@ -39,6 +39,11 @@ data class AchievementBadge(
     val iconName: String = "trophy"
 )
 
+data class FollowerGrowthPoint(
+    val date: String,
+    val followerCount: Int
+)
+
 data class UserProfile(
     var id: String = "",
     var fullName: String = "",
@@ -76,6 +81,7 @@ data class UserProfile(
     var worldRank: Int = 0,
     var campusRank: Int = 0,
     var onlineNow: Boolean = false,
+    var showOnlineStatus: Boolean = true,
     var relationshipStatus: String = "Single",
     var lastSeenAt: String = "",
     var verifiedAtMillis: Long = 0L,
