@@ -33,7 +33,7 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
         val uid = SupabaseService().getCurrentUserId() ?: return Result.success()
 
         return try {
-            recoverUnreadMessages(token)
+            recoverUnreadMessages(token, uid)
             recoverSocialNotifications(token, uid)
             Result.success()
         } catch (_: UnauthorizedException) {
@@ -43,7 +43,7 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
         }
     }
 
-    private fun recoverUnreadMessages(token: String) {
+    private fun recoverUnreadMessages(token: String, uid: String) {
         if (!NotificationPreferenceStore.isAllowed(applicationContext, BlinkNotificationType.MESSAGE)) return
 
         val endpoint = "${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/get_my_unread_message_notifications"
@@ -61,6 +61,26 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
             if (!response.isSuccessful) error("Unread message recovery failed (${response.code})")
 
             val rows = JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
+            val syncPrefs = applicationContext.getSharedPreferences(
+                "blink_notification_sync",
+                Context.MODE_PRIVATE
+            )
+            val initializedKey = "message_recovery_initialized_$uid"
+
+            // On a fresh install/cleared app data, the local delivery ledger is empty while
+            // Supabase can still contain months of unread history. Baseline those rows instead
+            // of replaying stale heads-up alerts after sign-in. They remain unread in chat.
+            if (!syncPrefs.getBoolean(initializedKey, false)) {
+                for (index in 0 until rows.length()) {
+                    val messageId = rows.optJSONObject(index)?.optString("message_id").orEmpty()
+                    if (messageId.isNotBlank()) {
+                        MessageNotificationLedger.claim(applicationContext, messageId)
+                    }
+                }
+                syncPrefs.edit().putBoolean(initializedKey, true).apply()
+                return
+            }
+
             // Avoid a wall of alerts after a long offline period: show the newest unread
             // message per conversation. The unread count/history remains visible in the app.
             val newestByConversation = linkedMapOf<String, JSONObject>()
@@ -105,6 +125,23 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
             val rows = JSONArray(response.body?.string().orEmpty().ifBlank { "[]" })
             var newest = lastSeen
             val candidates = mutableListOf<JSONObject>()
+
+            // A missing cursor means this install has no reliable proof that historical
+            // unread rows were never shown on another install. Establish a baseline without
+            // replaying them as fresh alerts; the Notifications page still shows the rows.
+            if (lastSeen.isBlank()) {
+                for (index in 0 until rows.length()) {
+                    val row = rows.optJSONObject(index) ?: continue
+                    val created = row.optString("created_at")
+                    if (created.isNotBlank() && (newest.isBlank() || created > newest)) newest = created
+                    val notificationId = row.optString("id")
+                    if (notificationId.isNotBlank()) {
+                        SocialNotificationRecovery.markShown(applicationContext, uid, notificationId)
+                    }
+                }
+                prefs.edit().putString(cursorKey, newest).apply()
+                return
+            }
 
             for (index in 0 until rows.length()) {
                 val row = rows.optJSONObject(index) ?: continue
