@@ -178,7 +178,12 @@
       <nav class="mobile-nav">${mobileItem('/feed','home','Home')}${mobileItem('/reels','reels','Reels')}${mobileItem('/search','search','Search')}${mobileItem('/messages','messages','Messages')}${mobileItem('/activity','activity','Activity')}</nav>
     </div>`;
   }
-  function rightRail(){ return `<div class="side-card"><h3>Blink Web</h3><p class="muted small">Your web session uses the same Blink account and Supabase backend as Android.</p><a class="btn primary download-app" href="https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk">↓ Download Android app</a><button class="btn" data-action="open-app">Open installed app</button></div><div class="side-card"><h3>Quick links</h3><div class="quick-list"><button class="nav-btn" data-nav="/market">▣ Marketplace</button><button class="nav-btn" data-nav="/connect">◎ Connect Hub</button><button class="nav-btn" data-nav="/games">◇ Games</button><button class="nav-btn" data-nav="/scheduled">◷ Scheduled posts</button><button class="nav-btn" data-nav="/ai">✦ Blink AI</button></div></div>`; }
+  function rightRail(){
+    const profileButton=state.profile?.username
+      ? `<button class="btn" data-action="open-app">Open my profile in app</button>`
+      : '';
+    return `<div class="side-card"><h3>Blink Web</h3><p class="muted small">Your web session uses the same Blink account and Supabase backend as Android.</p><a class="btn primary download-app" href="${APK_URL}">↓ Download Android app</a>${profileButton}</div><div class="side-card"><h3>Quick links</h3><div class="quick-list"><button class="nav-btn" data-nav="/market">▣ Marketplace</button><button class="nav-btn" data-nav="/connect">◎ Connect Hub</button><button class="nav-btn" data-nav="/games">◇ Games</button><button class="nav-btn" data-nav="/scheduled">◷ Scheduled posts</button><button class="nav-btn" data-nav="/ai">✦ Blink AI</button></div></div>`;
+  }
   function requireAuth(){ if(isAuthed())return true; navigate('/login'); return false; }
 
   function bindCommon(){
@@ -188,9 +193,21 @@
     document.querySelectorAll('[data-action="create-post"]').forEach(el=>el.onclick=()=>requireAuth()&&openPostComposer());
   }
 
-  function openAndroid(type,id){ const clean=String(id||'').replace(/^@/,''); if(!clean){toast('Open a profile, post or reel first.');return;} const pkg=C.androidPackage||'com.aistudio.blink.appvtwo'; const fallback=encodeURIComponent(C.playStoreUrl||''); location.href=`intent://${type}/${encodeURIComponent(clean)}#Intent;scheme=blink;package=${pkg};S.browser_fallback_url=${fallback};end`; }
+  function openAndroid(type,id){
+    const clean=String(id||'').trim().replace(/^@/,'');
+    if(!clean){ location.href=APK_URL; return; }
+    const pkg=C.androidPackage||'com.aistudio.blink.appvtwo';
+    const fallback=encodeURIComponent(APK_URL);
+    location.href=`intent://${encodeURIComponent(type)}/${encodeURIComponent(clean)}#Intent;scheme=blink;package=${pkg};S.browser_fallback_url=${fallback};end`;
+  }
   function closeModal(){ MODALS.innerHTML=''; }
-  function modal(title,body,footer=''){ MODALS.innerHTML=`<div class="modal-backdrop" data-close-modal><div class="modal-card" onclick="event.stopPropagation()"><div class="modal-head"><h2>${esc(title)}</h2><button class="icon-btn" data-close-modal>×</button></div>${body}${footer}</div></div>`; document.querySelectorAll('[data-close-modal]').forEach(x=>x.onclick=closeModal); }
+  function modal(title,body,footer=''){
+    MODALS.innerHTML=`<div class="modal-backdrop"><div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="blink-modal-title"><div class="modal-head"><h2 id="blink-modal-title">${esc(title)}</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">×</button></div>${body}${footer}</div></div>`;
+    const backdrop=MODALS.querySelector('.modal-backdrop');
+    backdrop?.addEventListener('click',e=>{if(e.target===backdrop)closeModal();});
+    MODALS.querySelectorAll('[data-close-modal]').forEach(x=>x.onclick=closeModal);
+    MODALS.querySelector('input,textarea,select,button')?.focus({preventScroll:true});
+  }
 
   async function logout(){ try{ if(token())await api('/auth/v1/logout',{method:'POST'}); }catch{} clearSession(); toast('Signed out'); navigate('/'); }
 
@@ -225,33 +242,205 @@
   }
 
   async function uploadPublicFile(bucket,file,prefix='web'){
-    if(!uid())throw new Error('Sign in first.'); const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_'); const path=`${uid()}/${prefix}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeName}`;
-    const res=await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`,{method:'POST',headers:{apikey:KEY,Authorization:`Bearer ${token()}`,'Content-Type':file.type||'application/octet-stream','x-upsert':'false'},body:file}); if(!res.ok){const e=await parseJsonSafe(res);throw new Error(e?.message||`Upload failed (${res.status})`);} return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+    if(!uid())throw new Error('Sign in first.');
+    if(!file)throw new Error('Choose a file first.');
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(-120)||'upload';
+    const objectPath=`${uid()}/${prefix}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeName}`;
+    const res=await fetchWithTimeout(`${SUPABASE_URL}/storage/v1/object/${bucket}/${objectPath}`,{
+      method:'POST',
+      headers:{apikey:KEY,Authorization:`Bearer ${token()}`,'Content-Type':file.type||'application/octet-stream','x-upsert':'false'},
+      body:file
+    },120000);
+    if(!res.ok){const e=await parseJsonSafe(res);throw new Error(e?.message||`Upload failed (${res.status})`);}
+    return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${objectPath}`;
+  }
+
+  function validateMediaFile(file,{allowVideo=true,imageMaxMb=15,videoMaxMb=100}={}){
+    if(!file)return null;
+    const type=String(file.type||'').toLowerCase();
+    const isImage=type.startsWith('image/');
+    const isVideo=type.startsWith('video/');
+    if(!isImage&&!(allowVideo&&isVideo))throw new Error(allowVideo?'Choose a valid image or video file.':'Choose a valid image file.');
+    const maxBytes=(isVideo?videoMaxMb:imageMaxMb)*1024*1024;
+    if(file.size>maxBytes)throw new Error(`${isVideo?'Video':'Image'} is too large. Maximum size is ${isVideo?videoMaxMb:imageMaxMb} MB.`);
+    return {isImage,isVideo};
   }
 
   function openPostComposer(){
-    const draft=localStorage.getItem(DRAFT_KEY)||'';
-    modal('Create post',`<form id="post-form" class="form-stack"><textarea class="field" name="text" maxlength="8000" placeholder="What's happening on campus?">${esc(draft)}</textarea><div class="form-grid"><select class="field" name="audience"><option>Everyone</option><option>Followers</option></select><select class="field" name="category"><option>Campus Life</option><option>Education</option><option>Entertainment</option><option>Marketplace</option><option>Sports</option><option>Technology</option></select></div><input class="field" name="tags" placeholder="Tags, comma separated"><input class="field" name="location" placeholder="Location (optional)"><label class="checkbox"><input type="checkbox" name="reel"> Publish as Reel</label><label class="btn" style="text-align:center">Attach image/video<input class="hidden" id="post-media-file" type="file" accept="image/*,video/*"></label><div id="media-name" class="muted small"></div><button class="btn primary">Publish</button><div id="post-msg"></div></form>`);
-    const form=document.getElementById('post-form'),file=document.getElementById('post-media-file'); form.elements.text.oninput=e=>localStorage.setItem(DRAFT_KEY,e.target.value); file.onchange=()=>document.getElementById('media-name').textContent=file.files[0]?.name||'';
-    form.onsubmit=async e=>{e.preventDefault();const f=new FormData(form),msg=document.getElementById('post-msg'),media=file.files[0];msg.innerHTML='<span class="muted">Publishing…</span>';try{let mediaUrl='',videoUrl='',images=[];if(media){mediaUrl=await uploadPublicFile('post-media',media,'posts');if(media.type.startsWith('video/'))videoUrl=mediaUrl;else images=[mediaUrl];}const text=String(f.get('text')||'').trim();if(!text&&!media)throw new Error('Add text or media.');const body={user_id:uid(),text,caption:text,type:videoUrl?'video':images.length?'image':'text',is_reel:f.get('reel')==='on'||!!videoUrl,audience:f.get('audience')||'Everyone',category:f.get('category')||'Campus Life',location:String(f.get('location')||'').trim()||null,tags:String(f.get('tags')||'').split(',').map(x=>x.trim()).filter(Boolean),images,image_url:images[0]||null,video_url:videoUrl||null};const rows=await insert('feed_posts',body);localStorage.removeItem(DRAFT_KEY);closeModal();toast('Published');if(rows?.[0]?.id)navigate(`/${body.is_reel?'reel':'post'}/${rows[0].id}`);else render('/feed');}catch(err){msg.innerHTML=`<div class="error">${esc(err.message)}</div>`;}};
+    const draft=storageGet(draftKey(),'');
+    modal('Create post',`<form id="post-form" class="form-stack"><textarea class="field" name="text" maxlength="8000" placeholder="What's happening on campus?">${esc(draft)}</textarea><div class="form-grid"><select class="field" name="audience"><option>Everyone</option><option>Followers</option></select><select class="field" name="category"><option>Campus Life</option><option>Education</option><option>Entertainment</option><option>Marketplace</option><option>Sports</option><option>Technology</option></select></div><input class="field" name="tags" maxlength="500" placeholder="Tags, comma separated"><input class="field" name="location" maxlength="160" placeholder="Location (optional)"><label class="checkbox"><input type="checkbox" name="reel"> Publish as Reel</label><label class="btn" style="text-align:center">Attach image/video<input class="hidden" id="post-media-file" type="file" accept="image/*,video/*"></label><div id="media-name" class="muted small"></div><button type="submit" class="btn primary">Publish</button><div id="post-msg"></div></form>`);
+    const form=document.getElementById('post-form');
+    const file=document.getElementById('post-media-file');
+    const mediaName=document.getElementById('media-name');
+    const submit=form.querySelector('button[type="submit"]');
+    form.elements.text.oninput=e=>storageSet(draftKey(),e.target.value);
+    file.onchange=()=>{
+      try{
+        const media=file.files[0];
+        if(media)validateMediaFile(media);
+        mediaName.textContent=media?.name||'';
+      }catch(err){
+        file.value='';
+        mediaName.textContent=err.message;
+      }
+    };
+    form.onsubmit=async e=>{
+      e.preventDefault();
+      const f=new FormData(form),msg=document.getElementById('post-msg'),media=file.files[0];
+      submit.disabled=true;
+      msg.innerHTML='<span class="muted">Publishing…</span>';
+      try{
+        let mediaUrl='',videoUrl='',images=[];
+        if(media){
+          const kind=validateMediaFile(media);
+          mediaUrl=await uploadPublicFile('post-media',media,'posts');
+          if(kind.isVideo)videoUrl=mediaUrl;else images=[mediaUrl];
+        }
+        const text=String(f.get('text')||'').trim();
+        if(!text&&!media)throw new Error('Add text or media.');
+        const body={
+          user_id:uid(),text,caption:text,type:videoUrl?'video':images.length?'image':'text',
+          is_reel:f.get('reel')==='on'||!!videoUrl,
+          audience:f.get('audience')||'Everyone',category:f.get('category')||'Campus Life',
+          location:String(f.get('location')||'').trim()||null,
+          tags:String(f.get('tags')||'').split(',').map(x=>x.trim()).filter(Boolean).slice(0,20),
+          images,image_url:images[0]||null,video_url:videoUrl||null
+        };
+        const rows=await insert('feed_posts',body);
+        storageRemove(draftKey());
+        closeModal();
+        toast('Published');
+        if(rows?.[0]?.id)navigate(`/${body.is_reel?'reel':'post'}/${rows[0].id}`);else render('/feed');
+      }catch(err){
+        msg.innerHTML=`<div class="error">${esc(err.message)}</div>`;
+        submit.disabled=false;
+      }
+    };
   }
 
   async function createStory(){
-    modal('Add story',`<form id="story-form" class="form-stack"><textarea class="field" name="text" placeholder="Story caption"></textarea><label class="btn" style="text-align:center">Choose image/video<input id="story-file" class="hidden" type="file" accept="image/*,video/*" required></label><div id="story-file-name" class="muted small"></div><button class="btn primary">Share story</button><div id="story-msg"></div></form>`); const file=document.getElementById('story-file');file.onchange=()=>document.getElementById('story-file-name').textContent=file.files[0]?.name||'';document.getElementById('story-form').onsubmit=async e=>{e.preventDefault();const media=file.files[0],msg=document.getElementById('story-msg');if(!media)return;msg.innerHTML='<span class="muted">Uploading…</span>';try{const url=await uploadPublicFile('story-media',media,'stories');const video=media.type.startsWith('video/');await insert('stories',{user_id:uid(),active:true,media_url:url,media_type:video?'video':'image',caption:new FormData(e.currentTarget).get('text')||'',text:new FormData(e.currentTarget).get('text')||'',image_url:video?null:url,video_url:video?url:null});closeModal();toast('Story shared');render('/feed');}catch(err){msg.innerHTML=`<div class="error">${esc(err.message)}</div>`;}}; };
+    modal('Add story',`<form id="story-form" class="form-stack"><textarea class="field" name="text" maxlength="1000" placeholder="Story caption"></textarea><label class="btn" style="text-align:center">Choose image/video<input id="story-file" class="hidden" type="file" accept="image/*,video/*" required></label><div id="story-file-name" class="muted small"></div><button type="submit" class="btn primary">Share story</button><div id="story-msg"></div></form>`);
+    const file=document.getElementById('story-file');
+    const form=document.getElementById('story-form');
+    const label=document.getElementById('story-file-name');
+    const submit=form.querySelector('button[type="submit"]');
+    file.onchange=()=>{
+      try{const media=file.files[0];if(media)validateMediaFile(media,{imageMaxMb:12,videoMaxMb:80});label.textContent=media?.name||'';}
+      catch(err){file.value='';label.textContent=err.message;}
+    };
+    form.onsubmit=async e=>{
+      e.preventDefault();
+      const media=file.files[0],msg=document.getElementById('story-msg');
+      if(!media){msg.innerHTML='<div class="error">Choose an image or video.</div>';return;}
+      submit.disabled=true;
+      msg.innerHTML='<span class="muted">Uploading…</span>';
+      try{
+        const kind=validateMediaFile(media,{imageMaxMb:12,videoMaxMb:80});
+        const url=await uploadPublicFile('story-media',media,'stories');
+        const caption=String(new FormData(form).get('text')||'').trim();
+        await insert('stories',{user_id:uid(),active:true,media_url:url,media_type:kind.isVideo?'video':'image',caption,text:caption,image_url:kind.isVideo?null:url,video_url:kind.isVideo?url:null});
+        closeModal();toast('Story shared');render('/feed');
+      }catch(err){msg.innerHTML=`<div class="error">${esc(err.message)}</div>`;submit.disabled=false;}
+    };
+  };
 
   async function fetchProfiles(ids){ const unique=[...new Set(ids.filter(Boolean))];if(!unique.length)return new Map(); const rows=await table('profiles',`id=in.(${unique.map(encodeQ).join(',')})&select=id,username,full_name,avatar_url,is_verified,verification_badge,blink_vip_until,university,faculty`);return new Map((rows||[]).map(p=>[p.id,p])); }
   function normalizeFeedItem(row,profiles){ const x=row?.item||row; const p=profiles.get(x.user_id)||{}; return {...x,author:p}; }
   function mediaBlock(post){ const imgs=(post.images?.length?post.images:[post.image_url]).filter(Boolean).map(safeUrl).filter(Boolean);const video=safeUrl(post.video_url);if(video)return `<div class="post-media"><video src="${esc(video)}" controls playsinline preload="metadata" data-autopause></video></div>`;if(imgs.length===1)return `<div class="post-media"><img src="${esc(imgs[0])}" alt="${esc(post.alt_text||'Post image')}" loading="lazy"></div>`;if(imgs.length>1)return `<div class="post-media media-grid">${imgs.slice(0,4).map(u=>`<img src="${esc(u)}" alt="" loading="lazy">`).join('')}</div>`;return ''; }
   function postCard(post){ const a=post.author||{};const isReel=!!post.is_reel;const path=`/${isReel?'reel':'post'}/${post.id}`;return `<article class="card post-card" data-post-id="${esc(post.id)}"><header class="post-head"><button class="profile-mini" style="border:0;background:transparent;padding:0" data-nav="/@${esc(a.username||post.user_id)}">${avatar(a.avatar_url,a.full_name||a.username)}<span class="grow"><strong>${esc(a.full_name||a.username||'Blink user')}${verifyMark(a)}${vipMark(a)}</strong><span class="handle">@${esc(a.username||'user')} · ${esc(ago(post.created_at))}</span></span></button>${post.is_sponsored?'<span class="handle">Sponsored</span>':''}<button class="icon-btn" data-open="${esc(path)}">⋯</button></header><div class="post-body">${post.text||post.caption?`<p class="post-text">${esc(post.text||post.caption)}</p>`:''}${Array.isArray(post.tags)&&post.tags.length?`<div class="tags">${post.tags.slice(0,10).map(t=>`#${esc(t)}`).join(' ')}</div>`:''}</div>${mediaBlock(post)}<div class="post-stats"><span>${fmt(post.like_count)} likes</span><span>${fmt(post.comment_count)} comments</span><span>${fmt(post.repost_count)} reposts</span><span>${fmt(post.view_count)} views</span></div><div class="post-actions"><button data-like="${esc(post.id)}" class="like">♡ Like</button><button data-comments="${esc(post.id)}">◌ Comment</button><button data-repost="${esc(post.id)}">↻ Repost</button><button data-bookmark="${esc(post.id)}" class="bookmark">⌑ Save</button><button data-share="${esc(path)}">↗ Share</button></div></article>`; }
   function bindPostCards(){
-    document.querySelectorAll('[data-open]').forEach(x=>x.onclick=()=>navigate(x.dataset.open)); document.querySelectorAll('[data-like]').forEach(x=>x.onclick=async()=>{if(!requireAuth())return;try{const on=x.classList.toggle('on');await rpc(on?'like_post':'unlike_post',{p_post_id:x.dataset.like});toast(on?'Liked':'Like removed');}catch(e){x.classList.toggle('on');toast(e.message);}}); document.querySelectorAll('[data-bookmark]').forEach(x=>x.onclick=async()=>{if(!requireAuth())return;try{const on=x.classList.toggle('on');await rpc(on?'bookmark_post':'unbookmark_post',{p_post_id:x.dataset.bookmark});toast(on?'Saved':'Removed from saved');}catch(e){x.classList.toggle('on');toast(e.message);}}); document.querySelectorAll('[data-repost]').forEach(x=>x.onclick=async()=>{if(!requireAuth())return;try{await rpc('toggle_post_repost',{p_post_id:x.dataset.repost});x.classList.toggle('on');toast('Repost updated');}catch(e){toast(e.message);}}); document.querySelectorAll('[data-comments]').forEach(x=>x.onclick=()=>openComments(x.dataset.comments)); document.querySelectorAll('[data-share]').forEach(x=>x.onclick=()=>sharePath(x.dataset.share)); document.querySelectorAll('[data-nav]').forEach(x=>x.onclick=e=>{e.preventDefault();navigate(x.dataset.nav);});
-    document.querySelectorAll('[data-post-id]').forEach(el=>scheduleQualifiedView(el.dataset.postId)); autoPauseVideos();
+    document.querySelectorAll('[data-open]').forEach(x=>x.onclick=()=>navigate(x.dataset.open));
+    document.querySelectorAll('[data-like]').forEach(x=>x.onclick=async()=>{if(!requireAuth())return;try{const on=x.classList.toggle('on');await rpc(on?'like_post':'unlike_post',{p_post_id:x.dataset.like});toast(on?'Liked':'Like removed');}catch(e){x.classList.toggle('on');toast(e.message);}});
+    document.querySelectorAll('[data-bookmark]').forEach(x=>x.onclick=async()=>{if(!requireAuth())return;try{const on=x.classList.toggle('on');await rpc(on?'bookmark_post':'unbookmark_post',{p_post_id:x.dataset.bookmark});toast(on?'Saved':'Removed from saved');}catch(e){x.classList.toggle('on');toast(e.message);}});
+    document.querySelectorAll('[data-repost]').forEach(x=>x.onclick=async()=>{if(!requireAuth())return;try{await rpc('toggle_post_repost',{p_post_id:x.dataset.repost});x.classList.toggle('on');toast('Repost updated');}catch(e){toast(e.message);}});
+    document.querySelectorAll('[data-comments]').forEach(x=>x.onclick=()=>openComments(x.dataset.comments));
+    document.querySelectorAll('[data-share]').forEach(x=>x.onclick=()=>sharePath(x.dataset.share));
+    document.querySelectorAll('[data-nav]').forEach(x=>x.onclick=e=>{e.preventDefault();navigate(x.dataset.nav);});
+    bindQualifiedViews();
+    autoPauseVideos();
   }
-  function autoPauseVideos(){ const vids=[...document.querySelectorAll('video[data-autopause]')]; if(!('IntersectionObserver'in window))return; const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.intersectionRatio<.35)e.target.pause();}),{threshold:[0,.35,.7]});vids.forEach(v=>io.observe(v)); }
-  async function sharePath(path){ const url=location.origin+routeHref(path); try{if(navigator.share)await navigator.share({title:'Blink',url});else{await navigator.clipboard.writeText(url);toast('Link copied');}}catch{} }
-  function getVisitorId(){let id=localStorage.getItem(VISITOR_KEY);if(!id){id=crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`;localStorage.setItem(VISITOR_KEY,id);}return id;}
-  async function hashVisitor(){ const bytes=new TextEncoder().encode(getVisitorId());const hash=await crypto.subtle.digest('SHA-256',bytes);return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
-  function scheduleQualifiedView(postId){ if(state.qualifiedTimers.has(postId))return; const t=setTimeout(async()=>{try{if(isAuthed())await rpc('record_qualified_post_view',{p_post_id:postId,p_viewer_username:state.profile?.username||'',p_viewed_for_seconds:30});else await anonRpc('record_public_web_view',{p_post_id:postId,p_visitor_hash:await hashVisitor()});}catch{}finally{state.qualifiedTimers.delete(postId);}},30000);state.qualifiedTimers.set(postId,t); }
+  function autoPauseVideos(){
+    const vids=[...document.querySelectorAll('video[data-autopause]')];
+    state.mediaObserver?.disconnect();
+    state.mediaObserver=null;
+    if(!('IntersectionObserver'in window))return;
+    state.mediaObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.intersectionRatio<.35)entry.target.pause();}),{threshold:[0,.35,.7]});
+    vids.forEach(v=>state.mediaObserver.observe(v));
+  }
+  async function sharePath(path){
+    const url=location.origin+routeHref(path);
+    if(navigator.share){
+      try{await navigator.share({title:'Blink',url});return;}
+      catch(err){if(err?.name==='AbortError')return;}
+    }
+    try{
+      if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(url);}
+      else{
+        const area=document.createElement('textarea');area.value=url;area.style.position='fixed';area.style.opacity='0';document.body.appendChild(area);area.select();
+        if(!document.execCommand('copy'))throw new Error('copy failed');
+        area.remove();
+      }
+      toast('Link copied');
+    }catch{toast('Could not copy the link.');}
+  }
+  function getVisitorId(){
+    let id=storageGet(VISITOR_KEY,'');
+    if(!id){
+      id=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      storageSet(VISITOR_KEY,id);
+    }
+    return id;
+  }
+  async function hashVisitor(){
+    const value=getVisitorId();
+    if(globalThis.crypto?.subtle){
+      const bytes=new TextEncoder().encode(value);
+      const hash=await crypto.subtle.digest('SHA-256',bytes);
+      return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join('');
+    }
+    let h=2166136261;
+    for(let i=0;i<value.length;i++){h^=value.charCodeAt(i);h=Math.imul(h,16777619);}
+    return `fallback-${(h>>>0).toString(16).padStart(8,'0')}`;
+  }
+  function scheduleQualifiedView(postId,element){
+    if(!postId||element?.dataset.viewRecorded==='1'||state.qualifiedTimers.has(postId)||document.visibilityState!=='visible')return;
+    const timer=setTimeout(async()=>{
+      let recorded=false;
+      try{
+        if(isAuthed())await rpc('record_qualified_post_view',{p_post_id:postId,p_viewer_username:state.profile?.username||'',p_viewed_for_seconds:30});
+        else await anonRpc('record_public_web_view',{p_post_id:postId,p_visitor_hash:await hashVisitor()});
+        recorded=true;
+      }catch{}
+      finally{
+        state.qualifiedTimers.delete(postId);
+        if(recorded&&element)element.dataset.viewRecorded='1';
+      }
+    },30000);
+    state.qualifiedTimers.set(postId,timer);
+  }
+
+  function cancelQualifiedView(postId){
+    const timer=state.qualifiedTimers.get(postId);
+    if(timer)clearTimeout(timer);
+    state.qualifiedTimers.delete(postId);
+  }
+
+  function bindQualifiedViews(){
+    if(!('IntersectionObserver'in window))return;
+    if(!state.viewObserver){
+      state.viewObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{
+        const el=entry.target,postId=el.dataset.postId;
+        if(!postId)return;
+        if(entry.isIntersecting&&entry.intersectionRatio>=.6)scheduleQualifiedView(postId,el);
+        else cancelQualifiedView(postId);
+      }),{threshold:[0,.6,1]});
+    }
+    document.querySelectorAll('[data-post-id]').forEach(el=>{
+      if(el.dataset.viewTracked==='1'||el.dataset.viewRecorded==='1')return;
+      el.dataset.viewTracked='1';
+      state.viewObserver.observe(el);
+    });
+  }
 
   async function loadStories(){ if(!isAuthed())return []; try{const rows=await table('stories','active=eq.true&select=id,user_id,media_url,media_type,caption,text,image_url,video_url,created_at,likes_count,views_count&order=created_at.desc&limit=40'); const profiles=await fetchProfiles(rows.map(x=>x.user_id)); return rows.map(s=>({...s,author:profiles.get(s.user_id)||{}}));}catch{return [];} }
   function storyStrip(stories){return `<div class="stories"><button class="story-ring" data-create-story><div class="avatar-sm avatar-fallback" style="width:58px;height:58px">＋</div><strong>Your story</strong></button>${stories.map(s=>`<button class="story-ring" data-story="${esc(s.id)}">${avatar(s.author.avatar_url,s.author.full_name,'avatar-sm')}<strong>${esc(s.author.username||'story')}</strong></button>`).join('')}</div>`;}
@@ -260,13 +449,47 @@
 
   async function renderFeed(path='/feed'){
     if(!requireAuth())return; state.loading=true; ROOT.innerHTML=shell('<div class="boot" style="min-height:55vh"><div><div class="spinner"></div><p class="muted">Loading your Blink feed…</p></div></div>','Home');bindCommon();
-    try{const stories=await loadStories();const mode=new URLSearchParams(location.search).get('mode')||'posts';state.feedMode=['posts','reels','all'].includes(mode)?mode:'posts';const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:0,p_as_of:null,p_feed_type:state.feedMode});state.feedOffset=rows?.[0]?.next_offset||rows?.length||0;state.feedAsOf=rows?.[0]?.as_of||null;const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));state.feed=(rows||[]).map(r=>normalizeFeedItem(r,profiles));const content=`${storyStrip(stories)}<div class="tabs"><button class="tab ${state.feedMode==='posts'?'active':''}" data-feed-mode="posts">For you</button><button class="tab" data-following>Following</button><button class="tab ${state.feedMode==='all'?'active':''}" data-feed-mode="all">Mixed</button></div><section class="card composer"><div class="composer-row">${avatar(state.profile?.avatar_url,state.profile?.full_name)}<textarea id="quick-draft" placeholder="Create a post…">${esc(localStorage.getItem(DRAFT_KEY)||'')}</textarea></div><div class="composer-tools"><div class="left"><button class="btn small-btn" data-action="create-story">Story</button><button class="btn small-btn" data-action="create-post">Photo / video</button></div><button class="btn primary small-btn" data-action="quick-publish">Post</button></div></section><div class="feed" id="feed-list">${state.feed.length?state.feed.map(postCard).join(''):'<div class="card empty"><h2>No posts yet</h2><p>Your ranked feed is empty right now.</p></div>'}</div><div class="load-more"><button class="btn" id="load-more-feed">Load more</button></div>`;ROOT.innerHTML=shell(content,'Home');bindCommon();bindStories(stories);bindPostCards();document.querySelectorAll('[data-feed-mode]').forEach(x=>x.onclick=()=>{const u=new URL(location.href);u.searchParams.set('mode',x.dataset.feedMode);history.replaceState({},'',u);renderFeed();});document.querySelector('[data-following]').onclick=renderFollowing;document.querySelector('[data-action="create-story"]').onclick=()=>createStory();const q=document.getElementById('quick-draft');q.oninput=()=>localStorage.setItem(DRAFT_KEY,q.value);document.querySelector('[data-action="quick-publish"]').onclick=()=>{if(q.value.trim())openPostComposer();else toast('Type something first.');};document.getElementById('load-more-feed').onclick=loadMoreFeed;}catch(e){ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load feed</h2><p>${esc(e.message)}</p><button class="btn" data-nav="/feed">Try again</button></div>`,'Home');bindCommon();}
+    try{const stories=await loadStories();const mode=new URLSearchParams(location.search).get('mode')||'posts';state.feedMode=['posts','reels','all'].includes(mode)?mode:'posts';const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:0,p_as_of:null,p_feed_type:state.feedMode});state.feedOffset=rows?.[0]?.next_offset||rows?.length||0;state.feedAsOf=rows?.[0]?.as_of||null;const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));state.feed=(rows||[]).map(r=>normalizeFeedItem(r,profiles));const content=`${storyStrip(stories)}<div class="tabs"><button class="tab ${state.feedMode==='posts'?'active':''}" data-feed-mode="posts">For you</button><button class="tab" data-following>Following</button><button class="tab ${state.feedMode==='all'?'active':''}" data-feed-mode="all">Mixed</button></div><section class="card composer"><div class="composer-row">${avatar(state.profile?.avatar_url,state.profile?.full_name)}<textarea id="quick-draft" placeholder="Create a post…">${esc(storageGet(draftKey(),''))}</textarea></div><div class="composer-tools"><div class="left"><button class="btn small-btn" data-action="create-story">Story</button><button class="btn small-btn" data-action="create-post">Photo / video</button></div><button class="btn primary small-btn" data-action="quick-publish">Post</button></div></section><div class="feed" id="feed-list">${state.feed.length?state.feed.map(postCard).join(''):'<div class="card empty"><h2>No posts yet</h2><p>Your ranked feed is empty right now.</p></div>'}</div><div class="load-more"><button class="btn" id="load-more-feed">Load more</button></div>`;ROOT.innerHTML=shell(content,'Home');bindCommon();bindStories(stories);bindPostCards();document.querySelectorAll('[data-feed-mode]').forEach(x=>x.onclick=()=>{const u=new URL(location.href);u.searchParams.set('mode',x.dataset.feedMode);history.replaceState({},'',u);renderFeed();});document.querySelector('[data-following]').onclick=renderFollowing;document.querySelector('[data-action="create-story"]').onclick=()=>createStory();const q=document.getElementById('quick-draft');q.oninput=()=>storageSet(draftKey(),q.value);document.querySelector('[data-action="quick-publish"]').onclick=()=>{if(q.value.trim())openPostComposer();else toast('Type something first.');};document.getElementById('load-more-feed').onclick=loadMoreFeed;}catch(e){ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load feed</h2><p>${esc(e.message)}</p><button class="btn" data-nav="/feed">Try again</button></div>`,'Home');bindCommon();}
     finally{state.loading=false;}
   }
   async function loadMoreFeed(){if(state.loading)return;state.loading=true;const btn=document.getElementById('load-more-feed');if(btn)btn.textContent='Loading…';try{const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:state.feedOffset,p_as_of:state.feedAsOf,p_feed_type:state.feedMode});if(!rows?.length){toast('You’re caught up');return;}state.feedOffset=rows[0]?.next_offset||state.feedOffset+rows.length;const profiles=await fetchProfiles(rows.map(r=>(r.item||r).user_id));const items=rows.map(r=>normalizeFeedItem(r,profiles));document.getElementById('feed-list').insertAdjacentHTML('beforeend',items.map(postCard).join(''));bindPostCards();}catch(e){toast(e.message);}finally{state.loading=false;if(btn)btn.textContent='Load more';}}
-  async function renderFollowing(){ try{const rows=await rpc('get_following_feed',{p_limit:40,p_cursor:null});const profiles=await fetchProfiles((rows||[]).map(x=>x.user_id));state.feed=(rows||[]).map(x=>normalizeFeedItem(x,profiles));document.getElementById('feed-list').innerHTML=state.feed.length?state.feed.map(postCard).join(''):'<div class="card empty"><h2>Your Following feed is quiet</h2><p>Follow more people to see their posts here.</p></div>';document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelector('[data-following]')?.classList.add('active');bindPostCards();}catch(e){toast(e.message);} }
+  async function renderFollowing(){
+    try{
+      const rows=await rpc('get_following_feed',{p_limit:40,p_cursor:null});
+      const profiles=await fetchProfiles((rows||[]).map(x=>x.user_id));
+      state.feedMode='following';
+      state.feed=(rows||[]).map(x=>normalizeFeedItem(x,profiles));
+      document.getElementById('feed-list').innerHTML=state.feed.length?state.feed.map(postCard).join(''):'<div class="card empty"><h2>Your Following feed is quiet</h2><p>Follow more people to see their posts here.</p></div>';
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      document.querySelector('[data-following]')?.classList.add('active');
+      const loadMore=document.getElementById('load-more-feed');
+      if(loadMore)loadMore.hidden=true;
+      bindPostCards();
+    }catch(e){toast(e.message);}
+  }
 
-  async function renderReels(){if(!requireAuth())return;ROOT.innerHTML=shell('<div class="boot" style="min-height:55vh"><div class="spinner"></div></div>','Reels');bindCommon();try{const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:0,p_as_of:null,p_feed_type:'reels'});const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));const reels=(rows||[]).map(r=>normalizeFeedItem(r,profiles));const html=reels.length?`<div class="reels-feed">${reels.map(r=>{const a=r.author||{},src=safeUrl(r.video_url||r.image_url||(r.images||[])[0]);return `<article class="reel-card" data-post-id="${esc(r.id)}">${r.video_url?`<video src="${esc(src)}" playsinline controls preload="metadata"></video>`:`<img src="${esc(src)}" alt="Reel">`}<div class="reel-overlay"><strong>@${esc(a.username||'user')}${verifyMark(a)}</strong><p>${esc(r.text||r.caption||'')}</p></div><div class="reel-actions"><button data-like="${esc(r.id)}">♡</button><button data-comments="${esc(r.id)}">◌</button><button data-share="/reel/${esc(r.id)}">↗</button></div></article>`;}).join('')}</div>`:'<div class="card empty"><h2>No reels available</h2></div>';ROOT.innerHTML=shell(html,'Reels');bindCommon();bindPostCards();const io=new IntersectionObserver(es=>es.forEach(e=>{const v=e.target.querySelector('video');if(!v)return;if(e.intersectionRatio>.7)v.play().catch(()=>{});else v.pause();}),{threshold:[0,.7]});document.querySelectorAll('.reel-card').forEach(r=>io.observe(r));}catch(e){ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load reels</h2><p>${esc(e.message)}</p></div>`,'Reels');bindCommon();}}
+  async function renderReels(){
+    if(!requireAuth())return;
+    ROOT.innerHTML=shell('<div class="boot" style="min-height:55vh"><div class="spinner"></div></div>','Reels');bindCommon();
+    try{
+      const rows=await rpc('get_ranked_feed_page',{p_limit:30,p_offset:0,p_as_of:null,p_feed_type:'reels'});
+      const profiles=await fetchProfiles((rows||[]).map(r=>(r.item||r).user_id));
+      const reels=(rows||[]).map(r=>normalizeFeedItem(r,profiles));
+      const html=reels.length?`<div class="reels-feed">${reels.map(r=>{const a=r.author||{},src=safeUrl(r.video_url||r.image_url||(r.images||[])[0]);return `<article class="reel-card" data-post-id="${esc(r.id)}">${r.video_url?`<video src="${esc(src)}" playsinline controls muted preload="metadata" data-autopause></video>`:`<img src="${esc(src)}" alt="Reel">`}<div class="reel-overlay"><strong>@${esc(a.username||'user')}${verifyMark(a)}</strong><p>${esc(r.text||r.caption||'')}</p></div><div class="reel-actions"><button type="button" data-like="${esc(r.id)}">♡</button><button type="button" data-comments="${esc(r.id)}">◌</button><button type="button" data-share="/reel/${esc(r.id)}">↗</button></div></article>`;}).join('')}</div>`:'<div class="card empty"><h2>No reels available</h2></div>';
+      ROOT.innerHTML=shell(html,'Reels');bindCommon();bindPostCards();
+      state.mediaObserver?.disconnect();
+      state.mediaObserver=null;
+      if('IntersectionObserver'in window){
+        let prefs={};try{prefs=JSON.parse(storageGet(PARITY_PREF_KEY,'{}'))||{};}catch{}
+        const autoplay=prefs.autoplay!==false&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
+        state.mediaObserver=new IntersectionObserver(entries=>entries.forEach(entry=>{
+          const video=entry.target.querySelector('video');if(!video)return;
+          if(entry.intersectionRatio>.7&&autoplay)video.play().catch(()=>{});else video.pause();
+        }),{threshold:[0,.7]});
+        document.querySelectorAll('.reel-card').forEach(r=>state.mediaObserver.observe(r));
+      }
+    }catch(e){ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load reels</h2><p>${esc(e.message)}</p></div>`,'Reels');bindCommon();}
+  }
 
   async function renderPublicProfile(identifier){ROOT.innerHTML='<div class="boot"><div class="spinner"></div></div>';try{const data=await anonRpc('get_public_web_profile',{p_username:identifier});if(!data?.available)throw new Error('Profile not available');const p=data.profile,items=data.items||[];if(p.username&&currentPath()!==`/@${p.username}`)history.replaceState({},'',routeHref(`/@${p.username}`));const actions=isAuthed()?`<button class="btn primary" id="follow-profile">${state.following.has(p.id)?'Following':'Follow'}</button><button class="btn" id="message-profile">Message</button>`:`<button class="btn primary" data-nav="/login">Log in to follow</button><button class="btn" data-open-app-profile>Open app</button>`;const html=`<div class="profile-card card"><div class="profile-cover" ${p.coverPhotoUrl?`style="background-image:url('${esc(safeUrl(p.coverPhotoUrl))}')"`:''}></div><div class="profile-content"><div class="profile-top">${avatar(p.avatarUrl,p.fullName,'profile-avatar')}<div>${actions}</div></div><div class="profile-info"><h2>${esc(p.fullName||p.username)}${verifyMark(p)}</h2><div class="handle">@${esc(p.username)}</div>${p.headline?`<div class="profile-meta">${esc(p.headline)}</div>`:''}${p.bio?`<p class="profile-bio">${esc(p.bio)}</p>`:''}<div class="profile-meta">${[p.university,p.faculty,p.department].filter(Boolean).map(esc).join(' · ')}</div><div class="stats-grid"><div class="stat"><strong>${fmt(p.postsCount)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.followerCount)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.followingCount)}</strong><span>Following</span></div></div></div></div></div><div class="profile-grid">${items.map(i=>{const media=safeUrl(i.videoUrl||(i.imageUrls||[])[0]);return `<button class="profile-tile" data-nav="/${i.type}/${i.id}">${media?(i.videoUrl?`<video src="${esc(media)}" muted preload="metadata"></video>`:`<img src="${esc(media)}" loading="lazy">`):`<div class="tile-text">${esc((i.text||i.caption||'Post').slice(0,120))}</div>`}<span class="tile-badge">${i.type==='reel'?'▶ Reel':'Post'} · ${fmt(i.viewCount)} views</span></button>`;}).join('')}</div>`;ROOT.innerHTML=isAuthed()?shell(html,p.fullName||`@${p.username}`):`<div style="width:min(100%,760px);margin:0 auto;padding:14px"><header class="topbar"><button class="brand nav-btn" data-nav="/"><span class="mark">B</span>Blink</button><div><button class="btn" data-nav="/login">Log in</button></div></header>${html}</div>`;bindCommon();document.querySelector('[data-open-app-profile]')?.addEventListener('click',()=>openAndroid('profile',p.username));document.getElementById('follow-profile')?.addEventListener('click',async e=>{try{const following=state.following.has(p.id);await rpc(following?'unfollow_user':'follow_user',{p_following_id:p.id});if(following)state.following.delete(p.id);else state.following.add(p.id);e.currentTarget.textContent=following?'Follow':'Following';toast(following?'Unfollowed':'Following');}catch(err){toast(err.message);}});document.getElementById('message-profile')?.addEventListener('click',()=>{navigate(`/messages/new?user=${encodeURIComponent(p.username)}`);});}catch(e){ROOT.innerHTML=`<div class="auth-wrap"><div class="card empty"><h2>Profile unavailable</h2><p>This account may be private, removed or the username may be incorrect.</p><button class="btn" data-nav="/">Back to Blink</button></div></div>`;bindCommon();}}
 
