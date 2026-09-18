@@ -1,4 +1,6 @@
 -- Blink rewarded ads: one authenticated claim earns exactly 10 Blink Coins.
+-- destructive-change-reviewed: direct table grants are intentionally revoked so rewarded-ad claims can only mutate wallet state through authenticated security-definer RPCs.
+-- rollback-plan: revoke the rewarded-ad RPC grants, drop public.complete_blink_rewarded_ad_claim(uuid), drop public.begin_blink_rewarded_ad_claim(), then drop public.blink_rewarded_ad_claims; existing credited coin ledger rows remain as historical wallet records.
 -- The Android client opens a claim before showing an AdMob rewarded ad and completes it only
 -- from the Google Mobile Ads OnUserEarnedReward callback. The claim id is also attached as
 -- AdMob SSV custom data so server-side verification can be layered on without changing the app flow.
