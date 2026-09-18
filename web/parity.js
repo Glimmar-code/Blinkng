@@ -8,6 +8,8 @@
   const SESSION_KEY = 'blink_web_session_v3';
   const PREF_KEY = 'blink_web_parity_prefs_v1';
   const RECENT_KEY = 'blink_web_recent_accounts_v1';
+  const API_TIMEOUT_MS = 20000;
+  let refreshPromise = null;
   const PARITY_ROUTES = new Set([
     '/more','/store','/vault','/vip','/boosts','/gifts','/calls','/offline','/drafts','/verification','/analytics','/study','/accounts','/professional','/leaderboard','/seller',
     '/settings/notifications','/settings/appearance','/settings/privacy','/settings/data','/settings/accessibility'
@@ -95,15 +97,53 @@
 
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt = (v) => new Intl.NumberFormat().format(Number(v || 0));
-  const money = (v, currency='BLINK') => currency === 'BLINK' ? `${fmt(v)} coins` : new Intl.NumberFormat('en-NG',{style:'currency',currency:currency||'NGN',maximumFractionDigits:0}).format(Number(v||0));
+  const money = (v, currency='BLINK') => {
+    if (currency === 'BLINK') return `${fmt(v)} coins`;
+    try { return new Intl.NumberFormat('en-NG',{style:'currency',currency:currency||'NGN',maximumFractionDigits:0}).format(Number(v||0)); }
+    catch { return `${currency||'NGN'} ${fmt(v)}`; }
+  };
   const safe = (v) => { try { const u = new URL(String(v || ''), location.origin); return ['http:','https:','blob:'].includes(u.protocol) ? u.href : ''; } catch { return ''; } };
-  const session = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; } };
+  const storageGet = (key, fallback='') => { try { const v=localStorage.getItem(key); return v==null?fallback:v; } catch { return fallback; } };
+  const storageSet = (key, value) => { try { localStorage.setItem(key,value); return true; } catch { return false; } };
+  const storageRemove = (key) => { try { localStorage.removeItem(key); } catch {} };
+  const storageKeys = () => { try { return Object.keys(localStorage); } catch { return []; } };
+  const session = () => { try { return JSON.parse(storageGet(SESSION_KEY,'null')); } catch { return null; } };
+  const saveSession = (value) => value ? storageSet(SESSION_KEY,JSON.stringify(value)) : storageRemove(SESSION_KEY);
   const token = () => session()?.access_token || '';
   const uid = () => session()?.user?.id || '';
   const authed = () => !!token();
   const routeHref = (path) => `${PREVIEW_BASE}${path}` || '/';
-  const currentPath = () => { let p = location.pathname || '/'; if (PREVIEW_BASE && p.startsWith(PREVIEW_BASE)) p = p.slice(PREVIEW_BASE.length) || '/'; return decodeURI(p); };
+  const currentPath = () => { let p=location.pathname||'/'; if(PREVIEW_BASE&&p.startsWith(PREVIEW_BASE))p=p.slice(PREVIEW_BASE.length)||'/'; try{return decodeURI(p);}catch{return p;} };
   const root = () => document.getElementById('app');
+
+  async function fetchWithTimeout(url,options={},timeoutMs=API_TIMEOUT_MS){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),timeoutMs);
+    try{return await fetch(url,{...options,signal:options.signal||controller.signal});}
+    catch(error){if(error?.name==='AbortError')throw new Error('Request timed out. Check your connection and try again.');throw error;}
+    finally{clearTimeout(timer);}
+  }
+
+  async function refreshSession(){
+    if(refreshPromise)return refreshPromise;
+    const existing=session(),rt=existing?.refresh_token;
+    if(!rt)return false;
+    refreshPromise=(async()=>{
+      const res=await fetchWithTimeout(`${BASE}/auth/v1/token?grant_type=refresh_token`,{
+        method:'POST',
+        headers:{apikey:KEY,Authorization:`Bearer ${KEY}`,'Content-Type':'application/json',Accept:'application/json'},
+        body:JSON.stringify({refresh_token:rt})
+      });
+      if(!res.ok){
+        if(res.status===400||res.status===401)saveSession(null);
+        return false;
+      }
+      const data=await res.json();
+      saveSession({...data,user:data.user||existing.user});
+      return true;
+    })();
+    try{return await refreshPromise;}finally{refreshPromise=null;}
+  }
 
   function toast(message, kind='info') {
     let el = document.getElementById('parity-toast');
@@ -114,21 +154,27 @@
   }
 
   async function parseJson(res) { const t=await res.text(); if (!t) return null; try { return JSON.parse(t); } catch { return t; } }
-  async function api(path,{method='GET',body=null,prefer='',auth=true}={}) {
+  async function api(path,{method='GET',body=null,prefer='',auth=true,timeoutMs=API_TIMEOUT_MS}={}) {
     if (!BASE || !KEY) throw new Error('Blink web backend is not configured.');
     const h={apikey:KEY,Accept:'application/json'};
     h.Authorization=`Bearer ${auth && token() ? token() : KEY}`;
     if (body != null) h['Content-Type']='application/json';
     if (prefer) h.Prefer=prefer;
-    const res=await fetch(`${BASE}${path}`,{method,headers:h,body:body==null?undefined:JSON.stringify(body)});
+    const requestBody=body==null?undefined:JSON.stringify(body);
+    const request=()=>fetchWithTimeout(`${BASE}${path}`,{method,headers:h,body:requestBody},timeoutMs);
+    let res=await request();
+    if(auth&&res.status===401&&session()?.refresh_token){
+      const refreshed=await refreshSession().catch(()=>false);
+      if(refreshed){h.Authorization=`Bearer ${token()}`;res=await request();}
+    }
     if (!res.ok) { const e=await parseJson(res); throw new Error(e?.message||e?.error_description||e?.error||`Blink request failed (${res.status})`); }
     return parseJson(res);
   }
   const rpc=(name,body={})=>api(`/rest/v1/rpc/${name}`,{method:'POST',body});
   const table=(name,query='')=>api(`/rest/v1/${name}${query?`?${query}`:''}`);
 
-  function prefs() { try { return {...{theme:'system',density:'comfortable',fontScale:1,reduceMotion:false,dataSaver:false,autoplay:true},...JSON.parse(localStorage.getItem(PREF_KEY)||'{}')}; } catch { return {theme:'system',density:'comfortable',fontScale:1,reduceMotion:false,dataSaver:false,autoplay:true}; } }
-  function savePrefs(next) { localStorage.setItem(PREF_KEY,JSON.stringify({...prefs(),...next})); applyPrefs(); }
+  function prefs() { const defaults={theme:'system',density:'comfortable',fontScale:1,reduceMotion:false,dataSaver:false,autoplay:true}; try { return {...defaults,...JSON.parse(storageGet(PREF_KEY,'{}'))}; } catch { return defaults; } }
+  function savePrefs(next) { storageSet(PREF_KEY,JSON.stringify({...prefs(),...next})); applyPrefs(); }
   function applyPrefs() {
     const p=prefs();
     document.documentElement.dataset.blinkTheme=p.theme;
@@ -141,8 +187,9 @@
 
   function isParityRoute(path=currentPath()) { return PARITY_ROUTES.has(path); }
   function go(path) {
-    if (PARITY_ROUTES.has(path)) { history.pushState({},'',routeHref(path)); renderParity(path); window.scrollTo({top:0,behavior:prefs().reduceMotion?'auto':'smooth'}); }
-    else { history.pushState({},'',routeHref(path)); window.dispatchEvent(new PopStateEvent('popstate')); }
+    const next=typeof path==='string'&&path.startsWith('/')&&!path.startsWith('//')?path:'/';
+    if (PARITY_ROUTES.has(next)) { history.pushState({},'',routeHref(next)); renderParity(next); window.scrollTo({top:0,behavior:prefs().reduceMotion?'auto':'smooth'}); }
+    else { history.pushState({},'',routeHref(next)); window.dispatchEvent(new PopStateEvent('popstate')); }
   }
 
   function appNav() {
@@ -274,7 +321,13 @@
 
   async function renderAnalytics() {
     if (!authGuard()) return; loading('Creator analytics');
-    try { const [p,posts]=await Promise.all([getProfile(),table('posts',`user_id=eq.${encodeURIComponent(uid())}&select=id,is_reel,view_count,like_count,comment_count,repost_count,created_at&order=created_at.desc&limit=100`).catch(()=>[])]); const sum=(k)=>(posts||[]).reduce((a,x)=>a+Number(x[k]||0),0); const reels=(posts||[]).filter(x=>x.is_reel).length;
+    try {
+      const [p,posts]=await Promise.all([
+        getProfile(),
+        table('feed_posts',`user_id=eq.${encodeURIComponent(uid())}&select=id,is_reel,view_count,like_count,comment_count,repost_count,created_at&order=created_at.desc&limit=100`).catch(()=>[])
+      ]);
+      const sum=(k)=>(posts||[]).reduce((a,x)=>a+Number(x[k]||0),0);
+      const reels=(posts||[]).filter(x=>x.is_reel).length;
       shell('Creator analytics',`<section class="parity-hero"><div><span class="parity-eyebrow">Profile snapshot</span><h2>${esc(p?.full_name||p?.username||'Creator')}</h2><p>${esc(p?.professional_headline||'Your web creator metrics use the same profile and content data as Android.')}</p></div></section><div class="metrics-grid"><div class="metric"><strong>${fmt(p?.follower_count)}</strong><span>Followers</span></div><div class="metric"><strong>${fmt(p?.following_count)}</strong><span>Following</span></div><div class="metric"><strong>${fmt(p?.posts_count)}</strong><span>Posts</span></div><div class="metric"><strong>${fmt(p?.points)}</strong><span>Points</span></div><div class="metric"><strong>${fmt(sum('view_count'))}</strong><span>Views (last 100)</span></div><div class="metric"><strong>${fmt(sum('like_count'))}</strong><span>Likes</span></div><div class="metric"><strong>${fmt(sum('comment_count'))}</strong><span>Comments</span></div><div class="metric"><strong>${fmt(reels)}</strong><span>Reels</span></div></div><section class="parity-panel"><h3>Recent content performance</h3><div class="mini-table">${(posts||[]).slice(0,20).map(x=>`<div><span>${x.is_reel?'Reel':'Post'} · ${new Date(x.created_at).toLocaleDateString()}</span><strong>${fmt(x.view_count)} views · ${fmt(x.like_count)} likes</strong></div>`).join('')||'<p>No recent content.</p>'}</div></section>`);
     } catch(e){ shell('Creator analytics',errorCard(e)); }
   }
@@ -287,15 +340,16 @@
   }
 
   async function renderOffline() {
-    const estimate=navigator.storage?.estimate?await navigator.storage.estimate().catch(()=>null):null; const regs='serviceWorker' in navigator?await navigator.serviceWorker.getRegistrations().catch(()=>[]):[]; const draftKeys=Object.keys(localStorage).filter(k=>/draft/i.test(k));
+    const estimate=navigator.storage?.estimate?await navigator.storage.estimate().catch(()=>null):null; const regs='serviceWorker' in navigator?await navigator.serviceWorker.getRegistrations().catch(()=>[]):[]; const draftKeys=storageKeys().filter(k=>/draft/i.test(k));
     shell('Offline & data saver',`<section class="parity-hero"><div><span class="parity-eyebrow">Offline parity</span><h2>${navigator.onLine?'Connected':'Working offline'}</h2><p>Web shell caching, local drafts, data saver, recovery controls and network awareness mirror the app’s offline-first behavior where browser capabilities allow.</p></div></section><div class="metrics-grid"><div class="metric"><strong>${regs.length?'Active':'Off'}</strong><span>Service worker</span></div><div class="metric"><strong>${fmt(draftKeys.length)}</strong><span>Local drafts</span></div><div class="metric"><strong>${estimate?`${Math.round((estimate.usage||0)/1024/1024)} MB`:'—'}</strong><span>Browser storage</span></div><div class="metric"><strong>${prefs().dataSaver?'On':'Off'}</strong><span>Data saver</span></div></div><section class="parity-panel"><h3>Controls</h3><label class="parity-toggle"><span>Data saver</span><input type="checkbox" data-pref="dataSaver" ${prefs().dataSaver?'checked':''}></label><label class="parity-toggle"><span>Autoplay videos</span><input type="checkbox" data-pref="autoplay" ${prefs().autoplay?'checked':''}></label><button class="parity-btn" data-clear-web-cache>Refresh offline cache</button><button class="parity-btn" data-parity-go="/drafts">Open drafts</button></section>`);
     bindShell(); document.querySelector('[data-clear-web-cache]')?.addEventListener('click',async()=>{try{for(const k of await caches.keys())if(k.startsWith('blink-web'))await caches.delete(k);for(const r of await navigator.serviceWorker.getRegistrations())await r.update();toast('Offline cache refreshed.','success');}catch(e){toast(e.message,'error');}});
   }
 
   function renderDrafts() {
-    const keys=Object.keys(localStorage).filter(k=>/draft/i.test(k));
-    shell('Drafts',`<section class="parity-panel"><h3>Persistent web drafts</h3><p class="muted">Draft storage is local to this browser. Existing Blink web post drafts remain compatible with the main composer.</p></section><div class="parity-list">${keys.map(k=>{let v=localStorage.getItem(k)||'';return `<article class="parity-panel"><span class="parity-chip">${esc(k)}</span><textarea class="parity-field" data-draft-key="${esc(k)}">${esc(v)}</textarea><div class="row-actions"><button class="parity-btn" data-save-draft="${esc(k)}">Save</button><button class="parity-btn danger" data-delete-draft="${esc(k)}">Delete</button></div></article>`;}).join('')||'<div class="parity-panel">No drafts saved in this browser.</div>'}</div>`);
-    document.querySelectorAll('[data-save-draft]').forEach(b=>b.onclick=()=>{const k=b.dataset.saveDraft;localStorage.setItem(k,document.querySelector(`[data-draft-key="${CSS.escape(k)}"]`).value);toast('Draft saved.','success');}); document.querySelectorAll('[data-delete-draft]').forEach(b=>b.onclick=()=>{localStorage.removeItem(b.dataset.deleteDraft);toast('Draft deleted.','success');renderDrafts();});
+    const keys=storageKeys().filter(k=>/draft/i.test(k));
+    shell('Drafts',`<section class="parity-panel"><h3>Persistent web drafts</h3><p class="muted">Draft storage is local to this browser and scoped by account where supported.</p></section><div class="parity-list">${keys.map(k=>{const v=storageGet(k,'');return `<article class="parity-panel"><span class="parity-chip">${esc(k)}</span><textarea class="parity-field" data-draft-key="${esc(k)}">${esc(v)}</textarea><div class="row-actions"><button class="parity-btn" data-save-draft="${esc(k)}">Save</button><button class="parity-btn danger" data-delete-draft="${esc(k)}">Delete</button></div></article>`;}).join('')||'<div class="parity-panel">No drafts saved in this browser.</div>'}</div>`);
+    document.querySelectorAll('[data-save-draft]').forEach(b=>b.onclick=()=>{const k=b.dataset.saveDraft,input=document.querySelector(`[data-draft-key="${CSS.escape(k)}"]`);if(!input)return;if(storageSet(k,input.value))toast('Draft saved.','success');else toast('This browser blocked local draft storage.','error');});
+    document.querySelectorAll('[data-delete-draft]').forEach(b=>b.onclick=()=>{storageRemove(b.dataset.deleteDraft);toast('Draft deleted.','success');renderDrafts();});
   }
 
   async function getUserSettings() {
@@ -331,11 +385,11 @@
   }
 
   async function renderDataSettings() {
-    if (!authGuard()) return; shell('Your data',`<section class="parity-panel"><h3>Export Blink account data</h3><p class="muted">Uses the same <code>export_my_account_data</code> server RPC as Android.</p><button class="parity-btn primary" data-export>Export my data</button></section><section class="parity-panel"><h3>Local browser data</h3><p class="muted">Clear only Blink Web parity preferences and local drafts on this browser.</p><button class="parity-btn danger" data-clear-local>Clear local web data</button></section>`); document.querySelector('[data-export]').onclick=async()=>{try{const data=await rpc('export_my_account_data',{});const blob=new Blob([typeof data==='string'?data:JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`blink-account-export-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);toast('Export ready.','success');}catch(e){toast(e.message,'error');}}; document.querySelector('[data-clear-local]').onclick=()=>{Object.keys(localStorage).filter(k=>/blink_web_parity|draft/i.test(k)).forEach(k=>localStorage.removeItem(k));toast('Local web data cleared.','success');applyPrefs();};
+    if (!authGuard()) return; shell('Your data',`<section class="parity-panel"><h3>Export Blink account data</h3><p class="muted">Uses the same <code>export_my_account_data</code> server RPC as Android.</p><button class="parity-btn primary" data-export>Export my data</button></section><section class="parity-panel"><h3>Local browser data</h3><p class="muted">Clear only Blink Web parity preferences and local drafts on this browser.</p><button class="parity-btn danger" data-clear-local>Clear local web data</button></section>`); document.querySelector('[data-export]').onclick=async()=>{try{const data=await rpc('export_my_account_data',{});const blob=new Blob([typeof data==='string'?data:JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`blink-account-export-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);toast('Export ready.','success');}catch(e){toast(e.message,'error');}}; document.querySelector('[data-clear-local]').onclick=()=>{storageKeys().filter(k=>/blink_web_parity|draft/i.test(k)).forEach(storageRemove);toast('Local web data cleared.','success');applyPrefs();};
   }
 
   async function renderAccounts() {
-    if (!authGuard()) return; const p=await getProfile().catch(()=>null); let recent=[]; try{recent=JSON.parse(localStorage.getItem(RECENT_KEY)||'[]');}catch{} if(p?.username&&!recent.some(x=>x.username===p.username)){recent=[{username:p.username,name:p.full_name||p.username,last:new Date().toISOString()},...recent].slice(0,8);localStorage.setItem(RECENT_KEY,JSON.stringify(recent));}
+    if (!authGuard()) return; const p=await getProfile().catch(()=>null); let recent=[]; try{recent=JSON.parse(storageGet(RECENT_KEY,'[]'));}catch{} if(p?.username&&!recent.some(x=>x.username===p.username)){recent=[{username:p.username,name:p.full_name||p.username,last:new Date().toISOString()},...recent].slice(0,8);storageSet(RECENT_KEY,JSON.stringify(recent));}
     shell('Accounts',`<section class="parity-panel"><h3>Current account</h3><div class="status-card"><div class="parity-avatar">${esc((p?.full_name||p?.username||'B')[0].toUpperCase())}</div><div class="grow"><strong>${esc(p?.full_name||p?.username||'Blink account')}</strong><p class="muted">@${esc(p?.username||'')}</p></div><button class="parity-btn" data-parity-go="/settings/profile">Edit profile</button></div></section><section class="parity-panel"><h3>Recent web accounts</h3><p class="muted">For security, the parity layer remembers account names only — not additional access tokens.</p>${recent.map(r=>`<div class="mini-row"><span>@${esc(r.username)}</span><span class="muted">${esc(r.name||'')}</span></div>`).join('')||'<p>No recent accounts.</p>'}<button class="parity-btn" data-parity-go="/login">Sign in with another account</button></section>`);
   }
 
@@ -369,7 +423,7 @@
 
   let installPrompt=null;
   window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;decorateExistingShell();});
-  async function installApp(){if(!installPrompt)return;await installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;decorateExistingShell();}
+  async function installApp(){if(!installPrompt){toast('Install is not available in this browser yet.','warn');return;}try{await installPrompt.prompt();await installPrompt.userChoice;}catch{toast('Could not open the install prompt.','error');}finally{installPrompt=null;decorateExistingShell();}}
 
   function decorateExistingShell() {
     if (isParityRoute()) return;
