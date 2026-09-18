@@ -70,6 +70,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.example.BuildConfig
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
 import com.example.data.models.LeaderboardUser
@@ -77,6 +78,8 @@ import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.FollowStateStore
+import com.example.ui.components.BlinkNativeAdPlacement
+import com.example.ui.components.BlinkSponsoredNativeAd
 import com.example.ui.components.CreatePostFab
 import com.example.ui.components.FeedTabs
 import com.example.ui.components.FeedTopBar
@@ -96,9 +99,12 @@ import kotlin.random.Random
 
 private enum class PremiumFeedFilter { ALL, PHOTOS, POLLS }
 
+private const val FEED_SPONSORED_INTERVAL = 8
+
 private sealed interface PremiumHomeRow {
     data class PostRow(val post: FeedPost, val sourceIndex: Int) : PremiumHomeRow
     data class ReelPreviewRow(val reel: FeedPost, val slot: Int) : PremiumHomeRow
+    data class SponsoredRow(val slot: Int) : PremiumHomeRow
 }
 
 private fun buildPremiumHomeRows(
@@ -112,16 +118,25 @@ private fun buildPremiumHomeRows(
     }
 
     val random = Random(seed)
-    val rows = ArrayList<PremiumHomeRow>(posts.size + (posts.size / 10) + 1)
+    val rows = ArrayList<PremiumHomeRow>(posts.size + (posts.size / 6) + 2)
     var postsSincePreview = 0
     var nextGap = random.nextInt(10, 21)
     var reelSlot = 0
+    var sponsoredSlot = 0
 
     posts.forEachIndexed { index, post ->
         rows += PremiumHomeRow.PostRow(post, index)
         postsSincePreview += 1
 
-        if (postsSincePreview >= nextGap) {
+        val shouldInsertSponsored =
+            (index + 1) % FEED_SPONSORED_INTERVAL == 0 && index < posts.lastIndex
+
+        if (shouldInsertSponsored) {
+            rows += PremiumHomeRow.SponsoredRow(slot = sponsoredSlot++)
+            // Avoid putting an inline reel preview directly beside a sponsored card.
+            postsSincePreview = 0
+            nextGap = random.nextInt(10, 21)
+        } else if (reels.isNotEmpty() && postsSincePreview >= nextGap) {
             // Keep the exact ranked reel order supplied by the existing feed algorithm.
             // Cycling only occurs if the post list is longer than the currently loaded
             // reel page. View events are still handled by the shared exposure tracker.
@@ -980,12 +995,14 @@ private fun PremiumHomeFeed(
                                         when (val row = homeRows[index]) {
                                             is PremiumHomeRow.PostRow -> "post:${row.post.id}"
                                             is PremiumHomeRow.ReelPreviewRow -> "reel_preview:${row.slot}:${row.reel.id}"
+                                            is PremiumHomeRow.SponsoredRow -> "sponsored:${row.slot}"
                                         }
                                     },
                                     contentType = { index ->
                                         when (val row = homeRows[index]) {
                                             is PremiumHomeRow.PostRow -> premiumPostContentType(row.post)
                                             is PremiumHomeRow.ReelPreviewRow -> 16
+                                            is PremiumHomeRow.SponsoredRow -> 17
                                         }
                                     }
                                 ) { index ->
@@ -1022,6 +1039,14 @@ private fun PremiumHomeFeed(
                                                 onContinue = { positionMs ->
                                                     onOpenInlineReel(row.reel.id, positionMs)
                                                 },
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                            )
+                                        }
+
+                                        is PremiumHomeRow.SponsoredRow -> {
+                                            BlinkSponsoredNativeAd(
+                                                adUnitId = BuildConfig.ADMOB_FEED_NATIVE_AD_UNIT_ID,
+                                                placement = BlinkNativeAdPlacement.FEED,
                                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                                             )
                                         }
