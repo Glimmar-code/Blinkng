@@ -143,6 +143,8 @@ android {
     buildConfigField("String", "BLINK_TURN_CREDENTIAL", buildConfigString(resolvedTurnCredential))
     buildConfigField("String", "BUILD_COMMIT_SHA", buildConfigString(gitCommitSha))
     buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/4343111201"))
+    buildConfigField("String", "ADMOB_FEED_NATIVE_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/9024145134"))
+    buildConfigField("String", "ADMOB_REELS_NATIVE_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/4949168751"))
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
   signingConfigs {
@@ -165,6 +167,8 @@ android {
       versionNameSuffix = "-debug"
       // Never request live ads from developer/test builds.
       buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", buildConfigString("ca-app-pub-3940256099942544/5224354917"))
+      buildConfigField("String", "ADMOB_FEED_NATIVE_AD_UNIT_ID", buildConfigString("ca-app-pub-3940256099942544/2247696110"))
+      buildConfigField("String", "ADMOB_REELS_NATIVE_AD_UNIT_ID", buildConfigString("ca-app-pub-3940256099942544/1044960115"))
     }
   }
   compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
