@@ -24,6 +24,11 @@ import com.example.data.supabase.SupabaseRealtimeManager
 import com.example.data.supabase.SupabaseService
 import com.example.data.supabase.MessageMediaService
 import com.example.notification.BlinkNotificationHelper
+import com.example.notification.BlinkInAppNotification
+import com.example.notification.BlinkInAppNotificationCenter
+import com.example.notification.BlinkInAppNotificationDestination
+import com.example.notification.BlinkNotificationType
+import com.example.notification.NotificationPreferenceStore
 import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
 import java.util.UUID
@@ -1685,7 +1690,12 @@ private suspend fun restoreSupabaseSession() {
             return
         }
         viewModelScope.launch {
-            val remoteProfile = profileRepository.fetchByUsername(username)
+            val cleanIdentifier = username.trim().removePrefix("@")
+            val remoteProfile = if (runCatching { UUID.fromString(cleanIdentifier) }.isSuccess) {
+                supabaseService.fetchProfileById(cleanIdentifier)
+            } else {
+                profileRepository.fetchByUsername(cleanIdentifier)
+            }
             if (remoteProfile != null) {
                 _uiState.value = _uiState.value.copy(
                     viewingProfile = remoteProfile,
@@ -2957,6 +2967,7 @@ private suspend fun restoreSupabaseSession() {
                     }
                     .onFailure { Log.w(TAG, "Conversation summary refresh failed", it) }
             }
+            is RealtimeEvent.ActivityEvent -> handleIncomingRealtimeActivity(event)
             is RealtimeEvent.NotificationEvent -> fetchSupabaseData()
             is RealtimeEvent.IncomingCallEvent -> viewModelScope.launch {
                 val currentUserId = _uiState.value.myProfile.id
@@ -2999,6 +3010,93 @@ private suspend fun restoreSupabaseSession() {
                 }
             }
         }
+    }
+
+    private fun handleIncomingRealtimeActivity(event: RealtimeEvent.ActivityEvent) {
+        if (!event.eventType.equals("INSERT", ignoreCase = true) || event.isRead || event.id.isBlank()) return
+
+        val state = _uiState.value
+        val myId = state.myProfile.id
+        if (myId.isNotBlank() && event.recipientId.isNotBlank() && event.recipientId != myId) return
+
+        val normalizedType = event.activityType.trim().uppercase()
+        val category = when (normalizedType) {
+            "LIKE", "LIKES", "BOOKMARK", "SAVE" -> NotificationFilter.LIKES
+            "COMMENT", "COMMENTS", "REPLY", "MENTION" -> NotificationFilter.COMMENTS
+            "MARKET", "ORDER", "MARKET_ORDER" -> NotificationFilter.MARKET
+            else -> NotificationFilter.ALL
+        }
+        val entityType = event.entityType.trim()
+        val postId = event.entityId.takeIf {
+            it.isNotBlank() && entityType.equals("post", ignoreCase = true)
+        }
+        val marketId = event.entityId.takeIf {
+            it.isNotBlank() && entityType.equals("market", ignoreCase = true)
+        }
+        val action = event.message.ifBlank {
+            event.activityType.replace('_', ' ').lowercase().ifBlank { "New activity" }
+        }
+        val activity = ActivityItem(
+            id = event.id,
+            user = event.actorId,
+            avatar = "",
+            action = action,
+            time = "Just now",
+            rawTimestamp = event.createdAt,
+            isUnread = true,
+            category = category,
+            targetPostId = postId,
+            targetMarketId = marketId,
+            targetType = entityType.takeIf { it.isNotBlank() }
+        )
+
+        if (state.activities.none { it.id == activity.id }) {
+            _uiState.value = state.copy(activities = listOf(activity) + state.activities)
+            persistExtendedCache()
+        }
+
+        val wireType = when (normalizedType) {
+            "LIKES" -> "like"
+            "COMMENTS" -> "comment"
+            "ALL" -> "social"
+            else -> normalizedType.lowercase().ifBlank { "social" }
+        }
+        val notificationType = BlinkNotificationType.fromWire(wireType)
+        if (!NotificationPreferenceStore.isAllowed(appContext, notificationType)) return
+
+        val actorProfile = state.profiles.firstOrNull { it.id == event.actorId }
+        val actorName = actorProfile?.fullName?.takeIf { it.isNotBlank() }
+            ?: actorProfile?.username?.takeIf { it.isNotBlank() }
+            ?: ""
+        val actorUsername = actorProfile?.username.orEmpty()
+        val title = if (actorName.isNotBlank()) {
+            "$actorName $action"
+        } else {
+            action.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        }
+        val destination = when {
+            postId != null -> BlinkInAppNotificationDestination.POST
+            marketId != null -> BlinkInAppNotificationDestination.MARKET
+            event.actorId.isNotBlank() -> BlinkInAppNotificationDestination.PROFILE
+            else -> BlinkInAppNotificationDestination.NOTIFICATIONS
+        }
+        val targetKey = event.entityId.ifBlank { event.id }
+
+        BlinkInAppNotificationCenter.publish(
+            BlinkInAppNotification(
+                key = "social:" + wireType + ":" + event.actorId + ":" + targetKey,
+                title = title,
+                body = actorUsername.takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty(),
+                destination = destination,
+                senderId = event.actorId,
+                senderUsername = actorUsername,
+                senderName = actorName,
+                senderAvatar = actorProfile?.avatarUrl.orEmpty(),
+                postId = postId,
+                marketId = marketId,
+                activity = activity
+            )
+        )
     }
 
     private fun handleIncomingRealtimeMessage(msg: ChatMessage) {
@@ -3119,17 +3217,30 @@ private suspend fun restoreSupabaseSession() {
 
             if (active) {
                 chatRepository.markConversationRead(partner)
-            } else {
-                _snackBarMessages.tryEmit("💬 $displayName: ${enriched.text.take(120)}")
-                withContext(Dispatchers.IO) {
-                    BlinkNotificationHelper.showChatMessageNotification(
-                        appContext,
-                        partner,
-                        displayName,
-                        enriched.text,
-                        avatar,
-                        enriched.id
+            } else if (NotificationPreferenceStore.isAllowed(appContext, BlinkNotificationType.MESSAGE)) {
+                val handledInApp = BlinkInAppNotificationCenter.publish(
+                    BlinkInAppNotification(
+                        key = "message:" + enriched.id,
+                        title = displayName,
+                        body = enriched.text.take(180),
+                        destination = BlinkInAppNotificationDestination.CHAT,
+                        senderId = msg.senderId,
+                        senderUsername = partner,
+                        senderName = displayName,
+                        senderAvatar = avatar
                     )
+                )
+                if (!handledInApp) {
+                    withContext(Dispatchers.IO) {
+                        BlinkNotificationHelper.showChatMessageNotification(
+                            appContext,
+                            partner,
+                            displayName,
+                            enriched.text,
+                            avatar,
+                            enriched.id
+                        )
+                    }
                 }
             }
         }
