@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.blinkng.shared.profileRankLabel
 import com.example.data.models.FeedPost
 import com.example.data.models.MarketItem
 import com.example.data.models.UserProfile
@@ -682,7 +683,7 @@ fun ProfileScreen(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text("🏛️", fontSize = 15.sp)
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text(if (profile.campusRank > 0) "#${profile.campusRank}" else "—", fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkGold)
+                                        Text(profileRankLabel(profile.campusRank), fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkGold)
                                     }
                                     Text("Campus Rank", fontSize = 9.5.sp, color = textSecondary)
                                 }
@@ -693,7 +694,7 @@ fun ProfileScreen(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text("🌐", fontSize = 15.sp)
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text(if (profile.worldRank > 0) "#${profile.worldRank}" else "—", fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkBlue)
+                                        Text(profileRankLabel(profile.worldRank), fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkBlue)
                                     }
                                     Text("World Rank", fontSize = 9.5.sp, color = textSecondary)
                                 }
