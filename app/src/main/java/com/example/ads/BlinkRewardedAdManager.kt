@@ -28,6 +28,9 @@ class BlinkRewardedAdManager(
     private var rewardedAd: RewardedAd? = null
     private var loading = false
 
+    val isReady: Boolean
+        get() = BlinkAdsRuntime.canRequestAds.value && rewardedAd != null
+
     fun load() {
         if (!BlinkAdsRuntime.canRequestAds.value) return
         if (loading || rewardedAd != null) return
