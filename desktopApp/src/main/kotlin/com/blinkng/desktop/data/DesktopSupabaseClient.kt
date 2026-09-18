@@ -272,29 +272,103 @@ class DesktopSupabaseClient(
 
     suspend fun fetchNotifications(): List<DesktopNotification> = withContext(Dispatchers.IO) {
         val userId = requireSession().userId
-        val rows = getArray(
-            "/rest/v1/notifications?user_id=eq.${encode(userId)}&select=id,type,text,sub_text,post_id,is_read,actor_is_vip,vip_priority,created_at&order=created_at.desc&limit=100",
-        )
-        (0 until rows.length()).mapNotNull { i ->
-            rows.optJSONObject(i)?.let { row ->
+
+        fun semanticKey(item: DesktopNotification): String = listOf(
+            item.actorId.orEmpty().trim().lowercase(),
+            item.text.trim().lowercase(),
+            item.postId.orEmpty(),
+            item.targetType.orEmpty().uppercase(),
+            item.targetId.orEmpty(),
+            item.createdAt.take(19),
+        ).joinToString("|")
+
+        val notificationRows = runCatching {
+            getArray(
+                "/rest/v1/notifications?user_id=eq.${encode(userId)}&order=created_at.desc&limit=100",
+            )
+        }.getOrDefault(JSONArray())
+        val activityRows = runCatching {
+            getArray(
+                "/rest/v1/activities?recipient_id=eq.${encode(userId)}&order=created_at.desc&limit=100",
+            )
+        }.getOrDefault(JSONArray())
+
+        val serverNotifications = (0 until notificationRows.length()).mapNotNull { i ->
+            notificationRows.optJSONObject(i)?.let { row ->
+                val rawId = row.optString("id")
+                if (rawId.isBlank()) return@let null
+                val type = row.optString("type")
+                val text = row.optString("text")
+                    .ifBlank { row.optString("title") }
+                    .ifBlank { type.replace('_', ' ') }
+                val isMessage = type.equals("system", true) &&
+                    text.contains("sent you a message", ignoreCase = true)
+                val targetType = row.optNullableString("target_type")
+                    ?: when {
+                        isMessage -> "CHAT"
+                        type.equals("follow", true) -> "PROFILE"
+                        else -> "NOTIFICATION"
+                    }
+                val targetId = row.optNullableString("target_id")
                 DesktopNotification(
-                    id = row.optString("id"),
-                    type = row.optString("type"),
-                    text = row.optString("text").ifBlank { row.optString("type") },
+                    id = "notification:$rawId",
+                    type = type,
+                    text = text,
                     subText = row.optNullableString("sub_text"),
-                    postId = row.optNullableString("post_id"),
+                    postId = row.optNullableString("post_id")
+                        ?: targetId.takeIf { targetType.equals("post", true) },
                     isRead = row.optBoolean("is_read"),
                     actorIsVip = row.optBoolean("actor_is_vip"),
                     vipPriority = row.optBoolean("vip_priority"),
                     createdAt = row.optString("created_at"),
+                    actorId = row.optNullableString("actor_id"),
+                    targetType = targetType,
+                    targetId = targetId,
                 )
             }
         }
+
+        val activityNotifications = (0 until activityRows.length()).mapNotNull { i ->
+            activityRows.optJSONObject(i)?.let { row ->
+                val rawId = row.optString("id")
+                if (rawId.isBlank()) return@let null
+                val type = row.optString("activity_type")
+                val targetType = row.optNullableString("entity_type")
+                val targetId = row.optNullableString("entity_id")
+                DesktopNotification(
+                    id = "activity:$rawId",
+                    type = type,
+                    text = row.optString("message").ifBlank { type.replace('_', ' ') },
+                    subText = null,
+                    postId = targetId.takeIf { targetType.equals("post", true) },
+                    isRead = row.optBoolean("is_read"),
+                    actorIsVip = false,
+                    vipPriority = false,
+                    createdAt = row.optString("created_at"),
+                    actorId = row.optNullableString("actor_id"),
+                    targetType = targetType,
+                    targetId = targetId,
+                )
+            }
+        }
+
+        val activityKeys = activityNotifications.asSequence().map(::semanticKey).toHashSet()
+        (activityNotifications + serverNotifications.filterNot { semanticKey(it) in activityKeys })
+            .sortedByDescending { it.createdAt }
+            .distinctBy { it.id }
+            .take(150)
     }
 
     suspend fun markNotificationRead(notificationId: String) = withContext(Dispatchers.IO) {
+        val isActivity = notificationId.startsWith("activity:")
+        val rowId = notificationId
+            .removePrefix("activity:")
+            .removePrefix("notification:")
+        if (rowId.isBlank()) return@withContext
+
+        val table = if (isActivity) "activities" else "notifications"
         patch(
-            "/rest/v1/notifications?id=eq.${encode(notificationId)}",
+            "/rest/v1/$table?id=eq.${encode(rowId)}",
             JSONObject().put("is_read", true),
         )
     }
