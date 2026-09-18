@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import com.example.R
+import com.example.BuildConfig
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -57,6 +58,8 @@ import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
 import com.example.data.repository.UserInteractionRepository
 import com.example.data.supabase.ReelRecommendationService
+import com.example.ui.components.BlinkNativeAdPlacement
+import com.example.ui.components.BlinkSponsoredNativeAd
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.components.ProfileFollowInteractButton
 import com.example.ui.components.VerifiedMark
@@ -175,6 +178,38 @@ fun VideoReelsScreen(
 
 private enum class ReelsUiState { Loading, Empty, Content }
 
+private const val REELS_SPONSORED_INTERVAL = 7
+
+private sealed interface ReelPagerItem {
+    data class ReelItem(val reel: FeedPost, val sourceIndex: Int) : ReelPagerItem
+    data class Sponsored(val slot: Int) : ReelPagerItem
+}
+
+private fun buildReelPagerItems(reels: List<FeedPost>): List<ReelPagerItem> {
+    if (reels.isEmpty()) return emptyList()
+
+    val result = ArrayList<ReelPagerItem>(reels.size + (reels.size / REELS_SPONSORED_INTERVAL))
+    var sponsoredSlot = 0
+
+    reels.forEachIndexed { index, reel ->
+        result += ReelPagerItem.ReelItem(reel = reel, sourceIndex = index)
+        if (
+            (index + 1) % REELS_SPONSORED_INTERVAL == 0 &&
+            index < reels.lastIndex
+        ) {
+            result += ReelPagerItem.Sponsored(slot = sponsoredSlot++)
+        }
+    }
+    return result
+}
+
+private fun reelPageIndex(items: List<ReelPagerItem>, reelId: String?): Int? {
+    if (reelId.isNullOrBlank()) return null
+    return items.indexOfFirst { item ->
+        item is ReelPagerItem.ReelItem && item.reel.id == reelId
+    }.takeIf { it >= 0 }
+}
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ReelsContent(
@@ -205,26 +240,30 @@ private fun ReelsContent(
     val resumeUserKey = remember(currentUsername) {
         currentUsername.trim().removePrefix("@").lowercase().ifBlank { "anonymous" }
     }
-    val initialPage = remember(reels, resumeUserKey, initialReelId) {
-        val requestedIndex = initialReelId
-            ?.let { id -> reels.indexOfFirst { it.id == id } }
-            ?.takeIf { it >= 0 }
+    val pagerItems = remember(reels) { buildReelPagerItems(reels) }
+    val initialPage = remember(pagerItems, reels, resumeUserKey, initialReelId) {
+        val requestedPage = reelPageIndex(pagerItems, initialReelId)
         val savedId = resumePrefs.getString("reel_id:$resumeUserKey", null)
-        val byId = savedId?.let { id -> reels.indexOfFirst { it.id == id } }
-            ?.takeIf { it >= 0 }
-        val byIndex = resumePrefs.getInt("reel_index:$resumeUserKey", 0)
-        (requestedIndex ?: byId ?: byIndex).coerceIn(0, reels.lastIndex.coerceAtLeast(0))
+        val byId = reelPageIndex(pagerItems, savedId)
+        val savedSourceIndex = resumePrefs.getInt("reel_index:$resumeUserKey", 0)
+            .coerceIn(0, reels.lastIndex.coerceAtLeast(0))
+        val byIndex = reels.getOrNull(savedSourceIndex)
+            ?.id
+            ?.let { id -> reelPageIndex(pagerItems, id) }
+            ?: 0
+
+        (requestedPage ?: byId ?: byIndex)
+            .coerceIn(0, pagerItems.lastIndex.coerceAtLeast(0))
     }
     val pager = rememberPagerState(
         initialPage = initialPage,
-        pageCount = { reels.size }
+        pageCount = { pagerItems.size }
     )
 
-    LaunchedEffect(initialReelId) {
-        val targetId = initialReelId ?: return@LaunchedEffect
-        val targetIndex = reels.indexOfFirst { it.id == targetId }
-        if (targetIndex >= 0 && pager.currentPage != targetIndex) {
-            pager.scrollToPage(targetIndex)
+    LaunchedEffect(initialReelId, pagerItems) {
+        val targetPage = reelPageIndex(pagerItems, initialReelId) ?: return@LaunchedEffect
+        if (pager.currentPage != targetPage) {
+            pager.scrollToPage(targetPage)
         }
     }
 
@@ -238,19 +277,33 @@ private fun ReelsContent(
         FollowStateStore.refresh()
     }
 
-    LaunchedEffect(pager, reels, resumeUserKey) {
+    LaunchedEffect(pager, pagerItems, resumeUserKey) {
         snapshotFlow { pager.currentPage }.collectLatest { page ->
-            reels.getOrNull(page)?.let { reel ->
+            val item = pagerItems.getOrNull(page)
+            if (item is ReelPagerItem.ReelItem) {
                 resumePrefs.edit()
-                    .putInt("reel_index:$resumeUserKey", page)
-                    .putString("reel_id:$resumeUserKey", reel.id)
+                    .putInt("reel_index:$resumeUserKey", item.sourceIndex)
+                    .putString("reel_id:$resumeUserKey", item.reel.id)
                     .apply()
             }
         }
     }
 
-    LaunchedEffect(pager.currentPage, reels.size, hasMore, isLoadingMore) {
-        if (hasMore && !isLoadingMore && pager.currentPage >= (reels.size - 3).coerceAtLeast(0)) {
+    LaunchedEffect(pager.currentPage, pagerItems, reels.size, hasMore, isLoadingMore) {
+        val currentSourceIndex = when (val item = pagerItems.getOrNull(pager.currentPage)) {
+            is ReelPagerItem.ReelItem -> item.sourceIndex
+            is ReelPagerItem.Sponsored, null -> {
+                pagerItems
+                    .take(pager.currentPage + 1)
+                    .asReversed()
+                    .filterIsInstance<ReelPagerItem.ReelItem>()
+                    .firstOrNull()
+                    ?.sourceIndex
+                    ?: 0
+            }
+        }
+
+        if (hasMore && !isLoadingMore && currentSourceIndex >= (reels.size - 3).coerceAtLeast(0)) {
             onLoadMore()
         }
     }
@@ -258,41 +311,69 @@ private fun ReelsContent(
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         VerticalPager(
             state = pager,
-            key = { index -> reels[index].id },
+            key = { index ->
+                when (val item = pagerItems[index]) {
+                    is ReelPagerItem.ReelItem -> "reel:${item.reel.id}"
+                    is ReelPagerItem.Sponsored -> "sponsored:${item.slot}"
+                }
+            },
             beyondViewportPageCount = 0,
             modifier = Modifier.fillMaxSize()
         ) { index ->
-            val reel = reels[index]
             val pageOffset = (pager.currentPage - index) + pager.currentPageOffsetFraction
-            ReelPage(
-                reel = reel,
-                pageOffset = pageOffset,
-                isActive = index == pager.currentPage,
-                isAuthor = reel.author.equals(currentUsername.removePrefix("@"), ignoreCase = true) ||
-                    reel.authorUsername.removePrefix("@").equals(currentUsername.removePrefix("@"), ignoreCase = true),
-                onLike = onLike,
-                onComment = onComment,
-                onBookmark = onBookmark,
-                onShare = onShare,
-                onDelete = onDelete,
-                onProfileClick = onProfileClick,
-                profiles = profiles,
-                connectHub = connectHub,
-                connectHubActions = connectHubActions,
-                onDirectMessage = onDirectMessage,
-                onOpenConnectHub = onOpenConnectHub,
-                onSwipeToHome = onBackToPosts,
-                onSwipeToProfile = {
-                    onProfileClick(reel.authorUsername.ifBlank { reel.author }.removePrefix("@"))
-                },
-                initialPositionMs = if (reel.id == pendingLaunchReelId) pendingLaunchPositionMs else 0L,
-                onInitialPositionConsumed = {
-                    if (pendingLaunchReelId == reel.id) {
-                        pendingLaunchReelId = null
-                        pendingLaunchPositionMs = 0L
+            when (val item = pagerItems[index]) {
+                is ReelPagerItem.ReelItem -> {
+                    val reel = item.reel
+                    ReelPage(
+                        reel = reel,
+                        pageOffset = pageOffset,
+                        isActive = index == pager.currentPage,
+                        isAuthor = reel.author.equals(currentUsername.removePrefix("@"), ignoreCase = true) ||
+                            reel.authorUsername.removePrefix("@").equals(currentUsername.removePrefix("@"), ignoreCase = true),
+                        onLike = onLike,
+                        onComment = onComment,
+                        onBookmark = onBookmark,
+                        onShare = onShare,
+                        onDelete = onDelete,
+                        onProfileClick = onProfileClick,
+                        profiles = profiles,
+                        connectHub = connectHub,
+                        connectHubActions = connectHubActions,
+                        onDirectMessage = onDirectMessage,
+                        onOpenConnectHub = onOpenConnectHub,
+                        onSwipeToHome = onBackToPosts,
+                        onSwipeToProfile = {
+                            onProfileClick(reel.authorUsername.ifBlank { reel.author }.removePrefix("@"))
+                        },
+                        initialPositionMs = if (reel.id == pendingLaunchReelId) pendingLaunchPositionMs else 0L,
+                        onInitialPositionConsumed = {
+                            if (pendingLaunchReelId == reel.id) {
+                                pendingLaunchReelId = null
+                                pendingLaunchPositionMs = 0L
+                            }
+                        }
+                    )
+                }
+
+                is ReelPagerItem.Sponsored -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                val distance = abs(pageOffset.coerceIn(-1f, 1f))
+                                scaleX = lerp(1f, 0.96f, distance)
+                                scaleY = lerp(1f, 0.96f, distance)
+                                alpha = lerp(1f, 0.65f, distance)
+                            }
+                    ) {
+                        BlinkSponsoredNativeAd(
+                            adUnitId = BuildConfig.ADMOB_REELS_NATIVE_AD_UNIT_ID,
+                            placement = BlinkNativeAdPlacement.REEL,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
                 }
-            )
+            }
         }
 
         ReelsTopTabs(
