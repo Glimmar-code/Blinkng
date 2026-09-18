@@ -2638,13 +2638,13 @@ private fun RingAvatar(
                 modifier = Modifier.fillMaxSize()
             )
         }
-        online?.let { active ->
+        if (online == true) {
             Box(
                 modifier = Modifier
                     .size(size * .25f)
                     .align(Alignment.BottomEnd)
                     .clip(CircleShape)
-                    .background(if (active) palette.online else Color(0xFF8B5A2B))
+                    .background(palette.online)
                     .border(2.dp, palette.glass, CircleShape)
             )
         }
