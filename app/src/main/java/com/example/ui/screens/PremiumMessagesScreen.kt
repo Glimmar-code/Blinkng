@@ -145,6 +145,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
 import com.example.data.models.ActivityItem
 import com.example.data.models.ChatConversation
@@ -1431,7 +1434,7 @@ private fun PremiumChatDetail(
     }
 
     selectedMessage?.let { message ->
-        MessageActionsSheet(
+        MessageActionsPopover(
             message = message,
             palette = palette,
             onReaction = { emoji ->
@@ -1896,6 +1899,202 @@ private fun MessageContent(message: ChatMessage, isMine: Boolean, palette: Messa
                 )
             }
         }
+    }
+}
+
+
+@Composable
+private fun MessageActionsPopover(
+    message: ChatMessage,
+    palette: MessagePalette,
+    onReaction: (String) -> Unit,
+    onReply: () -> Unit,
+    onForward: () -> Unit,
+    onEdit: () -> Unit,
+    onDeleteForMe: () -> Unit,
+    onDeleteForEveryone: () -> Unit,
+    onToggleStar: () -> Unit,
+    onShare: () -> Unit,
+    onTogglePin: () -> Unit,
+    onReport: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val attachmentUrl = message.attachedVideoUrl
+        ?.takeIf { it.isNotBlank() }
+        ?: message.attachedImageUrl?.takeIf { it.isNotBlank() }
+
+    Popup(
+        alignment = Alignment.CenterEnd,
+        offset = IntOffset(-12, 0),
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(
+            focusable = true,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(min = 220.dp, max = 286.dp)
+                .padding(end = 6.dp),
+            horizontalAlignment = Alignment.End
+        ) {
+            Surface(
+                color = if (palette.isLight) {
+                    Color.White.copy(alpha = .98f)
+                } else {
+                    Color(0xFF171717).copy(alpha = .98f)
+                },
+                contentColor = palette.textPrimary,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, palette.border.copy(alpha = .75f)),
+                shadowElevation = 18.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    listOf("👍", "❤️", "😂", "😮", "😢", "🙏").forEach { emoji ->
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    onReaction(emoji)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(emoji, fontSize = 20.sp)
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            Surface(
+                color = if (palette.isLight) {
+                    Color.White.copy(alpha = .99f)
+                } else {
+                    Color(0xFF171717).copy(alpha = .99f)
+                },
+                contentColor = palette.textPrimary,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, palette.border.copy(alpha = .75f)),
+                shadowElevation = 18.dp
+            ) {
+                Column(modifier = Modifier.padding(vertical = 5.dp)) {
+                    MessageActionRow("↩", "Reply", palette, onClick = onReply)
+
+                    if (message.text.isNotBlank() && !message.deletedForEveryone) {
+                        MessageActionRow("⧉", "Copy", palette) {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                as? android.content.ClipboardManager
+                            clipboard?.setPrimaryClip(
+                                android.content.ClipData.newPlainText("BLINK message", message.text)
+                            )
+                            Toast.makeText(context, "Message copied", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        }
+                    }
+
+                    MessageActionRow("➤", "Forward", palette, onClick = onForward)
+                    MessageActionRow(
+                        symbol = "⌖",
+                        label = if (message.isPinned) "Unpin" else "Pin",
+                        palette = palette,
+                        onClick = onTogglePin
+                    )
+                    MessageActionRow(
+                        symbol = "☆",
+                        label = if (message.isStarred) "Remove from Keep" else "Keep",
+                        palette = palette,
+                        onClick = onToggleStar
+                    )
+
+                    if (message.isFromMe && message.text.isNotBlank() && !message.deletedForEveryone) {
+                        MessageActionRow("✎", "Edit", palette, onClick = onEdit)
+                    }
+
+                    if (attachmentUrl != null) {
+                        MessageActionRow("↗", "Open with", palette) {
+                            openExternalUri(context, Uri.parse(attachmentUrl), "Open attachment with")
+                            onDismiss()
+                        }
+                    }
+
+                    MessageActionRow("⇧", "Share", palette, onClick = onShare)
+
+                    if (!message.isFromMe) {
+                        MessageActionRow("⚑", "Report", palette, onClick = onReport)
+                    }
+
+                    HorizontalDivider(
+                        color = palette.border.copy(alpha = .65f),
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+
+                    if (message.isFromMe && !message.deletedForEveryone) {
+                        MessageActionRow(
+                            symbol = "⌫",
+                            label = "Delete for everyone",
+                            palette = palette,
+                            danger = true,
+                            onClick = onDeleteForEveryone
+                        )
+                    }
+                    MessageActionRow(
+                        symbol = "⌫",
+                        label = "Delete for me",
+                        palette = palette,
+                        danger = true,
+                        onClick = onDeleteForMe
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageActionRow(
+    symbol: String,
+    label: String,
+    palette: MessagePalette,
+    danger: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val foreground = when {
+        !enabled -> palette.textMuted.copy(alpha = .55f)
+        danger -> palette.danger
+        else -> palette.textPrimary
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = symbol,
+            color = foreground,
+            fontSize = 17.sp,
+            modifier = Modifier.width(26.dp),
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = label,
+            color = foreground,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
