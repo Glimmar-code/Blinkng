@@ -13,6 +13,7 @@
   const DRAFT_KEY = 'blink_web_post_draft_v2';
   const VISITOR_KEY = 'blink_web_visitor_v2';
   const PARITY_PREF_KEY = 'blink_web_parity_prefs_v1';
+  const OAUTH_NEXT_KEY = 'blink_web_oauth_next_v1';
   const APK_URL = 'https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk';
   const API_TIMEOUT_MS = 20000;
 
@@ -31,6 +32,7 @@
     viewObserver: null,
     mediaObserver: null,
     searchRequestId: 0,
+    authError: null,
   };
 
   let refreshPromise = null;
@@ -123,13 +125,58 @@
   async function insert(name,body,prefer='return=representation'){ return api(`/rest/v1/${name}`,{method:'POST',body,prefer}); }
   async function patch(name,filter,body){ return api(`/rest/v1/${name}?${filter}`,{method:'PATCH',body,prefer:'return=representation'}); }
 
+  function safeInternalPath(value,fallback='/feed'){
+    const path=String(value||'').trim();
+    return path.startsWith('/')&&!path.startsWith('//')?path:fallback;
+  }
+
+  function relayDesktopOAuth(){
+    const query=new URLSearchParams(location.search);
+    if(query.get('desktop_oauth')!=='1')return false;
+    const fragment=new URLSearchParams(location.hash.replace(/^#/,''));
+    const code=query.get('code')||fragment.get('code')||'';
+    const error=query.get('error_description')||query.get('error')||fragment.get('error_description')||fragment.get('error')||'';
+    const port=Number(query.get('port')||0);
+    const relay=String(query.get('relay')||'');
+    if(!Number.isInteger(port)||port<1024||port>65535||!/^[A-Za-z0-9_-]{32,256}$/.test(relay)){
+      state.authError='The Windows Google sign-in callback was invalid. Please try again from the BLINK app.';
+      history.replaceState({},'',routeHref('/login'));
+      return false;
+    }
+    const callback=new URL(`http://127.0.0.1:${port}/callback`);
+    callback.searchParams.set('relay',relay);
+    if(code)callback.searchParams.set('code',code);
+    else callback.searchParams.set('error',error||'Google sign-in did not return an authorization code.');
+    location.replace(callback.toString());
+    return true;
+  }
+
   async function bootstrapSession(){
     state.session=loadSession();
     const hash=new URLSearchParams(location.hash.replace(/^#/,''));
+    const oauthError=hash.get('error_description')||hash.get('error')||'';
+    if(oauthError&&!hash.get('access_token')){
+      state.authError=oauthError;
+      storageRemove(OAUTH_NEXT_KEY);
+      history.replaceState({},'',routeHref('/login'));
+      return;
+    }
     if(hash.get('access_token')){
-      const access_token=hash.get('access_token'); const refresh_token=hash.get('refresh_token'); const expires_in=Number(hash.get('expires_in')||3600); const type=hash.get('type');
-      saveSession({access_token,refresh_token,expires_in,token_type:'bearer',user:null}); history.replaceState({},'',location.pathname+location.search);
-      if(type==='recovery'){ navigate('/settings/password',true); return; }
+      const access_token=hash.get('access_token');
+      const refresh_token=hash.get('refresh_token');
+      const expires_in=Number(hash.get('expires_in')||3600);
+      const type=hash.get('type');
+      saveSession({
+        access_token,
+        refresh_token,
+        expires_in,
+        expires_at:Math.floor(Date.now()/1000)+expires_in,
+        token_type:hash.get('token_type')||'bearer',
+        user:null
+      });
+      const next=type==='recovery'?'/settings/password':safeInternalPath(storageGet(OAUTH_NEXT_KEY,''),'/feed');
+      storageRemove(OAUTH_NEXT_KEY);
+      history.replaceState({},'',routeHref(next));
     }
     if(!state.session)return;
     try{
@@ -234,7 +281,13 @@
     const data=await api('/auth/v1/signup',{method:'POST',auth:false,body:{email:email.trim().toLowerCase(),password,data:{username:cleanUser,full_name:fullName.trim(),name:fullName.trim()}}});
     if(data?.access_token){saveSession(data);await loadMyProfile();} return data;
   }
-  function googleLogin(){ const redirect=encodeURIComponent(location.origin+routeHref('/feed')); location.href=`${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${redirect}`; }
+  function googleLogin(){
+    state.authError=null;
+    storageSet(OAUTH_NEXT_KEY,'/feed');
+    const redirectBase=(SITE_URL||location.origin).replace(/\/+$/,'');
+    const params=new URLSearchParams({provider:'google',redirect_to:`${redirectBase}/`});
+    location.assign(`${SUPABASE_URL}/auth/v1/authorize?${params.toString()}`);
+  }
   async function requestReset(email){ const redirect=location.origin+routeHref('/settings/password'); await api('/auth/v1/recover',{method:'POST',auth:false,body:{email:email.trim().toLowerCase(),redirect_to:redirect}}); }
   async function updatePassword(password){ if(password.length<8)throw new Error('Use at least 8 characters.'); await api('/auth/v1/user',{method:'PUT',body:{password}}); }
 
@@ -247,7 +300,7 @@
     if(isAuthed()){navigate('/feed',true);return;}
     setTitle('Sign in'); ROOT.innerHTML=`<div class="auth-wrap"><div class="card auth-card"><div class="brand" style="padding:0 0 8px"><img class="mark" src="blink-logo.png" alt="" aria-hidden="true">Blink</div><h1>Welcome back</h1><p class="muted">Use the same account you use in the Android app.</p><div class="auth-tabs"><button class="btn primary" data-auth-tab="login">Sign in</button><button class="btn" data-auth-tab="signup">Create account</button></div><div id="auth-panel"></div><p class="auth-note">Your browser receives a normal user session. Blink's service-role credentials are never exposed to the web.</p><button class="btn ghost" style="width:100%;margin-top:8px" data-nav="/">Browse without signing in</button></div></div>`;
     const panel=document.getElementById('auth-panel');
-    const showLogin=()=>{panel.innerHTML=`<form id="login-form" class="form-stack"><input class="field" name="identifier" placeholder="Email or @username" required autocomplete="username"><input class="field" name="password" type="password" placeholder="Password" required autocomplete="current-password"><button class="btn primary">Sign in</button><button class="btn" type="button" id="google-auth">Continue with Google</button><button class="btn ghost" type="button" id="forgot">Forgot password?</button><div id="auth-msg"></div></form>`; document.getElementById('login-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),msg=document.getElementById('auth-msg');msg.innerHTML='<span class="muted">Signing in…</span>';try{await login(f.get('identifier'),f.get('password'));toast('Signed in');navigate('/feed');}catch(err){msg.innerHTML=`<div class="error">${esc(err.message)}</div>`;}}; document.getElementById('google-auth').onclick=googleLogin; document.getElementById('forgot').onclick=()=>{modal('Reset password',`<form id="reset-form" class="form-stack"><input class="field" type="email" name="email" placeholder="Email address" required><button class="btn primary">Send reset email</button><div id="reset-msg"></div></form>`);document.getElementById('reset-form').onsubmit=async e=>{e.preventDefault();const email=new FormData(e.currentTarget).get('email');try{await requestReset(email);document.getElementById('reset-msg').innerHTML='<div class="success">Check your inbox for the Blink password reset link.</div>';}catch(err){document.getElementById('reset-msg').innerHTML=`<div class="error">${esc(err.message)}</div>`;}};};};
+    const showLogin=()=>{panel.innerHTML=`${state.authError?`<div class="error" style="margin-bottom:10px">${esc(state.authError)}</div>`:''}<form id="login-form" class="form-stack"><input class="field" name="identifier" placeholder="Email or @username" required autocomplete="username"><input class="field" name="password" type="password" placeholder="Password" required autocomplete="current-password"><button class="btn primary">Sign in</button><button class="btn" type="button" id="google-auth">Continue with Google</button><button class="btn ghost" type="button" id="forgot">Forgot password?</button><div id="auth-msg"></div></form>`; document.getElementById('login-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),msg=document.getElementById('auth-msg');msg.innerHTML='<span class="muted">Signing in…</span>';try{await login(f.get('identifier'),f.get('password'));toast('Signed in');navigate('/feed');}catch(err){msg.innerHTML=`<div class="error">${esc(err.message)}</div>`;}}; document.getElementById('google-auth').onclick=e=>{const b=e.currentTarget;b.disabled=true;b.textContent='Opening Google…';googleLogin();}; document.getElementById('forgot').onclick=()=>{modal('Reset password',`<form id="reset-form" class="form-stack"><input class="field" type="email" name="email" placeholder="Email address" required><button class="btn primary">Send reset email</button><div id="reset-msg"></div></form>`);document.getElementById('reset-form').onsubmit=async e=>{e.preventDefault();const email=new FormData(e.currentTarget).get('email');try{await requestReset(email);document.getElementById('reset-msg').innerHTML='<div class="success">Check your inbox for the Blink password reset link.</div>';}catch(err){document.getElementById('reset-msg').innerHTML=`<div class="error">${esc(err.message)}</div>`;}};};};
     const showSignup=()=>{panel.innerHTML=`<form id="signup-form" class="form-stack"><input class="field" name="name" placeholder="Full name" required><input class="field" name="username" placeholder="Username" required><input class="field" type="email" name="email" placeholder="Email" required><input class="field" type="password" name="password" placeholder="Strong password" required><button class="btn primary">Create Blink account</button><div id="auth-msg"></div></form>`;document.getElementById('signup-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),msg=document.getElementById('auth-msg');try{const data=await signup(f.get('name'),f.get('username'),f.get('email'),f.get('password'));if(data?.access_token){toast('Account created');navigate('/feed');}else msg.innerHTML='<div class="success">Account created. Check your email if Blink requires verification.</div>';}catch(err){msg.innerHTML=`<div class="error">${esc(err.message)}</div>`;}};};
     document.querySelector('[data-auth-tab="login"]').onclick=showLogin;document.querySelector('[data-auth-tab="signup"]').onclick=showSignup;document.querySelector('[data-nav="/"]').onclick=()=>navigate('/');showLogin();
   }
@@ -887,6 +940,7 @@
 
   async function init(){
     if(!SUPABASE_URL||!KEY){ROOT.innerHTML='<div class="auth-wrap"><div class="card empty"><h2>Web configuration missing</h2></div></div>';return;}
+    if(relayDesktopOAuth())return;
     try{await bootstrapSession();}catch(e){console.warn(e);} await render(currentPath());
     if('serviceWorker'in navigator && location.protocol==='https:')navigator.serviceWorker.register(routeHref('/sw.js')).catch(()=>{});
   }
