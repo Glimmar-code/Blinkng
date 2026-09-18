@@ -527,8 +527,11 @@ fun FollowerGrowthChart(
                 .padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            val labelCount = if (selectedTimeframe == 7) 7 else 5
-            val step = (activeData.size - 1).coerceAtLeast(1) / (labelCount - 1).coerceAtLeast(1)
+            val preferredLabelCount = if (selectedTimeframe == 7) 7 else 5
+            val labelCount = minOf(preferredLabelCount, activeData.size.coerceAtLeast(1))
+            val step = if (labelCount <= 1) 0 else {
+                (activeData.size - 1).coerceAtLeast(1) / (labelCount - 1)
+            }
             
             for (i in 0 until labelCount) {
                 val idx = (i * step).coerceAtMost(activeData.size - 1)
