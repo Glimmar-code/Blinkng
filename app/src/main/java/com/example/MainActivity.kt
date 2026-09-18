@@ -27,6 +27,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.ui.components.*
+import com.example.ads.BlinkRewardedAdManager
 import com.example.auth.AccountSessionStore
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.BlinkFirebaseMessagingService
@@ -47,7 +48,21 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private val viewModel: BlinkViewModel by viewModels()
+    private lateinit var rewardedAdManager: BlinkRewardedAdManager
     private var presenceHeartbeatJob: Job? = null
+
+    private fun showRewardedAdForCoins() {
+        lifecycleScope.launch {
+            val claimId = viewModel.beginRewardedAdClaim() ?: return@launch
+            val userId = viewModel.uiState.value.myProfile.id
+            rewardedAdManager.show(
+                userId = userId,
+                claimId = claimId,
+                onRewardEarned = { viewModel.completeRewardedAdClaim(claimId) },
+                onUnavailable = { viewModel.rewardedAdUnavailable(it) }
+            )
+        }
+    }
 
     private fun startPresenceHeartbeat() {
         presenceHeartbeatJob?.cancel()
@@ -143,6 +158,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        rewardedAdManager = BlinkRewardedAdManager(
+            activity = this,
+            adUnitId = BuildConfig.ADMOB_REWARDED_AD_UNIT_ID
+        ).also { it.load() }
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
@@ -292,7 +311,8 @@ class MainActivity : ComponentActivity() {
                                 AppDestination.MAIN -> {
                                     MainAppContent(
                                         uiState = uiState,
-                                        viewModel = viewModel
+                                        viewModel = viewModel,
+                                        onWatchAdForCoins = ::showRewardedAdForCoins
                                     )
                                 }
                             }
@@ -310,7 +330,8 @@ class MainActivity : ComponentActivity() {
 // MESSAGING_RELIABILITY_AUDIT_V3
 fun MainAppContent(
     uiState: com.example.viewmodel.BlinkUiState,
-    viewModel: BlinkViewModel
+    viewModel: BlinkViewModel,
+    onWatchAdForCoins: () -> Unit
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
@@ -833,7 +854,7 @@ fun MainAppContent(
                     onMarketItemClick = { viewModel.openProductDetail(it) },
                     onOpenGetVerified = { viewModel.openGetVerified(true) },
                     blinkCoinBalance = if (isMyProfile) uiState.blinkCoinBalance else 0L,
-                    onWatchAdForCoins = { viewModel.watchAdForBlinkCoins() },
+                    onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
                     isDark = uiState.isDarkMode
                 )
