@@ -657,7 +657,7 @@ object BlinkNotificationHelper {
 
         val chatIntent = buildChatPendingIntent(context, senderUsername, senderName, senderAvatar)
         val builder = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
-            .setSmallIcon(android.R.drawable.ic_dialog_email)
+            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
             .setContentTitle(senderName)
             .setContentText(messageText)
             .setStyle(messagingStyle)
@@ -731,10 +731,7 @@ object BlinkNotificationHelper {
                 context,
                 CHANNEL_MESSAGES
             )
-                .setSmallIcon(
-                    android.R.drawable
-                        .ic_dialog_email
-                )
+                .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
                     conversationTitle
                 )
@@ -805,10 +802,7 @@ object BlinkNotificationHelper {
                 context,
                 CHANNEL_SOCIAL
             )
-                .setSmallIcon(
-                    android.R.drawable
-                        .ic_dialog_info
-                )
+                .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
                     title
                 )
@@ -904,10 +898,7 @@ object BlinkNotificationHelper {
                 context,
                 CHANNEL_COMMENTS
             )
-                .setSmallIcon(
-                    android.R.drawable
-                        .ic_dialog_info
-                )
+                .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
                     "@$username commented on your post"
                 )
@@ -982,10 +973,7 @@ object BlinkNotificationHelper {
                 context,
                 CHANNEL_MENTIONS
             )
-                .setSmallIcon(
-                    android.R.drawable
-                        .ic_dialog_info
-                )
+                .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
                     "@$username mentioned you"
                 )
@@ -1294,10 +1282,7 @@ object BlinkNotificationHelper {
                 context,
                 channelId
             )
-                .setSmallIcon(
-                    android.R.drawable
-                        .ic_dialog_info
-                )
+                .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
                     title
                 )
