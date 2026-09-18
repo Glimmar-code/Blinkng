@@ -218,6 +218,8 @@ dependencies {
   implementation(libs.googleid)
   implementation(libs.accompanist.permissions)
   implementation(libs.play.services.location)
+  implementation(libs.play.app.update)
+  implementation(libs.play.app.update.ktx)
   implementation(libs.androidx.camera.camera2)
   implementation(libs.androidx.camera.lifecycle)
   implementation(libs.androidx.camera.view)
