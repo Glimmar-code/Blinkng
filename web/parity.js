@@ -169,16 +169,6 @@
     }
     if (!res.ok) { const e=await parseJson(res); throw new Error(e?.message||e?.error_description||e?.error||`Blink request failed (${res.status})`); }
     return parseJson(res);
-  }={}) {
-    if (!BASE || !KEY) throw new Error('Blink web backend is not configured.');
-    const h={apikey:KEY,Accept:'application/json'};
-    h.Authorization=`Bearer ${auth && token() ? token() : KEY}`;
-    if (body != null) h['Content-Type']='application/json';
-    if (prefer) h.Prefer=prefer;
-    const res=await fetch(`${BASE}${path}`,{method,headers:h,body:body==null?undefined:JSON.stringify(body)});
-    if (!res.ok) { const e=await parseJson(res); throw new Error(e?.message||e?.error_description||e?.error||`Blink request failed (${res.status})`); }
-    return parseJson(res);
-  }
   const rpc=(name,body={})=>api(`/rest/v1/rpc/${name}`,{method:'POST',body});
   const table=(name,query='')=>api(`/rest/v1/${name}${query?`?${query}`:''}`);
 
