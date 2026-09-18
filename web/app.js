@@ -709,9 +709,7 @@
         const submit=form.querySelector('button[type="submit"]');submit.disabled=true;
         try{
           if(isGroup){
-            const clientId=globalThis.crypto?.randomUUID?.()||null;
-            if(!clientId)throw new Error('This browser cannot create a secure message identifier.');
-            await rpc('send_conversation_message_v3',{p_conversation_id:id,p_content:text,p_client_message_id:clientId,p_reply_to_message_id:null,p_media_url:null,p_message_type:'text'});
+            await rpc('send_group_message',{p_conversation_id:id,p_content:text});
           }else{
             if(!partner)throw new Error('Could not identify the conversation partner.');
             await rpc('send_message_v2',{p_receiver_username:partner,p_content:text});
