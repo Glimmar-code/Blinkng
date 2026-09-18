@@ -142,6 +142,7 @@ android {
     buildConfigField("String", "BLINK_TURN_USERNAME", buildConfigString(resolvedTurnUsername))
     buildConfigField("String", "BLINK_TURN_CREDENTIAL", buildConfigString(resolvedTurnCredential))
     buildConfigField("String", "BUILD_COMMIT_SHA", buildConfigString(gitCommitSha))
+    buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/4343111201"))
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
   signingConfigs {
@@ -162,6 +163,8 @@ android {
     }
     debug {
       versionNameSuffix = "-debug"
+      // Never request live ads from developer/test builds.
+      buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", buildConfigString("ca-app-pub-3940256099942544/5224354917"))
     }
   }
   compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -218,6 +221,7 @@ dependencies {
   implementation(libs.googleid)
   implementation(libs.accompanist.permissions)
   implementation(libs.play.services.location)
+  implementation("com.google.android.gms:play-services-ads:25.5.0")
   implementation(libs.androidx.camera.camera2)
   implementation(libs.androidx.camera.lifecycle)
   implementation(libs.androidx.camera.view)
