@@ -32,3 +32,22 @@ html[data-blink-density="compact"] .parity-panel{padding:13px;border-radius:16px
 
 /* Official BLINK mark for the parity shell */
 .parity-brand>span{font-size:0!important;background:#000 url('blink-icon.svg') center/100% 100% no-repeat!important;box-shadow:none!important}
+
+
+/* Android-derived UI parity dock shown on the real web routes */
+.android-ui-parity-dock{display:grid;gap:10px;margin:0 0 14px;padding:12px 14px;border:1px solid var(--parity-border,rgba(255,255,255,.1));border-radius:16px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.018));box-shadow:0 10px 30px rgba(0,0,0,.16)}
+.android-ui-parity-head{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.android-ui-parity-head>div{display:grid;gap:2px;min-width:0}
+.android-ui-parity-head strong{font-size:13px;letter-spacing:.01em}
+.android-ui-parity-head span{font-size:11px;color:var(--parity-muted,#9e98aa);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.android-ui-parity-coverage{border:1px solid var(--parity-border,rgba(255,255,255,.12));background:transparent;color:inherit;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:800}
+.android-ui-parity-chips{display:flex;gap:8px;overflow:auto;padding-bottom:2px;scrollbar-width:thin}
+.android-ui-parity-chip{flex:0 0 auto;display:grid;gap:2px;max-width:220px;text-align:left;border:1px solid var(--parity-border,rgba(255,255,255,.12));background:rgba(139,92,246,.08);color:inherit;border-radius:12px;padding:8px 10px}
+.android-ui-parity-chip:hover{border-color:rgba(139,92,246,.58);background:rgba(139,92,246,.14)}
+.android-ui-parity-chip strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.android-ui-parity-chip small{font-size:10px;color:var(--parity-muted,#9e98aa);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.android-ui-parity-layer-list{display:grid;gap:8px;max-height:55vh;overflow:auto;margin-top:12px;padding-right:4px}
+.android-ui-parity-layer-list>div{display:grid;gap:3px;padding:9px 10px;border:1px solid var(--parity-border,rgba(255,255,255,.1));border-radius:12px;background:rgba(255,255,255,.025)}
+.android-ui-parity-layer-list strong{font-size:12px}
+.android-ui-parity-layer-list span{font-size:11px;color:var(--parity-muted,#9e98aa);line-height:1.45}
+@media(max-width:760px){.android-ui-parity-dock{margin-inline:0;padding:10px}.android-ui-parity-head span{max-width:56vw}.android-ui-parity-chip{max-width:175px}}
