@@ -106,6 +106,7 @@
   const storageGet = (key, fallback='') => { try { const v=localStorage.getItem(key); return v==null?fallback:v; } catch { return fallback; } };
   const storageSet = (key, value) => { try { localStorage.setItem(key,value); return true; } catch { return false; } };
   const storageRemove = (key) => { try { localStorage.removeItem(key); } catch {} };
+  const storageKeys = () => { try { return Object.keys(localStorage); } catch { return []; } };
   const session = () => { try { return JSON.parse(storageGet(SESSION_KEY,'null')); } catch { return null; } };
   const saveSession = (value) => value ? storageSet(SESSION_KEY,JSON.stringify(value)) : storageRemove(SESSION_KEY);
   const token = () => session()?.access_token || '';
@@ -360,9 +361,14 @@
   }
 
   function renderDrafts() {
-    const keys=Object.keys(localStorage).filter(k=>/draft/i.test(k));
-    shell('Drafts',`<section class="parity-panel"><h3>Persistent web drafts</h3><p class="muted">Draft storage is local to this browser. Existing Blink web post drafts remain compatible with the main composer.</p></section><div class="parity-list">${keys.map(k=>{let v=localStorage.getItem(k)||'';return `<article class="parity-panel"><span class="parity-chip">${esc(k)}</span><textarea class="parity-field" data-draft-key="${esc(k)}">${esc(v)}</textarea><div class="row-actions"><button class="parity-btn" data-save-draft="${esc(k)}">Save</button><button class="parity-btn danger" data-delete-draft="${esc(k)}">Delete</button></div></article>`;}).join('')||'<div class="parity-panel">No drafts saved in this browser.</div>'}</div>`);
-    document.querySelectorAll('[data-save-draft]').forEach(b=>b.onclick=()=>{const k=b.dataset.saveDraft;localStorage.setItem(k,document.querySelector(`[data-draft-key="${CSS.escape(k)}"]`).value);toast('Draft saved.','success');}); document.querySelectorAll('[data-delete-draft]').forEach(b=>b.onclick=()=>{localStorage.removeItem(b.dataset.deleteDraft);toast('Draft deleted.','success');renderDrafts();});
+    const keys=storageKeys().filter(k=>/draft/i.test(k));
+    shell('Drafts',`<section class="parity-panel"><h3>Persistent web drafts</h3><p class="muted">Draft storage is local to this browser and scoped by account where supported.</p></section><div class="parity-list">${keys.map(k=>{const v=storageGet(k,'');return `<article class="parity-panel"><span class="parity-chip">${esc(k)}</span><textarea class="parity-field" data-draft-key="${esc(k)}">${esc(v)}</textarea><div class="row-actions"><button class="parity-btn" data-save-draft="${esc(k)}">Save</button><button class="parity-btn danger" data-delete-draft="${esc(k)}">Delete</button></div></article>`;}).join('')||'<div class="parity-panel">No drafts saved in this browser.</div>'}</div>`);
+    document.querySelectorAll('[data-save-draft]').forEach(b=>b.onclick=()=>{
+      const k=b.dataset.saveDraft,input=document.querySelector(`[data-draft-key="${CSS.escape(k)}"]`);
+      if(!input)return;
+      if(storageSet(k,input.value))toast('Draft saved.','success');else toast('This browser blocked local draft storage.','error');
+    });
+    document.querySelectorAll('[data-delete-draft]').forEach(b=>b.onclick=()=>{storageRemove(b.dataset.deleteDraft);toast('Draft deleted.','success');renderDrafts();});
   }
 
   async function getUserSettings() {
@@ -398,11 +404,17 @@
   }
 
   async function renderDataSettings() {
-    if (!authGuard()) return; shell('Your data',`<section class="parity-panel"><h3>Export Blink account data</h3><p class="muted">Uses the same <code>export_my_account_data</code> server RPC as Android.</p><button class="parity-btn primary" data-export>Export my data</button></section><section class="parity-panel"><h3>Local browser data</h3><p class="muted">Clear only Blink Web parity preferences and local drafts on this browser.</p><button class="parity-btn danger" data-clear-local>Clear local web data</button></section>`); document.querySelector('[data-export]').onclick=async()=>{try{const data=await rpc('export_my_account_data',{});const blob=new Blob([typeof data==='string'?data:JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`blink-account-export-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);toast('Export ready.','success');}catch(e){toast(e.message,'error');}}; document.querySelector('[data-clear-local]').onclick=()=>{Object.keys(localStorage).filter(k=>/blink_web_parity|draft/i.test(k)).forEach(k=>localStorage.removeItem(k));toast('Local web data cleared.','success');applyPrefs();};
+    if (!authGuard()) return; shell('Your data',`<section class="parity-panel"><h3>Export Blink account data</h3><p class="muted">Uses the same <code>export_my_account_data</code> server RPC as Android.</p><button class="parity-btn primary" data-export>Export my data</button></section><section class="parity-panel"><h3>Local browser data</h3><p class="muted">Clear only Blink Web parity preferences and local drafts on this browser.</p><button class="parity-btn danger" data-clear-local>Clear local web data</button></section>`); document.querySelector('[data-export]').onclick=async()=>{try{const data=await rpc('export_my_account_data',{});const blob=new Blob([typeof data==='string'?data:JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`blink-account-export-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);toast('Export ready.','success');}catch(e){toast(e.message,'error');}}; document.querySelector('[data-clear-local]').onclick=()=>{storageKeys().filter(k=>/blink_web_parity|draft/i.test(k)).forEach(storageRemove);toast('Local web data cleared.','success');applyPrefs();};
   }
 
   async function renderAccounts() {
-    if (!authGuard()) return; const p=await getProfile().catch(()=>null); let recent=[]; try{recent=JSON.parse(localStorage.getItem(RECENT_KEY)||'[]');}catch{} if(p?.username&&!recent.some(x=>x.username===p.username)){recent=[{username:p.username,name:p.full_name||p.username,last:new Date().toISOString()},...recent].slice(0,8);localStorage.setItem(RECENT_KEY,JSON.stringify(recent));}
+    if (!authGuard()) return;
+    const p=await getProfile().catch(()=>null);
+    let recent=[];try{recent=JSON.parse(storageGet(RECENT_KEY,'[]'));if(!Array.isArray(recent))recent=[];}catch{recent=[];}
+    if(p?.username&&!recent.some(x=>x.username===p.username)){
+      recent=[{username:p.username,name:p.full_name||p.username,last:new Date().toISOString()},...recent].slice(0,8);
+      storageSet(RECENT_KEY,JSON.stringify(recent));
+    }
     shell('Accounts',`<section class="parity-panel"><h3>Current account</h3><div class="status-card"><div class="parity-avatar">${esc((p?.full_name||p?.username||'B')[0].toUpperCase())}</div><div class="grow"><strong>${esc(p?.full_name||p?.username||'Blink account')}</strong><p class="muted">@${esc(p?.username||'')}</p></div><button class="parity-btn" data-parity-go="/settings/profile">Edit profile</button></div></section><section class="parity-panel"><h3>Recent web accounts</h3><p class="muted">For security, the parity layer remembers account names only — not additional access tokens.</p>${recent.map(r=>`<div class="mini-row"><span>@${esc(r.username)}</span><span class="muted">${esc(r.name||'')}</span></div>`).join('')||'<p>No recent accounts.</p>'}<button class="parity-btn" data-parity-go="/login">Sign in with another account</button></section>`);
   }
 
