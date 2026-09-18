@@ -95,7 +95,7 @@ language sql
 stable
 security definer
 set search_path to ''
-as $
+as $conversation$
   with current_user_id as (
     select auth.uid() as uid
   ), summaries as (
@@ -168,7 +168,7 @@ as $
      )
   order by s.cursor_at desc, s.conversation_id desc
   limit greatest(1, least(coalesce(p_limit, 100), 100));
-$;
+$conversation$;
 
 grant execute on function public.get_conversation_summaries_page(integer, timestamptz, uuid)
 to authenticated;
