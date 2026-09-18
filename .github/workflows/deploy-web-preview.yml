@@ -1,4 +1,4 @@
-name: Deploy Blink web preview
+name: Deploy Blink web
 
 on:
   push:
@@ -26,14 +26,106 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Validate production domain configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(tr -d '\r\n' < web/CNAME)" = "www.blink.com.ng"
+          grep -F 'siteUrl: "https://www.blink.com.ng"' web/config.js >/dev/null
+          grep -F 'https://www.blink.com.ng' app/build.gradle.kts >/dev/null
+          grep -F 'https://www.blink.com.ng/' web/index.html >/dev/null
+          python3 -m json.tool web/manifest.webmanifest >/dev/null
+
+      - name: Set up Java for Android link verification
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Generate Android Digital Asset Links
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name is required to publish verified Android App Links."
+              exit 1
+            fi
+          done
+
+          KEYSTORE_FILE="$RUNNER_TEMP/blink-production-release.jks"
+          CERT_PEM="$RUNNER_TEMP/blink-production-release.pem"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+          chmod 600 "$KEYSTORE_FILE"
+
+          keytool -exportcert \
+            -keystore "$KEYSTORE_FILE" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" \
+            -rfc > "$CERT_PEM"
+
+          EXPECTED_SHA1="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          package_name = "com.aistudio.blink.appvtwo"
+          data = json.loads(Path("app/google-services.json").read_text())
+          for client in data.get("client", []):
+              for oauth in client.get("oauth_client", []):
+                  android = oauth.get("android_info") or {}
+                  if android.get("package_name") == package_name and android.get("certificate_hash"):
+                      print(android["certificate_hash"].replace(":", "").lower())
+                      raise SystemExit(0)
+          raise SystemExit(f"No pinned Android OAuth certificate found for {package_name}")
+          PY
+          )"
+
+          ACTUAL_SHA1="$(openssl x509 -in "$CERT_PEM" -noout -fingerprint -sha1 | sed 's/^.*=//' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          ACTUAL_SHA256="$(openssl x509 -in "$CERT_PEM" -noout -fingerprint -sha256 | sed 's/^.*=//' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+
+          if [ "$ACTUAL_SHA1" != "$EXPECTED_SHA1" ]; then
+            echo "::error::The web App Links certificate does not match BLINK's production Android signer."
+            exit 1
+          fi
+
+          FINGERPRINT="$(printf '%s' "$ACTUAL_SHA256" | sed 's/../&:/g;s/:$//')"
+          mkdir -p web/.well-known
+          python3 - "$FINGERPRINT" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          fingerprint = sys.argv[1]
+          payload = [{
+              "relation": ["delegate_permission/common.handle_all_urls"],
+              "target": {
+                  "namespace": "android_app",
+                  "package_name": "com.aistudio.blink.appvtwo",
+                  "sha256_cert_fingerprints": [fingerprint],
+              },
+          }]
+          target = Path("web/.well-known/assetlinks.json")
+          target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+          PY
+
+          python3 -m json.tool web/.well-known/assetlinks.json >/dev/null
+          echo "Generated verified Android App Links metadata for www.blink.com.ng."
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
           enablement: true
+
       - name: Upload web artifact
         uses: actions/upload-pages-artifact@v4
         with:
           path: web
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
