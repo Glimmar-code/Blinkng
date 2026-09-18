@@ -160,6 +160,16 @@
     window.scrollTo({top:0,behavior:'instant'});
   }
   window.addEventListener('popstate',()=>render(currentPath()));
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden){
+      for(const postId of [...state.qualifiedTimers.keys()])cancelQualifiedView(postId);
+      document.querySelectorAll('video').forEach(v=>v.pause());
+    }else if(state.viewObserver){
+      state.viewObserver.disconnect();state.viewObserver=null;
+      document.querySelectorAll('[data-view-tracked]').forEach(el=>{delete el.dataset.viewTracked;});
+      bindQualifiedViews();
+    }
+  });
 
   function navItem(path,key,label,badge=''){ const active=currentPath()===path || (path!=='/'&&currentPath().startsWith(path)); return `<button class="nav-btn ${active?'active':''}" data-nav="${esc(path)}"><span class="icon">${icon(key)}</span><span>${esc(label)}</span>${badge?`<span class="badge">${esc(badge)}</span>`:''}</button>`; }
   function mobileItem(path,key,label){ const active=currentPath()===path || (path!=='/'&&currentPath().startsWith(path)); return `<button class="${active?'active':''}" data-nav="${esc(path)}"><span>${icon(key)}</span>${esc(label)}</button>`; }
@@ -712,25 +722,154 @@
     }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Chat');bindCommon();}
   }
 
-  async function renderMarket(){if(!requireAuth())return;ROOT.innerHTML=shell('<div class="spinner"></div>','Marketplace');bindCommon();try{const q=new URLSearchParams(location.search).get('q')||null;const rows=await rpc('get_ranked_market_page',{p_query:q,p_category:null,p_min_price:null,p_max_price:null,p_limit:40,p_cursor_score:null,p_cursor_created_at:null,p_cursor_id:null,p_as_of:null});const items=(rows||[]).map(r=>r.item||r);ROOT.innerHTML=shell(`<form id="market-search" style="display:flex;gap:8px;margin-bottom:12px"><input class="field" name="q" value="${esc(q||'')}" placeholder="Search marketplace"><button class="btn">Search</button></form><div class="market-grid">${items.map(i=>`<article class="card market-card">${safeUrl((i.image_urls||[])[0]||i.image_url)?`<img src="${esc(safeUrl((i.image_urls||[])[0]||i.image_url))}" alt="${esc(i.title||'Item')}" loading="lazy">`:''}<h3>${esc(i.title||'Item')}</h3><div class="price">${money(i.price,i.currency)}</div><p class="muted small">${esc(i.condition||'')} · ${esc(i.location||i.university||'')}</p><p>${esc((i.description||'').slice(0,180))}</p><button class="btn primary" data-message-seller="${esc(i.seller_username||'')}">Message seller</button></article>`).join('')||'<div class="card empty"><h2>No items found</h2></div>'}</div>`,'Marketplace');bindCommon();document.getElementById('market-search').onsubmit=e=>{e.preventDefault();const v=new FormData(e.currentTarget).get('q').trim();const u=new URL(location.href);u.searchParams.set('q',v);history.pushState({},'',u);renderMarket();};document.querySelectorAll('[data-message-seller]').forEach(x=>x.onclick=()=>navigate(`/messages/new?user=${encodeURIComponent(x.dataset.messageSeller)}`));}catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Marketplace');bindCommon();}}
+  async function renderMarket(){
+    if(!requireAuth())return;
+    ROOT.innerHTML=shell('<div class="spinner"></div>','Marketplace');bindCommon();
+    try{
+      const q=new URLSearchParams(location.search).get('q')||'';
+      const rows=await rpc('get_ranked_market_page',{p_query:q||null,p_category:null,p_min_price:null,p_max_price:null,p_limit:40,p_cursor_score:null,p_cursor_created_at:null,p_cursor_id:null,p_as_of:null});
+      const items=(rows||[]).map(r=>r.item||r);
+      const cards=items.map(i=>{
+        const image=safeUrl((i.image_urls||[])[0]||i.image_url);
+        const seller=String(i.seller_username||'').trim().replace(/^@/,'');
+        const action=seller?`<button type="button" class="btn primary" data-message-seller="${esc(seller)}">Message seller</button>`:'<button type="button" class="btn" disabled>Seller unavailable</button>';
+        return `<article class="card market-card">${image?`<img src="${esc(image)}" alt="${esc(i.title||'Marketplace item')}" loading="lazy">`:''}<h3>${esc(i.title||'Item')}</h3><div class="price">${money(i.price,i.currency)}</div><p class="muted small">${esc(i.condition||'')} · ${esc(i.location||i.university||'')}</p><p>${esc((i.description||'').slice(0,300))}</p>${action}</article>`;
+      }).join('');
+      ROOT.innerHTML=shell(`<form id="market-search" style="display:flex;gap:8px;margin-bottom:12px"><input class="field" name="q" maxlength="100" value="${esc(q)}" placeholder="Search marketplace" autocomplete="off"><button class="btn">Search</button></form><div class="market-grid">${cards||'<div class="card empty"><h2>No items found</h2></div>'}</div>`,'Marketplace');
+      bindCommon();
+      document.getElementById('market-search').onsubmit=e=>{e.preventDefault();const v=String(new FormData(e.currentTarget).get('q')||'').trim();const u=new URL(location.href);if(v)u.searchParams.set('q',v);else u.searchParams.delete('q');history.pushState({},'',u);renderMarket();};
+      document.querySelectorAll('[data-message-seller]').forEach(x=>x.onclick=()=>navigate(`/messages/new?user=${encodeURIComponent(x.dataset.messageSeller)}`));
+    }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Marketplace');bindCommon();}
+  }
 
-  async function renderConnect(){if(!requireAuth())return;ROOT.innerHTML=shell('<div class="spinner"></div>','Connect');bindCommon();try{const mode=new URLSearchParams(location.search).get('mode')||'all';const rows=await rpc('get_ranked_connect_opportunities',{p_mode:mode,p_limit:40,p_cursor_score:null,p_cursor_kind:null,p_cursor_id:null,p_as_of:null});ROOT.innerHTML=shell(`<div class="tabs">${['all','roommate','mentor','reading_mate','housing'].map(m=>`<button class="tab ${mode===m?'active':''}" data-connect-mode="${m}">${m.replace('_',' ')}</button>`).join('')}</div><div class="connect-grid">${(rows||[]).map(r=>{const p=r.payload||{};return `<article class="card connect-card"><span class="handle">${esc(r.kind||'Connect')}</span><h3>${esc(p.title||p.headline||p.name||'Connect opportunity')}</h3><p>${esc((p.description||p.bio||'').slice(0,220))}</p><div class="muted small">${esc(p.university||'')} ${esc(p.location||'')}</div><button class="btn small-btn" data-connect-target="${esc(r.target_id)}">Connect</button></article>`;}).join('')||'<div class="card empty"><h2>No matches yet</h2></div>'}</div>`,'Connect');bindCommon();document.querySelectorAll('[data-connect-mode]').forEach(x=>x.onclick=()=>{const u=new URL(location.href);u.searchParams.set('mode',x.dataset.connectMode);history.pushState({},'',u);renderConnect();});document.querySelectorAll('[data-connect-target]').forEach(x=>x.onclick=async()=>{try{await rpc('send_connection_request',{p_receiver_id:x.dataset.connectTarget});toast('Connection request sent');}catch(e){toast(e.message);}});}catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Connect');bindCommon();}}
+  async function renderConnect(){
+    if(!requireAuth())return;
+    ROOT.innerHTML=shell('<div class="spinner"></div>','Connect');bindCommon();
+    try{
+      const allowed=new Set(['all','roommate','mentor','reading_mate','housing']);
+      const requested=new URLSearchParams(location.search).get('mode')||'all';
+      const mode=allowed.has(requested)?requested:'all';
+      const rows=await rpc('get_ranked_connect_opportunities',{p_mode:mode,p_limit:40,p_cursor_score:null,p_cursor_kind:null,p_cursor_id:null,p_as_of:null});
+      const cards=(rows||[]).map(r=>{
+        const p=r.payload||{},profile=p.profile||{};
+        const receiverId=String(profile.id||'');
+        const title=p.title||p.headline||profile.full_name||profile.username||p.name||'Connect opportunity';
+        const description=p.description||p.bio||'';
+        const detail=[profile.university||p.university,profile.department||p.department,p.location||p.preferred_location].filter(Boolean).join(' · ');
+        const action=receiverId?`<button type="button" class="btn small-btn" data-connect-receiver="${esc(receiverId)}">Connect</button>`:'<button type="button" class="btn small-btn" disabled>Unavailable</button>';
+        return `<article class="card connect-card"><span class="handle">${esc(r.kind||'Connect')}</span><h3>${esc(title)}</h3><p>${esc(String(description).slice(0,260))}</p><div class="muted small">${esc(detail)}</div>${action}</article>`;
+      }).join('');
+      ROOT.innerHTML=shell(`<div class="tabs">${['all','roommate','mentor','reading_mate','housing'].map(m=>`<button type="button" class="tab ${mode===m?'active':''}" data-connect-mode="${m}">${m.replaceAll('_',' ')}</button>`).join('')}</div><div class="connect-grid">${cards||'<div class="card empty"><h2>No matches yet</h2></div>'}</div>`,'Connect');
+      bindCommon();
+      document.querySelectorAll('[data-connect-mode]').forEach(x=>x.onclick=()=>{const u=new URL(location.href);u.searchParams.set('mode',x.dataset.connectMode);history.pushState({},'',u);renderConnect();});
+      document.querySelectorAll('[data-connect-receiver]').forEach(x=>x.onclick=async()=>{
+        const button=x;button.disabled=true;
+        try{await rpc('send_connection_request',{p_receiver_id:button.dataset.connectReceiver});button.textContent='Request sent';toast('Connection request sent');}
+        catch(e){toast(e.message);button.disabled=false;}
+      });
+    }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Connect');bindCommon();}
+  }
 
-  async function renderGames(){if(!requireAuth())return;ROOT.innerHTML=shell('<div class="spinner"></div>','Games');bindCommon();try{const [dash,board]=await Promise.all([rpc('get_game_dashboard',{}),rpc('get_game_leaderboard',{p_period:'all_time',p_scope:'global',p_limit:50})]);const leaderboard=Array.isArray(board)?board:(board?.rows||board?.leaderboard||[]);ROOT.innerHTML=shell(`<div class="game-grid"><div class="card game-card"><h3>Your game profile</h3><p class="price">${fmt(dash?.score||dash?.profile?.score||0)} points</p><p class="muted">Coins ${fmt(dash?.coins||dash?.profile?.coins||0)} · Streak ${fmt(dash?.streak||dash?.profile?.streak||0)}</p></div><div class="card game-card"><h3>Play on Android</h3><p class="muted">Your scores and rewards remain synced to the same Blink backend.</p><button class="btn primary" data-action="open-app">Open Blink</button></div></div><h3>Leaderboard</h3><div class="list">${leaderboard.map((u,i)=>`<div class="card list-item"><strong>#${i+1}</strong>${avatar(u.avatar_url,u.full_name||u.username)}<span class="grow"><span class="title">${esc(u.full_name||u.username||'Player')}</span><span class="sub">${fmt(u.score||u.points)} points</span></span></div>`).join('')||'<div class="card empty">Leaderboard is empty.</div>'}</div>`,'Games');bindCommon();}catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Games');bindCommon();}}
+  async function renderGames(){
+    if(!requireAuth())return;
+    ROOT.innerHTML=shell('<div class="spinner"></div>','Games');bindCommon();
+    try{
+      const [dash,board]=await Promise.all([rpc('get_game_dashboard',{}),rpc('get_game_leaderboard',{p_period:'all_time',p_scope:'global',p_limit:50})]);
+      const leaderboard=Array.isArray(board)?board:(board?.rows||board?.leaderboard||[]);
+      ROOT.innerHTML=shell(`<div class="game-grid"><div class="card game-card"><h3>Your game profile</h3><p class="price">${fmt(dash?.score||dash?.profile?.score||0)} points</p><p class="muted">Coins ${fmt(dash?.coins||dash?.profile?.coins||0)} · Streak ${fmt(dash?.streak||dash?.profile?.streak||0)}</p></div><div class="card game-card"><h3>Play on Android</h3><p class="muted">Your scores and rewards remain synced to the same Blink backend.</p><a class="btn primary download-app" href="${APK_URL}">Download latest BLINK app</a></div></div><h3>Leaderboard</h3><div class="list">${leaderboard.map((u,i)=>`<div class="card list-item"><strong>#${i+1}</strong>${avatar(u.avatar_url,u.full_name||u.username)}<span class="grow"><span class="title">${esc(u.full_name||u.username||'Player')}</span><span class="sub">${fmt(u.score||u.points)} points</span></span></div>`).join('')||'<div class="card empty">Leaderboard is empty.</div>'}</div>`,'Games');
+      bindCommon();
+    }catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Games');bindCommon();}
+  }
 
   async function renderScheduled(){if(!requireAuth())return;ROOT.innerHTML=shell('<div class="spinner"></div>','Scheduled posts');bindCommon();try{const rows=await table('scheduled_feed_posts','select=id,payload,scheduled_for,status,error_message,published_post_id,created_at&order=scheduled_for.desc&limit=100');ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Schedule a post</h3><form id="schedule-form" class="form-stack"><textarea class="field" name="text" placeholder="Post text" required></textarea><input class="field" name="when" type="datetime-local" required><input class="field" name="tags" placeholder="Tags, comma separated"><label class="checkbox"><input type="checkbox" name="reel"> Reel</label><button class="btn primary">Schedule</button><div id="schedule-msg"></div></form></div><div class="list">${(rows||[]).map(s=>`<div class="card schedule-row"><div><strong>${esc((s.payload?.text||'Scheduled post').slice(0,160))}</strong><div class="muted small">${new Date(s.scheduled_for).toLocaleString()} · ${esc(s.status)}</div>${s.error_message?`<div class="error">${esc(s.error_message)}</div>`:''}</div><div class="schedule-actions">${s.status==='pending'||s.status==='failed'?`<button class="btn small-btn" data-publish-scheduled="${esc(s.id)}">Publish now</button><button class="btn danger small-btn" data-cancel-scheduled="${esc(s.id)}">Cancel</button>`:''}</div></div>`).join('')||'<div class="card empty"><h2>No scheduled posts</h2></div>'}</div>`,'Scheduled posts');bindCommon();document.getElementById('schedule-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),when=new Date(f.get('when'));if(Number.isNaN(when.valueOf())||when<=new Date()){toast('Choose a future time.');return;}const payload={text:String(f.get('text')).trim(),faculty:state.profile?.faculty||'',video_url:null,images:[],tags:String(f.get('tags')||'').split(',').map(x=>x.trim()).filter(Boolean),is_reel:f.get('reel')==='on',audience:'Everyone',category:'Campus Life',location:null,link_url:null,allow_comments:true,hide_likes:false,is_pinned:false,is_disappearing:false,audio_title:null,alt_text:null};try{await rpc('schedule_feed_post',{p_payload:payload,p_scheduled_for:when.toISOString()});toast('Post scheduled');renderScheduled();}catch(err){document.getElementById('schedule-msg').innerHTML=`<div class="error">${esc(err.message)}</div>`;}};document.querySelectorAll('[data-cancel-scheduled]').forEach(x=>x.onclick=async()=>{try{await rpc('cancel_scheduled_feed_post',{p_schedule_id:x.dataset.cancelScheduled});toast('Schedule cancelled');renderScheduled();}catch(e){toast(e.message);}});document.querySelectorAll('[data-publish-scheduled]').forEach(x=>x.onclick=async()=>{try{const id=await rpc('publish_scheduled_feed_post_now',{p_schedule_id:x.dataset.publishScheduled});toast('Published now');if(id)navigate(`/post/${String(id).replace(/"/g,'')}`);else renderScheduled();}catch(e){toast(e.message);}});}catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Scheduled posts');bindCommon();}}
 
-  async function renderSettings(path){if(!requireAuth())return;if(path==='/settings/password'){ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Change password</h3><form id="password-form" class="form-stack"><input class="field" type="password" name="password" placeholder="New password" required><input class="field" type="password" name="confirm" placeholder="Confirm password" required><button class="btn primary">Update password</button><div id="password-msg"></div></form></div>`,'Security');bindCommon();document.getElementById('password-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget);if(f.get('password')!==f.get('confirm')){toast('Passwords do not match');return;}try{await updatePassword(f.get('password'));document.getElementById('password-msg').innerHTML='<div class="success">Password updated.</div>';}catch(err){document.getElementById('password-msg').innerHTML=`<div class="error">${esc(err.message)}</div>`;}};return;}
-    await loadMyProfile();const p=state.profile||{};ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Edit profile</h3><form id="profile-form" class="form-stack"><div class="form-grid"><input class="field" name="name" value="${esc(p.full_name||'')}" placeholder="Full name"><input class="field" name="username" value="${esc(p.username||'')}" placeholder="Username"></div><textarea class="field" name="bio" placeholder="Bio">${esc(p.bio||'')}</textarea><input class="field" name="headline" value="${esc(p.professional_headline||'')}" placeholder="Professional headline"><div class="form-grid"><input class="field" name="university" value="${esc(p.university||'')}" placeholder="University"><input class="field" name="faculty" value="${esc(p.faculty||'')}" placeholder="Faculty"><input class="field" name="department" value="${esc(p.department||'')}" placeholder="Department"><input class="field" name="level" value="${esc(p.academic_level||'')}" placeholder="Academic level"></div><button class="btn primary">Save profile</button><div id="profile-msg"></div></form></div><div class="card settings-section"><h3>Profile media</h3><div class="form-grid"><label class="btn" style="text-align:center">Change avatar<input class="hidden" id="avatar-file" type="file" accept="image/*"></label><label class="btn" style="text-align:center">Change cover<input class="hidden" id="cover-file" type="file" accept="image/*"></label></div></div><div class="card settings-section"><h3>Security</h3><button class="btn" data-nav="/settings/password">Change password</button></div><div class="card settings-section"><h3>Creator snapshot</h3><div class="stats-grid"><div class="stat"><strong>${fmt(p.follower_count)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.posts_count)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.points)}</strong><span>Points</span></div></div></div>`,'Settings');bindCommon();document.getElementById('profile-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget);try{await patch('profiles',`id=eq.${encodeQ(uid())}`,{full_name:f.get('name').trim(),username:f.get('username').trim().replace(/^@/,''),bio:f.get('bio').trim(),professional_headline:f.get('headline').trim(),university:f.get('university').trim(),faculty:f.get('faculty').trim(),department:f.get('department').trim(),academic_level:f.get('level').trim()});await loadMyProfile();document.getElementById('profile-msg').innerHTML='<div class="success">Profile saved.</div>';}catch(err){document.getElementById('profile-msg').innerHTML=`<div class="error">${esc(err.message)}</div>`;}};document.getElementById('avatar-file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const url=await uploadPublicFile('avatars',f,'avatar');await patch('profiles',`id=eq.${encodeQ(uid())}`,{avatar_url:url});await loadMyProfile();toast('Avatar updated');renderSettings('/settings/profile');}catch(err){toast(err.message);}};document.getElementById('cover-file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const url=await uploadPublicFile('covers',f,'cover');await patch('profiles',`id=eq.${encodeQ(uid())}`,{cover_photo_url:url,cover_photo:url});await loadMyProfile();toast('Cover updated');renderSettings('/settings/profile');}catch(err){toast(err.message);}}; }
+  async function renderSettings(path){
+    if(!requireAuth())return;
+    if(path==='/settings/password'){
+      ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Change password</h3><form id="password-form" class="form-stack"><input class="field" type="password" name="password" minlength="8" autocomplete="new-password" placeholder="New password" required><input class="field" type="password" name="confirm" minlength="8" autocomplete="new-password" placeholder="Confirm password" required><button type="submit" class="btn primary">Update password</button><div id="password-msg"></div></form></div>`,'Security');
+      bindCommon();
+      document.getElementById('password-form').onsubmit=async e=>{
+        e.preventDefault();const form=e.currentTarget,f=new FormData(form),password=String(f.get('password')||''),confirm=String(f.get('confirm')||''),msg=document.getElementById('password-msg');
+        if(password!==confirm){msg.innerHTML='<div class="error">Passwords do not match.</div>';return;}
+        if(password.length<8||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/[0-9]/.test(password)||!/[^A-Za-z0-9\s]/.test(password)){msg.innerHTML='<div class="error">Use at least 8 characters with uppercase, lowercase, a number and a symbol.</div>';return;}
+        const submit=form.querySelector('button[type="submit"]');submit.disabled=true;
+        try{await updatePassword(password);msg.innerHTML='<div class="success">Password updated.</div>';form.reset();}
+        catch(err){msg.innerHTML=`<div class="error">${esc(err.message)}</div>`;}
+        finally{submit.disabled=false;}
+      };
+      return;
+    }
+    await loadMyProfile();const p=state.profile||{};
+    ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Edit profile</h3><form id="profile-form" class="form-stack"><div class="form-grid"><input class="field" name="name" maxlength="100" value="${esc(p.full_name||'')}" placeholder="Full name"><input class="field" name="username" maxlength="30" value="${esc(p.username||'')}" placeholder="Username" autocomplete="off"></div><textarea class="field" name="bio" maxlength="500" placeholder="Bio">${esc(p.bio||'')}</textarea><input class="field" name="headline" maxlength="160" value="${esc(p.professional_headline||'')}" placeholder="Professional headline"><div class="form-grid"><input class="field" name="university" maxlength="160" value="${esc(p.university||'')}" placeholder="University"><input class="field" name="faculty" maxlength="120" value="${esc(p.faculty||'')}" placeholder="Faculty"><input class="field" name="department" maxlength="120" value="${esc(p.department||'')}" placeholder="Department"><input class="field" name="level" maxlength="80" value="${esc(p.academic_level||'')}" placeholder="Academic level"></div><button type="submit" class="btn primary">Save profile</button><div id="profile-msg"></div></form></div><div class="card settings-section"><h3>Profile media</h3><div class="form-grid"><label class="btn" style="text-align:center">Change avatar<input class="hidden" id="avatar-file" type="file" accept="image/*"></label><label class="btn" style="text-align:center">Change cover<input class="hidden" id="cover-file" type="file" accept="image/*"></label></div></div><div class="card settings-section"><h3>Security</h3><button type="button" class="btn" data-nav="/settings/password">Change password</button></div><div class="card settings-section"><h3>Creator snapshot</h3><div class="stats-grid"><div class="stat"><strong>${fmt(p.follower_count)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.posts_count)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.points)}</strong><span>Points</span></div></div></div>`,'Settings');
+    bindCommon();
+    document.getElementById('profile-form').onsubmit=async e=>{
+      e.preventDefault();const form=e.currentTarget,f=new FormData(form),msg=document.getElementById('profile-msg');
+      const username=String(f.get('username')||'').trim().toLowerCase().replace(/^@/,'');
+      if(!/^[a-z0-9][a-z0-9._-]{1,29}$/.test(username)){msg.innerHTML='<div class="error">Username must be 2–30 lowercase letters, numbers, dots, dashes or underscores.</div>';return;}
+      const submit=form.querySelector('button[type="submit"]');submit.disabled=true;
+      try{
+        await patch('profiles',`id=eq.${encodeQ(uid())}`,{
+          full_name:String(f.get('name')||'').trim(),username,handle:username,bio:String(f.get('bio')||'').trim(),
+          professional_headline:String(f.get('headline')||'').trim(),university:String(f.get('university')||'').trim(),
+          faculty:String(f.get('faculty')||'').trim(),department:String(f.get('department')||'').trim(),academic_level:String(f.get('level')||'').trim()
+        });
+        await loadMyProfile();msg.innerHTML='<div class="success">Profile saved.</div>';
+      }catch(err){
+        const message=/duplicate|unique/i.test(err.message||'')?'That username is already taken.':err.message;
+        msg.innerHTML=`<div class="error">${esc(message)}</div>`;
+      }finally{submit.disabled=false;}
+    };
+    document.getElementById('avatar-file').onchange=async e=>{
+      const file=e.target.files[0];if(!file)return;
+      try{validateMediaFile(file,{allowVideo:false,imageMaxMb:8});const url=await uploadPublicFile('avatars',file,'avatar');await patch('profiles',`id=eq.${encodeQ(uid())}`,{avatar_url:url});await loadMyProfile();toast('Avatar updated');renderSettings('/settings/profile');}
+      catch(err){e.target.value='';toast(err.message);}
+    };
+    document.getElementById('cover-file').onchange=async e=>{
+      const file=e.target.files[0];if(!file)return;
+      try{validateMediaFile(file,{allowVideo:false,imageMaxMb:12});const url=await uploadPublicFile('covers',file,'cover');await patch('profiles',`id=eq.${encodeQ(uid())}`,{cover_photo_url:url,cover_photo:url});await loadMyProfile();toast('Cover updated');renderSettings('/settings/profile');}
+      catch(err){e.target.value='';toast(err.message);}
+    };
+  }
 
-  async function renderAI(){if(!requireAuth())return;ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Blink AI</h3><p class="muted small">Uses the same authenticated Blink AI backend as Android.</p><div id="ai-thread" class="form-stack" style="margin:14px 0"></div><form id="ai-form" class="chat-compose"><input class="field" name="message" maxlength="8000" placeholder="Ask Blink AI…" required><button class="btn primary">Send</button></form><div id="ai-status"></div></div>`,'Blink AI');bindCommon();let previous=null;document.getElementById('ai-form').onsubmit=async e=>{e.preventDefault();const text=new FormData(e.currentTarget).get('message').trim(),thread=document.getElementById('ai-thread'),status=document.getElementById('ai-status');thread.insertAdjacentHTML('beforeend',`<div class="bubble me">${esc(text)}</div>`);e.currentTarget.reset();status.innerHTML='<span class="muted">Blink AI is thinking…</span>';try{let data;for(const endpoint of ['blink-ai-v2','blink-ai']){const res=await fetch(`${SUPABASE_URL}/functions/v1/${endpoint}`,{method:'POST',headers:{apikey:KEY,Authorization:`Bearer ${token()}`,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({message:text,use_personal_context:true,use_web_search:true,mode:'fast',tone:'balanced',response_length:'medium',temporary_chat:false,attachments:[],...(previous?{previous_interaction_id:previous}:{})})});if(res.ok){data=await res.json();break;}if(![404,500,502,503].includes(res.status)){const er=await parseJsonSafe(res);throw new Error(er?.error||er?.message||`Blink AI failed (${res.status})`);}}if(!data?.text)throw new Error('Blink AI returned no answer.');previous=data.interaction_id||previous;thread.insertAdjacentHTML('beforeend',`<div class="bubble">${esc(data.text)}${Array.isArray(data.sources)&&data.sources.length?`<small>${data.sources.map(s=>`<a href="${esc(safeUrl(s.url))}" target="_blank">${esc(s.title||'Source')}</a>`).join(' · ')}</small>`:''}</div>`);status.innerHTML='';}catch(err){status.innerHTML=`<div class="error">${esc(err.message)}</div>`;}};}
+  async function renderAI(){
+    if(!requireAuth())return;
+    ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Blink AI</h3><p class="muted small">Uses the same authenticated Blink AI backend as Android.</p><div id="ai-thread" class="form-stack" style="margin:14px 0"></div><form id="ai-form" class="chat-compose"><input class="field" name="message" maxlength="8000" autocomplete="off" placeholder="Ask Blink AI…" required><button type="submit" class="btn primary">Send</button></form><div id="ai-status"></div></div>`,'Blink AI');
+    bindCommon();let previous=null;
+    document.getElementById('ai-form').onsubmit=async e=>{
+      e.preventDefault();const form=e.currentTarget,text=String(new FormData(form).get('message')||'').trim(),thread=document.getElementById('ai-thread'),status=document.getElementById('ai-status');
+      if(!text)return;
+      const submit=form.querySelector('button[type="submit"]');submit.disabled=true;
+      thread.insertAdjacentHTML('beforeend',`<div class="bubble me">${esc(text)}</div>`);form.reset();status.innerHTML='<span class="muted">Blink AI is thinking…</span>';
+      try{
+        let data=null;
+        for(const endpoint of ['blink-ai-v2','blink-ai']){
+          const request=async()=>fetchWithTimeout(`${SUPABASE_URL}/functions/v1/${endpoint}`,{method:'POST',headers:{apikey:KEY,Authorization:`Bearer ${token()}`,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({message:text,use_personal_context:true,use_web_search:true,mode:'fast',tone:'balanced',response_length:'medium',temporary_chat:false,attachments:[],...(previous?{previous_interaction_id:previous}:{})})},45000);
+          let res=await request();
+          if(res.status===401&&state.session?.refresh_token&&await refreshSession().catch(()=>false))res=await request();
+          if(res.ok){data=await res.json();break;}
+          if(![404,500,502,503].includes(res.status)){const er=await parseJsonSafe(res);throw new Error(er?.error||er?.message||`Blink AI failed (${res.status})`);}
+        }
+        if(!data?.text)throw new Error('Blink AI returned no answer.');
+        previous=data.interaction_id||previous;
+        const links=(Array.isArray(data.sources)?data.sources:[]).map(s=>{const url=safeUrl(s.url);return url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(s.title||'Source')}</a>`:'';}).filter(Boolean);
+        thread.insertAdjacentHTML('beforeend',`<div class="bubble">${esc(data.text)}${links.length?`<small>${links.join(' · ')}</small>`:''}</div>`);
+        status.innerHTML='';thread.lastElementChild?.scrollIntoView({block:'nearest'});
+      }catch(err){status.innerHTML=`<div class="error">${esc(err.message)}</div>`;}
+      finally{submit.disabled=false;}
+    };
+  }
 
   async function render(path=currentPath()){
-    for(const t of state.qualifiedTimers.values())clearTimeout(t);state.qualifiedTimers.clear();
+    for(const timer of state.qualifiedTimers.values())clearTimeout(timer);
+    state.qualifiedTimers.clear();
+    state.viewObserver?.disconnect();state.viewObserver=null;
+    state.mediaObserver?.disconnect();state.mediaObserver=null;
+    state.searchRequestId++;
+    if(window.BlinkWebParity?.render?.(path))return;
     if(path==='/'||path==='')return renderLanding();
     if(path==='/login')return renderLogin();
-    if(path.startsWith('/@'))return renderPublicProfile(decodeURIComponent(path.slice(2)));
-    const legacy=path.match(/^\/profile\/([^/]+)$/);if(legacy)return renderPublicProfile(decodeURIComponent(legacy[1]));
+    if(path.startsWith('/@'))return renderPublicProfile(safeDecodeUri(path.slice(2)));
+    const legacy=path.match(/^\/profile\/([^/]+)$/);if(legacy)return renderPublicProfile(safeDecodeUri(legacy[1]));
     const content=path.match(/^\/(post|reel)\/([0-9a-f-]+)$/i);if(content)return renderPublicContent(content[1].toLowerCase(),content[2]);
     if(path==='/feed')return renderFeed(path);
     if(path==='/reels')return renderReels();
@@ -743,7 +882,7 @@
     if(path==='/scheduled')return renderScheduled();
     if(path.startsWith('/settings'))return renderSettings(path);
     if(path==='/ai')return renderAI();
-    ROOT.innerHTML=`<div class="auth-wrap"><div class="card empty"><h2>Page not found</h2><p>That Blink link does not exist.</p><button class="btn" data-nav="/">Go home</button></div></div>`;bindCommon();
+    ROOT.innerHTML=`<div class="auth-wrap"><div class="card empty"><h2>Page not found</h2><p>That Blink link does not exist.</p><button type="button" class="btn" data-nav="/">Go home</button></div></div>`;bindCommon();
   }
 
   async function init(){
