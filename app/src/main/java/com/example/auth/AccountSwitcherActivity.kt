@@ -36,6 +36,7 @@ import androidx.lifecycle.lifecycleScope
 import coil.compose.AsyncImage
 import com.example.MainActivity
 import com.example.data.supabase.SupabaseService
+import com.example.ui.components.BlinkMark
 import com.example.ui.theme.BlinkTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -59,6 +60,7 @@ class AccountSwitcherActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize().padding(24.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
+                    BlinkMark(size = 40.dp, showText = true)
                     Text("Switch account", style = MaterialTheme.typography.headlineSmall)
                     Text("Recently logged in accounts", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
