@@ -18,6 +18,7 @@ import com.example.data.local.OfflineContentStore
 import com.example.data.models.*
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.*
+import com.example.data.supabase.BlinkEconomyService
 import com.example.data.supabase.RealtimeEvent
 import com.example.data.supabase.SupabaseRealtimeManager
 import com.example.data.supabase.SupabaseService
