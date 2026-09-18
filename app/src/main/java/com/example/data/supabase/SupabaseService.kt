@@ -3714,7 +3714,7 @@ suspend fun uploadPostMedia(
                 item.rawTimestamp.trim().take(19)
             ).joinToString("|")
 
-            fun fetchArray(path: String, label: String, required: Boolean): JSONArray {
+            suspend fun fetchArray(path: String, label: String, required: Boolean): JSONArray {
                 return try {
                     val request = newRequestBuilder(path, authenticated = true).get().build()
                     executeRequest(request).use { response ->
