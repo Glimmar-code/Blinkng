@@ -1,4 +1,4 @@
-const CACHE='blink-web-v6-hardening';
+const CACHE='blink-web-v7-final-logo';
 const SHELL=[
   './',
   './index.html',
@@ -9,6 +9,7 @@ const SHELL=[
   './app.js',
   './parity.js',
   './blink-icon.svg',
+  './blink-logo.png',
   './manifest.webmanifest'
 ];
 
