@@ -1,5 +1,7 @@
 package com.example.data.supabase
 
+import com.blinkng.shared.ProfileRankSnapshot
+
 import android.content.Context
 import android.util.Base64
 import android.util.Log
@@ -1184,8 +1186,10 @@ fun getCurrentUserId(): String? {
                     ) {
                         null
                     } else {
-                        parseUserProfile(
-                            array.getJSONObject(0)
+                        enrichProfileWithLatestRanks(
+                            parseUserProfile(
+                                array.getJSONObject(0)
+                            )
                         )
                     }
                 }
@@ -1263,8 +1267,10 @@ fun getCurrentUserId(): String? {
                     ) {
                         null
                     } else {
-                        parseUserProfile(
-                            array.getJSONObject(0)
+                        enrichProfileWithLatestRanks(
+                            parseUserProfile(
+                                array.getJSONObject(0)
+                            )
                         )
                     }
                 }
@@ -1345,8 +1351,10 @@ fun getCurrentUserId(): String? {
                     ) {
                         null
                     } else {
-                        parseUserProfile(
-                            array.getJSONObject(0)
+                        enrichProfileWithLatestRanks(
+                            parseUserProfile(
+                                array.getJSONObject(0)
+                            )
                         )
                     }
                 }
@@ -1362,6 +1370,64 @@ fun getCurrentUserId(): String? {
                 null
             }
         }
+
+    private suspend fun enrichProfileWithLatestRanks(profile: UserProfile): UserProfile {
+        if (profile.id.isBlank() && profile.username.isBlank()) return profile
+
+        return try {
+            val filter = if (isValidUuid(profile.id)) {
+                "user_id=eq.${encodeValue(profile.id)}"
+            } else {
+                val handle = profile.username.trim().removePrefix("@").lowercase(Locale.US)
+                if (handle.isBlank()) return profile
+                "handle=eq.${encodeValue(handle)}"
+            }
+
+            val request = newRequestBuilder(
+                "/rest/v1/leaderboard_snapshots" +
+                    "?select=world_rank,campus_rank,snapshot_at" +
+                    "&$filter" +
+                    "&order=snapshot_at.desc" +
+                    "&limit=1",
+                authenticated = true
+            )
+                .get()
+                .build()
+
+            executeRequest(request).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful || raw.isBlank() || raw == "[]") {
+                    if (!response.isSuccessful && response.code != 401 && response.code != 404) {
+                        Log.w(
+                            TAG,
+                            "PROFILE_RANK_FETCH status=${response.code} user=${profile.username}"
+                        )
+                    }
+                    return@use profile
+                }
+
+                val rows = JSONArray(raw)
+                if (rows.length() == 0) return@use profile
+
+                val snapshot = rows.getJSONObject(0)
+                val ranks = ProfileRankSnapshot(
+                    worldRank = snapshot.optInt("world_rank", 0),
+                    campusRank = snapshot.optInt("campus_rank", 0)
+                ).resolvedAgainst(
+                    existingWorldRank = profile.worldRank,
+                    existingCampusRank = profile.campusRank
+                )
+
+                profile.copy(
+                    worldRank = ranks.worldRank,
+                    campusRank = ranks.campusRank
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "PROFILE_RANK_FETCH exception user=${profile.username}", e)
+            profile
+        }
+    }
 
     suspend fun searchProfiles(query: String): List<UserProfile> =
         searchProfilesPage(query = query, limit = 30)
