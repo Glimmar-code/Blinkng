@@ -25,6 +25,7 @@ data class DesktopProfile(
     val coinBalance: Long,
     val isOnline: Boolean,
     val lastSeenAt: String?,
+    val showOnlineStatus: Boolean = true,
 )
 
 data class DesktopFeedPost(
