@@ -166,8 +166,6 @@ Deno.serve(async (req: Request) => {
     if (
       !signature ||
       !Number.isFinite(keyId) ||
-      !claimId ||
-      !userId ||
       !transactionId ||
       !VALID_AD_UNITS.has(adUnit) ||
       rewardAmount !== EXPECTED_REWARD ||
@@ -185,6 +183,18 @@ Deno.serve(async (req: Request) => {
     const verified = await verifySignature(rawQuery, signature, keyId);
     if (!verified) {
       return json(403, { ok: false, error: "invalid_signature" });
+    }
+
+    // AdMob's dashboard URL-verification tool documents user_id and custom_data as
+    // optional testing fields. A verification probe can therefore be correctly signed
+    // while omitting one or both values. Accept that signed probe with HTTP 200, but
+    // never write reward state unless both identifiers are present.
+    if (!claimId || !userId) {
+      return json(200, {
+        ok: true,
+        verification_probe: true,
+        persisted: false,
+      });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
