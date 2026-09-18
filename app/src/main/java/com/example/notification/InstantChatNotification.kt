@@ -75,7 +75,7 @@ object InstantChatNotification {
         )
 
         val notification = NotificationCompat.Builder(context, BlinkNotificationHelper.CHANNEL_MESSAGES)
-            .setSmallIcon(android.R.drawable.ic_dialog_email)
+            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
             .setContentTitle(sender.name)
             .setContentText(messageText)
             .setStyle(messagingStyle)
@@ -104,7 +104,7 @@ object InstantChatNotification {
         if (!BlinkNotificationHelper.hasNotificationPermission(context)) return
         BlinkNotificationHelper.createNotificationChannels(context)
         val notification = NotificationCompat.Builder(context, BlinkNotificationHelper.CHANNEL_MESSAGES)
-            .setSmallIcon(android.R.drawable.ic_menu_send)
+            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
             .setContentTitle("Sending to ${senderName.ifBlank { "Blink user" }}")
             .setContentText(replyText)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -124,7 +124,7 @@ object InstantChatNotification {
     ) {
         if (!BlinkNotificationHelper.hasNotificationPermission(context)) return
         val notification = NotificationCompat.Builder(context, BlinkNotificationHelper.CHANNEL_MESSAGES)
-            .setSmallIcon(android.R.drawable.ic_menu_send)
+            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
             .setContentTitle("Reply sent to ${senderName.ifBlank { "Blink user" }}")
             .setContentText(replyText)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -145,7 +145,7 @@ object InstantChatNotification {
     ) {
         if (!BlinkNotificationHelper.hasNotificationPermission(context)) return
         val notification = NotificationCompat.Builder(context, BlinkNotificationHelper.CHANNEL_MESSAGES)
-            .setSmallIcon(android.R.drawable.ic_menu_send)
+            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
             .setContentTitle("Reply waiting for connection")
             .setContentText("To ${senderName.ifBlank { "Blink user" }}: $replyText")
             .setPriority(NotificationCompat.PRIORITY_LOW)
