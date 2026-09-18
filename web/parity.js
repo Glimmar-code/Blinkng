@@ -321,7 +321,13 @@
 
   async function renderAnalytics() {
     if (!authGuard()) return; loading('Creator analytics');
-    try { const [p,posts]=await Promise.all([getProfile(),table('posts',`user_id=eq.${encodeURIComponent(uid())}&select=id,is_reel,view_count,like_count,comment_count,repost_count,created_at&order=created_at.desc&limit=100`).catch(()=>[])]); const sum=(k)=>(posts||[]).reduce((a,x)=>a+Number(x[k]||0),0); const reels=(posts||[]).filter(x=>x.is_reel).length;
+    try {
+      const [p,posts]=await Promise.all([
+        getProfile(),
+        table('feed_posts',`user_id=eq.${encodeURIComponent(uid())}&select=id,is_reel,view_count,like_count,comment_count,repost_count,created_at&order=created_at.desc&limit=100`).catch(()=>[])
+      ]);
+      const sum=(k)=>(posts||[]).reduce((a,x)=>a+Number(x[k]||0),0);
+      const reels=(posts||[]).filter(x=>x.is_reel).length;
       shell('Creator analytics',`<section class="parity-hero"><div><span class="parity-eyebrow">Profile snapshot</span><h2>${esc(p?.full_name||p?.username||'Creator')}</h2><p>${esc(p?.professional_headline||'Your web creator metrics use the same profile and content data as Android.')}</p></div></section><div class="metrics-grid"><div class="metric"><strong>${fmt(p?.follower_count)}</strong><span>Followers</span></div><div class="metric"><strong>${fmt(p?.following_count)}</strong><span>Following</span></div><div class="metric"><strong>${fmt(p?.posts_count)}</strong><span>Posts</span></div><div class="metric"><strong>${fmt(p?.points)}</strong><span>Points</span></div><div class="metric"><strong>${fmt(sum('view_count'))}</strong><span>Views (last 100)</span></div><div class="metric"><strong>${fmt(sum('like_count'))}</strong><span>Likes</span></div><div class="metric"><strong>${fmt(sum('comment_count'))}</strong><span>Comments</span></div><div class="metric"><strong>${fmt(reels)}</strong><span>Reels</span></div></div><section class="parity-panel"><h3>Recent content performance</h3><div class="mini-table">${(posts||[]).slice(0,20).map(x=>`<div><span>${x.is_reel?'Reel':'Post'} · ${new Date(x.created_at).toLocaleDateString()}</span><strong>${fmt(x.view_count)} views · ${fmt(x.like_count)} likes</strong></div>`).join('')||'<p>No recent content.</p>'}</div></section>`);
     } catch(e){ shell('Creator analytics',errorCard(e)); }
   }
@@ -334,7 +340,7 @@
   }
 
   async function renderOffline() {
-    const estimate=navigator.storage?.estimate?await navigator.storage.estimate().catch(()=>null):null; const regs='serviceWorker' in navigator?await navigator.serviceWorker.getRegistrations().catch(()=>[]):[]; const draftKeys=Object.keys(localStorage).filter(k=>/draft/i.test(k));
+    const estimate=navigator.storage?.estimate?await navigator.storage.estimate().catch(()=>null):null; const regs='serviceWorker' in navigator?await navigator.serviceWorker.getRegistrations().catch(()=>[]):[]; const draftKeys=storageKeys().filter(k=>/draft/i.test(k));
     shell('Offline & data saver',`<section class="parity-hero"><div><span class="parity-eyebrow">Offline parity</span><h2>${navigator.onLine?'Connected':'Working offline'}</h2><p>Web shell caching, local drafts, data saver, recovery controls and network awareness mirror the app’s offline-first behavior where browser capabilities allow.</p></div></section><div class="metrics-grid"><div class="metric"><strong>${regs.length?'Active':'Off'}</strong><span>Service worker</span></div><div class="metric"><strong>${fmt(draftKeys.length)}</strong><span>Local drafts</span></div><div class="metric"><strong>${estimate?`${Math.round((estimate.usage||0)/1024/1024)} MB`:'—'}</strong><span>Browser storage</span></div><div class="metric"><strong>${prefs().dataSaver?'On':'Off'}</strong><span>Data saver</span></div></div><section class="parity-panel"><h3>Controls</h3><label class="parity-toggle"><span>Data saver</span><input type="checkbox" data-pref="dataSaver" ${prefs().dataSaver?'checked':''}></label><label class="parity-toggle"><span>Autoplay videos</span><input type="checkbox" data-pref="autoplay" ${prefs().autoplay?'checked':''}></label><button class="parity-btn" data-clear-web-cache>Refresh offline cache</button><button class="parity-btn" data-parity-go="/drafts">Open drafts</button></section>`);
     bindShell(); document.querySelector('[data-clear-web-cache]')?.addEventListener('click',async()=>{try{for(const k of await caches.keys())if(k.startsWith('blink-web'))await caches.delete(k);for(const r of await navigator.serviceWorker.getRegistrations())await r.update();toast('Offline cache refreshed.','success');}catch(e){toast(e.message,'error');}});
   }
