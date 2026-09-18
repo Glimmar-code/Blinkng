@@ -1,5 +1,11 @@
 package com.blinkng.desktop
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -79,6 +86,7 @@ import androidx.compose.ui.window.rememberNotification
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
 import com.blinkng.desktop.data.DesktopCall
+import com.blinkng.desktop.data.DesktopNotification
 import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.ui.AdminProScreen
 import com.blinkng.desktop.ui.AndroidParityDesignDock
@@ -147,6 +155,7 @@ fun runBlinkDesktopApplication() = application {
     var notificationSerial by remember { mutableIntStateOf(0) }
     var notificationTitle by remember { mutableStateOf("Blinkng") }
     var notificationBody by remember { mutableStateOf("") }
+    var foregroundNotification by remember { mutableStateOf<DesktopNotification?>(null) }
     val trayNotification = rememberNotification(notificationTitle, notificationBody)
 
     fun showNativeNotification(title: String, body: String) {
@@ -179,6 +188,45 @@ fun runBlinkDesktopApplication() = application {
             }
             delay(4_000)
         }
+    }
+
+    LaunchedEffect(appState.session?.userId) {
+        foregroundNotification = null
+        val activeUserId = appState.session?.userId ?: return@LaunchedEffect
+        var baselineReady = false
+        var seenIds = emptySet<String>()
+
+        while (appState.session?.userId == activeUserId) {
+            val rows = runCatching { appState.client.fetchNotifications() }.getOrDefault(emptyList())
+            if (!baselineReady) {
+                seenIds = rows.mapTo(linkedSetOf()) { it.id }
+                baselineReady = true
+            } else {
+                val fresh = rows.firstOrNull { !it.isRead && it.id !in seenIds }
+                seenIds = rows.mapTo(linkedSetOf()) { it.id }
+                if (fresh != null) {
+                    foregroundNotification = fresh
+                    if (!isWindowVisible) {
+                        showNativeNotification(
+                            fresh.text.ifBlank { "Blink notification" },
+                            fresh.subText.orEmpty().ifBlank { "Open Blinkng to view it." },
+                        )
+                    }
+                }
+            }
+            delay(3_000)
+        }
+    }
+
+    fun openForegroundNotification(item: DesktopNotification) {
+        appState.selectedRoute = when {
+            item.targetType.equals("CHAT", ignoreCase = true) -> "messages"
+            item.targetType.equals("MARKET", ignoreCase = true) -> "marketplace"
+            !item.postId.isNullOrBlank() -> "home"
+            else -> "notifications"
+        }
+        foregroundNotification = null
+        isWindowVisible = true
     }
 
     Tray(
@@ -216,28 +264,124 @@ fun runBlinkDesktopApplication() = application {
             val colors = if (theme == "light") BlinkLightColors else BlinkDarkColors
             MaterialTheme(colorScheme = colors) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    when {
-                        !appState.initialized -> InitializingScreen()
-                        appState.session == null -> BlinkAuthScreen(appState)
-                        else -> Column(modifier = Modifier.fillMaxSize()) {
-                            incomingCall?.let { call ->
-                                IncomingCallBanner(
-                                    call = call,
-                                    callerName = incomingCallerName,
-                                    onAnswer = {
-                                        runCatching { kotlinx.coroutines.runBlocking { rpc.answerCall(call.id) } }
-                                        incomingCall = null
-                                        appState.selectedRoute = "messages"
-                                    },
-                                    onDecline = {
-                                        runCatching { kotlinx.coroutines.runBlocking { rpc.declineCall(call.id) } }
-                                        incomingCall = null
-                                    },
-                                )
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        when {
+                            !appState.initialized -> InitializingScreen()
+                            appState.session == null -> BlinkAuthScreen(appState)
+                            else -> Column(modifier = Modifier.fillMaxSize()) {
+                                incomingCall?.let { call ->
+                                    IncomingCallBanner(
+                                        call = call,
+                                        callerName = incomingCallerName,
+                                        onAnswer = {
+                                            runCatching { kotlinx.coroutines.runBlocking { rpc.answerCall(call.id) } }
+                                            incomingCall = null
+                                            appState.selectedRoute = "messages"
+                                        },
+                                        onDecline = {
+                                            runCatching { kotlinx.coroutines.runBlocking { rpc.declineCall(call.id) } }
+                                            incomingCall = null
+                                        },
+                                    )
+                                }
+                                AuthenticatedShell(appState)
                             }
-                            AuthenticatedShell(appState)
+                        }
+
+                        foregroundNotification?.let { item ->
+                            DesktopInAppNotificationBanner(
+                                notification = item,
+                                onOpen = { openForegroundNotification(item) },
+                                onDismiss = {
+                                    if (foregroundNotification?.id == item.id) {
+                                        foregroundNotification = null
+                                    }
+                                },
+                                modifier = Modifier.align(Alignment.TopCenter),
+                            )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesktopInAppNotificationBanner(
+    notification: DesktopNotification,
+    onOpen: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var visible by remember(notification.id) { mutableStateOf(true) }
+
+    LaunchedEffect(notification.id) {
+        visible = true
+        delay(4_500)
+        visible = false
+        delay(220)
+        onDismiss()
+    }
+
+    Box(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        AnimatedVisibility(
+            visible = visible,
+            enter = slideInVertically(
+                initialOffsetY = { -it },
+                animationSpec = tween(220),
+            ) + fadeIn(animationSpec = tween(160)),
+            exit = slideOutVertically(
+                targetOffsetY = { -it },
+                animationSpec = tween(190),
+            ) + fadeOut(animationSpec = tween(140)),
+        ) {
+            Surface(
+                modifier = Modifier.widthIn(max = 520.dp).fillMaxWidth().clickable(onClick = onOpen),
+                shape = RoundedCornerShape(18.dp),
+                tonalElevation = 8.dp,
+                shadowElevation = 10.dp,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(11.dp),
+                ) {
+                    Surface(
+                        modifier = Modifier.size(40.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Rounded.Notifications,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(21.dp),
+                            )
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            notification.text.ifBlank { "Blink notification" },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        notification.subText?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                it,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
+                    Text("now", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
