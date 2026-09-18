@@ -35,6 +35,7 @@ import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
+import com.example.update.PlayInAppUpdateCoordinator
 import com.example.viewmodel.AppDestination
 import com.example.viewmodel.BlinkViewModel
 import com.example.viewmodel.MainTab
@@ -48,6 +49,14 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: BlinkViewModel by viewModels()
     private var presenceHeartbeatJob: Job? = null
+
+    private val inAppUpdateLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { }
+
+    private val playInAppUpdateCoordinator by lazy {
+        PlayInAppUpdateCoordinator(this, inAppUpdateLauncher)
+    }
 
     private fun startPresenceHeartbeat() {
         presenceHeartbeatJob?.cancel()
@@ -128,10 +137,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        playInAppUpdateCoordinator.onResume()
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
             viewModel.refreshIfStale()
             startPresenceHeartbeat()
         }
+    }
+
+    override fun onDestroy() {
+        playInAppUpdateCoordinator.close()
+        super.onDestroy()
     }
 
     override fun onStop() {
@@ -151,6 +166,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
+            val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
 
             LaunchedEffect(uiState.destination) {
                 if (uiState.destination == AppDestination.MAIN) {
@@ -185,6 +201,20 @@ class MainActivity : ComponentActivity() {
                         ) != PackageManager.PERMISSION_GRANTED
                     ) {
                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+            }
+
+            LaunchedEffect(updateReadyToInstall) {
+                if (updateReadyToInstall) {
+                    val result = snackbarHostState.showSnackbar(
+                        message = "BLINK update downloaded",
+                        actionLabel = "Restart",
+                        withDismissAction = true,
+                        duration = SnackbarDuration.Indefinite
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        playInAppUpdateCoordinator.completeUpdate()
                     }
                 }
             }
