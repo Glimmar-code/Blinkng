@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-labelledby="title">
+  <title id="title">BLINK logo</title>
+  <rect width="108" height="108" rx="25" fill="#000"/>
+  <path fill="#fff" d="M38 25c-5-2-10 0-12 5s0 10 5 12l38 16c5 2 10 0 12-5s0-10-5-12L38 25Z"/>
+  <path fill="#fff" d="m31 66 38-16c5-2 10 0 12 5s0 10-5 12L38 83c-5 2-10 0-12-5s0-10 5-12Z"/>
+  <path fill="#fff" d="m31 47 22 7-22 7Z"/>
+</svg>
