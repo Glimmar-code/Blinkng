@@ -162,62 +162,70 @@ fun FollowerGrowthChart(
             .padding(18.dp)
             .testTag("follower_growth_chart_card")
     ) {
-        // Header with Title and Range Picker
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.TrendingUp,
-                        contentDescription = null,
-                        tint = BlinkGold,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = "Follower Growth Trends",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Black,
-                        color = textPrimary
-                    )
-                }
+        // Header and timeframe picker use separate rows so the selector never
+        // gets squeezed into a tall pill beside the long title on narrow phones.
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.TrendingUp,
+                    contentDescription = null,
+                    tint = BlinkGold,
+                    modifier = Modifier.size(20.dp)
+                )
                 Text(
-                    text = "Track velocity to 1,000 Gold VIP milestone",
-                    fontSize = 11.5.sp,
-                    color = textSecondary
+                    text = "Follower Growth Trends",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Black,
+                    color = textPrimary,
+                    modifier = Modifier.weight(1f)
                 )
             }
 
-            // Timeframe Segmented Switcher (7D, 14D, 30D)
+            Text(
+                text = "Track velocity to 1,000 Gold VIP milestone",
+                fontSize = 11.5.sp,
+                color = textSecondary
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             Surface(
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(100.dp),
                 color = if (isDark) DarkBackground else Color(0xFFF1F3F5),
                 border = BorderStroke(1.dp, borderColor)
             ) {
-                Row(modifier = Modifier.padding(3.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
                     listOf(7 to "7D", 14 to "14D", 30 to "30D").forEach { (days, label) ->
                         val isSelected = selectedTimeframe == days
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 30.dp)
                                 .clip(RoundedCornerShape(100.dp))
                                 .background(if (isSelected) BlinkGold else Color.Transparent)
                                 .clickable {
                                     selectedTimeframe = days
                                     selectedPointIndex = null
                                 }
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
                         ) {
                             Text(
                                 text = label,
                                 fontSize = 11.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) Color.Black else textSecondary
+                                color = if (isSelected) Color.Black else textSecondary,
+                                maxLines = 1
                             )
                         }
                     }

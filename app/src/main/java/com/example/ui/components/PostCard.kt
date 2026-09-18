@@ -267,25 +267,34 @@ fun PostCard(
                     Modifier.size(46.dp)
                 }
 
-                Box(
-                    modifier = avatarModifier
-                        .clip(CircleShape)
-                        .clickable(role = Role.Button) { onProfileClick(profileTarget) }
-                ) {
-                    AsyncImage(
-                        model = post.authorAvatar,
-                        error = painterResource(R.drawable.ic_default_profile),
-                        fallback = painterResource(R.drawable.ic_default_profile),
-                        contentDescription = "$resolvedAuthorName profile picture",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().clip(CircleShape)
-                    )
+                // Keep the presence badge outside the clipped avatar so it cannot be
+                // cut off by the circular image/story ring on narrow feed layouts.
+                Box(modifier = Modifier.size(50.dp)) {
+                    Box(
+                        modifier = avatarModifier
+                            .align(Alignment.TopStart)
+                            .clip(CircleShape)
+                            .clickable(role = Role.Button) { onProfileClick(profileTarget) }
+                    ) {
+                        AsyncImage(
+                            model = post.authorAvatar,
+                            error = painterResource(R.drawable.ic_default_profile),
+                            fallback = painterResource(R.drawable.ic_default_profile),
+                            contentDescription = "$resolvedAuthorName profile picture",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize().clip(CircleShape)
+                        )
+                    }
+
                     authorOnline?.let { active ->
                         Box(
                             modifier = Modifier
-                                .size(13.dp)
+                                .size(14.dp)
                                 .align(Alignment.BottomEnd)
-                                .background(if (active) Color(0xFF22C55E) else Color(0xFF8B5A2B), CircleShape)
+                                .background(
+                                    if (active) Color(0xFF22C55E) else Color(0xFF6B7280),
+                                    CircleShape
+                                )
                                 .border(2.dp, surfaceColor, CircleShape)
                         )
                     }

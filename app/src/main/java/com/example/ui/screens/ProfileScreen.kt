@@ -702,41 +702,52 @@ fun ProfileScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Requested profile actions live directly below the Posts/Campus boxes.
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                            item {
+                        // Keep the primary profile actions inside the 95%-width profile panel.
+                        // Wrapping them into two balanced rows avoids the clipped third/fourth pill
+                        // seen on narrow phones while preserving every action.
+                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(7.dp)
+                            ) {
                                 OutlinePill(
                                     icon = Icons.Default.Link,
                                     text = "Share profile",
-                                    onClick = { showShareSheet = true }
+                                    onClick = { showShareSheet = true },
+                                    modifier = Modifier.weight(1f)
                                 )
-                            }
-                            item {
                                 OutlinePill(
                                     icon = Icons.Default.ContentCopy,
                                     text = "Copy username",
                                     onClick = {
                                         clipboard.setText(AnnotatedString("@${profile.username}"))
                                         Toast.makeText(context, "Username copied", Toast.LENGTH_SHORT).show()
-                                    }
+                                    },
+                                    modifier = Modifier.weight(1f)
                                 )
                             }
-                            if (isMe) {
-                                item {
-                                    OutlinePill(
-                                        icon = if (profileCompletion >= 100) Icons.Default.CheckCircle else Icons.Default.AutoAwesome,
-                                        text = if (profileCompletion >= 100) "Profile complete" else "Complete profile ${profileCompletion}%",
-                                        onClick = onEditProfileClick
-                                    )
-                                }
-                            }
-                            if (profile.links.website.isNotBlank()) {
-                                item {
-                                    OutlinePill(
-                                        icon = Icons.Default.Language,
-                                        text = "Website",
-                                        onClick = { openExternalUrl(context, profile.links.website) }
-                                    )
+
+                            if (isMe || profile.links.website.isNotBlank()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                ) {
+                                    if (isMe) {
+                                        OutlinePill(
+                                            icon = if (profileCompletion >= 100) Icons.Default.CheckCircle else Icons.Default.AutoAwesome,
+                                            text = if (profileCompletion >= 100) "Profile complete" else "Complete profile ${profileCompletion}%",
+                                            onClick = onEditProfileClick,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    if (profile.links.website.isNotBlank()) {
+                                        OutlinePill(
+                                            icon = Icons.Default.Language,
+                                            text = "Website",
+                                            onClick = { openExternalUrl(context, profile.links.website) },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1140,7 +1151,8 @@ private fun AnimatedTabRow(
         if (tabOffsets.containsKey(selectedTab)) {
             Box(
                 modifier = Modifier
-                    .padding(start = 16.dp)
+                    // positionInParent() already includes the LazyRow content padding.
+                    // Adding another 16.dp shifted the purple selection pill to the right.
                     .offset(x = indicatorX)
                     .width(indicatorWidth)
                     .height(32.dp)
@@ -1753,7 +1765,8 @@ private fun SmallActionButton(
 private fun OutlinePill(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     text: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var pressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
@@ -1766,7 +1779,7 @@ private fun OutlinePill(
         shape = RoundedCornerShape(100.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier
+        modifier = modifier
             .scale(scale)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -1777,8 +1790,11 @@ private fun OutlinePill(
             }
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(13.dp))
             Spacer(modifier = Modifier.width(4.dp))
