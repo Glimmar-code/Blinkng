@@ -6,6 +6,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -128,9 +129,9 @@ private fun createBlinkNativeAdView(
         orientation = LinearLayout.VERTICAL
         setPadding(dp(14), dp(12), dp(14), dp(14))
         gravity = Gravity.CENTER_HORIZONTAL
-        layoutParams = NativeAdView.LayoutParams(
-            NativeAdView.LayoutParams.MATCH_PARENT,
-            NativeAdView.LayoutParams.MATCH_PARENT
+        layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
         )
     }
 
