@@ -46,15 +46,15 @@
   ],
   "icons": [
     {
-      "src": "blink-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "blink-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "blink-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "blink-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ]
