@@ -1,5 +1,7 @@
 package com.example.data.supabase
 
+import com.blinkng.shared.ProfileRankSnapshot
+
 import android.content.Context
 import android.util.Base64
 import android.util.Log
@@ -1408,12 +1410,17 @@ fun getCurrentUserId(): String? {
                 if (rows.length() == 0) return@use profile
 
                 val snapshot = rows.getJSONObject(0)
-                val worldRank = snapshot.optInt("world_rank", 0)
-                val campusRank = snapshot.optInt("campus_rank", 0)
+                val ranks = ProfileRankSnapshot(
+                    worldRank = snapshot.optInt("world_rank", 0),
+                    campusRank = snapshot.optInt("campus_rank", 0)
+                ).resolvedAgainst(
+                    existingWorldRank = profile.worldRank,
+                    existingCampusRank = profile.campusRank
+                )
 
                 profile.copy(
-                    worldRank = worldRank.takeIf { it > 0 } ?: profile.worldRank,
-                    campusRank = campusRank.takeIf { it > 0 } ?: profile.campusRank
+                    worldRank = ranks.worldRank,
+                    campusRank = ranks.campusRank
                 )
             }
         } catch (e: Exception) {
