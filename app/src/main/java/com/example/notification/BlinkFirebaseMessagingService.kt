@@ -246,6 +246,76 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             SocialNotificationRecovery.markShown(applicationContext, currentUid, notificationId)
         }
 
+        val senderId = data["sender_id"].orEmpty()
+        val postTarget = data["post_id"].orEmpty()
+        val marketTarget = data["market_id"].orEmpty()
+        val genericTarget = data["target_id"].orEmpty()
+        val inAppDestination = when (type) {
+            BlinkNotificationType.MESSAGE -> BlinkInAppNotificationDestination.CHAT
+            BlinkNotificationType.MARKET,
+            BlinkNotificationType.MARKET_ORDER -> BlinkInAppNotificationDestination.MARKET
+            BlinkNotificationType.LIKE,
+            BlinkNotificationType.COMMENT,
+            BlinkNotificationType.REPLY,
+            BlinkNotificationType.MENTION -> if (postTarget.isNotBlank()) {
+                BlinkInAppNotificationDestination.POST
+            } else {
+                BlinkInAppNotificationDestination.NOTIFICATIONS
+            }
+            BlinkNotificationType.FOLLOW -> if (sender.isNotBlank() || senderId.isNotBlank()) {
+                BlinkInAppNotificationDestination.PROFILE
+            } else {
+                BlinkInAppNotificationDestination.NOTIFICATIONS
+            }
+            else -> BlinkInAppNotificationDestination.NOTIFICATIONS
+        }
+
+        val inAppKey = when (type) {
+            BlinkNotificationType.MESSAGE -> "message:" + messageId.ifBlank {
+                conversationId + ":" + body.hashCode()
+            }
+            BlinkNotificationType.LIKE,
+            BlinkNotificationType.COMMENT,
+            BlinkNotificationType.REPLY,
+            BlinkNotificationType.MENTION,
+            BlinkNotificationType.FOLLOW -> {
+                val target = postTarget.ifBlank {
+                    genericTarget.ifBlank { notificationId.ifBlank { senderId.ifBlank { sender } } }
+                }
+                "social:" + type.name.lowercase() + ":" + senderId.ifBlank { sender } + ":" + target
+            }
+            else -> "push:" + notificationId.ifBlank { message.messageId }
+        }
+
+        val handledInApp = if (
+            type != BlinkNotificationType.INCOMING_CALL &&
+            type != BlinkNotificationType.CALL_UPDATE
+        ) {
+            BlinkInAppNotificationCenter.publish(
+                BlinkInAppNotification(
+                    key = inAppKey,
+                    title = title,
+                    body = body,
+                    destination = inAppDestination,
+                    senderId = senderId,
+                    senderUsername = sender,
+                    senderName = senderName,
+                    senderAvatar = senderAvatar,
+                    postId = postTarget.ifBlank { null },
+                    marketId = marketTarget.ifBlank { null }
+                )
+            )
+        } else {
+            false
+        }
+
+        // When Blink itself rendered the event, avoid a second Android heads-up banner.
+        // The authoritative server activity/message still remains available in-app.
+        if (handledInApp) {
+            Log.d(TAG, "Rendered foreground notification in-app: $type")
+            return
+        }
+
         // Visible notification work must stay synchronous. FCM gives this callback a short
         // execution window; never block incoming chat/call UI on avatar or database fetches.
         when (type) {
