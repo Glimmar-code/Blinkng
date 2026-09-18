@@ -29,7 +29,10 @@ def git(*args: str) -> str:
 
 def fetch_ref(ref: str) -> None:
     try:
-        git("fetch", "origin", ref, "--depth=1")
+        # Do not shallow-fetch the base branch. A depth-1 fetch can turn the
+        # target tip into a shallow boundary and make merge-base fail for the
+        # synthetic pull-request merge commit.
+        git("fetch", "origin", ref)
     except subprocess.CalledProcessError:
         # checkout uses fetch-depth: 0 in CI, so the remote ref may already be present.
         pass
@@ -50,8 +53,14 @@ def determine_base() -> str:
     # PRs must be evaluated against their actual target branch.
     base_ref = os.getenv("GITHUB_BASE_REF", "").strip()
     if base_ref:
-        fetch_ref(base_ref)
-        return f"origin/{base_ref}"
+        # actions/checkout uses refs/pull/<n>/merge for pull_request events.
+        # Its first parent is the exact target-branch SHA, so using it avoids
+        # remote shallow-history edge cases while still validating only the PR delta.
+        try:
+            return git("rev-parse", "HEAD^1")
+        except subprocess.CalledProcessError:
+            fetch_ref(base_ref)
+            return f"origin/{base_ref}"
 
     # Prefer the production baseline for Testlab when the histories are related.
     # If Testlab was created from a disconnected history, fall back to the actual

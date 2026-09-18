@@ -25,7 +25,6 @@ import kotlin.math.max
 
 private val desktopPresenceDateFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())
 private val onlineGreen = Color(0xFF22C55E)
-private val offlineNeutral = Color(0xFF6B7280)
 
 internal fun desktopPresenceStatus(
     isOnline: Boolean,
@@ -77,13 +76,13 @@ internal fun PresenceAvatar(
                 color = MaterialTheme.colorScheme.primary,
             )
         }
-        isOnline?.let { active ->
+        if (isOnline == true) {
             Box(
                 modifier = Modifier
                     .size((size.value * .28f).dp)
                     .align(Alignment.BottomEnd)
                     .clip(CircleShape)
-                    .background(if (active) onlineGreen else offlineNeutral)
+                    .background(onlineGreen)
                     .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
             )
         }

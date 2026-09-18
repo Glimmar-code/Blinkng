@@ -131,14 +131,17 @@ class SupabaseRealtimeManager private constructor() {
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { Log.e(TAG, "WebSocket Failure: ${t.message}", t); handleDisconnected(); scheduleReconnect() }
     }
     private fun setPresence(online: Boolean) {
-        val uid = activeUserId
-        if (uid.isBlank()) return
+        if (activeUserId.isBlank()) return
         scope.launch {
             try {
-                val body = JSONObject().apply { put("is_online", online); put("online_now", online); put("last_seen", nowIso()); put("last_seen_at", nowIso()) }
-                val request = Request.Builder().url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/profiles?id=eq.$uid").addHeader("apikey", SupabaseConfig.anonKey).addHeader("Authorization", "Bearer ${SupabaseService.accessToken() ?: SupabaseConfig.anonKey}").addHeader("Content-Type", "application/json").patch(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString())).build()
-                client.newCall(request).execute().use { response -> if (!response.isSuccessful) Log.w(TAG, "Presence update failed: ${response.code}") }
-            } catch (e: Exception) { Log.w(TAG, "Presence update exception", e) }
+                // Route every heartbeat through the same privacy-aware RPC used by
+                // the rest of the app. Hidden active status can never be overwritten
+                // by this realtime socket's 25-second heartbeat.
+                val success = SupabaseService().setMyPresence(online)
+                if (!success) Log.w(TAG, "Presence update was not accepted.")
+            } catch (e: Exception) {
+                Log.w(TAG, "Presence update exception", e)
+            }
         }
     }
     private fun startHeartbeat() {

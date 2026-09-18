@@ -948,7 +948,12 @@ fun MainAppContent(
                 val isMyProfile = viewModel.isMe(profile.username)
                 val currentProfileToDisplay = if (isMyProfile) uiState.myProfile else profile
 
+                val profileKey = currentProfileToDisplay.id.ifBlank {
+                    currentProfileToDisplay.username.trim().removePrefix("@").lowercase()
+                }
+
                 LaunchedEffect(currentProfileToDisplay.id, currentProfileToDisplay.username, isMyProfile) {
+                    viewModel.loadProfileSurfaceData(currentProfileToDisplay, isMyProfile)
                     if (!isMyProfile && currentProfileToDisplay.username.isNotBlank()) {
                         com.example.notification.ProfileViewActivityTracker.recordViewedProfile(
                             currentProfileToDisplay.username
@@ -956,13 +961,40 @@ fun MainAppContent(
                     }
                 }
 
-                val profilePosts = if (isMyProfile) {
-                    (uiState.posts + uiState.reels).distinctBy { it.id }.filter { viewModel.isMe(it.author) }
+                val surfaceLoaded = profileKey in uiState.profileSurfaceLoadedIds
+                val feedFallback = (uiState.posts + uiState.reels).distinctBy { it.id }
+                val fallbackProfilePosts = if (isMyProfile) {
+                    feedFallback.filter {
+                        viewModel.isMe(it.author) || viewModel.isMe(it.authorUsername)
+                    }
                 } else {
-                    (uiState.posts + uiState.reels).distinctBy { it.id }.filter { it.author.equals(profile.username, ignoreCase = true) || it.author.equals(profile.fullName, ignoreCase = true) }
+                    feedFallback.filter {
+                        it.authorUsername.equals(currentProfileToDisplay.username, ignoreCase = true) ||
+                            it.author.equals(currentProfileToDisplay.username, ignoreCase = true) ||
+                            it.author.equals(currentProfileToDisplay.fullName, ignoreCase = true)
+                    }
                 }
-                val profileLikedPosts = (uiState.posts + uiState.reels).filter { it.isLiked }
-                val profileSavedPosts = (uiState.posts + uiState.reels).filter { it.isBookmarked }
+
+                val profilePosts = if (surfaceLoaded) {
+                    uiState.profilePostsByUserId[profileKey].orEmpty()
+                } else {
+                    fallbackProfilePosts
+                }
+                val profileLikedPosts = if (isMyProfile) {
+                    if (surfaceLoaded) uiState.myLikedPosts else feedFallback.filter { it.isLiked }
+                } else {
+                    emptyList()
+                }
+                val profileSavedPosts = if (isMyProfile) {
+                    if (surfaceLoaded) uiState.mySavedPosts else feedFallback.filter { it.isBookmarked }
+                } else {
+                    emptyList()
+                }
+                val profilePostCount = if (surfaceLoaded) {
+                    uiState.profilePostCountsByUserId[profileKey] ?: profilePosts.size
+                } else {
+                    profilePosts.size
+                }
 
                 val userMarketItems = if (isMyProfile) {
                     uiState.marketItems.filter {
@@ -978,6 +1010,8 @@ fun MainAppContent(
                     userPosts = profilePosts,
                     likedPosts = profileLikedPosts,
                     savedPosts = profileSavedPosts,
+                    postCount = profilePostCount,
+                    followerGrowthHistory = if (isMyProfile) uiState.myFollowerGrowth else emptyList(),
                     userMarketItems = userMarketItems,
                     onBack = { viewModel.closeProfile() },
                     onEditProfileClick = { viewModel.openEditProfile(true) },
@@ -999,6 +1033,9 @@ fun MainAppContent(
                     blinkCoinBalance = if (isMyProfile) uiState.blinkCoinBalance else 0L,
                     onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
+                    onRefreshProfile = {
+                        viewModel.loadProfileSurfaceData(currentProfileToDisplay, isMyProfile, force = true)
+                    },
                     isDark = uiState.isDarkMode
                 )
             }

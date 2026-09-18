@@ -904,13 +904,15 @@ private fun ProfessionalProfileAvatar(person: UserProfile, size: Int) {
             contentScale = ContentScale.Crop,
             modifier = Modifier.size(size.dp).clip(CircleShape)
         )
-        Box(
-            Modifier
-                .align(Alignment.BottomEnd)
-                .size(14.dp)
-                .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                .background(if (person.onlineNow) BlinkOnlineGreen else Color(0xFF8B5A2B), CircleShape)
-        )
+        if (person.showOnlineStatus && person.onlineNow) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(14.dp)
+                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                    .background(BlinkOnlineGreen, CircleShape)
+            )
+        }
     }
 }
 

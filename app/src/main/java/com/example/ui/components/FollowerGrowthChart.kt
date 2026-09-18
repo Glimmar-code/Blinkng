@@ -32,10 +32,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.models.FollowerGrowthPoint
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.ui.theme.*
-import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.*
 import kotlin.math.roundToInt
 
@@ -47,56 +49,46 @@ data class FollowerDataPoint(
     val dailyGain: Int
 )
 
-/**
- * Generates realistic 30-day follower progression data ending at [currentFollowers].
- */
-fun generate30DayFollowerData(currentFollowers: Int): List<FollowerDataPoint> {
-    val totalDays = 30
-    val startFollowers = (currentFollowers * 0.72).roundToInt().coerceAtLeast(10)
-    val totalGain = currentFollowers - startFollowers
-    
-    val calendar = Calendar.getInstance()
-    val sdf = SimpleDateFormat("MMM d", Locale.getDefault())
-    val shortSdf = SimpleDateFormat("d", Locale.getDefault())
+private fun realFollowerGrowthData(
+    history: List<FollowerGrowthPoint>,
+    currentFollowers: Int
+): List<FollowerDataPoint> {
+    val formatter = DateTimeFormatter.ofPattern("MMM d", Locale.getDefault())
+    val cleanHistory = history
+        .filter { it.date.isNotBlank() }
+        .distinctBy { it.date }
+        .sortedBy { it.date }
+        .takeLast(30)
 
-    val points = mutableListOf<FollowerDataPoint>()
-    var runningCount = startFollowers
-
-    // Realistic growth distribution with small daily variations
-    val weights = listOf(
-        1.1, 0.8, 1.4, 0.6, 1.2, 1.5, 0.9, 1.3, 1.0, 1.6,
-        0.7, 1.1, 1.8, 1.2, 0.9, 1.4, 1.3, 1.0, 1.5, 0.8,
-        1.7, 1.2, 1.1, 1.6, 1.3, 1.5, 1.2, 1.8, 1.4, 1.0
-    )
-    val weightSum = weights.sum()
-
-    for (i in 0 until totalDays) {
-        val daysAgo = totalDays - 1 - i
-        val dayCal = Calendar.getInstance().apply {
-            add(Calendar.DAY_OF_YEAR, -daysAgo)
-        }
-        
-        val stepRatio = (weights[i] / weightSum) * totalGain
-        val gain = stepRatio.roundToInt().coerceAtLeast(0)
-        
-        if (i == totalDays - 1) {
-            runningCount = currentFollowers
-        } else {
-            runningCount += gain
-        }
-
-        points.add(
-            FollowerDataPoint(
-                dayIndex = i,
-                dateLabel = shortSdf.format(dayCal.time),
-                formattedDate = sdf.format(dayCal.time),
-                followers = runningCount,
-                dailyGain = gain
+    val source = if (cleanHistory.isEmpty()) {
+        listOf(
+            FollowerGrowthPoint(
+                date = LocalDate.now().toString(),
+                followerCount = currentFollowers.coerceAtLeast(0)
             )
         )
+    } else {
+        cleanHistory.toMutableList().apply {
+            val today = LocalDate.now().toString()
+            if (lastOrNull()?.date == today) {
+                this[lastIndex] = last().copy(followerCount = currentFollowers.coerceAtLeast(0))
+            } else {
+                add(FollowerGrowthPoint(today, currentFollowers.coerceAtLeast(0)))
+            }
+        }.takeLast(30)
     }
 
-    return points
+    return source.mapIndexed { index, point ->
+        val parsedDate = runCatching { LocalDate.parse(point.date) }.getOrNull()
+        val previousCount = source.getOrNull(index - 1)?.followerCount ?: point.followerCount
+        FollowerDataPoint(
+            dayIndex = index,
+            dateLabel = parsedDate?.dayOfMonth?.toString() ?: point.date.takeLast(2),
+            formattedDate = parsedDate?.format(formatter) ?: point.date,
+            followers = point.followerCount.coerceAtLeast(0),
+            dailyGain = point.followerCount - previousCount
+        )
+    }
 }
 
 /**
@@ -107,13 +99,14 @@ fun generate30DayFollowerData(currentFollowers: Int): List<FollowerDataPoint> {
 @Composable
 fun FollowerGrowthChart(
     profile: UserProfile,
+    history: List<FollowerGrowthPoint> = emptyList(),
     isDark: Boolean,
     onOpenGetVerified: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedTimeframe by remember { mutableIntStateOf(30) } // 7, 14, 30
-    val raw30DayData = remember(profile.followerCount) {
-        generate30DayFollowerData(profile.followerCount)
+    val raw30DayData = remember(history, profile.followerCount) {
+        realFollowerGrowthData(history, profile.followerCount)
     }
 
     val activeData = remember(selectedTimeframe, raw30DayData) {
@@ -142,9 +135,9 @@ fun FollowerGrowthChart(
 
     val currentFollowers = profile.followerCount
     val initialFollowers = activeData.firstOrNull()?.followers ?: currentFollowers
-    val totalGain = (currentFollowers - initialFollowers).coerceAtLeast(0)
+    val totalGain = currentFollowers - initialFollowers
     val percentageGain = if (initialFollowers > 0) ((totalGain.toDouble() / initialFollowers) * 100) else 0.0
-    val dailyAvg = if (activeData.isNotEmpty()) totalGain.toDouble() / activeData.size else 0.0
+    val dailyAvg = if (activeData.size > 1) totalGain.toDouble() / (activeData.size - 1) else 0.0
     
     val goldTarget = 1000
     val remainingForGold = (goldTarget - currentFollowers).coerceAtLeast(0)
@@ -186,7 +179,7 @@ fun FollowerGrowthChart(
             }
 
             Text(
-                text = "Track velocity to 1,000 Gold VIP milestone",
+                text = if (raw30DayData.size > 1) "Real daily follower totals • no estimated history" else "Growth tracking has started • more history will appear over time",
                 fontSize = 11.5.sp,
                 color = textSecondary
             )
@@ -261,7 +254,12 @@ fun FollowerGrowthChart(
                         color = textPrimary
                     )
                     Text(
-                        text = if (selectedPointIndex != null) "+${activePoint?.dailyGain ?: 0} gained" else "+$totalGain (${String.format(Locale.US, "%.1f", percentageGain)}%)",
+                        text = if (selectedPointIndex != null) {
+                            val gain = activePoint?.dailyGain ?: 0
+                            "${if (gain > 0) "+" else ""}$gain gained"
+                        } else {
+                            "${if (totalGain > 0) "+" else ""}$totalGain (${String.format(Locale.US, "%.1f", percentageGain)}%)"
+                        },
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = BlinkOnlineGreen
@@ -529,8 +527,11 @@ fun FollowerGrowthChart(
                 .padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            val labelCount = if (selectedTimeframe == 7) 7 else 5
-            val step = (activeData.size - 1).coerceAtLeast(1) / (labelCount - 1).coerceAtLeast(1)
+            val preferredLabelCount = if (selectedTimeframe == 7) 7 else 5
+            val labelCount = minOf(preferredLabelCount, activeData.size.coerceAtLeast(1))
+            val step = if (labelCount <= 1) 0 else {
+                (activeData.size - 1).coerceAtLeast(1) / (labelCount - 1)
+            }
             
             for (i in 0 until labelCount) {
                 val idx = (i * step).coerceAtMost(activeData.size - 1)
