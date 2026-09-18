@@ -682,7 +682,7 @@ fun ProfileScreen(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text("🏛️", fontSize = 15.sp)
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("#${profile.campusRank}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkGold)
+                                        Text(if (profile.campusRank > 0) "#${profile.campusRank}" else "—", fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkGold)
                                     }
                                     Text("Campus Rank", fontSize = 9.5.sp, color = textSecondary)
                                 }
@@ -693,7 +693,7 @@ fun ProfileScreen(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text("🌐", fontSize = 15.sp)
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("#${profile.worldRank}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkBlue)
+                                        Text(if (profile.worldRank > 0) "#${profile.worldRank}" else "—", fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkBlue)
                                     }
                                     Text("World Rank", fontSize = 9.5.sp, color = textSecondary)
                                 }
