@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +25,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
+import com.example.ads.BlinkAdAnalytics
+import com.example.ads.BlinkAdsRuntime
 import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.AdLoader
 import com.google.android.gms.ads.AdRequest
@@ -50,10 +53,19 @@ fun BlinkSponsoredNativeAd(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val canRequestAds by BlinkAdsRuntime.canRequestAds.collectAsState()
     var nativeAd by remember(adUnitId) { mutableStateOf<NativeAd?>(null) }
     var loadFailed by remember(adUnitId) { mutableStateOf(false) }
 
-    DisposableEffect(adUnitId) {
+    DisposableEffect(adUnitId, canRequestAds) {
+        if (!canRequestAds) {
+            nativeAd?.destroy()
+            nativeAd = null
+            loadFailed = false
+            return@DisposableEffect onDispose {}
+        }
+
+        val placementName = if (placement == BlinkNativeAdPlacement.FEED) "feed" else "reels"
         val adLoader = AdLoader.Builder(context, adUnitId)
             .forNativeAd { loaded ->
                 nativeAd?.destroy()
@@ -62,8 +74,21 @@ fun BlinkSponsoredNativeAd(
             }
             .withAdListener(
                 object : AdListener() {
+                    override fun onAdLoaded() {
+                        BlinkAdAnalytics.loaded(context, placementName, "native")
+                    }
+
+                    override fun onAdImpression() {
+                        BlinkAdAnalytics.impression(context, placementName, "native")
+                    }
+
+                    override fun onAdClicked() {
+                        BlinkAdAnalytics.clicked(context, placementName, "native")
+                    }
+
                     override fun onAdFailedToLoad(error: LoadAdError) {
                         loadFailed = true
+                        BlinkAdAnalytics.failed(context, placementName, "native", error.code)
                     }
                 }
             )
@@ -79,6 +104,8 @@ fun BlinkSponsoredNativeAd(
 
     val ad = nativeAd
     when {
+        !canRequestAds -> Box(modifier = modifier)
+
         ad != null -> {
             AndroidView(
                 factory = { createBlinkNativeAdView(it, placement) },
