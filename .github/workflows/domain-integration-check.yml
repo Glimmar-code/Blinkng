@@ -41,6 +41,9 @@ jobs:
           grep -F 'const SITE_URL' web/app.js >/dev/null
           grep -F 'const url = SITE_URL + normalizedPath;' web/app.js >/dev/null
           grep -F '<link rel="canonical" href="https://www.blink.com.ng/" />' web/index.html >/dev/null
+          test -f web/privacy/index.html
+          grep -F '<link rel="canonical" href="https://www.blink.com.ng/privacy" />' web/privacy/index.html >/dev/null
+          grep -F 'https://www.blink.com.ng/privacy' web/sitemap.xml >/dev/null
           grep -F 'android:autoVerify="true"' app/src/main/AndroidManifest.xml >/dev/null
           grep -F 'Uri.parse("https://www.blink.com.ng")' app/src/main/java/com/example/sharing/DeepLinkRouter.kt >/dev/null
 
