@@ -10,6 +10,7 @@ import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.example.data.models.ContactField
 import com.example.data.models.FeedPost
+import com.example.data.models.FollowerGrowthPoint
 import com.example.data.models.LeaderboardUser
 import com.example.data.models.CampusPeer
 import com.example.data.models.RoommateApplicant
@@ -952,14 +953,39 @@ fun getCurrentUserId(): String? {
         }
     }
 
+    suspend fun isOnlineStatusSharingEnabled(): Boolean = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId() ?: return@withContext false
+        try {
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/user_settings?user_id=eq.${encodeValue(uid)}&select=show_online_status&limit=1",
+                    authenticated = true
+                ).get().build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    // Presence privacy fails closed: never publish "online" if we
+                    // cannot confirm that the user allows active-status sharing.
+                    return@withContext false
+                }
+                if (raw.isBlank() || raw == "[]") return@withContext true
+                JSONArray(raw).optJSONObject(0)?.optBoolean("show_online_status", true) ?: true
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "PRESENCE_PRIVACY_CHECK failed", error)
+            false
+        }
+    }
+
     suspend fun setMyPresence(online: Boolean): Boolean = withContext(Dispatchers.IO) {
         if (!isAuthenticated()) return@withContext false
         try {
+            val effectiveOnline = if (online) isOnlineStatusSharingEnabled() else false
             executeRequest(
                 newRequestBuilder("/rest/v1/rpc/set_my_presence", authenticated = true)
                     .post(
                         JSONObject()
-                            .put("p_online", online)
+                            .put("p_online", effectiveOnline)
                             .toString()
                             .toRequestBody(jsonMediaType)
                     )
@@ -970,6 +996,119 @@ fun getCurrentUserId(): String? {
             false
         }
     }
+
+    suspend fun fetchProfilePostIdsAndCount(
+        userId: String,
+        limit: Int = 500
+    ): Pair<List<String>, Int> = withContext(Dispatchers.IO) {
+        if (!isValidUuid(userId)) return@withContext emptyList<String>() to 0
+        val safeLimit = limit.coerceIn(1, 1000)
+        try {
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/feed_posts?user_id=eq.${encodeValue(userId)}&is_active=eq.true&select=id&order=created_at.desc&limit=$safeLimit",
+                    authenticated = true
+                )
+                    .addHeader("Prefer", "count=exact")
+                    .get()
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@withContext emptyList<String>() to 0
+                val rows = JSONArray(if (raw.isBlank()) "[]" else raw)
+                val ids = buildList {
+                    for (i in 0 until rows.length()) {
+                        rows.optJSONObject(i)?.optString("id")
+                            ?.takeIf(::isValidUuid)
+                            ?.let(::add)
+                    }
+                }
+                val total = response.header("Content-Range")
+                    ?.substringAfterLast("/")
+                    ?.toIntOrNull()
+                    ?: ids.size
+                ids to total
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "PROFILE_POST_IDS failed", error)
+            emptyList<String>() to 0
+        }
+    }
+
+    suspend fun fetchMyLikedPostIds(limit: Int = 500): List<String> =
+        fetchMyPostRelationIds("post_likes", limit)
+
+    suspend fun fetchMySavedPostIds(limit: Int = 500): List<String> =
+        fetchMyPostRelationIds("post_bookmarks", limit)
+
+    private suspend fun fetchMyPostRelationIds(
+        table: String,
+        limit: Int
+    ): List<String> = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId() ?: return@withContext emptyList()
+        val safeTable = when (table) {
+            "post_likes" -> table
+            "post_bookmarks" -> table
+            else -> return@withContext emptyList()
+        }
+        val safeLimit = limit.coerceIn(1, 1000)
+        try {
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/$safeTable?user_id=eq.${encodeValue(uid)}&select=post_id&order=created_at.desc&limit=$safeLimit",
+                    authenticated = true
+                ).get().build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@withContext emptyList()
+                val rows = JSONArray(if (raw.isBlank()) "[]" else raw)
+                buildList {
+                    for (i in 0 until rows.length()) {
+                        rows.optJSONObject(i)?.optString("post_id")
+                            ?.takeIf(::isValidUuid)
+                            ?.let(::add)
+                    }
+                }
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "PROFILE_RELATION_IDS failed table=$safeTable", error)
+            emptyList()
+        }
+    }
+
+    suspend fun fetchMyFollowerGrowth(days: Int = 30): List<FollowerGrowthPoint> =
+        withContext(Dispatchers.IO) {
+            val uid = getCurrentUserId() ?: return@withContext emptyList()
+            val safeDays = days.coerceIn(2, 90)
+            try {
+                executeRequest(
+                    newRequestBuilder(
+                        "/rest/v1/follower_count_snapshots?user_id=eq.${encodeValue(uid)}&select=captured_on,follower_count&order=captured_on.desc&limit=$safeDays",
+                        authenticated = true
+                    ).get().build()
+                ).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) return@withContext emptyList()
+                    val rows = JSONArray(if (raw.isBlank()) "[]" else raw)
+                    buildList {
+                        for (i in rows.length() - 1 downTo 0) {
+                            val row = rows.optJSONObject(i) ?: continue
+                            val date = row.optString("captured_on").trim()
+                            if (date.isBlank()) continue
+                            add(
+                                FollowerGrowthPoint(
+                                    date = date,
+                                    followerCount = row.optInt("follower_count", 0).coerceAtLeast(0)
+                                )
+                            )
+                        }
+                    }
+                }
+            } catch (error: Exception) {
+                Log.w(TAG, "FOLLOWER_GROWTH_FETCH failed", error)
+                emptyList()
+            }
+        }
 
     // ============================================================
     // PROFILE
@@ -3358,9 +3497,15 @@ suspend fun uploadPostMedia(
             dailyStreak = obj.optInt("daily_streak", 0),
             worldRank = obj.optInt("world_rank", 0),
             campusRank = obj.optInt("campus_rank", 0),
-            onlineNow = obj.optBoolean("online_now", obj.optBoolean("is_online", false)),
+            onlineNow = obj.optBoolean("show_online_status", true) &&
+                obj.optBoolean("online_now", obj.optBoolean("is_online", false)),
+            showOnlineStatus = obj.optBoolean("show_online_status", true),
             relationshipStatus = obj.cleanString("relationship_status").ifBlank { "Single" },
-            lastSeenAt = obj.cleanString("last_seen_at").ifBlank { obj.cleanString("last_seen") },
+            lastSeenAt = if (obj.optBoolean("show_online_status", true)) {
+                obj.cleanString("last_seen_at").ifBlank { obj.cleanString("last_seen") }
+            } else {
+                ""
+            },
             verifiedAtMillis = obj.optLong("verified_at_millis", 0L),
             joinedLabel = obj.cleanString("joined_label"),
             isSellerActive = obj.optBoolean("is_seller_active", false),
