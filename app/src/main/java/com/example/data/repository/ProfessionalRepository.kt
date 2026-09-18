@@ -69,7 +69,7 @@ class ProfessionalRepository(
 
     suspend fun updateSettings(settings: AppSettings): Boolean = withContext(Dispatchers.IO) {
         val uid = supabaseService.getCurrentUserId() ?: return@withContext false
-        write(
+        val saved = write(
             "/rest/v1/user_settings?on_conflict=user_id",
             JSONObject()
                 .put("user_id", uid)
@@ -88,6 +88,11 @@ class ProfessionalRepository(
             "POST",
             "resolution=merge-duplicates,return=minimal"
         )
+        if (saved && !settings.showOnlineStatus) {
+            // Hide immediately instead of waiting for the next lifecycle/realtime heartbeat.
+            runCatching { supabaseService.setMyPresence(false) }
+        }
+        saved
     }
 
     suspend fun exportAccountData(): String =
