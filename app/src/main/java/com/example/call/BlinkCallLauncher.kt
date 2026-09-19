@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import com.example.util.startActivitySafely
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -56,7 +57,9 @@ object BlinkCallLauncher {
                     callType = type
                 )
                 if (context !is Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
+                if (!context.startActivitySafely(intent, "Unable to open the Blink call screen.")) {
+                    return@launch
+                }
 
                 repository.dispatchPush(call.id, "invite")
                     .onFailure {

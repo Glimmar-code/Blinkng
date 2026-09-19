@@ -10,6 +10,7 @@ import com.example.MainActivity
 import com.example.data.supabase.SupabaseService
 import com.example.ui.screens.ResetPasswordScreen
 import com.example.ui.theme.BlinkTheme
+import com.example.util.startActivitySafely
 import kotlinx.coroutines.launch
 
 /** Receives blink://auth/reset-password links from Supabase recovery emails. */
@@ -78,11 +79,15 @@ class PasswordResetActivity : ComponentActivity() {
             }
             Toast.makeText(this, message, Toast.LENGTH_LONG).show()
         }
-        startActivity(
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            }
-        )
-        finish()
+        if (
+            startActivitySafely(
+                Intent(this, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                },
+                "Unable to reopen Blink."
+            )
+        ) {
+            finish()
+        }
     }
 }

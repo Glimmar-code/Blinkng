@@ -1,6 +1,7 @@
 package com.example.auth
 
 import com.example.R
+import com.example.util.startActivitySafely
 import androidx.compose.ui.res.painterResource
 import android.app.Activity
 import android.content.Intent
@@ -99,10 +100,18 @@ class AccountSwitcherActivity : ComponentActivity() {
                                                                 session.accessToken,
                                                                 session.refreshToken
                                                             )
-                                                            startActivity(Intent(this@AccountSwitcherActivity, MainActivity::class.java).apply {
-                                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                                                            })
-                                                            finish()
+                                                            val opened = startActivitySafely(
+                                                                Intent(this@AccountSwitcherActivity, MainActivity::class.java).apply {
+                                                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                                                },
+                                                                "Unable to return to Blink."
+                                                            )
+                                                            if (opened) {
+                                                                finish()
+                                                            } else {
+                                                                switchingUserId = null
+                                                                error = "Unable to reopen Blink. Please try again."
+                                                            }
                                                         },
                                                         onFailure = { throwable ->
                                                             switchingUserId = null
@@ -142,10 +151,17 @@ class AccountSwitcherActivity : ComponentActivity() {
                             // Keep the current account alive until the replacement account has
                             // fully authenticated and loaded its BLINK profile.
                             AccountSessionStore.requestAddAccount(this@AccountSwitcherActivity)
-                            startActivity(Intent(this@AccountSwitcherActivity, MainActivity::class.java).apply {
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                            })
-                            finish()
+                            val opened = startActivitySafely(
+                                Intent(this@AccountSwitcherActivity, MainActivity::class.java).apply {
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                },
+                                "Unable to open Blink sign in."
+                            )
+                            if (opened) {
+                                finish()
+                            } else {
+                                error = "Unable to open Blink sign in. Please try again."
+                            }
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Add account") }
