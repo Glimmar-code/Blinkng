@@ -3284,6 +3284,15 @@ private suspend fun restoreSupabaseSession() {
         if (myId.isNotBlank() && event.recipientId.isNotBlank() && event.recipientId != myId) return
 
         val normalizedType = event.activityType.trim().uppercase()
+        if (normalizedType in setOf(
+                "LIKE", "LIKES", "COMMENT", "COMMENTS", "REPLY", "MENTION",
+                "FOLLOW", "REPOST"
+            )
+        ) {
+            // These are mirrored by authoritative public.notifications rows in production.
+            // Ignore the legacy realtime copy so one event can create only one banner/timeline row.
+            return
+        }
         val category = when (normalizedType) {
             "LIKE", "LIKES", "BOOKMARK", "SAVE" -> NotificationFilter.LIKES
             "COMMENT", "COMMENTS", "REPLY", "MENTION" -> NotificationFilter.COMMENTS
@@ -3320,17 +3329,6 @@ private suspend fun restoreSupabaseSession() {
             }) {
             _uiState.value = state.copy(activities = listOf(activity) + state.activities)
             persistExtendedCache()
-        }
-
-        // Standard social events now have authoritative rows in public.notifications.
-        // Keep the legacy activity row in the timeline as a compatibility fallback, but
-        // let the canonical notification realtime event own foreground delivery.
-        if (normalizedType in setOf(
-                "LIKE", "LIKES", "COMMENT", "COMMENTS", "REPLY", "MENTION",
-                "FOLLOW", "REPOST", "SAVE", "BOOKMARK"
-            )
-        ) {
-            return
         }
 
         val wireType = when (normalizedType) {
