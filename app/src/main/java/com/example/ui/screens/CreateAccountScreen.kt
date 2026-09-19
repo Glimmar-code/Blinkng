@@ -59,7 +59,6 @@ fun CreateAccountScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var acceptedTerms by rememberSaveable { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var submitting by remember { mutableStateOf(false) }
 
     val ready = fullName.trim().length >= 2 &&
         email.contains("@") &&
@@ -183,7 +182,6 @@ fun CreateAccountScreen(
                         }
 
                         if (error == null) {
-                            submitting = true
                             onCreateAccount(
                                 fullName.trim(),
                                 email.trim().lowercase(),
@@ -191,7 +189,7 @@ fun CreateAccountScreen(
                             )
                         }
                     },
-                    enabled = ready && !submitting,
+                    enabled = ready,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = BlinkCream,
                         contentColor = BlinkBlack,
@@ -203,14 +201,7 @@ fun CreateAccountScreen(
                         .height(53.dp)
                         .testTag("create_account_submit")
                 ) {
-                    if (submitting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.height(20.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text("Create account", fontWeight = FontWeight.Bold)
-                    }
+                    Text("Create account", fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(Modifier.height(12.dp))
