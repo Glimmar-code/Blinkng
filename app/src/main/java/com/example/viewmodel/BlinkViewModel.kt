@@ -31,6 +31,10 @@ import com.example.notification.BlinkNotificationType
 import com.example.notification.NotificationPreferenceStore
 import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
+import com.blinkng.shared.BlinkCoinPack
+import com.blinkng.shared.BlinkEconomyDefaults
+import com.blinkng.shared.BlinkEconomyPolicy
+import com.blinkng.shared.BlinkRewardMilestone
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -48,6 +52,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import org.json.JSONObject
 
 enum class AppDestination { SPLASH, ONBOARDING, SIGN_IN, SIGN_UP, RESET_PASSWORD, PROFILE_SETUP, MAIN }
 
@@ -108,6 +113,9 @@ data class BlinkUiState(
     val isCreatingPost: Boolean = false,
     val pendingMessageCount: Int = 0,
     val blinkCoinBalance: Long = 0L,
+    val economyPolicy: BlinkEconomyPolicy = BlinkEconomyDefaults.policy,
+    val rewardedAdsToday: Int = 0,
+    val rewardedCoinsToday: Int = 0,
     val discoverProfiles: List<UserProfile> = emptyList(),
     val discoverPosts: List<FeedPost> = emptyList(),
     val isDiscoverSearching: Boolean = false,
@@ -910,9 +918,17 @@ private suspend fun restoreSupabaseSession() {
             val streak = runCatching { supabaseService.touchDailyStreak() }
                 .onFailure { Log.w(TAG, "Daily streak refresh failed", it) }
                 .getOrNull()
-            val balance = runCatching { supabaseService.fetchMyBlinkCoinBalance() }
-                .onFailure { Log.w(TAG, "Blink Coin balance refresh failed", it) }
-                .getOrDefault(before.blinkCoinBalance)
+            val economy = blinkEconomyService.economyStatus()
+                .onFailure { Log.w(TAG, "Blink economy refresh failed", it) }
+                .getOrNull()
+            val balance = economy?.optLong("balance", before.blinkCoinBalance)
+                ?: runCatching { supabaseService.fetchMyBlinkCoinBalance() }
+                    .onFailure { Log.w(TAG, "Blink Coin balance refresh failed", it) }
+                    .getOrDefault(before.blinkCoinBalance)
+            val policy = economy?.let(::parseEconomyPolicy) ?: before.economyPolicy
+            val adsToday = economy?.optInt("ads_today", before.rewardedAdsToday) ?: before.rewardedAdsToday
+            val coinsToday = economy?.optInt("coins_earned_from_ads_today", before.rewardedCoinsToday)
+                ?: before.rewardedCoinsToday
 
             withContext(Dispatchers.Main) {
                 val latest = _uiState.value
@@ -937,7 +953,10 @@ private suspend fun restoreSupabaseSession() {
                     myProfile = updatedMe,
                     profiles = updatedProfiles,
                     viewingProfile = updatedViewing,
-                    blinkCoinBalance = balance
+                    blinkCoinBalance = balance,
+                    economyPolicy = policy,
+                    rewardedAdsToday = adsToday.coerceIn(0, policy.rewardedAdDailyLimit),
+                    rewardedCoinsToday = coinsToday.coerceAtLeast(0)
                 )
                 saveLocalProfile(updatedMe)
                 persistProfile(updatedMe)
@@ -946,8 +965,48 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    private fun parseEconomyPolicy(payload: JSONObject): BlinkEconomyPolicy {
+        val fallback = BlinkEconomyDefaults.policy
+        val milestones = payload.optJSONArray("rewarded_milestones")?.let { array ->
+            buildList {
+                for (index in 0 until array.length()) {
+                    val row = array.optJSONObject(index) ?: continue
+                    val ads = row.optInt("ads", 0)
+                    val total = row.optInt("total_coins", 0)
+                    if (ads > 0 && total > 0) add(BlinkRewardMilestone(ads, total))
+                }
+            }.sortedBy { it.ads }
+        }.orEmpty().ifEmpty { fallback.rewardedMilestones }
+
+        val packs = payload.optJSONArray("coin_packs")?.let { array ->
+            buildList {
+                for (index in 0 until array.length()) {
+                    val row = array.optJSONObject(index) ?: continue
+                    val id = row.optString("id").trim()
+                    val price = row.optInt("price_ngn", 0)
+                    val coins = row.optInt("coins", 0)
+                    if (id.isNotBlank() && price > 0 && coins > 0) add(BlinkCoinPack(id, price, coins))
+                }
+            }
+        }.orEmpty().ifEmpty { fallback.coinPacks }
+
+        return BlinkEconomyPolicy(
+            rewardedAdBaseCoins = payload.optInt("rewarded_ad_base_coins", fallback.rewardedAdBaseCoins).coerceAtLeast(1),
+            rewardedAdDailyLimit = payload.optInt("rewarded_ad_daily_limit", fallback.rewardedAdDailyLimit).coerceIn(1, 100),
+            rewardedMilestones = milestones,
+            blueVerificationCashNgn = payload.optInt("blue_verification_cash_ngn", fallback.blueVerificationCashNgn).coerceAtLeast(1),
+            blueVerificationCoinCost = payload.optInt("blue_verification_coin_cost", fallback.blueVerificationCoinCost).coerceAtLeast(1),
+            coinPacks = packs,
+            cashCheckoutEnabled = payload.optBoolean("cash_checkout_enabled", fallback.cashCheckoutEnabled)
+        )
+    }
+
     suspend fun beginRewardedAdClaim(): String? {
         val state = _uiState.value
+        if (!state.economyPolicy.canWatchRewardedAd(state.rewardedAdsToday)) {
+            showToast("You've reached today's ${state.economyPolicy.rewardedAdDailyLimit}-ad rewarded limit.")
+            return null
+        }
         if (!state.isOnline || state.myProfile.id.isBlank()) {
             showToast("Connect to the internet and sign in before watching a rewarded ad.")
             return null
@@ -977,11 +1036,21 @@ private suspend fun restoreSupabaseSession() {
             val result = blinkEconomyService.completeRewardedAdClaim(claimId)
             result.fold(
                 onSuccess = { payload ->
-                    val reward = payload.optInt("reward_amount", 10)
-                    val balance = payload.optLong("balance", _uiState.value.blinkCoinBalance + reward)
-                    _uiState.value = _uiState.value.copy(blinkCoinBalance = balance)
+                    val latest = _uiState.value
+                    val reward = payload.optInt("reward_amount", latest.economyPolicy.rewardedAdBaseCoins)
+                    val bonus = payload.optInt("milestone_bonus", 0)
+                    val adsToday = payload.optInt("ads_today", latest.rewardedAdsToday + 1)
+                    val balance = payload.optLong("balance", latest.blinkCoinBalance + reward)
+                    _uiState.value = latest.copy(
+                        blinkCoinBalance = balance,
+                        rewardedAdsToday = adsToday.coerceIn(0, latest.economyPolicy.rewardedAdDailyLimit),
+                        rewardedCoinsToday = latest.rewardedCoinsToday + reward
+                    )
                     persistExtendedCache()
-                    showToast("+$reward Blink Coins")
+                    showToast(
+                        if (bonus > 0) "+$reward Blink Coins • +$bonus milestone bonus"
+                        else "+$reward Blink Coins"
+                    )
                 },
                 onFailure = { error ->
                     Log.w(TAG, "Rewarded ad coin credit failed", error)
@@ -997,7 +1066,56 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun buyBlinkCoins() {
-        showToast("Blink Coin purchases need Google Play Billing products configured first.")
+        val policy = _uiState.value.economyPolicy
+        val packs = policy.coinPacks.joinToString(" • ") { "₦${it.priceNgn}→${it.coins}" }
+        showToast(
+            if (policy.cashCheckoutEnabled) "Choose a Blink Coin pack: $packs"
+            else "Blink Coin packs are ready ($packs). Secure cash checkout is not enabled yet."
+        )
+    }
+
+    fun verifyBlueWithCoins() {
+        val current = _uiState.value
+        if (current.myProfile.verificationBadge != VerificationBadge.NONE) {
+            showToast("BLINK Verified is already active on your account.")
+            return
+        }
+        val remaining = current.economyPolicy.verificationCoinsRemaining(current.blinkCoinBalance)
+        if (remaining > 0) {
+            showToast("You need $remaining more Blink Coins for BLINK Verified.")
+            return
+        }
+
+        viewModelScope.launch {
+            blinkEconomyService.verifyBlueWithCoins().fold(
+                onSuccess = { payload ->
+                    val balance = payload.optLong("balance", _uiState.value.blinkCoinBalance)
+                    val refreshed = runCatching { profileRepository.fetchById(_uiState.value.myProfile.id) }.getOrNull()
+                    val latest = _uiState.value
+                    val updatedMe = refreshed ?: latest.myProfile.copy(verificationBadge = VerificationBadge.BLUE)
+                    _uiState.value = latest.copy(
+                        myProfile = updatedMe,
+                        profiles = latest.profiles.map {
+                            if (it.id == updatedMe.id || it.username.equals(updatedMe.username, true)) updatedMe else it
+                        },
+                        viewingProfile = latest.viewingProfile?.let {
+                            if (it.id == updatedMe.id || it.username.equals(updatedMe.username, true)) updatedMe else it
+                        },
+                        blinkCoinBalance = balance,
+                        isGetVerifiedOpen = false
+                    )
+                    saveLocalProfile(updatedMe)
+                    persistProfile(updatedMe)
+                    persistExtendedCache()
+                    showToast("BLINK Verified activated for ${payload.optInt("cost", current.economyPolicy.blueVerificationCoinCost)} coins.")
+                },
+                onFailure = { error ->
+                    Log.w(TAG, "Blink Coin verification purchase failed", error)
+                    showToast(error.message ?: "Couldn't activate BLINK Verified.")
+                    refreshProfileRewards()
+                }
+            )
+        }
     }
 
     fun refreshIfStale(maxAgeMillis: Long = 60_000L) {
@@ -3612,11 +3730,15 @@ private suspend fun restoreSupabaseSession() {
     fun applyVerification(
         tier: VerificationBadge,
         paymentReference: String = "",
-        amount: Int = if (tier == VerificationBadge.GOLD) 2500 else 800
+        amount: Int = if (tier == VerificationBadge.GOLD) 2000 else 800
     ) {
         if (tier == VerificationBadge.NONE) return
+        val reference = paymentReference.trim()
+        if (reference.isBlank()) {
+            showToast("Secure cash checkout is not connected yet. Use Blink Coins for BLINK Verified.")
+            return
+        }
         viewModelScope.launch {
-            val reference = paymentReference.trim()
             val success = supabaseService.submitVerificationRequest(
                 if (tier == VerificationBadge.GOLD) "GOLD" else "BLUE",
                 reference,

@@ -57,6 +57,14 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
 
     suspend fun getStoreState(): JSONObject = rpc("get_blink_store_state", JSONObject())
 
+    suspend fun getEconomyStatus(): JSONObject = rpc("get_blink_economy_status", JSONObject())
+
+    suspend fun purchaseBlueVerificationWithCoins(): JSONObject =
+        rpc("purchase_blink_blue_verification_with_coins", JSONObject())
+
+    suspend fun createCoinPurchaseOrder(packId: String): JSONObject =
+        rpc("create_blink_coin_purchase_order", JSONObject().put("p_pack_id", packId.trim()))
+
     suspend fun activateStoreItem(inventoryId: String, targetId: String? = null): JSONObject =
         rpc("activate_blink_item", JSONObject()
             .put("p_inventory_id", inventoryId)

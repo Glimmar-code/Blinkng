@@ -42,6 +42,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -72,15 +73,21 @@ import com.blinkng.desktop.data.DesktopFeedPost
 import com.blinkng.desktop.data.DesktopInventoryItem
 import com.blinkng.desktop.data.DesktopLeaderboardEntry
 import com.blinkng.desktop.data.DesktopMarketItem
+import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.data.DesktopNotification
 import com.blinkng.desktop.data.DesktopSearchResults
 import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
+import com.blinkng.shared.BlinkCoinPack
+import com.blinkng.shared.BlinkEconomyDefaults
+import com.blinkng.shared.BlinkEconomyPolicy
+import com.blinkng.shared.BlinkRewardMilestone
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import org.json.JSONObject
 
 @Composable
 fun HomeScreen(state: DesktopAppState) {
@@ -670,6 +677,22 @@ fun LeaderboardScreen(state: DesktopAppState) {
 @Composable
 fun ProfileScreen(state: DesktopAppState) {
     val profile = state.profile
+    val scope = rememberCoroutineScope()
+    val actions = remember(state.client) { DesktopRpcActions(state.client) }
+    var economyPayload by remember { mutableStateOf<JSONObject?>(null) }
+    var economyMessage by remember { mutableStateOf<String?>(null) }
+    var economyBusy by remember { mutableStateOf(false) }
+
+    LaunchedEffect(profile?.id) {
+        if (profile != null) {
+            economyPayload = runCatching { actions.getEconomyStatus() }.getOrNull()
+        }
+    }
+
+    val policy = remember(economyPayload?.toString()) { parseDesktopEconomyPolicy(economyPayload) }
+    val balance = economyPayload?.optLong("balance", profile?.coinBalance ?: 0L) ?: profile?.coinBalance ?: 0L
+    val remaining = policy.verificationCoinsRemaining(balance)
+
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { ScreenHeader("Profile", "Your Blink identity") }
         if (profile == null) {
@@ -698,7 +721,98 @@ fun ProfileScreen(state: DesktopAppState) {
                             Stat("Posts", profile.postsCount.toString())
                             Stat("Followers", profile.followerCount.toString())
                             Stat("Following", profile.followingCount.toString())
-                            Stat("Coins", profile.coinBalance.toString())
+                            Stat("Coins", balance.toString())
+                        }
+                    }
+                }
+            }
+
+            item {
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.07f),
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column {
+                                Text("BLINK Verified", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                                Text(
+                                    if (profile.isVerified) "Premium BLINK status active"
+                                    else "$balance / ${policy.blueVerificationCoinCost} coins",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Icon(
+                                Icons.Rounded.Verified,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp),
+                            )
+                        }
+
+                        LinearProgressIndicator(
+                            progress = { if (profile.isVerified) 1f else policy.verificationProgress(balance) },
+                            modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(100.dp)),
+                        )
+
+                        Text(
+                            if (profile.isVerified) {
+                                "Your BLINK Verified status is active across supported identity surfaces."
+                            } else {
+                                "Use ${policy.blueVerificationCoinCost} Blink Coins, or ₦${policy.blueVerificationCashNgn} through secure cash checkout when it is enabled."
+                            },
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        if (!profile.isVerified) {
+                            Button(
+                                onClick = {
+                                    economyBusy = true
+                                    economyMessage = null
+                                    scope.launch {
+                                        runCatching { actions.purchaseBlueVerificationWithCoins() }
+                                            .onSuccess {
+                                                economyPayload = runCatching { actions.getEconomyStatus() }.getOrNull()
+                                                state.refreshProfile()
+                                                economyMessage = "BLINK Verified activated."
+                                            }
+                                            .onFailure { economyMessage = it.message ?: "Verification could not be completed." }
+                                        economyBusy = false
+                                    }
+                                },
+                                enabled = !economyBusy && remaining == 0L,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    if (economyBusy) "Activating…"
+                                    else if (remaining == 0L) "Use ${policy.blueVerificationCoinCost} coins"
+                                    else "Need $remaining more coins",
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+
+                        Text(
+                            "Rewarded ads are an Android earning surface; Android and Windows share the same server wallet and verification balance.",
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        economyMessage?.let { message ->
+                            Text(
+                                message,
+                                fontSize = 11.sp,
+                                color = if (message.contains("activated", ignoreCase = true)) Color(0xFF22C55E) else MaterialTheme.colorScheme.error,
+                            )
                         }
                     }
                 }
@@ -910,6 +1024,44 @@ private fun EmptyState(message: String) {
 @Composable
 private fun InlineError(message: String) {
     Text(message, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+}
+
+private fun parseDesktopEconomyPolicy(payload: JSONObject?): BlinkEconomyPolicy {
+    val fallback = BlinkEconomyDefaults.policy
+    if (payload == null) return fallback
+
+    val milestones = payload.optJSONArray("rewarded_milestones")?.let { array ->
+        buildList {
+            for (index in 0 until array.length()) {
+                val row = array.optJSONObject(index) ?: continue
+                val ads = row.optInt("ads", 0)
+                val total = row.optInt("total_coins", 0)
+                if (ads > 0 && total > 0) add(BlinkRewardMilestone(ads, total))
+            }
+        }.sortedBy { it.ads }
+    }.orEmpty().ifEmpty { fallback.rewardedMilestones }
+
+    val packs = payload.optJSONArray("coin_packs")?.let { array ->
+        buildList {
+            for (index in 0 until array.length()) {
+                val row = array.optJSONObject(index) ?: continue
+                val id = row.optString("id").trim()
+                val price = row.optInt("price_ngn", 0)
+                val coins = row.optInt("coins", 0)
+                if (id.isNotBlank() && price > 0 && coins > 0) add(BlinkCoinPack(id, price, coins))
+            }
+        }
+    }.orEmpty().ifEmpty { fallback.coinPacks }
+
+    return BlinkEconomyPolicy(
+        rewardedAdBaseCoins = payload.optInt("rewarded_ad_base_coins", fallback.rewardedAdBaseCoins).coerceAtLeast(1),
+        rewardedAdDailyLimit = payload.optInt("rewarded_ad_daily_limit", fallback.rewardedAdDailyLimit).coerceIn(1, 100),
+        rewardedMilestones = milestones,
+        blueVerificationCashNgn = payload.optInt("blue_verification_cash_ngn", fallback.blueVerificationCashNgn).coerceAtLeast(1),
+        blueVerificationCoinCost = payload.optInt("blue_verification_coin_cost", fallback.blueVerificationCoinCost).coerceAtLeast(1),
+        coinPacks = packs,
+        cashCheckoutEnabled = payload.optBoolean("cash_checkout_enabled", fallback.cashCheckoutEnabled),
+    )
 }
 
 private fun formatTime(value: String): String = runCatching {
