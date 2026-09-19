@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import com.example.BuildConfig
+import com.example.util.startActivitySafely
 
 enum class ShareContentType(val pathSegment: String) {
     PROFILE("profile"),
@@ -74,7 +75,10 @@ object ShareLinkManager {
 
         val chooser = Intent.createChooser(sendIntent, title.ifBlank { "Share on Blink" })
         if (context !is Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(chooser)
+        context.startActivitySafely(
+            chooser,
+            failureMessage = "No compatible app is available to share this."
+        )
     }
 
     fun copyLink(
