@@ -1175,9 +1175,13 @@ fun MainAppContent(
                 blinkCoinBalance = uiState.blinkCoinBalance,
                 economyPolicy = uiState.economyPolicy,
                 rewardedAdsToday = uiState.rewardedAdsToday,
+                dailyMissions = uiState.dailyMissions,
+                isDailyMissionsLoading = uiState.isDailyMissionsLoading,
                 onDismiss = { viewModel.openGetVerified(false) },
                 onWatchAdForCoins = onWatchAdForCoins,
                 onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
+                onRefreshDailyMissions = { viewModel.refreshProfileRewards() },
+                onClaimDailyMission = { viewModel.claimDailyMission(it) },
                 onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
                 onUpgrade = { tier ->
                     viewModel.applyVerification(tier)
