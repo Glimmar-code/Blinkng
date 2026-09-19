@@ -422,8 +422,23 @@ class DesktopSupabaseClient(
             }
         }
 
+        fun isCanonicalMirror(item: DesktopNotification): Boolean {
+            val action = item.text.lowercase()
+            return action.contains("liked your") ||
+                action.contains("commented on") ||
+                action.contains("replied") ||
+                action.contains("mentioned") ||
+                action.contains("follow") ||
+                action.contains("repost")
+        }
+
         val notificationKeys = serverNotifications.asSequence().map(::semanticKey).toHashSet()
-        (serverNotifications + activityNotifications.filterNot { semanticKey(it) in notificationKeys })
+        val legacyFallback = if (serverNotifications.isEmpty()) {
+            activityNotifications
+        } else {
+            activityNotifications.filterNot(::isCanonicalMirror)
+        }
+        (serverNotifications + legacyFallback.filterNot { semanticKey(it) in notificationKeys })
             .sortedByDescending { it.createdAt }
             .distinctBy { it.id }
             .take(150)
