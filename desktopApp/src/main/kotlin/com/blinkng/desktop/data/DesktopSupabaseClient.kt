@@ -283,17 +283,25 @@ class DesktopSupabaseClient(
             "/rest/v1/rpc/get_post_comments",
             JSONObject().put("p_post_id", postId),
             prefer = "return=representation",
+            JSONObject().put("p_post_id", postId),
+            prefer = "return=representation",
         )
-        (0 until rows.length()).mapNotNull { i ->
             val row = rows.optJSONObject(i) ?: return@mapNotNull null
             DesktopComment(
                 id = row.optString("id"),
-                postId = row.optString("post_id"),
                 parentCommentId = row.optNullableString("parent_comment_id"),
-                authorId = row.optString("author_id"),
+                postId = row.optString("post_id"),
                 authorName = row.optString("display_name").ifBlank {
                     row.optString("username").ifBlank { "Blink user" }
                 },
+                authorVerified = row.optString("verification_badge").let {
+                    it.equals("BLUE", true) || it.equals("GOLD", true)
+                },
+                authorName = row.optString("display_name").ifBlank {
+                    row.optString("username").ifBlank { "Blink user" }
+                },
+                premiumStyleId = row.optNullableString("premium_style_id"),
+                premiumStyleSource = row.optNullableString("premium_style_source"),
                 authorVerified = row.optString("verification_badge").let {
                     it.equals("BLUE", true) || it.equals("GOLD", true)
                 },
@@ -312,7 +320,7 @@ class DesktopSupabaseClient(
             "/rest/v1/comments",
             JSONObject().put("post_id", postId).put("content", content.trim()),
             prefer = "return=minimal",
-        )
+            "/rest/v1/profiles?or=${encode("(full_name.ilike.*$clean*,username.ilike.*$clean*,handle.ilike.*$clean*)")}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=30",
     }
 
     suspend fun search(query: String): DesktopSearchResults = withContext(Dispatchers.IO) {
@@ -547,7 +555,7 @@ class DesktopSupabaseClient(
 
     suspend fun fetchStore(): Pair<List<DesktopStoreItem>, List<DesktopInventoryItem>> = withContext(Dispatchers.IO) {
         val catalogRows = getArray(
-            "/rest/v1/blink_store_catalog?is_active=eq.true&select=id,name,description,category,price,item_type,target_type,duration_seconds,vip_only,boost_multipliers&order=sort_order.asc",
+            "/rest/v1/blink_store_catalog?is_active=eq.true&select=id,name,description,category,price,item_type,target_type,duration_seconds,vip_only,boost_multipliers,collection_id,rarity,unlock_level,available_from,available_until&order=sort_order.asc",
         )
         val inventoryRows = getArray(
             "/rest/v1/blink_inventory?user_id=eq.${encode(requireSession().userId)}&select=id,catalog_id,quantity,status,purchased_at,activated_at,expires_at,target_type,target_id,boost_multiplier&order=purchased_at.desc",
@@ -565,6 +573,11 @@ class DesktopSupabaseClient(
                     durationSeconds = row.optNullableLong("duration_seconds"),
                     vipOnly = row.optBoolean("vip_only"),
                     boostMultipliers = row.optIntList("boost_multipliers"),
+                    collectionId = row.optNullableString("collection_id"),
+                    rarity = row.optString("rarity", "STANDARD").ifBlank { "STANDARD" },
+                    unlockLevel = row.optNullableInt("unlock_level"),
+                    availableFrom = row.optNullableString("available_from"),
+                    availableUntil = row.optNullableString("available_until"),
                 )
             }
         }
@@ -697,6 +710,8 @@ class DesktopSupabaseClient(
         department = row.optNullableString("department"),
         bio = row.optNullableString("bio"),
         isVerified = row.optBoolean("is_verified"),
+        totalXp = row.optLong("total_xp").coerceAtLeast(0L),
+        xpLevel = row.optInt("xp_level", 1).coerceIn(1, 100),
         verificationTier = row.optString("verification_tier"),
         followerCount = row.optInt("follower_count"),
         followingCount = row.optInt("following_count"),
