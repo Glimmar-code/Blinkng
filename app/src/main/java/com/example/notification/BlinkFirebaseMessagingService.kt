@@ -404,7 +404,14 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                         targetType.ifBlank { "post" }
                     )
                 } else {
-                    BlinkNotificationHelper.showSocialNotification(this, title, body, postId.ifBlank { null })
+                    BlinkNotificationHelper.showSocialNotification(
+                        context = this,
+                        title = title,
+                        body = body,
+                        targetPostId = postId.ifBlank { null },
+                        targetType = targetType.ifBlank { null },
+                        targetId = genericTarget.ifBlank { null }
+                    )
                 }
             }
 
