@@ -11,8 +11,8 @@ The existing BLINK economy remains the source of truth:
 - ₦1,000 → 1,200 Blink Coins
 - ₦2,000 → 2,600 Blink Coins
 - ₦5,000 → 7,000 Blink Coins
-- BLINK Verified cash price → ₦800
-- BLINK Verified coin price → 3,000 Blink Coins
+- BLINK Verified cash price → ₦800 for 30 days
+- BLINK Verified coin price → 3,000 Blink Coins for 30 days
 
 Client code never sends an amount that the backend trusts. The backend creates an order from the private economy configuration, initializes Paystack using that amount, then fulfills only after server-side verification.
 
@@ -32,6 +32,8 @@ Default hosted-checkout return URL:
 `https://jhwgifrlxwspoedxjaly.supabase.co/functions/v1/paystack-return`
 
 ## Secrets
+
+BLINK uses Paystack's hosted checkout initialized from the backend, so a Paystack public key is not required in the Android or Windows client. The server secret is the credential used to initialize and verify transactions.
 
 Configure through Supabase Edge Function Secrets only:
 
