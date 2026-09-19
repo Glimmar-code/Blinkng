@@ -108,6 +108,7 @@ import com.example.ui.theme.BlinkGold
 import com.example.ui.theme.BlinkOnlineGreen
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
+import com.example.util.startActivitySafely
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -517,8 +518,7 @@ fun GameSection(
                                         "I scored ${r.score} points in ${selectedMode.label} on Blink — ${r.correctCount}/${r.questions.size} correct."
                                     )
                                 }
-                                com.example.util.startActivitySafely(
-                                    context,
+                                context.startActivitySafely(
                                     Intent.createChooser(share, "Share Blink game result"),
                                     "No compatible app is available to share this result."
                                 )
