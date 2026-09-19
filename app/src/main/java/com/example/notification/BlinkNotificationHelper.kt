@@ -19,6 +19,7 @@ import androidx.core.app.Person
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
 import com.example.MainActivity
+import com.example.util.startActivitySafely
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.absoluteValue
@@ -440,7 +441,10 @@ object BlinkNotificationHelper {
             Intent.FLAG_ACTIVITY_NEW_TASK
         )
 
-        context.startActivity(intent)
+        context.startActivitySafely(
+            intent,
+            failureMessage = "Unable to open notification settings."
+        )
     }
 
     fun openChannelSettings(
@@ -479,7 +483,10 @@ object BlinkNotificationHelper {
             Intent.FLAG_ACTIVITY_NEW_TASK
         )
 
-        context.startActivity(intent)
+        context.startActivitySafely(
+            intent,
+            failureMessage = "Unable to open notification channel settings."
+        )
     }
 
     // ================================================================
