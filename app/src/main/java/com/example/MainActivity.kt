@@ -150,17 +150,30 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            BlinkNotificationHelper.ACTION_OPEN_POST -> {
+            BlinkNotificationHelper.ACTION_OPEN_POST,
+            BlinkNotificationHelper.ACTION_OPEN_REEL -> {
                 val postId = intent.getStringExtra(BlinkNotificationHelper.EXTRA_POST_ID)
+                val isReel = action == BlinkNotificationHelper.ACTION_OPEN_REEL
                 viewModel.setTab(MainTab.HOME)
-                viewModel.setFeedSubTab(0)
+                viewModel.setFeedSubTab(if (isReel) 1 else 0)
                 if (!postId.isNullOrBlank()) {
                     viewModel.handleDeepLink(
                         com.example.sharing.AppDeepLink(
-                            type = ShareContentType.POST,
+                            type = if (isReel) ShareContentType.REEL else ShareContentType.POST,
                             id = postId
                         )
                     )
+                }
+            }
+
+            BlinkNotificationHelper.ACTION_OPEN_PROFILE -> {
+                val identifier = intent
+                    .getStringExtra(BlinkNotificationHelper.EXTRA_PROFILE_IDENTIFIER)
+                    .orEmpty()
+                if (identifier.isNotBlank()) {
+                    viewModel.openProfile(identifier)
+                } else {
+                    viewModel.openActivity(true)
                 }
             }
 
@@ -179,16 +192,6 @@ class MainActivity : ComponentActivity() {
     private fun handleInAppNotification(event: BlinkInAppNotification) {
         event.activity?.let { activity ->
             viewModel.handleNotificationClick(activity)
-            activity.targetPostId?.let { postId ->
-                val state = viewModel.uiState.value
-                val isReel = state.reels.any { it.id == postId }
-                viewModel.handleDeepLink(
-                    com.example.sharing.AppDeepLink(
-                        type = if (isReel) ShareContentType.REEL else ShareContentType.POST,
-                        id = postId
-                    )
-                )
-            }
             return
         }
 
@@ -207,10 +210,11 @@ class MainActivity : ComponentActivity() {
             }
 
             BlinkInAppNotificationDestination.POST -> {
-                val postId = event.postId
+                val postId = event.postId ?: event.targetId
                 if (!postId.isNullOrBlank()) {
                     val state = viewModel.uiState.value
-                    val isReel = state.reels.any { it.id == postId }
+                    val isReel = event.targetType.equals("reel", ignoreCase = true) ||
+                        state.reels.any { it.id == postId }
                     viewModel.setTab(MainTab.HOME)
                     viewModel.setFeedSubTab(if (isReel) 1 else 0)
                     viewModel.handleDeepLink(
