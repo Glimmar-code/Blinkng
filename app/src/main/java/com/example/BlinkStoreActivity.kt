@@ -305,7 +305,7 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
                                 }
                             },
                             onUse = { row ->
-                                val item = catalog.firstOrNull { it.id == row.optString("catalog_id") }
+                                val item = catalogItems.firstOrNull { it.id == row.optString("catalog_id") }
                                     ?: return@VaultTab
                                 val experience = item.premiumExperience()
                                 if (item.type == BlinkStoreItemType.PERMANENT) {
@@ -443,7 +443,7 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
     }
 
     activateRow?.let { row ->
-        val item = catalog.firstOrNull { it.id == row.optString("catalog_id") }
+        val item = catalogItems.firstOrNull { it.id == row.optString("catalog_id") }
         if (item != null) {
             TargetDialog(
                 item = item,
