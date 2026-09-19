@@ -1,3 +1,5 @@
+-- destructive-change-reviewed
+-- rollback-plan: Drop XP-only triggers/tables/columns if rollback is required; leaderboard points and coin tables are not modified.
 begin;
 
 -- BLINK XP is progression/reputation only. It never participates in leaderboard ordering.
