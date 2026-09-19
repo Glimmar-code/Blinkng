@@ -48,6 +48,36 @@ class BlinkEconomyService {
             }
         }
 
+    private suspend fun edgeFunction(name: String, payload: JSONObject = JSONObject()): JSONObject =
+        withContext(Dispatchers.IO) {
+            val session = SupabaseService()
+            if (!session.restoreSession()) error("Your Blink session has expired. Please sign in again.")
+
+            fun request(): Request {
+                val access = SupabaseService.accessToken()?.takeIf(String::isNotBlank)
+                    ?: error("A signed-in Blink account is required.")
+                return Request.Builder()
+                    .url("${SupabaseConfig.url.trimEnd('/')}/functions/v1/$name")
+                    .header("apikey", SupabaseConfig.anonKey)
+                    .header("Authorization", "Bearer $access")
+                    .header("Accept", "application/json")
+                    .post(payload.toString().toRequestBody(mediaType))
+                    .build()
+            }
+
+            var response = client.newCall(request()).execute()
+            if (response.code == 401) {
+                response.close()
+                if (!session.refreshSession()) error("Your Blink session has expired. Please sign in again.")
+                response = client.newCall(request()).execute()
+            }
+            response.use {
+                val raw = it.body?.string().orEmpty()
+                if (!it.isSuccessful) error(readableError(raw, it.code))
+                if (raw.isBlank()) JSONObject() else JSONObject(raw)
+            }
+        }
+
     suspend fun state() = runCatching { rpc("get_blink_store_state") }
     suspend fun boostableContent() = runCatching { rpc("get_my_blink_boostable_content") }
     suspend fun economyStatus() = runCatching { rpc("get_blink_economy_status") }
@@ -111,6 +141,39 @@ class BlinkEconomyService {
         rpc(
             "create_blink_coin_purchase_order",
             JSONObject().put("p_pack_id", packId.trim())
+        )
+    }
+
+    suspend fun initializePaystackCoinCheckout(packId: String) = runCatching {
+        require(packId.isNotBlank()) { "Choose a Blink Coin pack." }
+        edgeFunction(
+            "paystack-initialize",
+            JSONObject()
+                .put("kind", "COIN_PACK")
+                .put("pack_id", packId.trim())
+        )
+    }
+
+    suspend fun initializePaystackVerificationCheckout() = runCatching {
+        edgeFunction(
+            "paystack-initialize",
+            JSONObject().put("kind", "BLUE_VERIFICATION")
+        )
+    }
+
+    suspend fun verifyPaystackCashOrder(orderId: String) = runCatching {
+        require(orderId.isNotBlank()) { "Payment order is missing." }
+        edgeFunction(
+            "paystack-verify",
+            JSONObject().put("order_id", orderId.trim())
+        )
+    }
+
+    suspend fun cashOrderStatus(orderId: String) = runCatching {
+        require(orderId.isNotBlank()) { "Payment order is missing." }
+        rpc(
+            "get_blink_cash_order_status",
+            JSONObject().put("p_order_id", orderId.trim())
         )
     }
 
@@ -196,6 +259,12 @@ class BlinkEconomyService {
             message.contains("INVALID_COIN_PACK") -> "That Blink Coin pack is no longer available."
             message.contains("COIN_PURCHASE_ORDER_NOT_FOUND") -> "That Blink Coin purchase could not be found."
             message.contains("PAYMENT_REFERENCE_REQUIRED") -> "The payment has not been verified yet."
+            message.contains("PAYSTACK_NOT_CONFIGURED") -> "Paystack checkout is not configured yet."
+            message.contains("CASH_CHECKOUT_DISABLED") -> "Cash checkout is not live yet."
+            message.contains("PAYSTACK_INITIALIZE_FAILED") -> "Paystack could not start the checkout. Please try again."
+            message.contains("PAYSTACK_VERIFY_FAILED") -> "Paystack could not verify that payment yet."
+            message.contains("CASH_ORDER_NOT_FOUND") -> "That payment order could not be found."
+            message.contains("VERIFICATION_PURCHASE_ORDER_NOT_FOUND") -> "That verification payment could not be found."
             message.contains("MISSION_NOT_COMPLETE") -> "Complete the mission before claiming its reward."
             message.contains("MISSION_NOT_FOUND") -> "That daily mission is no longer available."
             message.contains("MISSION_REQUIRED") -> "Choose a mission first."
