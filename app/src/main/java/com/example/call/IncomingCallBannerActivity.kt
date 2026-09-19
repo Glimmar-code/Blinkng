@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
+import com.example.util.startActivitySafely
 import com.example.ui.theme.BlinkTheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
