@@ -67,6 +67,13 @@ object BlinkOnboardingPolicy {
 
     val allInterests: List<String> = interestGroups.values.flatten().distinct()
 
+    fun isStrongPassword(password: String): Boolean =
+        password.length >= 8 &&
+            password.any(Char::isLowerCase) &&
+            password.any(Char::isUpperCase) &&
+            password.any(Char::isDigit) &&
+            password.any { !it.isLetterOrDigit() && !it.isWhitespace() }
+
     fun normalizeUsername(raw: String): String =
         raw.trim()
             .lowercase()
