@@ -66,9 +66,11 @@ private fun AdminControlCenter(onExit: () -> Unit) {
     when {
         leaving -> LoadingAdminScreen("Switching to personal account")
         capability == null && error == null -> LoadingAdminScreen("Opening Blink Admin")
-        error != null -> AdminAccessError(error!!, onExit)
+        error != null -> AdminAccessError(error.orEmpty(), onExit)
         capability?.isAdmin != true -> AdminAccessError("This account does not have active admin access.", onExit)
-        else -> AdminDashboardV3(capability!!, service) { leaving = true }
+        else -> capability?.let { adminCapability ->
+            AdminDashboardV3(adminCapability, service) { leaving = true }
+        } ?: LoadingAdminScreen("Opening Blink Admin")
     }
 }
 
