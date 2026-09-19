@@ -1036,6 +1036,7 @@ private suspend fun restoreSupabaseSession() {
         )
     }
 
+            blueVerificationDurationDays = payload.optInt("blue_verification_duration_days", fallback.blueVerificationDurationDays).coerceIn(1, 365),
     suspend fun beginRewardedAdClaim(): String? {
         val state = _uiState.value
         if (!state.economyPolicy.canWatchRewardedAd(state.rewardedAdsToday)) {
