@@ -79,6 +79,7 @@ data class UserProfile(
     var relationshipStatus: String = "Single",
     var lastSeenAt: String = "",
     var verifiedAtMillis: Long = 0L,
+    var createdAt: String = "",
     var joinedLabel: String = "",
     var isSellerActive: Boolean = false,
     var sellerStoreName: String = "",
