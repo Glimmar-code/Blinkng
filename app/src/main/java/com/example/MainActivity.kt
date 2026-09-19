@@ -439,7 +439,7 @@ class MainActivity : ComponentActivity() {
                                             viewModel.finishAccountOnboarding(onResult)
                                         },
                                         onRefreshSuggestions = {
-                                            viewModel.fetchSupabaseData()
+                                            viewModel.refreshOnboardingSuggestions()
                                         }
                                     )
                                 }
