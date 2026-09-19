@@ -55,6 +55,7 @@ private data class DesktopAiMessage(
 @Composable
 fun HomeWithBlinkAiScreen(state: DesktopAppState) {
     var showBlinkAi by remember { mutableStateOf(false) }
+    var compactFeedChrome by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -67,11 +68,16 @@ fun HomeWithBlinkAiScreen(state: DesktopAppState) {
                 shape = RoundedCornerShape(18.dp),
             ) {
                 Text("AI", fontWeight = FontWeight.Black)
-                Text("  Blink AI", fontWeight = FontWeight.SemiBold)
+                if (!compactFeedChrome) {
+                    Text("  Blink AI", fontWeight = FontWeight.SemiBold)
+                }
             }
         }
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            HomeScreen(state)
+            HomeScreen(
+                state = state,
+                onFeedCompactChange = { compactFeedChrome = it },
+            )
         }
     }
 
