@@ -266,9 +266,7 @@ begin
         return new;
     end if;
 
-    v_key := 'activity:' || tg_table_name || ':' || coalesce(v_source, '') || ':' || p_user_id::text;
-    -- Replace placeholder with the resolved actor id; event-key uniqueness blocks replay.
-    v_key := replace(v_key, p_user_id::text, v_user::text);
+    v_key := 'activity:' || tg_table_name || ':' || coalesce(v_source, '') || ':' || v_user::text;
 
     perform private.award_xp(v_user, v_event, v_key, tg_table_name, nullif(v_source, ''), null);
     return new;
