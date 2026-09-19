@@ -50,6 +50,7 @@ class BlinkEconomyService {
 
     suspend fun state() = runCatching { rpc("get_blink_store_state") }
     suspend fun boostableContent() = runCatching { rpc("get_my_blink_boostable_content") }
+    suspend fun economyStatus() = runCatching { rpc("get_blink_economy_status") }
 
     suspend fun beginRewardedAdClaim() = runCatching {
         rpc("begin_blink_rewarded_ad_claim")
@@ -60,6 +61,18 @@ class BlinkEconomyService {
         rpc(
             "complete_blink_rewarded_ad_claim",
             JSONObject().put("p_claim_id", claimId)
+        )
+    }
+
+    suspend fun verifyBlueWithCoins() = runCatching {
+        rpc("purchase_blink_blue_verification_with_coins")
+    }
+
+    suspend fun createCoinPurchaseOrder(packId: String) = runCatching {
+        require(packId.isNotBlank()) { "Choose a Blink Coin pack." }
+        rpc(
+            "create_blink_coin_purchase_order",
+            JSONObject().put("p_pack_id", packId.trim())
         )
     }
 
@@ -141,7 +154,10 @@ class BlinkEconomyService {
             message.contains("ALREADY_CLAIMED_TODAY") -> "Today's VIP coin bonus is already claimed."
             message.contains("REWARDED_AD_CLAIM_EXPIRED") -> "That ad reward expired. Please watch another ad."
             message.contains("REWARDED_AD_TOO_SOON") -> "The ad reward is not ready yet."
-            message.contains("REWARDED_AD_DAILY_LIMIT") -> "You've reached today's rewarded-ad coin limit."
+            message.contains("REWARDED_AD_DAILY_LIMIT") -> "You've reached today's 15-ad rewarded limit."
+            message.contains("INVALID_COIN_PACK") -> "That Blink Coin pack is no longer available."
+            message.contains("COIN_PURCHASE_ORDER_NOT_FOUND") -> "That Blink Coin purchase could not be found."
+            message.contains("PAYMENT_REFERENCE_REQUIRED") -> "The payment has not been verified yet."
             message.contains("INVALID_RECIPIENT") -> "That account cannot receive this gift."
             message.contains("RECIPIENT_REQUIRED") -> "Enter the recipient's Blink username."
             message.contains("DIGITAL_GIFT_NOT_AVAILABLE") -> "This digital gift is no longer available in your Vault."
