@@ -178,7 +178,24 @@ android {
   dependenciesInfo { includeInApk = false; includeInBundle = true }
 }
 
-secrets { propertiesFileName = ".env"; defaultPropertiesFileName = ".env.example"; ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN") }
+secrets {
+  propertiesFileName = ".env"
+  defaultPropertiesFileName = ".env.example"
+
+  // Never generate Android BuildConfig fields for backend-only credentials/config.
+  // These belong in Supabase/CI secrets, not in the APK.
+  ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
+  ignoreList.add("SUPABASE_SERVICE_ROLE_KEY")
+  ignoreList.add("SUPABASE_DB_PASSWORD")
+  ignoreList.add("FIREBASE_SERVICE_ACCOUNT_JSON")
+  ignoreList.add("SMTP_PASSWORD")
+  ignoreList.add("GOOGLE_OAUTH_CLIENT_SECRET")
+  ignoreList.add("PAYSTACK_SECRET_KEY")
+  ignoreList.add("PAYSTACK_CALLBACK_URL")
+  ignoreList.add("PAYMENT_PROVIDER_SECRET")
+  ignoreList.add("GEMINI_API_KEY")
+  ignoreList.add("GEMINI_MODEL")
+}
 
 ksp {
   arg("room.schemaLocation", "$projectDir/schemas")
