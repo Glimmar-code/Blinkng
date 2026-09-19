@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.ui.components.BlinkMark
 import com.example.ui.theme.*
+import com.blinkng.shared.BlinkOnboardingPolicy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -697,11 +698,7 @@ fun SignInScreen(
 // ================================================================
 
 internal fun isStrongBlinkPassword(password: String): Boolean =
-    password.length >= 8 &&
-        password.any(Char::isLowerCase) &&
-        password.any(Char::isUpperCase) &&
-        password.any(Char::isDigit) &&
-        password.any { !it.isLetterOrDigit() && !it.isWhitespace() }
+    BlinkOnboardingPolicy.isStrongPassword(password)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
