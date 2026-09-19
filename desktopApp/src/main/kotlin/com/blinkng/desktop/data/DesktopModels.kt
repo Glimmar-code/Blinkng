@@ -26,6 +26,8 @@ data class DesktopProfile(
     val isOnline: Boolean,
     val lastSeenAt: String?,
     val points: Int = 0,
+    val totalXp: Long = 0L,
+    val xpLevel: Int = 1,
     val createdAt: String = "",
     val isBlinkVip: Boolean = false,
     val blinkVipUntil: String? = null,
