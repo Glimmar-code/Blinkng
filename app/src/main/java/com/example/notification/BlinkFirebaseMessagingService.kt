@@ -384,14 +384,14 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 context = this,
                 title = title,
                 body = body,
-                targetMarketId = data["market_id"]
+                targetMarketId = marketTarget.ifBlank { genericTarget }.ifBlank { null }
             )
 
             BlinkNotificationType.MARKET_ORDER -> BlinkNotificationHelper.showMarketOrderNotification(
                 context = this,
                 title = title,
                 body = body,
-                marketId = data["market_id"].orEmpty()
+                marketId = marketTarget.ifBlank { genericTarget }
             )
 
             BlinkNotificationType.LIKE -> {
@@ -427,7 +427,14 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                         targetType.ifBlank { "post" }
                     )
                 } else {
-                    BlinkNotificationHelper.showSocialNotification(this, title, body, postId.ifBlank { null })
+                    BlinkNotificationHelper.showSocialNotification(
+                        context = this,
+                        title = title,
+                        body = body,
+                        targetPostId = postId.ifBlank { null },
+                        targetType = targetType.ifBlank { null },
+                        targetId = genericTarget.ifBlank { null }
+                    )
                 }
             }
 
@@ -442,7 +449,14 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                         targetType.ifBlank { "post" }
                     )
                 } else {
-                    BlinkNotificationHelper.showSocialNotification(this, title, body, postId.ifBlank { null })
+                    BlinkNotificationHelper.showSocialNotification(
+                        context = this,
+                        title = title,
+                        body = body,
+                        targetPostId = postId.ifBlank { null },
+                        targetType = targetType.ifBlank { null },
+                        targetId = genericTarget.ifBlank { null }
+                    )
                 }
             }
 
