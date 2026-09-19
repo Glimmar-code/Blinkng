@@ -14,6 +14,7 @@ import com.example.call.IncomingCallNotification
 import com.example.data.repository.ChatRepository
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
+import com.example.util.safeString
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -74,7 +75,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         suspend fun unregisterCurrentToken(context: Context): Boolean = withContext(Dispatchers.IO) {
             val appContext = context.applicationContext
             val token = appContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
-                .getString(TOKEN_KEY, "")
+                .safeString(TOKEN_KEY, "")
                 .orEmpty()
             if (token.isBlank()) return@withContext true
 
