@@ -57,7 +57,7 @@ fun GetVerifiedSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedBadge by remember {
         mutableStateOf(
-            if (profile.verificationBadge == VerificationBadge.BLUE) VerificationBadge.GOLD else VerificationBadge.BLUE
+            if (profile.verificationBadge == VerificationBadge.GOLD) VerificationBadge.GOLD else VerificationBadge.BLUE
         )
     }
     val isGoldEligible = profile.followerCount >= 1000
@@ -125,7 +125,7 @@ fun GetVerifiedSheet(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = "Unlock BLINK Verified status with Blink Coins or a secure cash checkout when available.",
+                        text = "BLINK Verified is a renewable ${economyPolicy.blueVerificationValidDays}-day status. Pay with Blink Coins or use secure cash checkout when available.",
                         fontSize = 13.sp,
                         color = textSecondary,
                         textAlign = TextAlign.Center,
@@ -268,7 +268,7 @@ fun GetVerifiedSheet(
                                     color = BlinkBlue
                                 )
                                 Text(
-                                    text = "${economyPolicy.blueVerificationValidDays} days",
+                                    text = "${economyPolicy.blueVerificationValidDays}-day plan",
                                     fontSize = 11.sp,
                                     color = textSecondary
                                 )
@@ -296,7 +296,7 @@ fun GetVerifiedSheet(
                         )
                         VerificationFeatureItem(
                             icon = Icons.Default.WorkspacePremium,
-                            text = "A ${economyPolicy.blueVerificationValidDays}-day BLINK status period — it does not claim real-world identity verification",
+                            text = "Renewable every ${economyPolicy.blueVerificationValidDays} days — it does not claim real-world identity verification",
                             isDark = isDark
                         )
 
@@ -308,7 +308,7 @@ fun GetVerifiedSheet(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
-                                    text = "✓ Currently Active on your account",
+                                    text = "✓ Active • renew to extend by ${economyPolicy.blueVerificationValidDays} days",
                                     color = BlinkBlue,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
@@ -556,7 +556,9 @@ fun GetVerifiedSheet(
                 val nextAdNumber = (rewardedAdsToday + 1).coerceAtMost(economyPolicy.rewardedAdDailyLimit)
                 val nextAdReward = economyPolicy.rewardForCompletedAd(nextAdNumber)
                 val canWatch = economyPolicy.canWatchRewardedAd(rewardedAdsToday)
-                val alreadyBlueOrGold = profile.verificationBadge != VerificationBadge.NONE
+                val isBlueActive = profile.verificationBadge == VerificationBadge.BLUE
+                val isGoldActive = profile.verificationBadge == VerificationBadge.GOLD
+                val alreadyBlueOrGold = isBlueActive || isGoldActive
 
                 if (selectedBadge == VerificationBadge.BLUE) {
                     Surface(
@@ -583,7 +585,12 @@ fun GetVerifiedSheet(
                                     )
                                 }
                                 Text(
-                                    if (alreadyBlueOrGold) "ACTIVE" else if (remaining == 0L) "READY" else "$remaining left",
+                                    when {
+                                        isGoldActive -> "GOLD ACTIVE"
+                                        isBlueActive -> "RENEWABLE"
+                                        remaining == 0L -> "READY"
+                                        else -> "$remaining left"
+                                    },
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Black,
                                     color = if (alreadyBlueOrGold || remaining == 0L) Color(0xFF16A34A) else BlinkBlue
@@ -591,7 +598,7 @@ fun GetVerifiedSheet(
                             }
 
                             LinearProgressIndicator(
-                                progress = { if (alreadyBlueOrGold) 1f else progress },
+                                progress = { if (isGoldActive) 1f else progress },
                                 color = BlinkBlue,
                                 trackColor = BlinkBlue.copy(alpha = 0.12f),
                                 modifier = Modifier
@@ -601,10 +608,12 @@ fun GetVerifiedSheet(
                             )
 
                             Text(
-                                if (alreadyBlueOrGold) {
-                                    "BLINK Verified is already active on this account."
+                                if (isGoldActive) {
+                                    "Gold Verification is already active on this account."
+                                } else if (isBlueActive) {
+                                    "Your BLINK Verified badge is active. Renewing adds another ${economyPolicy.blueVerificationValidDays} days without losing remaining time."
                                 } else {
-                                    "Earn coins with rewarded ads or buy a coin pack. Paying ₦${economyPolicy.blueVerificationCashNgn} activates ${economyPolicy.blueVerificationValidDays} days once secure checkout is enabled."
+                                    "Earn coins with rewarded ads or buy a coin pack. Paying ₦${economyPolicy.blueVerificationCashNgn} is the faster cash route once secure checkout is enabled."
                                 },
                                 fontSize = 11.5.sp,
                                 color = textSecondary,
@@ -643,7 +652,7 @@ fun GetVerifiedSheet(
 
                             Button(
                                 onClick = onVerifyWithCoins,
-                                enabled = !alreadyBlueOrGold && remaining == 0L,
+                                enabled = !isGoldActive && remaining == 0L,
                                 colors = ButtonDefaults.buttonColors(containerColor = BlinkBlue),
                                 shape = RoundedCornerShape(100.dp),
                                 modifier = Modifier.fillMaxWidth().height(48.dp)
@@ -652,7 +661,8 @@ fun GetVerifiedSheet(
                                 Spacer(Modifier.width(7.dp))
                                 Text(
                                     when {
-                                        alreadyBlueOrGold -> "BLINK Verified Active"
+                                        isGoldActive -> "Gold Verification Active"
+                                        isBlueActive && remaining == 0L -> "Renew +${economyPolicy.blueVerificationValidDays} days • $verificationCost coins"
                                         remaining == 0L -> "Use $verificationCost coins"
                                         else -> "Need $remaining more coins"
                                     },
@@ -818,13 +828,13 @@ fun GetVerifiedSheet(
 
                             OutlinedButton(
                                 onClick = { onUpgrade(VerificationBadge.BLUE) },
-                                enabled = !alreadyBlueOrGold && economyPolicy.cashCheckoutEnabled,
+                                enabled = !isGoldActive && economyPolicy.cashCheckoutEnabled,
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(100.dp)
                             ) {
-                                Text("Pay ₦${economyPolicy.blueVerificationCashNgn} • ${economyPolicy.blueVerificationValidDays} days", fontWeight = FontWeight.Bold)
+                                Text("Pay ₦${economyPolicy.blueVerificationCashNgn} securely", fontWeight = FontWeight.Bold)
                             }
-                            if (!economyPolicy.cashCheckoutEnabled && !alreadyBlueOrGold) {
+                            if (!economyPolicy.cashCheckoutEnabled && !isGoldActive) {
                                 Text(
                                     "Cash checkout is prepared but stays off until a verified Paystack/payment checkout is connected. No fake payment can activate a badge.",
                                     fontSize = 10.5.sp,
@@ -859,7 +869,7 @@ fun GetVerifiedSheet(
                     val eligible = isGoldEligible && !isCurrentBadge
                     Button(
                         onClick = { onUpgrade(VerificationBadge.GOLD) },
-                        enabled = false,
+                        enabled = eligible && economyPolicy.cashCheckoutEnabled,
                         colors = ButtonDefaults.buttonColors(containerColor = BlinkGold),
                         shape = RoundedCornerShape(100.dp),
                         modifier = Modifier.fillMaxWidth().height(52.dp)
@@ -868,7 +878,8 @@ fun GetVerifiedSheet(
                             when {
                                 isCurrentBadge -> "Gold Verification Active"
                                 !isGoldEligible -> "Requires 1,000 Followers (${profile.followerCount}/1,000)"
-                                else -> "Gold verification is not sold through Paystack"
+                                economyPolicy.cashCheckoutEnabled -> "Continue to secure Gold checkout"
+                                else -> "Secure Gold checkout not connected"
                             },
                             fontWeight = FontWeight.Bold,
                             color = Color.Black

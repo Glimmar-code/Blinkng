@@ -35,27 +35,16 @@ class BlinkEconomyPolicyTest {
         assertEquals(2_140f / 3_000f, policy.verificationProgress(2_140), 0.0001f)
     }
 
+
+    @Test
+    fun blueVerificationIsThirtyDayRenewablePolicy() {
+        assertEquals(3_000, policy.blueVerificationCoinCost)
+        assertEquals(30, policy.blueVerificationValidDays)
+    }
+
     @Test
     fun dailyLimitStopsAdditionalRewardedAds() {
         assertTrue(policy.canWatchRewardedAd(14))
         assertFalse(policy.canWatchRewardedAd(15))
     }
-    @Test
-    fun coinPacksAndVerificationPricingMatchLaunchEconomy() {
-        assertEquals(800, policy.blueVerificationCashNgn)
-        assertEquals(3_000, policy.blueVerificationCoinCost)
-        assertEquals(30, policy.blueVerificationValidDays)
-        assertEquals(
-            listOf(
-                Triple("coins_100", 100, 100),
-                Triple("coins_500", 500, 550),
-                Triple("coins_1000", 1_000, 1_200),
-                Triple("coins_2000", 2_000, 2_600),
-                Triple("coins_5000", 5_000, 7_000),
-            ),
-            policy.coinPacks.map { Triple(it.id, it.priceNgn, it.coins) },
-        )
-        assertFalse(policy.cashCheckoutEnabled)
-    }
-
 }

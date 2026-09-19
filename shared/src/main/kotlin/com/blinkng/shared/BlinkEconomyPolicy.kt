@@ -27,6 +27,9 @@ data class BlinkEconomyPolicy(
     val coinPacks: List<BlinkCoinPack> = BlinkEconomyDefaults.COIN_PACKS,
     val cashCheckoutEnabled: Boolean = false,
 ) {
+    val blueVerificationDurationDays: Int
+        get() = blueVerificationValidDays
+
     fun totalRewardForAds(completedAds: Int): Int {
         val clamped = completedAds.coerceIn(0, rewardedAdDailyLimit)
         if (clamped == 0) return 0
