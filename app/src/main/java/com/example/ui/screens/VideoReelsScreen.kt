@@ -60,6 +60,8 @@ import com.example.data.repository.UserInteractionRepository
 import com.example.data.supabase.ReelRecommendationService
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
+import com.example.util.safeInt
+import com.example.util.safeString
 import com.example.ui.components.BlinkNativeAdPlacement
 import com.example.ui.components.BlinkSponsoredNativeAd
 import com.example.ui.components.PremiumPullRefreshIndicator
@@ -245,9 +247,9 @@ private fun ReelsContent(
     val pagerItems = remember(reels) { buildReelPagerItems(reels) }
     val initialPage = remember(pagerItems, reels, resumeUserKey, initialReelId) {
         val requestedPage = reelPageIndex(pagerItems, initialReelId)
-        val savedId = resumePrefs.getString("reel_id:$resumeUserKey", null)
+        val savedId = resumePrefs.safeString("reel_id:$resumeUserKey", null)
         val byId = reelPageIndex(pagerItems, savedId)
-        val savedSourceIndex = resumePrefs.getInt("reel_index:$resumeUserKey", 0)
+        val savedSourceIndex = resumePrefs.safeInt("reel_index:$resumeUserKey", 0)
             .coerceIn(0, reels.lastIndex.coerceAtLeast(0))
         val byIndex = reels.getOrNull(savedSourceIndex)
             ?.id
@@ -314,16 +316,17 @@ private fun ReelsContent(
         VerticalPager(
             state = pager,
             key = { index ->
-                when (val item = pagerItems[index]) {
-                    is ReelPagerItem.ReelItem -> "reel:${item.reel.id}"
+                when (val item = pagerItems.getOrNull(index)) {
+                    is ReelPagerItem.ReelItem -> "reel:${item.sourceIndex}:${item.reel.id}"
                     is ReelPagerItem.Sponsored -> "sponsored:${item.slot}"
+                    null -> "reel_missing:$index"
                 }
             },
             beyondViewportPageCount = 0,
             modifier = Modifier.fillMaxSize()
         ) { index ->
             val pageOffset = (pager.currentPage - index) + pager.currentPageOffsetFraction
-            when (val item = pagerItems[index]) {
+            when (val item = pagerItems.getOrNull(index) ?: return@VerticalPager) {
                 is ReelPagerItem.ReelItem -> {
                     val reel = item.reel
                     ReelPage(
