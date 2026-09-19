@@ -11,6 +11,7 @@ import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
+import com.example.util.safeString
 import com.example.ui.components.PostCard
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.BlinkOnlineGreen
@@ -161,7 +162,7 @@ internal fun ProfessionalSearchScreen(
     }
     var recentSearches by remember {
         mutableStateOf(
-            recentPrefs.getString(PROFESSIONAL_RECENT_SEARCHES_KEY, "")
+            recentPrefs.safeString(PROFESSIONAL_RECENT_SEARCHES_KEY, "")
                 .orEmpty()
                 .split(PROFESSIONAL_RECENT_SEPARATOR)
                 .map { it.trim() }
