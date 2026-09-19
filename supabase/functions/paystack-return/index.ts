@@ -9,7 +9,9 @@ Deno.serve((req: Request) => {
   }
 
   const url = new URL(req.url);
-  const reference = escapeHtml(url.searchParams.get("reference") ?? url.searchParams.get("trxref") ?? "");
+  const rawReference = url.searchParams.get("reference") ?? url.searchParams.get("trxref") ?? "";
+  const reference = escapeHtml(rawReference);
+  const appReturnUrl = `blink://payment?reference=${encodeURIComponent(rawReference)}`;
   const body = `<!doctype html>
 <html lang="en">
 <head>
@@ -28,7 +30,8 @@ a{display:inline-block;margin-top:18px;padding:13px 18px;border-radius:999px;bac
 <body><main><div class="mark">B</div><h1>Payment submitted</h1>
 <p>Return to BLINK. The app will confirm the transaction with Paystack before any coins or verification are delivered.</p>
 ${reference ? `<p class="ref">Reference: ${reference}</p>` : ""}
-<a href="https://www.blink.com.ng">Back to BLINK</a></main></body></html>`;
+<a href="${appReturnUrl}">Return to BLINK app</a>
+<a href="https://www.blink.com.ng" style="margin-left:8px;background:#222;color:#fff">BLINK website</a></main></body></html>`;
 
   return new Response(req.method === "HEAD" ? null : body, {
     status: 200,
