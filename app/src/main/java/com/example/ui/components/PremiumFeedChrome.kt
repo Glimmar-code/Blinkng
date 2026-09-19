@@ -153,6 +153,10 @@ private fun FeedBrandBlock(
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         FeedProfileAvatar(userAvatar = userAvatar, onProfileClick = onProfileClick)
+        BlinkMark(
+            size = 28.dp,
+            showText = false
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Home",
