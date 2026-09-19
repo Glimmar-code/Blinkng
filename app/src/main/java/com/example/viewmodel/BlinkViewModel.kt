@@ -415,10 +415,18 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                 when (authState) {
                     is AuthState.Authenticated -> {
                         val profile = authState.userProfile
-                        _uiState.value = _uiState.value.copy(myProfile = profile, destination = when (_uiState.value.destination) {
-                            AppDestination.SIGN_IN, AppDestination.SIGN_UP, AppDestination.ONBOARDING, AppDestination.SPLASH -> AppDestination.MAIN
-                            else -> _uiState.value.destination
-                        })
+                        _uiState.value = _uiState.value.copy(
+                            myProfile = profile,
+                            destination = when (_uiState.value.destination) {
+                                AppDestination.SIGN_IN,
+                                AppDestination.SIGN_UP,
+                                AppDestination.ONBOARDING,
+                                AppDestination.SPLASH ->
+                                    if (profile.onboardingCompleted) AppDestination.MAIN
+                                    else AppDestination.PROFILE_SETUP
+                                else -> _uiState.value.destination
+                            }
+                        )
                         saveLocalProfile(profile)
                         refreshMyProfileFromSupabase(showErrorToast = false)
                         fetchSupabaseData()
@@ -1725,8 +1733,17 @@ private suspend fun restoreSupabaseSession() {
             val result = authRepository.signInWithEmail(emailOrUsername, password)
             if (result.isSuccess && result.userProfile != null) {
                 val profile = result.userProfile
-                _uiState.value = _uiState.value.copy(myProfile = profile, destination = AppDestination.MAIN)
-                saveLocalProfile(profile); fetchSupabaseData(); showToast("✨ Signed in as @${profile.username}"); onResult(true, null)
+                _uiState.value = _uiState.value.copy(
+                    myProfile = profile,
+                    destination = if (profile.onboardingCompleted) AppDestination.MAIN else AppDestination.PROFILE_SETUP
+                )
+                saveLocalProfile(profile)
+                fetchSupabaseData()
+                showToast(
+                    if (profile.onboardingCompleted) "✨ Signed in as @${profile.username}"
+                    else "Complete your BLINK profile to continue."
+                )
+                onResult(true, null)
             } else { val msg = result.errorMessage ?: "Unable to sign in."; showToast(msg); onResult(false, msg) }
         }
     }
@@ -1739,9 +1756,17 @@ private suspend fun restoreSupabaseSession() {
                 if (result.errorMessage == "GOOGLE_OAUTH_STARTED") return@launch
                 if (result.isSuccess && result.userProfile != null) {
                     val profile = result.userProfile
-                    _uiState.value = _uiState.value.copy(myProfile = profile, destination = AppDestination.MAIN)
-                    saveLocalProfile(profile); refreshMyProfileFromSupabase(false); fetchSupabaseData()
-                    showToast("✨ Welcome back, @${_uiState.value.myProfile.username}")
+                    _uiState.value = _uiState.value.copy(
+                        myProfile = profile,
+                        destination = if (profile.onboardingCompleted) AppDestination.MAIN else AppDestination.PROFILE_SETUP
+                    )
+                    saveLocalProfile(profile)
+                    refreshMyProfileFromSupabase(false)
+                    fetchSupabaseData()
+                    showToast(
+                        if (profile.onboardingCompleted) "✨ Welcome back, @${_uiState.value.myProfile.username}"
+                        else "Choose your BLINK username to continue."
+                    )
                 } else showToast(result.errorMessage ?: "Google authentication failed.")
             } catch (e: Exception) { Log.e(TAG, "loginWithGoogle failed", e); showToast(e.message ?: "Google authentication failed.") }
         }
@@ -1754,6 +1779,21 @@ private suspend fun restoreSupabaseSession() {
             val msg = if (success) "If an account exists for that email, a password reset link has been sent." else "Could not send the password reset email. Check your connection and try again."
             showToast(msg); onResult(success, msg)
         }
+    }
+
+    fun signUp(fullName: String, email: String, password: String) {
+        val temporaryUsername = "blink_" + UUID.randomUUID()
+            .toString()
+            .replace("-", "")
+            .take(12)
+
+        signUp(
+            fullName = fullName,
+            username = temporaryUsername,
+            email = email,
+            password = password,
+            faculty = ""
+        )
     }
 
     fun signUp(fullName: String, username: String, email: String, password: String = "", faculty: String = "") {
@@ -1778,6 +1818,219 @@ private suspend fun restoreSupabaseSession() {
                     saveLocalProfile(result.userProfile); showToast("Account created! Set up your campus profile.")
                 } else showToast(result.errorMessage ?: "Sign up failed.")
             } catch (e: Exception) { Log.e(TAG, "signUp failed", e); showToast(e.message ?: "Sign up failed.") }
+        }
+    }
+
+    private val reservedOnboardingUsernames = setOf(
+        "admin",
+        "blink",
+        "blinkapp",
+        "official",
+        "support",
+        "help",
+        "moderator",
+        "system",
+        "security"
+    )
+
+    fun checkOnboardingUsername(
+        username: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        val clean = username.trim().lowercase().removePrefix("@")
+        when {
+            !clean.matches(Regex("^[a-z0-9][a-z0-9._]{2,24}$")) -> {
+                onResult(false, "Use 3–25 letters, numbers, dots or underscores.")
+                return
+            }
+            clean in reservedOnboardingUsernames || clean.startsWith("blink_") -> {
+                onResult(false, "That username is reserved. Try another one.")
+                return
+            }
+        }
+
+        viewModelScope.launch {
+            val existing = runCatching {
+                supabaseService.fetchProfileByUsername(clean)
+            }.getOrNull()
+            val currentId = _uiState.value.myProfile.id
+            val available = existing == null || (
+                currentId.isNotBlank() &&
+                    existing.id.equals(currentId, ignoreCase = true)
+                )
+            onResult(
+                available,
+                if (available) "Username available" else "Username already taken."
+            )
+        }
+    }
+
+    fun saveOnboardingUsername(
+        username: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        checkOnboardingUsername(username) { available, message ->
+            if (!available) {
+                onResult(false, message)
+                return@checkOnboardingUsername
+            }
+
+            val clean = username.trim().lowercase().removePrefix("@")
+            viewModelScope.launch {
+                val current = _uiState.value.myProfile
+                val updated = current.copy(
+                    username = clean,
+                    onboardingCompleted = false,
+                    onboardingStep = maxOf(current.onboardingStep, 1)
+                )
+                val saved = runCatching { supabaseService.updateProfile(updated) }
+                    .getOrDefault(false)
+                if (saved) {
+                    _uiState.value = _uiState.value.copy(myProfile = updated)
+                    saveLocalProfile(updated)
+                    onResult(true, null)
+                } else {
+                    onResult(false, "Unable to save your username. Check your connection and try again.")
+                }
+            }
+        }
+    }
+
+    fun saveOnboardingBasics(
+        university: String,
+        department: String,
+        level: String,
+        gender: String,
+        birthDate: String,
+        avatarUrl: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        val cleanUniversity = university.trim()
+        val cleanDepartment = department.trim()
+        val cleanLevel = level.trim()
+        val cleanGender = gender.trim()
+        val cleanBirthDate = birthDate.trim()
+
+        when {
+            cleanUniversity.isBlank() -> {
+                onResult(false, "Choose your university.")
+                return
+            }
+            cleanDepartment.isBlank() -> {
+                onResult(false, "Choose your department.")
+                return
+            }
+            cleanGender !in BlinkOnboardingCatalog.genders -> {
+                onResult(false, "Choose a valid gender option.")
+                return
+            }
+            cleanBirthDate.isNotBlank() &&
+                !cleanBirthDate.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$")) -> {
+                onResult(false, "Use YYYY-MM-DD for your birthday, or leave it blank.")
+                return
+            }
+        }
+
+        viewModelScope.launch {
+            val current = _uiState.value.myProfile
+            val updated = current.copy(
+                university = cleanUniversity,
+                department = cleanDepartment,
+                academicLevel = cleanLevel,
+                gender = cleanGender,
+                birthDate = cleanBirthDate,
+                avatarUrl = avatarUrl.trim(),
+                onboardingCompleted = false,
+                onboardingStep = maxOf(current.onboardingStep, 2)
+            )
+            val saved = runCatching { supabaseService.updateProfile(updated) }
+                .getOrDefault(false)
+            if (saved) {
+                _uiState.value = _uiState.value.copy(myProfile = updated)
+                saveLocalProfile(updated)
+                onResult(true, null)
+            } else {
+                onResult(false, "Unable to save your profile. Check your connection and try again.")
+            }
+        }
+    }
+
+    fun saveOnboardingInterests(
+        interests: List<String>,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        val cleanInterests = interests
+            .map { it.trim() }
+            .filter { it.isNotBlank() && it in BlinkOnboardingCatalog.allInterests }
+            .distinct()
+
+        if (cleanInterests.isEmpty()) {
+            onResult(false, "Choose at least one interest.")
+            return
+        }
+
+        viewModelScope.launch {
+            val current = _uiState.value.myProfile
+            val updated = current.copy(
+                interests = cleanInterests,
+                onboardingCompleted = false,
+                onboardingStep = maxOf(current.onboardingStep, 3)
+            )
+            val saved = runCatching { supabaseService.updateProfile(updated) }
+                .getOrDefault(false)
+            if (saved) {
+                _uiState.value = _uiState.value.copy(myProfile = updated)
+                saveLocalProfile(updated)
+                onResult(true, null)
+            } else {
+                onResult(false, "Unable to save your interests. Check your connection and try again.")
+            }
+        }
+    }
+
+    fun finishAccountOnboarding(
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val following = runCatching { FollowStateStore.refresh() }
+                .getOrDefault(emptySet())
+
+            if (following.size < 5) {
+                onResult(false, "Follow at least 5 people to continue.")
+                return@launch
+            }
+
+            val current = _uiState.value.myProfile
+            if (
+                current.username.isBlank() ||
+                current.university.isBlank() ||
+                current.department.isBlank() ||
+                current.gender.isBlank() ||
+                current.interests.isEmpty()
+            ) {
+                onResult(false, "Complete the required onboarding details before continuing.")
+                return@launch
+            }
+
+            val completed = current.copy(
+                onboardingCompleted = true,
+                onboardingStep = 4
+            )
+            val saved = runCatching { supabaseService.updateProfile(completed) }
+                .getOrDefault(false)
+
+            if (saved) {
+                _uiState.value = _uiState.value.copy(
+                    myProfile = completed,
+                    destination = AppDestination.MAIN
+                )
+                saveLocalProfile(completed)
+                fetchSupabaseData()
+                showToast("Welcome to BLINK, @${completed.username} ✨")
+                onResult(true, null)
+            } else {
+                onResult(false, "Unable to finish onboarding. Check your connection and try again.")
+            }
         }
     }
 
