@@ -120,12 +120,12 @@ class DesktopAppState(
         require(university.trim().isNotBlank()) { "Choose your university." }
         require(department.trim().isNotBlank()) { "Choose your department." }
         require(gender in BlinkOnboardingPolicy.genders) { "Choose a valid gender option." }
+        client.savePrivateBirthDate(birthDate)
         profile = client.saveOnboardingProfile(
             university = university,
             department = department,
             academicLevel = level,
             gender = gender,
-            birthDate = birthDate,
             onboardingStep = 2,
             onboardingCompleted = false,
         )
