@@ -250,6 +250,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         val postTarget = data["post_id"].orEmpty()
         val marketTarget = data["market_id"].orEmpty()
         val genericTarget = data["target_id"].orEmpty()
+        val targetType = data["target_type"].orEmpty()
         val inAppDestination = when (type) {
             BlinkNotificationType.MESSAGE -> BlinkInAppNotificationDestination.CHAT
             BlinkNotificationType.MARKET,
@@ -294,6 +295,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             BlinkInAppNotificationCenter.publish(
                 BlinkInAppNotification(
                     key = inAppKey,
+                    notificationId = notificationId,
                     title = title,
                     body = body,
                     destination = inAppDestination,
@@ -302,7 +304,9 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                     senderName = senderName,
                     senderAvatar = senderAvatar,
                     postId = postTarget.ifBlank { null },
-                    marketId = marketTarget.ifBlank { null }
+                    marketId = marketTarget.ifBlank { null },
+                    targetType = targetType.ifBlank { null },
+                    targetId = genericTarget.ifBlank { null }
                 )
             )
         } else {
@@ -393,7 +397,12 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             BlinkNotificationType.LIKE -> {
                 val postId = data["post_id"].orEmpty()
                 if (sender.isNotBlank() && postId.isNotBlank()) {
-                    BlinkNotificationHelper.showLikeNotification(this, sender, postId)
+                    BlinkNotificationHelper.showLikeNotification(
+                        this,
+                        sender,
+                        postId,
+                        targetType.ifBlank { "post" }
+                    )
                 } else {
                     BlinkNotificationHelper.showSocialNotification(this, title, body, postId.ifBlank { null })
                 }
@@ -403,7 +412,13 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             BlinkNotificationType.REPLY -> {
                 val postId = data["post_id"].orEmpty()
                 if (sender.isNotBlank() && postId.isNotBlank()) {
-                    BlinkNotificationHelper.showCommentNotification(this, sender, body, postId)
+                    BlinkNotificationHelper.showCommentNotification(
+                        this,
+                        sender,
+                        body,
+                        postId,
+                        targetType.ifBlank { "post" }
+                    )
                 } else {
                     BlinkNotificationHelper.showSocialNotification(this, title, body, postId.ifBlank { null })
                 }
@@ -412,7 +427,13 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             BlinkNotificationType.MENTION -> {
                 val postId = data["post_id"].orEmpty()
                 if (sender.isNotBlank() && postId.isNotBlank()) {
-                    BlinkNotificationHelper.showMentionNotification(this, sender, postId, body)
+                    BlinkNotificationHelper.showMentionNotification(
+                        this,
+                        sender,
+                        postId,
+                        body,
+                        targetType.ifBlank { "post" }
+                    )
                 } else {
                     BlinkNotificationHelper.showSocialNotification(this, title, body, postId.ifBlank { null })
                 }
@@ -422,7 +443,13 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 if (sender.isNotBlank()) {
                     BlinkNotificationHelper.showFollowNotification(this, sender)
                 } else {
-                    BlinkNotificationHelper.showSocialNotification(this, title, body, null)
+                    BlinkNotificationHelper.showSocialNotification(
+                        context = this,
+                        title = title,
+                        body = body,
+                        targetType = "profile",
+                        targetId = genericTarget.ifBlank { senderId }.ifBlank { null }
+                    )
                 }
             }
 
@@ -430,7 +457,10 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 context = this,
                 title = title,
                 body = body,
-                targetPostId = data["post_id"]
+                targetPostId = data["post_id"],
+                targetType = targetType.ifBlank { null },
+                targetId = genericTarget.ifBlank { null },
+                profileIdentifier = sender.ifBlank { senderId }.ifBlank { null }
             )
         }
     }
