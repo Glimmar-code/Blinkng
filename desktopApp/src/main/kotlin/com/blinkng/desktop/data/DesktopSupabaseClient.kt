@@ -269,7 +269,11 @@ class DesktopSupabaseClient(
         }
         university?.let { body.put("university", it.trim()) }
         department?.let { body.put("department", it.trim()) }
-        academicLevel?.let { body.put("academic_level", it.trim().ifBlank { JSONObject.NULL }) }
+        academicLevel?.let {
+            val clean = it.trim()
+            if (clean.isBlank()) body.put("academic_level", JSONObject.NULL)
+            else body.put("academic_level", clean)
+        }
         gender?.let {
             require(it in BlinkOnboardingPolicy.genders) { "Choose a valid gender option." }
             body.put("gender", it)
