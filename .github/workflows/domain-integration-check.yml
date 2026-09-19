@@ -8,6 +8,7 @@ on:
       - 'app/build.gradle.kts'
       - 'app/src/main/AndroidManifest.xml'
       - 'app/src/main/java/com/example/sharing/**'
+      - 'app/src/test/java/com/example/sharing/**'
       - 'web/**'
       - '.github/workflows/domain-integration-check.yml'
       - '.github/workflows/deploy-web-preview.yml'
@@ -16,6 +17,7 @@ on:
       - 'app/build.gradle.kts'
       - 'app/src/main/AndroidManifest.xml'
       - 'app/src/main/java/com/example/sharing/**'
+      - 'app/src/test/java/com/example/sharing/**'
       - 'web/**'
       - '.github/workflows/domain-integration-check.yml'
       - '.github/workflows/deploy-web-preview.yml'
@@ -47,6 +49,36 @@ jobs:
           grep -F 'android:autoVerify="true"' app/src/main/AndroidManifest.xml >/dev/null
           grep -F 'Uri.parse("https://www.blink.com.ng")' app/src/main/java/com/example/sharing/DeepLinkRouter.kt >/dev/null
 
+      - name: Validate Android App Links association
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f web/.nojekyll
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("web/.well-known/assetlinks.json")
+          data = json.loads(path.read_text())
+          if not isinstance(data, list) or len(data) != 1:
+              raise SystemExit("assetlinks.json must contain exactly one BLINK Android association")
+
+          association = data[0]
+          relations = association.get("relation", [])
+          target = association.get("target", {})
+          expected_fingerprint = "88:B4:18:51:36:2B:F2:BC:B2:60:58:91:49:3B:B4:1C:40:F3:23:31:84:DF:77:35:69:F8:7D:B9:03:C5:26:64"
+
+          if "delegate_permission/common.handle_all_urls" not in relations:
+              raise SystemExit("assetlinks.json is missing handle_all_urls permission")
+          if target.get("namespace") != "android_app":
+              raise SystemExit("assetlinks.json namespace must be android_app")
+          if target.get("package_name") != "com.aistudio.blink.appvtwo":
+              raise SystemExit("assetlinks.json package does not match the BLINK Android applicationId")
+          if expected_fingerprint not in target.get("sha256_cert_fingerprints", []):
+              raise SystemExit("assetlinks.json is not pinned to the BLINK production signing certificate")
+          print("BLINK Android App Links association is valid.")
+          PY
+
       - name: Validate web syntax and static files
         shell: bash
         run: |
@@ -55,6 +87,7 @@ jobs:
           node --check web/app.js
           node --check web/sw.js
           python3 -m json.tool web/manifest.webmanifest >/dev/null
+          python3 -m json.tool web/.well-known/assetlinks.json >/dev/null
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           ET.parse("web/sitemap.xml")
