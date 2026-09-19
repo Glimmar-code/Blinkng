@@ -91,6 +91,7 @@ import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.ui.AdminProScreen
 import com.blinkng.desktop.ui.AndroidParityDesignDock
 import com.blinkng.desktop.ui.BlinkAuthScreen
+import com.blinkng.desktop.ui.BlinkDesktopOnboardingScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
 import com.blinkng.desktop.ui.ConnectScreen
 import com.blinkng.desktop.ui.GamesScreen
@@ -287,6 +288,9 @@ fun runBlinkDesktopApplication() = application {
                         when {
                             !appState.initialized -> InitializingScreen()
                             appState.session == null -> BlinkAuthScreen(appState)
+                            appState.profile == null -> InitializingScreen()
+                            appState.profile?.onboardingCompleted == false ->
+                                BlinkDesktopOnboardingScreen(appState)
                             else -> Column(modifier = Modifier.fillMaxSize()) {
                                 incomingCall?.let { call ->
                                     IncomingCallBanner(
