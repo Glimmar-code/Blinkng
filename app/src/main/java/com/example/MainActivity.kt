@@ -1002,6 +1002,8 @@ fun MainAppContent(
                     onMarketItemClick = { viewModel.openProductDetail(it) },
                     onOpenGetVerified = { viewModel.openGetVerified(true) },
                     blinkCoinBalance = if (isMyProfile) uiState.blinkCoinBalance else 0L,
+                    economyPolicy = uiState.economyPolicy,
+                    rewardedAdsToday = if (isMyProfile) uiState.rewardedAdsToday else 0,
                     onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
                     isDark = uiState.isDarkMode
@@ -1170,7 +1172,13 @@ fun MainAppContent(
             GetVerifiedSheet(
                 profile = uiState.myProfile,
                 isDark = uiState.isDarkMode,
+                blinkCoinBalance = uiState.blinkCoinBalance,
+                economyPolicy = uiState.economyPolicy,
+                rewardedAdsToday = uiState.rewardedAdsToday,
                 onDismiss = { viewModel.openGetVerified(false) },
+                onWatchAdForCoins = onWatchAdForCoins,
+                onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
+                onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
                 onUpgrade = { tier ->
                     viewModel.applyVerification(tier)
                 }
