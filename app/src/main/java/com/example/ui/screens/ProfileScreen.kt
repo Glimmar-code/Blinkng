@@ -1091,7 +1091,7 @@ fun ProfileScreen(
                             modifier = Modifier.padding(13.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.TaskAlt, contentDescription = null, tint = BlinkBlue)
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = BlinkBlue)
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text("Daily missions", fontWeight = FontWeight.Bold)
