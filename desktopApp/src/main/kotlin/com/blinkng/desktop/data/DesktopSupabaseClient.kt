@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.Base64
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -485,7 +486,7 @@ class DesktopSupabaseClient(
 
     suspend fun fetchMarketplace(): List<DesktopMarketItem> = withContext(Dispatchers.IO) {
         val rows = getArray(
-            "/rest/v1/market_items?status=eq.active&select=id,title,price,currency,category,condition,description,image_url,seller_id,seller_name,seller_username,seller_is_verified,university,location,is_featured,is_sold&order=is_featured.desc,created_at.desc&limit=100",
+            "/rest/v1/market_items?status=eq.active&select=id,title,price,currency,category,condition,description,image_url,image_urls,seller_id,seller_name,seller_username,seller_is_verified,university,location,is_featured,is_sold,created_at&order=is_featured.desc,created_at.desc&limit=100",
         )
         (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseMarketItem) }
     }
@@ -690,6 +691,12 @@ class DesktopSupabaseClient(
         coinBalance = row.optLong("current_wallet_balance"),
         isOnline = row.optBoolean("online_now", row.optBoolean("is_online")),
         lastSeenAt = row.optNullableString("last_seen_at"),
+        points = row.optInt("points"),
+        createdAt = row.optString("created_at"),
+        isBlinkVip = isFutureTimestamp(row.optNullableString("blink_vip_until")),
+        blinkVipUntil = row.optNullableString("blink_vip_until"),
+        verifiedAtMillis = parseTimestampMillis(row.optNullableString("verified_at")),
+        profileViewsThisWeek = row.optInt("profile_views_this_week"),
     )
 
     private fun parseFeedPost(row: JSONObject, profile: DesktopProfile?, liked: Boolean) = DesktopFeedPost(
@@ -745,6 +752,10 @@ class DesktopSupabaseClient(
         location = row.optString("location"),
         isFeatured = row.optBoolean("is_featured"),
         isSold = row.optBoolean("is_sold"),
+        imageUrls = row.optStringList("image_urls").ifEmpty {
+            row.optNullableString("image_url")?.let(::listOf) ?: emptyList()
+        },
+        createdAt = row.optString("created_at"),
     )
 
     private fun parseConnectListing(row: JSONObject) = DesktopConnectListing(
@@ -760,6 +771,16 @@ class DesktopSupabaseClient(
         tags = row.optStringList("tags"),
         createdAt = row.optString("created_at"),
     )
+
+    private fun parseTimestampMillis(rawTimestamp: String?): Long {
+        val raw = rawTimestamp?.trim().orEmpty()
+        if (raw.isBlank() || raw.equals("null", ignoreCase = true)) return 0L
+        return runCatching { Instant.parse(raw).toEpochMilli() }.getOrNull()
+            ?: runCatching { OffsetDateTime.parse(raw).toInstant().toEpochMilli() }.getOrDefault(0L)
+    }
+
+    private fun isFutureTimestamp(rawTimestamp: String?): Boolean =
+        parseTimestampMillis(rawTimestamp) > System.currentTimeMillis()
 
     private fun parseSettings(row: JSONObject) = DesktopUserSettings(
         theme = row.optString("theme").ifBlank { "system" },

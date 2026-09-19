@@ -25,6 +25,12 @@ data class DesktopProfile(
     val coinBalance: Long,
     val isOnline: Boolean,
     val lastSeenAt: String?,
+    val points: Int = 0,
+    val createdAt: String = "",
+    val isBlinkVip: Boolean = false,
+    val blinkVipUntil: String? = null,
+    val verifiedAtMillis: Long = 0L,
+    val profileViewsThisWeek: Int = 0,
 )
 
 data class DesktopFeedPost(
@@ -116,6 +122,8 @@ data class DesktopMarketItem(
     val location: String,
     val isFeatured: Boolean,
     val isSold: Boolean,
+    val imageUrls: List<String> = emptyList(),
+    val createdAt: String = "",
 )
 
 data class DesktopConnectListing(

@@ -531,7 +531,7 @@ fun ProfileScreen(
                                 }
                                 BlinkVipMarkForUsername(
                                     username = profile.username,
-                                    knownVip = if (profile.isBlinkVip) true else null,
+                                    knownVip = profile.isBlinkVip,
                                     modifier = Modifier.padding(start = 6.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))

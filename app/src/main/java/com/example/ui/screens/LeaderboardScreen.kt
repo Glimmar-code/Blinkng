@@ -73,10 +73,15 @@ fun LeaderboardScreen(
         users.asSequence()
             .filter { it.username.isNotBlank() }
             .sortedWith(
-                compareByDescending<LeaderboardUser> { it.points }
+                compareBy<LeaderboardUser> {
+                    it.rank.takeIf { rank -> rank > 0 } ?: Int.MAX_VALUE
+                }
+                    .thenByDescending { it.points }
                     .thenBy { it.username.lowercase() }
             )
-            .mapIndexed { index, user -> user.copy(rank = index + 1) }
+            .mapIndexed { index, user ->
+                if (user.rank > 0) user else user.copy(rank = index + 1)
+            }
             .toList()
     }
 
@@ -92,21 +97,36 @@ fun LeaderboardScreen(
     }
 
     val scoped = remember(world, scope, campusName, facultyName, levelName, verifiedOnly) {
-        val source = when (scope) {
-            LeaderboardScope.WORLD -> world
-            LeaderboardScope.CAMPUS -> world.filter { it.university.equals(campusName, ignoreCase = true) }
-            LeaderboardScope.FACULTY -> world.filter { it.faculty.equals(facultyName, ignoreCase = true) }
-            LeaderboardScope.LEVEL -> world.filter { it.level.equals(levelName, ignoreCase = true) }
+        fun rankWithinScope(source: List<LeaderboardUser>): List<LeaderboardUser> {
+            var previousWorldRank: Int? = null
+            var previousScopedRank = 0
+
+            return source.mapIndexed { index, user ->
+                val scopedRank = if (previousWorldRank == user.rank) {
+                    previousScopedRank
+                } else {
+                    index + 1
+                }
+                previousWorldRank = user.rank
+                previousScopedRank = scopedRank
+                user.copy(rank = scopedRank)
+            }
         }
 
-        source.asSequence()
-            .filter { !verifiedOnly || it.verificationBadge != VerificationBadge.NONE }
-            .sortedWith(
-                compareByDescending<LeaderboardUser> { it.points }
-                    .thenBy { it.username.lowercase() }
+        val rankedScope = when (scope) {
+            LeaderboardScope.WORLD -> world
+            LeaderboardScope.CAMPUS -> rankWithinScope(
+                world.filter { it.university.equals(campusName, ignoreCase = true) }
             )
-            .mapIndexed { index, user -> user.copy(rank = index + 1) }
-            .toList()
+            LeaderboardScope.FACULTY -> rankWithinScope(
+                world.filter { it.faculty.equals(facultyName, ignoreCase = true) }
+            )
+            LeaderboardScope.LEVEL -> rankWithinScope(
+                world.filter { it.level.equals(levelName, ignoreCase = true) }
+            )
+        }
+
+        rankedScope.filter { !verifiedOnly || it.verificationBadge != VerificationBadge.NONE }
     }
 
     // Product rule: only the Top 10 is ever rendered on the leaderboard.
@@ -125,10 +145,11 @@ fun LeaderboardScreen(
         }
     }
 
-    val currentUser = remember(scoped, userProfile.username) {
-        scoped.firstOrNull { it.username.equals(userProfile.username, ignoreCase = true) }
+    val currentUserIndex = remember(scoped, userProfile.username) {
+        scoped.indexOfFirst { it.username.equals(userProfile.username, ignoreCase = true) }
     }
-    val nextUser = currentUser?.let { current -> scoped.getOrNull(current.rank - 2) }
+    val currentUser = scoped.getOrNull(currentUserIndex)
+    val nextUser = if (currentUserIndex > 0) scoped.getOrNull(currentUserIndex - 1) else null
     val pointsToNext = if (currentUser != null && nextUser != null) {
         (nextUser.points - currentUser.points + 1).coerceAtLeast(1)
     } else {
@@ -145,7 +166,7 @@ fun LeaderboardScreen(
             title = { Text("How the leaderboard works") },
             text = {
                 Text(
-                    "Blink ranks users by live leaderboard points. Higher points rank first; ties use username ordering for a stable result. " +
+                    "Blink uses Supabase's canonical leaderboard order. Higher points rank first; ties are resolved by account creation time. " +
                         "The page intentionally shows only the Top 10 for the selected scope. Your personal rank card can still show your own position outside the Top 10."
                 )
             }
