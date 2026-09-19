@@ -163,21 +163,11 @@ Deno.serve(async (req: Request) => {
     const rewardAmount = Number(params.get("reward_amount") ?? "");
     const timestamp = Number(params.get("timestamp") ?? "");
 
-    if (
-      !signature ||
-      !Number.isFinite(keyId) ||
-      !transactionId ||
-      !VALID_AD_UNITS.has(adUnit) ||
-      rewardAmount !== EXPECTED_REWARD ||
-      !Number.isFinite(timestamp)
-    ) {
-      return json(400, { ok: false, error: "invalid_payload" });
-    }
-
-    // Reject obviously stale/future callbacks while allowing normal retries and delivery delay.
-    const now = Date.now();
-    if (timestamp > now + 5 * 60_000 || timestamp < now - 24 * 60 * 60_000) {
-      return json(400, { ok: false, error: "invalid_timestamp" });
+    // The AdMob dashboard verification tool can omit optional and reward-specific fields.
+    // Authenticate the request first using Google's signature. Only after that do we decide
+    // whether it is a dashboard probe or a real reward callback.
+    if (!signature || !Number.isFinite(keyId)) {
+      return json(400, { ok: false, error: "invalid_signature_envelope" });
     }
 
     const verified = await verifySignature(rawQuery, signature, keyId);
@@ -185,16 +175,30 @@ Deno.serve(async (req: Request) => {
       return json(403, { ok: false, error: "invalid_signature" });
     }
 
-    // AdMob's dashboard URL-verification tool documents user_id and custom_data as
-    // optional testing fields. A verification probe can therefore be correctly signed
-    // while omitting one or both values. Accept that signed probe with HTTP 200, but
-    // never write reward state unless both identifiers are present.
-    if (!claimId || !userId) {
+    const hasCompleteRewardPayload =
+      Boolean(claimId) &&
+      Boolean(userId) &&
+      Boolean(transactionId) &&
+      VALID_AD_UNITS.has(adUnit) &&
+      rewardAmount === EXPECTED_REWARD &&
+      Number.isFinite(timestamp);
+
+    // Google's AdMob UI marks user_id/custom_data as optional for URL testing, and its
+    // verification request can also omit reward-specific fields. A correctly signed but
+    // incomplete request is therefore a dashboard verification probe: acknowledge it with
+    // HTTP 200, but never persist or grant reward state.
+    if (!hasCompleteRewardPayload) {
       return json(200, {
         ok: true,
         verification_probe: true,
         persisted: false,
       });
+    }
+
+    // Real reward callbacks must have a fresh timestamp and the exact Blink rewarded unit.
+    const now = Date.now();
+    if (timestamp > now + 5 * 60_000 || timestamp < now - 24 * 60 * 60_000) {
+      return json(400, { ok: false, error: "invalid_timestamp" });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
