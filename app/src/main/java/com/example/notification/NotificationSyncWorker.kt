@@ -180,19 +180,11 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
                     SocialNotificationRecovery.markShown(applicationContext, uid, notificationId)
                 }
 
-                val targetType = row.optString("target_type").takeIf { it.isNotBlank() && it != "null" }
-                val targetId = row.optString("target_id").takeIf { it.isNotBlank() && it != "null" }
-                val postId = row.optString("post_id").takeIf { it.isNotBlank() && it != "null" }
                 BlinkNotificationHelper.showSocialNotification(
-                    context = applicationContext,
-                    title = row.optString("text", "Blink notification"),
-                    body = row.optString("sub_text", ""),
-                    targetPostId = postId,
-                    targetType = targetType,
-                    targetId = targetId,
-                    profileIdentifier = targetId.takeIf {
-                        targetType.equals("profile", ignoreCase = true)
-                    }
+                    applicationContext,
+                    row.optString("text", "Blink notification"),
+                    row.optString("sub_text", ""),
+                    row.optString("post_id").takeIf { it.isNotBlank() && it != "null" }
                 )
             }
             prefs.edit().putString(cursorKey, newest).apply()

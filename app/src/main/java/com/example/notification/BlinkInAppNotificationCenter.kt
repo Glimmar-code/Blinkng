@@ -15,7 +15,6 @@ enum class BlinkInAppNotificationDestination {
 
 data class BlinkInAppNotification(
     val key: String,
-    val notificationId: String = "",
     val title: String,
     val body: String,
     val destination: BlinkInAppNotificationDestination = BlinkInAppNotificationDestination.NOTIFICATIONS,
@@ -25,8 +24,6 @@ data class BlinkInAppNotification(
     val senderAvatar: String = "",
     val postId: String? = null,
     val marketId: String? = null,
-    val targetType: String? = null,
-    val targetId: String? = null,
     val activity: ActivityItem? = null
 )
 
@@ -37,13 +34,12 @@ data class BlinkInAppNotification(
  * belong to Android's notification tray and must not reappear as stale banners after resume.
  */
 object BlinkInAppNotificationCenter {
-    private const val FALLBACK_DEDUPE_WINDOW_MS = 15_000L
-    private const val CANONICAL_DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1_000L
-    private const val MAX_RECENT_KEYS = 512
+    private const val DEDUPE_WINDOW_MS = 15_000L
+    private const val MAX_RECENT_KEYS = 128
 
     private val mutableEvents = MutableSharedFlow<BlinkInAppNotification>(
         replay = 0,
-        extraBufferCapacity = 64
+        extraBufferCapacity = 32
     )
     val events = mutableEvents.asSharedFlow()
 
@@ -56,30 +52,20 @@ object BlinkInAppNotificationCenter {
     fun publish(event: BlinkInAppNotification): Boolean {
         if (mutableEvents.subscriptionCount.value <= 0) return false
 
-        val canonicalKey = event.notificationId
-            .trim()
-            .takeIf { it.isNotBlank() }
-            ?.let { "notification:$it" }
-            ?: event.key.trim()
-        if (canonicalKey.isNotBlank()) {
+        if (event.key.isNotBlank()) {
             val now = SystemClock.elapsedRealtime()
-            val dedupeWindow = if (event.notificationId.isNotBlank()) {
-                CANONICAL_DEDUPE_WINDOW_MS
-            } else {
-                FALLBACK_DEDUPE_WINDOW_MS
-            }
             synchronized(recentKeys) {
                 val iterator = recentKeys.entries.iterator()
                 while (iterator.hasNext()) {
-                    if (now - iterator.next().value > CANONICAL_DEDUPE_WINDOW_MS) iterator.remove()
+                    if (now - iterator.next().value > DEDUPE_WINDOW_MS) iterator.remove()
                 }
 
-                val previous = recentKeys[canonicalKey]
-                if (previous != null && now - previous <= dedupeWindow) {
+                val previous = recentKeys[event.key]
+                if (previous != null && now - previous <= DEDUPE_WINDOW_MS) {
                     return true
                 }
 
-                recentKeys[canonicalKey] = now
+                recentKeys[event.key] = now
                 while (recentKeys.size > MAX_RECENT_KEYS) {
                     val oldest = recentKeys.entries.iterator()
                     if (!oldest.hasNext()) break

@@ -1090,6 +1090,7 @@ private suspend fun restoreSupabaseSession() {
         )
     }
 
+            blueVerificationDurationDays = payload.optInt("blue_verification_duration_days", fallback.blueVerificationDurationDays).coerceIn(1, 365),
     suspend fun beginRewardedAdClaim(): String? {
         val state = _uiState.value
         if (!state.economyPolicy.canWatchRewardedAd(state.rewardedAdsToday)) {
@@ -3284,15 +3285,6 @@ private suspend fun restoreSupabaseSession() {
         if (myId.isNotBlank() && event.recipientId.isNotBlank() && event.recipientId != myId) return
 
         val normalizedType = event.activityType.trim().uppercase()
-        if (normalizedType in setOf(
-                "LIKE", "LIKES", "COMMENT", "COMMENTS", "REPLY", "MENTION",
-                "FOLLOW", "REPOST"
-            )
-        ) {
-            // These are mirrored by authoritative public.notifications rows in production.
-            // Ignore the legacy realtime copy so one event can create only one banner/timeline row.
-            return
-        }
         val category = when (normalizedType) {
             "LIKE", "LIKES", "BOOKMARK", "SAVE" -> NotificationFilter.LIKES
             "COMMENT", "COMMENTS", "REPLY", "MENTION" -> NotificationFilter.COMMENTS
@@ -3370,8 +3362,6 @@ private suspend fun restoreSupabaseSession() {
                 senderAvatar = actorProfile?.avatarUrl.orEmpty(),
                 postId = postId,
                 marketId = marketId,
-                targetType = entityType.takeIf { it.isNotBlank() },
-                targetId = event.entityId.takeIf { it.isNotBlank() },
                 activity = activity
             )
         )
@@ -3474,7 +3464,6 @@ private suspend fun restoreSupabaseSession() {
             BlinkInAppNotification(
                 key = "social:" + normalizedType.ifBlank { "social" } + ":" +
                     event.actorId + ":" + targetKey,
-                notificationId = event.id,
                 title = title,
                 body = event.subText.ifBlank {
                     actorUsername.takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty()
@@ -3486,8 +3475,6 @@ private suspend fun restoreSupabaseSession() {
                 senderAvatar = actorProfile?.avatarUrl.orEmpty(),
                 postId = targetPostId,
                 marketId = targetMarketId,
-                targetType = targetType,
-                targetId = event.targetId.takeIf { it.isNotBlank() },
                 activity = activity
             )
         )
@@ -3940,14 +3927,7 @@ private suspend fun restoreSupabaseSession() {
             }
         )
         viewModelScope.launch {
-            val synced = runCatching { supabaseService.markActivityRead(activity.id) }.getOrDefault(false)
-            if (!synced) {
-                _uiState.value = _uiState.value.copy(
-                    activities = _uiState.value.activities.map {
-                        if (it.id == activity.id) it.copy(isUnread = true) else it
-                    }
-                )
-            }
+            runCatching { supabaseService.markActivityRead(activity.id) }
         }
 
         if (activity.targetType.equals("CHAT", ignoreCase = true)) {
@@ -3985,20 +3965,15 @@ private suspend fun restoreSupabaseSession() {
 
         activity.targetPostId?.let { postId ->
             val target = (_uiState.value.posts + _uiState.value.reels).find { it.id == postId }
-            val isReel = activity.targetType.equals("reel", ignoreCase = true) || target?.isReel == true
-            _uiState.value = _uiState.value.copy(
-                selectedTab = MainTab.HOME,
-                feedSubTab = if (isReel) 1 else 0,
-                routedReelId = postId.takeIf { isReel }
-            )
-            handleDeepLink(
-                AppDeepLink(
-                    type = if (isReel) ShareContentType.REEL else ShareContentType.POST,
-                    id = postId
+            if (target != null) {
+                _uiState.value = _uiState.value.copy(
+                    selectedTab = MainTab.HOME,
+                    feedSubTab = if (target.isReel) 1 else 0,
+                    routedReelId = target.id.takeIf { target.isReel }
                 )
-            )
-            if (activity.category == NotificationFilter.COMMENTS && target != null) {
-                openCommentsForPost(postId)
+                if (activity.category == NotificationFilter.COMMENTS) {
+                    openCommentsForPost(target.id)
+                }
             }
             return
         }
@@ -4016,19 +3991,13 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun markAllActivitiesRead() {
-        val unreadIds = _uiState.value.activities.filter { it.isUnread }.mapTo(hashSetOf()) { it.id }
-        if (unreadIds.isEmpty()) return
+        if (_uiState.value.activities.none { it.isUnread }) return
         _uiState.value = _uiState.value.copy(
             activities = _uiState.value.activities.map { it.copy(isUnread = false) }
         )
         viewModelScope.launch {
             val success = runCatching { supabaseService.markAllActivitiesRead() }.getOrDefault(false)
             if (!success) {
-                _uiState.value = _uiState.value.copy(
-                    activities = _uiState.value.activities.map {
-                        if (it.id in unreadIds) it.copy(isUnread = true) else it
-                    }
-                )
                 showToast("Couldn't sync notification read status.")
             }
         }

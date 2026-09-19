@@ -422,23 +422,8 @@ class DesktopSupabaseClient(
             }
         }
 
-        fun isCanonicalMirror(item: DesktopNotification): Boolean {
-            val action = item.text.lowercase()
-            return action.contains("liked your") ||
-                action.contains("commented on") ||
-                action.contains("replied") ||
-                action.contains("mentioned") ||
-                action.contains("follow") ||
-                action.contains("repost")
-        }
-
-        val notificationKeys = serverNotifications.asSequence().map(::semanticKey).toHashSet()
-        val legacyFallback = if (serverNotifications.isEmpty()) {
-            activityNotifications
-        } else {
-            activityNotifications.filterNot(::isCanonicalMirror)
-        }
-        (serverNotifications + legacyFallback.filterNot { semanticKey(it) in notificationKeys })
+        val activityKeys = activityNotifications.asSequence().map(::semanticKey).toHashSet()
+        (activityNotifications + serverNotifications.filterNot { semanticKey(it) in activityKeys })
             .sortedByDescending { it.createdAt }
             .distinctBy { it.id }
             .take(150)
@@ -574,7 +559,7 @@ class DesktopSupabaseClient(
 
     suspend fun fetchStore(): Pair<List<DesktopStoreItem>, List<DesktopInventoryItem>> = withContext(Dispatchers.IO) {
         val catalogRows = getArray(
-            "/rest/v1/blink_store_catalog?is_active=eq.true&select=id,name,description,category,price,item_type,target_type,duration_seconds,vip_only,boost_multipliers&order=sort_order.asc",
+            "/rest/v1/blink_store_catalog?is_active=eq.true&select=id,name,description,category,price,item_type,target_type,duration_seconds,vip_only,boost_multipliers,collection_id,rarity,unlock_level,available_from,available_until&order=sort_order.asc",
         )
         val inventoryRows = getArray(
             "/rest/v1/blink_inventory?user_id=eq.${encode(requireSession().userId)}&select=id,catalog_id,quantity,status,purchased_at,activated_at,expires_at,target_type,target_id,boost_multiplier&order=purchased_at.desc",
@@ -592,6 +577,11 @@ class DesktopSupabaseClient(
                     durationSeconds = row.optNullableLong("duration_seconds"),
                     vipOnly = row.optBoolean("vip_only"),
                     boostMultipliers = row.optIntList("boost_multipliers"),
+                    collectionId = row.optNullableString("collection_id"),
+                    rarity = row.optString("rarity", "STANDARD").ifBlank { "STANDARD" },
+                    unlockLevel = row.optNullableInt("unlock_level"),
+                    availableFrom = row.optNullableString("available_from"),
+                    availableUntil = row.optNullableString("available_until"),
                 )
             }
         }

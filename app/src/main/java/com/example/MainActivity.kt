@@ -150,41 +150,22 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            BlinkNotificationHelper.ACTION_OPEN_POST,
-            BlinkNotificationHelper.ACTION_OPEN_REEL -> {
+            BlinkNotificationHelper.ACTION_OPEN_POST -> {
                 val postId = intent.getStringExtra(BlinkNotificationHelper.EXTRA_POST_ID)
-                val isReel = action == BlinkNotificationHelper.ACTION_OPEN_REEL
                 viewModel.setTab(MainTab.HOME)
-                viewModel.setFeedSubTab(if (isReel) 1 else 0)
+                viewModel.setFeedSubTab(0)
                 if (!postId.isNullOrBlank()) {
                     viewModel.handleDeepLink(
                         com.example.sharing.AppDeepLink(
-                            type = if (isReel) ShareContentType.REEL else ShareContentType.POST,
+                            type = ShareContentType.POST,
                             id = postId
                         )
                     )
                 }
             }
 
-            BlinkNotificationHelper.ACTION_OPEN_PROFILE -> {
-                val identifier = intent
-                    .getStringExtra(BlinkNotificationHelper.EXTRA_PROFILE_IDENTIFIER)
-                    .orEmpty()
-                if (identifier.isNotBlank()) {
-                    viewModel.openProfile(identifier)
-                } else {
-                    viewModel.openActivity(true)
-                }
-            }
-
             BlinkNotificationHelper.ACTION_OPEN_MARKET -> {
-                val marketId = intent.getStringExtra(BlinkNotificationHelper.EXTRA_MARKET_ID)
                 viewModel.setTab(MainTab.MARKET)
-                if (!marketId.isNullOrBlank()) {
-                    viewModel.uiState.value.marketItems
-                        .firstOrNull { it.id == marketId }
-                        ?.let(viewModel::openProductDetail)
-                }
             }
 
             BlinkNotificationHelper.ACTION_OPEN_SOCIAL -> {
@@ -198,6 +179,16 @@ class MainActivity : ComponentActivity() {
     private fun handleInAppNotification(event: BlinkInAppNotification) {
         event.activity?.let { activity ->
             viewModel.handleNotificationClick(activity)
+            activity.targetPostId?.let { postId ->
+                val state = viewModel.uiState.value
+                val isReel = state.reels.any { it.id == postId }
+                viewModel.handleDeepLink(
+                    com.example.sharing.AppDeepLink(
+                        type = if (isReel) ShareContentType.REEL else ShareContentType.POST,
+                        id = postId
+                    )
+                )
+            }
             return
         }
 
@@ -216,11 +207,10 @@ class MainActivity : ComponentActivity() {
             }
 
             BlinkInAppNotificationDestination.POST -> {
-                val postId = event.postId ?: event.targetId
+                val postId = event.postId
                 if (!postId.isNullOrBlank()) {
                     val state = viewModel.uiState.value
-                    val isReel = event.targetType.equals("reel", ignoreCase = true) ||
-                        state.reels.any { it.id == postId }
+                    val isReel = state.reels.any { it.id == postId }
                     viewModel.setTab(MainTab.HOME)
                     viewModel.setFeedSubTab(if (isReel) 1 else 0)
                     viewModel.handleDeepLink(
@@ -242,7 +232,7 @@ class MainActivity : ComponentActivity() {
 
             BlinkInAppNotificationDestination.MARKET -> {
                 viewModel.setTab(MainTab.MARKET)
-                (event.marketId ?: event.targetId)?.let { marketId ->
+                event.marketId?.let { marketId ->
                     viewModel.uiState.value.marketItems
                         .firstOrNull { it.id == marketId }
                         ?.let(viewModel::openProductDetail)

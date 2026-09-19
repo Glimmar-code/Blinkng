@@ -156,7 +156,6 @@ fun runBlinkDesktopApplication() = application {
     var notificationTitle by remember { mutableStateOf("Blinkng") }
     var notificationBody by remember { mutableStateOf("") }
     var foregroundNotification by remember { mutableStateOf<DesktopNotification?>(null) }
-    val foregroundNotificationQueue = remember { java.util.ArrayDeque<DesktopNotification>() }
     val trayNotification = rememberNotification(notificationTitle, notificationBody)
 
     fun showNativeNotification(title: String, body: String) {
@@ -193,7 +192,6 @@ fun runBlinkDesktopApplication() = application {
 
     LaunchedEffect(appState.session?.userId) {
         foregroundNotification = null
-        foregroundNotificationQueue.clear()
         val activeUserId = appState.session?.userId ?: return@LaunchedEffect
         var baselineReady = false
         var seenIds = emptySet<String>()
@@ -204,22 +202,14 @@ fun runBlinkDesktopApplication() = application {
                 seenIds = rows.mapTo(linkedSetOf()) { it.id }
                 baselineReady = true
             } else {
-                val fresh = rows
-                    .filter { !it.isRead && it.id !in seenIds }
-                    .sortedBy { it.createdAt }
+                val fresh = rows.firstOrNull { !it.isRead && it.id !in seenIds }
                 seenIds = rows.mapTo(linkedSetOf()) { it.id }
-                fresh.forEach { item ->
-                    if (foregroundNotification == null) {
-                        foregroundNotification = item
-                    } else if (foregroundNotification?.id != item.id &&
-                        foregroundNotificationQueue.none { it.id == item.id }
-                    ) {
-                        foregroundNotificationQueue.addLast(item)
-                    }
+                if (fresh != null) {
+                    foregroundNotification = fresh
                     if (!isWindowVisible) {
                         showNativeNotification(
-                            item.text.ifBlank { "Blink notification" },
-                            item.subText.orEmpty().ifBlank { "Open Blinkng to view it." },
+                            fresh.text.ifBlank { "Blink notification" },
+                            fresh.subText.orEmpty().ifBlank { "Open Blinkng to view it." },
                         )
                     }
                 }
@@ -228,23 +218,14 @@ fun runBlinkDesktopApplication() = application {
         }
     }
 
-    fun advanceForegroundNotification() {
-        foregroundNotification = if (foregroundNotificationQueue.isEmpty()) {
-            null
-        } else {
-            foregroundNotificationQueue.removeFirst()
-        }
-    }
-
     fun openForegroundNotification(item: DesktopNotification) {
         appState.selectedRoute = when {
             item.targetType.equals("CHAT", ignoreCase = true) -> "messages"
             item.targetType.equals("MARKET", ignoreCase = true) -> "marketplace"
-            item.targetType.equals("PROFILE", ignoreCase = true) -> "notifications"
             !item.postId.isNullOrBlank() -> "home"
             else -> "notifications"
         }
-        advanceForegroundNotification()
+        foregroundNotification = null
         isWindowVisible = true
     }
 
@@ -313,7 +294,7 @@ fun runBlinkDesktopApplication() = application {
                                 onOpen = { openForegroundNotification(item) },
                                 onDismiss = {
                                     if (foregroundNotification?.id == item.id) {
-                                        advanceForegroundNotification()
+                                        foregroundNotification = null
                                     }
                                 },
                                 modifier = Modifier.align(Alignment.TopCenter),

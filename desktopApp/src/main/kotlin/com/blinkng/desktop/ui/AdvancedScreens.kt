@@ -74,6 +74,7 @@ fun StoreProScreen(state: DesktopAppState) {
     var error by remember { mutableStateOf<String?>(null) }
     var pendingUse by remember { mutableStateOf<DesktopInventoryItem?>(null) }
     var previewItem by remember { mutableStateOf<DesktopStoreItem?>(null) }
+    var giftStoreItem by remember { mutableStateOf<DesktopStoreItem?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var targetState by remember { mutableStateOf(JSONObject()) }
     var heroShown by remember { mutableStateOf(false) }
@@ -109,7 +110,7 @@ fun StoreProScreen(state: DesktopAppState) {
             val multiplier = item.boostMultipliers.firstOrNull()
             runCatching { actions.purchaseStoreItem(item.id, 1, multiplier) }
                 .onSuccess {
-                    message = "${item.name} purchased. It is now in your Vault."
+                    message = "${item.name} purchased. It is now in My Collection."
                     error = null
                     previewItem = null
                     reload()
@@ -141,6 +142,18 @@ fun StoreProScreen(state: DesktopAppState) {
         .toSet()
     val vip = serverState?.optJSONObject("vip")
     val vipActive = vip?.optBoolean("active", false) == true
+    val xpLevel = serverState?.optInt("xp_level", 1)?.coerceAtLeast(1) ?: 1
+    val ownedIds = inventory.map(DesktopInventoryItem::catalogId).toSet()
+    val ownedCategories = catalog.filter { it.id in ownedIds || it.id in equippedIds }.map(DesktopStoreItem::category).toSet()
+    val wishlistIds = serverState?.optJSONArray("wishlist")?.let { array ->
+        buildSet {
+            for (index in 0 until array.length()) {
+                array.optString(index).takeIf(String::isNotBlank)?.let(::add)
+            }
+        }
+    }.orEmpty()
+    val savedLooks = serverState?.optJSONArray("saved_looks").objectList()
+    val transactions = serverState?.optJSONArray("transactions").objectList()
     val filteredCatalog = remember(catalog, searchQuery) {
         val query = searchQuery.trim()
         if (query.isBlank()) catalog else catalog.filter {
@@ -148,6 +161,18 @@ fun StoreProScreen(state: DesktopAppState) {
                 it.description.contains(query, true) ||
                 it.category.contains(query, true)
         }
+    }
+    val recommendations = remember(catalog, inventory, equippedIds, wishlistIds, vipActive) {
+        catalog.asSequence()
+            .filter { it.id !in ownedIds }
+            .filter { !it.vipOnly || vipActive }
+            .sortedWith(
+                compareByDescending<DesktopStoreItem> { it.category in ownedCategories }
+                    .thenByDescending { it.id in wishlistIds }
+                    .thenBy { it.price }
+            )
+            .take(6)
+            .toList()
     }
 
     LazyColumn(
@@ -183,7 +208,7 @@ fun StoreProScreen(state: DesktopAppState) {
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Blink Store", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Black)
-                            Text("$balance Blink Coins • Buy → Vault → Use / Apply", color = Color.White.copy(alpha = .82f), fontSize = 12.sp)
+                            Text("$balance Blink Coins • Preview → Buy → Collection → Use / Apply", color = Color.White.copy(alpha = .82f), fontSize = 12.sp)
                         }
                         if (working) CircularProgressIndicator(modifier = Modifier.size(25.dp), color = Color.White, strokeWidth = 2.dp)
                     }
@@ -223,7 +248,7 @@ fun StoreProScreen(state: DesktopAppState) {
                             OutlinedButton(onClick = { scope.launch { reload() } }, enabled = !working) { Text("Refresh") }
                         }
                         stateJson.optJSONObject("vip")?.let { vipJson ->
-                            Text(if (vipJson.optBoolean("active")) "VIP is live on your public identity." else "VIP is inactive. Buy it into Vault and activate when ready.")
+                            Text(if (vipJson.optBoolean("active")) "VIP is live on your public identity." else "VIP is inactive. Buy it into My Collection and activate when ready.")
                             vipJson.optString("expires_at").takeIf(String::isNotBlank)?.let { Text("VIP expires: ${shortDesktopDate(it)}", fontSize = 12.sp) }
                         }
                         if (equippedIds.isNotEmpty()) {
@@ -237,7 +262,7 @@ fun StoreProScreen(state: DesktopAppState) {
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { runAction("VIP extended by 10 days.") { actions.renewVip() } }, enabled = !working) { Text("Renew VIP") }
+                            OutlinedButton(onClick = { runAction("VIP extended by 30 days.") { actions.renewVip() } }, enabled = !working) { Text("Renew VIP") }
                             OutlinedButton(onClick = { runAction("VIP auto-renew enabled.") { actions.setVipAutoRenew(true) } }, enabled = !working) { Text("Auto-renew on") }
                             OutlinedButton(onClick = { runAction("VIP auto-renew disabled.") { actions.setVipAutoRenew(false) } }, enabled = !working) { Text("Auto-renew off") }
                         }
@@ -260,6 +285,21 @@ fun StoreProScreen(state: DesktopAppState) {
         if (loading) item { Text("Loading Store…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         if (!loading && filteredCatalog.isEmpty()) item {
             Text("No Store items match your search.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (searchQuery.isBlank() && recommendations.isNotEmpty()) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Recommended for your look", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                    Text("Based only on Store items you own or equipped.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        recommendations.take(4).forEach { recommended ->
+                            OutlinedButton(onClick = { previewItem = recommended }) {
+                                Text(recommended.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
         }
         items(filteredCatalog, key = { "pro-store-${it.id}" }) { item ->
             val experience = item.premiumExperience()
@@ -289,7 +329,7 @@ fun StoreProScreen(state: DesktopAppState) {
                         }
                         if (equipped) PremiumStatusPill("APPLIED", Color(0xFF16A34A))
                         else if (active) PremiumStatusPill("LIVE", Color(0xFF16A34A))
-                        else if (ownedPermanent) PremiumStatusPill("IN VAULT", accent)
+                        else if (ownedPermanent) PremiumStatusPill("IN COLLECTION", accent)
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         PremiumStatusPill(
@@ -297,6 +337,24 @@ fun StoreProScreen(state: DesktopAppState) {
                             accent,
                         )
                         PremiumStatusPill(item.itemType.replace('_', ' '), MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (item.rarity != "STANDARD") PremiumStatusPill(item.rarity, accent)
+                    }
+                    item.unlockLevel?.let { required ->
+                        Text(
+                            if (xpLevel >= required) "✓ Level $required reward unlocked — claim it free in Preview"
+                            else "Earn it free at BLINK Level $required • your level: $xpLevel",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (xpLevel >= required) Color(0xFF16A34A) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    item.availabilityLabel()?.let {
+                        Text(
+                            it,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (item.isAvailableNow()) Color(0xFF16A34A) else MaterialTheme.colorScheme.primary,
+                        )
                     }
                     Text("Seen / used on: ${experience.visibleAt}", color = accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     Text(experience.activationHint, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -306,11 +364,27 @@ fun StoreProScreen(state: DesktopAppState) {
                             if (vipActive) Text("VIP price • 10% off the ${item.price}-coin standard price", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (item.boostMultipliers.isNotEmpty()) Text("Strength: ${item.boostMultipliers.joinToString(" • ") { "${it}×" }}", fontSize = 10.sp, color = accent)
                         }
-                        OutlinedButton(onClick = { previewItem = item }) { Text("Preview") }
+                        OutlinedButton(
+                            onClick = {
+                                runAction(
+                                    if (item.id in wishlistIds) "${item.name} removed from Wishlist."
+                                    else "${item.name} saved to Wishlist."
+                                ) { actions.setWishlistItem(item.id, item.id !in wishlistIds) }
+                            },
+                            enabled = !working,
+                        ) { Text(if (item.id in wishlistIds) "♥ Saved" else "♡ Wishlist") }
                         Button(
-                            onClick = { purchase(item) },
-                            enabled = !working && !ownedPermanent && !vipLocked && balance >= displayPrice,
-                        ) { Text(if (ownedPermanent) "Owned" else if (vipLocked) "VIP" else "Buy") }
+                            onClick = { previewItem = item },
+                            enabled = !working && !vipLocked,
+                        ) {
+                            Text(
+                                when {
+                                    vipLocked -> "VIP required"
+                                    ownedPermanent -> "Preview owned"
+                                    else -> "Preview & buy"
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -321,9 +395,42 @@ fun StoreProScreen(state: DesktopAppState) {
             Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 androidx.compose.material3.Icon(Icons.Rounded.Inventory2, null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
-                Column {
-                    Text("Blink Vault", fontWeight = FontWeight.Black, fontSize = 21.sp)
-                    Text("Timed items wait here until Use. Permanent cosmetics can be applied or removed without losing ownership.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("My Collection", fontWeight = FontWeight.Black, fontSize = 21.sp)
+                    Text("Preview, equip and combine owned cosmetics. Timed items wait until Use.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Button(
+                    onClick = {
+                        runAction("Current premium look saved.") {
+                            actions.saveCurrentLook("Look ${savedLooks.size + 1}")
+                        }
+                    },
+                    enabled = !working && equippedIds.isNotEmpty() && savedLooks.size < 8,
+                ) { Text("Save look") }
+            }
+        }
+        if (savedLooks.isNotEmpty()) {
+            item { Text("Saved Looks", fontWeight = FontWeight.Black, fontSize = 18.sp) }
+            items(savedLooks, key = { "saved-look-${it.optString("id")}" }) { look ->
+                Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 1.dp) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(look.optString("name", "Saved look"), fontWeight = FontWeight.Bold)
+                            Text("${look.optInt("item_count", 0)} cosmetics", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OutlinedButton(
+                            onClick = { runAction("Saved look deleted.") { actions.deleteSavedLook(look.optString("id")) } },
+                            enabled = !working,
+                        ) { Text("Delete") }
+                        Button(
+                            onClick = { runAction("${look.optString("name", "Saved look")} applied.") { actions.applySavedLook(look.optString("id")) } },
+                            enabled = !working,
+                        ) { Text("Apply") }
+                    }
                 }
             }
         }
@@ -359,6 +466,13 @@ fun StoreProScreen(state: DesktopAppState) {
                     item.activatedAt?.let { Text("Activated ${shortDesktopDate(it)}", fontSize = 11.sp) }
                     item.expiresAt?.let { Text("Expires ${shortDesktopDate(it)}", fontSize = 11.sp, color = accent, fontWeight = FontWeight.SemiBold) }
                     item.boostMultiplier?.let { Text("${it}× boost strength", color = accent, fontWeight = FontWeight.SemiBold, fontSize = 11.sp) }
+
+                    if (storeItem != null) {
+                        OutlinedButton(
+                            onClick = { previewItem = storeItem },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Preview") }
+                    }
 
                     if (item.status.equals("AVAILABLE", true) || item.status.equals("PERMANENT", true)) {
                         Button(
@@ -400,6 +514,70 @@ fun StoreProScreen(state: DesktopAppState) {
                 }
             }
         }
+        item {
+            HorizontalDivider()
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Purchase History", fontWeight = FontWeight.Black, fontSize = 21.sp)
+                Text(
+                    "Receipts, duration, expiry and current Store status.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (transactions.isEmpty()) {
+            item { Text("No Store activity yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        } else {
+            items(transactions, key = { "store-history-${it.optString("id")}" }) { row ->
+                val amount = row.optLong("amount")
+                val duration = row.optLong("catalog_duration_seconds", 0L)
+                val itemType = row.optString("catalog_item_type")
+                val status = row.optString("current_inventory_status")
+                val activatedAt = row.optString("current_inventory_activated_at")
+                val expiresAt = row.optString("current_inventory_expires_at")
+                Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 1.dp) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    row.optString("item_name").ifBlank { row.optString("kind").replace('_', ' ') },
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    "${row.optString("kind").replace('_', ' ')} • ${shortDesktopDate(row.optString("created_at"))}",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Text(
+                                if (amount >= 0) "+$amount coins" else "${-amount} coins",
+                                fontWeight = FontWeight.Black,
+                                color = if (amount >= 0) Color(0xFF16A34A) else MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                        if (row.has("catalog_id") && !row.isNull("catalog_id")) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (itemType.isNotBlank()) PremiumStatusPill(itemType.replace('_', ' '), MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (status.isNotBlank()) PremiumStatusPill(
+                                    status.replace('_', ' '),
+                                    if (status == "ACTIVE" || status == "PERMANENT") Color(0xFF16A34A) else MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                            when {
+                                duration > 0L -> Text("Duration: ${desktopStoreDurationText(duration)}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                itemType == "PERMANENT" -> Text("Duration: Permanent", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            activatedAt.takeIf(String::isNotBlank)?.let { Text("Activated: ${shortDesktopDate(it)}", fontSize = 10.sp) }
+                            expiresAt.takeIf(String::isNotBlank)?.let { Text("Expires: ${shortDesktopDate(it)}", fontSize = 10.sp) }
+                        }
+                    }
+                }
+            }
+        }
+
     }
 
     pendingUse?.let { inventoryItem ->
@@ -437,9 +615,43 @@ fun StoreProScreen(state: DesktopAppState) {
             vipActive = vipActive,
             owned = ownedPermanent,
             working = working,
+            xpLevel = xpLevel,
             onDismiss = { previewItem = null },
             onBuy = { purchase(item) },
-            buyEnabled = !working && !ownedPermanent && !vipLocked && balance >= displayPrice,
+            buyEnabled = !working && !ownedPermanent && !vipLocked && item.isAvailableNow() && balance >= displayPrice,
+            onGift = if (item.canGiftCosmetic() && item.isAvailableNow()) {
+                {
+                    previewItem = null
+                    giftStoreItem = item
+                }
+            } else null,
+            onClaimLevelReward = item.unlockLevel?.let { required ->
+                {
+                    if (xpLevel >= required && !ownedPermanent) {
+                        previewItem = null
+                        runAction("${item.name} claimed from your Level $required reward.") {
+                            actions.claimLevelCosmetic(item.id)
+                        }
+                    }
+                }
+            },
+        )
+    }
+
+    giftStoreItem?.let { item ->
+        DesktopCosmeticGiftDialog(
+            item = item,
+            balance = balance,
+            vipActive = vipActive,
+            working = working,
+            onDismiss = { giftStoreItem = null },
+            onConfirm = { username ->
+                giftStoreItem = null
+                val recipient = username.trim().removePrefix("@")
+                runAction("${item.name} sent to @$recipient.") {
+                    actions.giftStoreItem(item.id, recipient)
+                }
+            },
         )
     }
 }
@@ -451,13 +663,19 @@ private fun DesktopStorePreviewDialog(
     vipActive: Boolean,
     owned: Boolean,
     working: Boolean,
+    xpLevel: Int,
     onDismiss: () -> Unit,
     onBuy: () -> Unit,
     buyEnabled: Boolean,
+    onGift: (() -> Unit)? = null,
+    onClaimLevelReward: (() -> Unit)? = null,
 ) {
     val experience = item.premiumExperience()
     val accent = desktopPremiumAccent(experience)
     val displayPrice = if (vipActive) (item.price * 90) / 100 else item.price
+    val availableNow = item.isAvailableNow()
+    val levelRequirement = item.unlockLevel
+    val canClaimLevelReward = !owned && levelRequirement != null && xpLevel >= levelRequirement
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -477,6 +695,23 @@ private fun DesktopStorePreviewDialog(
                 Text(experience.benefit, fontSize = 12.sp)
                 Text("Visible on: ${experience.visibleAt}", color = accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 Text(experience.activationHint, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                item.availabilityLabel()?.let {
+                    Text(
+                        it,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (availableNow) Color(0xFF16A34A) else MaterialTheme.colorScheme.primary,
+                    )
+                }
+                levelRequirement?.let { required ->
+                    Text(
+                        if (canClaimLevelReward) "Level $required reached — claim this permanent cosmetic free."
+                        else "Free at BLINK Level $required • your level: $xpLevel. You can still buy it when available.",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (canClaimLevelReward) Color(0xFF16A34A) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 HorizontalDivider()
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -497,6 +732,7 @@ private fun DesktopStorePreviewDialog(
                     when {
                         owned -> "Owned"
                         item.vipOnly && !vipActive -> "VIP required"
+                        !availableNow -> item.availabilityLabel() ?: "Unavailable"
                         balance < displayPrice -> "Not enough coins"
                         working -> "Working…"
                         else -> "Buy"
@@ -504,9 +740,125 @@ private fun DesktopStorePreviewDialog(
                 )
             }
         },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (canClaimLevelReward && onClaimLevelReward != null) {
+                    Button(onClick = onClaimLevelReward, enabled = !working) { Text("Claim free") }
+                }
+                if (onGift != null) {
+                    OutlinedButton(onClick = onGift, enabled = !working) { Text("Gift") }
+                }
+                OutlinedButton(onClick = onDismiss) { Text("Close") }
+            }
+        },
     )
 }
+
+@Composable
+private fun DesktopCosmeticGiftDialog(
+    item: DesktopStoreItem,
+    balance: Long,
+    vipActive: Boolean,
+    working: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var username by remember(item.id) { mutableStateOf("") }
+    val recipient = username.trim().removePrefix("@")
+    val price = if (vipActive) (item.price * 90) / 100 else item.price
+    val availableNow = item.isAvailableNow()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Gift ${item.name}", fontWeight = FontWeight.Black) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                DesktopStoreLivePreview(item.id, item.name)
+                Text(
+                    "The recipient gets this item in My Collection. Timed cosmetics remain inactive until they choose to use them.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it.take(64) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Recipient username") },
+                    placeholder = { Text("@username") },
+                )
+                Text("$price Blink Coins", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                if (balance < price) {
+                    Text("Need ${price - balance} more Blink Coins", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(recipient) },
+                enabled = !working && recipient.isNotBlank() && balance >= price && availableNow,
+            ) { Text("Send Gift") }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+private fun DesktopStoreItem.isAvailableNow(now: java.time.Instant = java.time.Instant.now()): Boolean {
+    val starts = availableFrom?.let { raw ->
+        runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }
+            .recoverCatching { java.time.Instant.parse(raw) }
+            .getOrNull()
+    }
+    val ends = availableUntil?.let { raw ->
+        runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }
+            .recoverCatching { java.time.Instant.parse(raw) }
+            .getOrNull()
+    }
+    return (starts == null || !now.isBefore(starts)) && (ends == null || now.isBefore(ends))
+}
+
+private fun DesktopStoreItem.availabilityLabel(now: java.time.Instant = java.time.Instant.now()): String? {
+    val starts = availableFrom?.let { raw ->
+        runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }
+            .recoverCatching { java.time.Instant.parse(raw) }
+            .getOrNull()
+    }
+    val ends = availableUntil?.let { raw ->
+        runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }
+            .recoverCatching { java.time.Instant.parse(raw) }
+            .getOrNull()
+    }
+    return when {
+        starts != null && now.isBefore(starts) -> "Limited drop • available from ${availableFrom.orEmpty().take(10)}"
+        ends != null && !now.isBefore(ends) -> "Limited drop ended ${availableUntil.orEmpty().take(10)}"
+        ends != null -> "Limited drop • available until ${availableUntil.orEmpty().take(10)}"
+        else -> null
+    }
+}
+
+private fun desktopStoreDurationText(seconds: Long): String = when {
+    seconds >= 86_400L && seconds % 86_400L == 0L -> {
+        val days = seconds / 86_400L
+        if (days == 1L) "1 day" else "$days days"
+    }
+    seconds >= 3_600L && seconds % 3_600L == 0L -> {
+        val hours = seconds / 3_600L
+        if (hours == 1L) "1 hour" else "$hours hours"
+    }
+    else -> "$seconds seconds"
+}
+
+private fun DesktopStoreItem.canGiftCosmetic(): Boolean =
+    !vipOnly &&
+        itemType.uppercase() in setOf("PERMANENT", "TIMED") &&
+        category !in setOf("Boosts", "Analytics", "Marketplace") &&
+        id !in setOf(
+            "profile_spotlight_1h", "profile_spotlight_24h",
+            "post_spotlight_6h", "post_spotlight_24h",
+            "reel_spotlight_6h", "reel_spotlight_24h",
+            "discovery_boost_7d", "profile_discovery_boost",
+            "birthday_profile_theme",
+        )
 
 @Composable
 private fun PremiumStatusPill(text: String, color: Color) {
