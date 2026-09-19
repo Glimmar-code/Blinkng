@@ -95,6 +95,28 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
             .put("p_slot", slot)
             .put("p_enabled", enabled))
 
+    suspend fun giftStoreItem(catalogId: String, username: String): JSONObject =
+        rpc("gift_blink_store_item", JSONObject()
+            .put("p_catalog_id", catalogId.trim())
+            .put("p_recipient_username", username.trim().removePrefix("@")))
+
+    suspend fun claimLevelCosmetic(catalogId: String): JSONObject =
+        rpc("claim_blink_level_cosmetic", JSONObject().put("p_catalog_id", catalogId.trim()))
+
+    suspend fun setWishlistItem(catalogId: String, enabled: Boolean): JSONObject =
+        rpc("set_blink_wishlist_item", JSONObject()
+            .put("p_catalog_id", catalogId.trim())
+            .put("p_enabled", enabled))
+
+    suspend fun saveCurrentLook(name: String): JSONObject =
+        rpc("save_current_blink_look", JSONObject().put("p_name", name.trim().take(40)))
+
+    suspend fun applySavedLook(lookId: String): JSONObject =
+        rpc("apply_blink_saved_look", JSONObject().put("p_look_id", lookId))
+
+    suspend fun deleteSavedLook(lookId: String): JSONObject =
+        rpc("delete_blink_saved_look", JSONObject().put("p_look_id", lookId))
+
     suspend fun sendDigitalGift(inventoryId: String, username: String, message: String = ""): JSONObject =
         rpc("send_blink_digital_gift", JSONObject()
             .put("p_inventory_id", inventoryId)
