@@ -61,8 +61,22 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
 
     suspend fun getDailyMissions(): JSONObject = rpc("get_my_daily_missions", JSONObject())
 
+    suspend fun getProgressHub(): JSONObject = rpc("get_my_progress_hub", JSONObject())
+
     suspend fun claimDailyMission(missionKey: String): JSONObject =
         rpc("claim_daily_mission", JSONObject().put("p_mission_key", missionKey.trim()))
+
+    suspend fun claimWeeklyMission(missionKey: String): JSONObject =
+        rpc("claim_weekly_mission", JSONObject().put("p_mission_key", missionKey.trim()))
+
+    suspend fun claimWeeklyCompletionChest(): JSONObject =
+        rpc("claim_weekly_completion_chest", JSONObject())
+
+    suspend fun claimAchievement(achievementKey: String): JSONObject =
+        rpc("claim_blink_achievement", JSONObject().put("p_achievement_key", achievementKey.trim()))
+
+    suspend fun claimProgressReward(rewardKey: String): JSONObject =
+        rpc("claim_blink_progress_reward", JSONObject().put("p_reward_key", rewardKey.trim()))
 
     suspend fun purchaseBlueVerificationWithCoins(): JSONObject =
         rpc("purchase_blink_blue_verification_with_coins", JSONObject())
