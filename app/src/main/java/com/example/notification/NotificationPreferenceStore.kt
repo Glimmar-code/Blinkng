@@ -75,11 +75,11 @@ object NotificationPreferenceStore {
 
     fun isCategoryEnabled(context: Context, type: BlinkNotificationType): Boolean =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(type.preferenceKey, true)
+            .safeBoolean(type.preferenceKey, true)
 
     fun isMasterEnabled(context: Context): Boolean =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(MASTER, true)
+            .safeBoolean(MASTER, true)
 
     fun setQuietHours(
         context: Context,
@@ -100,7 +100,7 @@ object NotificationPreferenceStore {
 
     fun quietHoursEnabled(context: Context): Boolean =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(QUIET_ENABLED, false)
+            .safeBoolean(QUIET_ENABLED, false)
 
     private fun isQuietNow(context: Context): Boolean {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
