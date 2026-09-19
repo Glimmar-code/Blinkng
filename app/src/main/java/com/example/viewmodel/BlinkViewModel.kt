@@ -137,11 +137,19 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         private const val PREFS = "blink_user_session"
         private const val AUTH_PREFS = "blink_auth_prefs"
         private const val KEY_IS_LOGGED_IN = "is_logged_in"
+        private const val KEY_USER_ID = "user_id"
         private const val KEY_EMAIL = "email"
         private const val KEY_FULL_NAME = "full_name"
         private const val KEY_USERNAME = "username"
         private const val KEY_FACULTY = "faculty"
         private const val KEY_UNIVERSITY = "university"
+        private const val KEY_DEPARTMENT = "department"
+        private const val KEY_ACADEMIC_LEVEL = "academic_level"
+        private const val KEY_GENDER = "gender"
+        private const val KEY_BIRTH_DATE = "birth_date"
+        private const val KEY_INTERESTS = "interests"
+        private const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
+        private const val KEY_ONBOARDING_STEP = "onboarding_step"
         private const val KEY_AVATAR = "avatar_url"
         private const val KEY_COVER = "cover_url"
         private const val KEY_VERIFICATION = "verification_badge"
@@ -217,7 +225,11 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
             restoreResumableRouteFromCurrentState()
             if (hasLocalSession && !_uiState.value.isOnline) {
                 _uiState.value = _uiState.value.copy(
-                    destination = AppDestination.MAIN,
+                    destination = if (_uiState.value.myProfile.onboardingCompleted) {
+                        AppDestination.MAIN
+                    } else {
+                        AppDestination.PROFILE_SETUP
+                    },
                     isFeedLoading = false,
                     isRefreshingContent = false,
                     isSyncingContent = false,
@@ -543,12 +555,31 @@ private suspend fun restoreSupabaseSession() {
 
     private fun restoreLocalSession() {
         if (!hasLocalAuthenticatedProfile()) return
+        val savedId = prefs.getString(KEY_USER_ID, "").orEmpty()
         val savedEmail = prefs.getString(KEY_EMAIL, authPrefs.getString(KEY_EMAIL, "")).orEmpty()
         val savedName = prefs.getString(KEY_FULL_NAME, authPrefs.getString(KEY_FULL_NAME, "")).orEmpty()
         val savedUsername = prefs.getString(KEY_USERNAME, authPrefs.getString(KEY_USERNAME, "")).orEmpty()
         if (savedName.isBlank() || savedUsername.isBlank()) return
         val savedFaculty = prefs.getString(KEY_FACULTY, authPrefs.getString(KEY_FACULTY, "")).orEmpty()
         val savedUniversity = prefs.getString(KEY_UNIVERSITY, authPrefs.getString(KEY_UNIVERSITY, "")).orEmpty()
+        val savedDepartment = prefs.getString(KEY_DEPARTMENT, "").orEmpty()
+        val savedAcademicLevel = prefs.getString(KEY_ACADEMIC_LEVEL, "").orEmpty()
+        val savedGender = prefs.getString(KEY_GENDER, "").orEmpty()
+        val savedBirthDate = prefs.getString(KEY_BIRTH_DATE, "").orEmpty()
+        val savedInterests = runCatching {
+            val raw = prefs.getString(KEY_INTERESTS, "[]").orEmpty()
+            val array = JSONArray(if (raw.isBlank()) "[]" else raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    array.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+                }
+            }
+        }.getOrDefault(emptyList())
+        val savedOnboardingCompleted = prefs.getBoolean(KEY_ONBOARDING_COMPLETED, true)
+        val savedOnboardingStep = prefs.getInt(
+            KEY_ONBOARDING_STEP,
+            if (savedOnboardingCompleted) 4 else 0
+        ).coerceIn(0, 4)
         val savedAvatar = prefs.getString(KEY_AVATAR, authPrefs.getString(KEY_AVATAR, "")).orEmpty()
         val savedCover = prefs.getString(KEY_COVER, authPrefs.getString(KEY_COVER, "")).orEmpty()
         val badge = when (prefs.getString(KEY_VERIFICATION, "")?.uppercase()) {
@@ -561,11 +592,19 @@ private suspend fun restoreSupabaseSession() {
         offlineContentStore.setActiveOwner(savedUsername)
         _uiState.value = _uiState.value.copy(
             myProfile = UserProfile(
+                id = savedId,
                 fullName = savedName,
                 username = savedUsername,
                 email = ContactField(savedEmail, true),
                 faculty = savedFaculty,
                 university = savedUniversity,
+                department = savedDepartment,
+                academicLevel = savedAcademicLevel,
+                gender = savedGender,
+                birthDate = savedBirthDate,
+                interests = savedInterests,
+                onboardingCompleted = savedOnboardingCompleted,
+                onboardingStep = savedOnboardingStep,
                 avatarUrl = savedAvatar,
                 coverPhotoUrl = savedCover,
                 verificationBadge = badge,
@@ -574,7 +613,7 @@ private suspend fun restoreSupabaseSession() {
             // Never carry account A's in-memory chats into account B. The account-scoped
             // Room/snapshot cache below restores B's own conversations immediately.
             conversations = if (accountChanged) emptyList() else _uiState.value.conversations,
-            destination = AppDestination.MAIN
+            destination = if (savedOnboardingCompleted) AppDestination.MAIN else AppDestination.PROFILE_SETUP
         )
     }
 
@@ -582,11 +621,19 @@ private suspend fun restoreSupabaseSession() {
         offlineContentStore.setActiveOwner(profile.username)
         prefs.edit()
             .putBoolean(KEY_IS_LOGGED_IN, true)
+            .putString(KEY_USER_ID, profile.id)
             .putString(KEY_EMAIL, profile.email.value)
             .putString(KEY_FULL_NAME, profile.fullName)
             .putString(KEY_USERNAME, profile.username)
             .putString(KEY_FACULTY, profile.faculty)
             .putString(KEY_UNIVERSITY, profile.university)
+            .putString(KEY_DEPARTMENT, profile.department)
+            .putString(KEY_ACADEMIC_LEVEL, profile.academicLevel)
+            .putString(KEY_GENDER, profile.gender)
+            .putString(KEY_BIRTH_DATE, profile.birthDate)
+            .putString(KEY_INTERESTS, JSONArray(profile.interests).toString())
+            .putBoolean(KEY_ONBOARDING_COMPLETED, profile.onboardingCompleted)
+            .putInt(KEY_ONBOARDING_STEP, profile.onboardingStep.coerceIn(0, 4))
             .putString(KEY_AVATAR, profile.avatarUrl)
             .putString(KEY_COVER, profile.coverPhotoUrl)
             .putString(KEY_VERIFICATION, profile.verificationBadge.name)
