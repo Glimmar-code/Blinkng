@@ -621,6 +621,39 @@ class DesktopSupabaseClient(
         rows.optJSONObject(0)?.optDouble("spendable_coin_balance", 0.0)?.toLong() ?: 0L
     }
 
+    suspend fun initializePaystackCoinCheckout(packId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(packId.isNotBlank()) { "Choose a Blink Coin pack." }
+        postObject(
+            "/functions/v1/paystack-initialize",
+            JSONObject()
+                .put("kind", "COIN_PACK")
+                .put("pack_id", packId.trim()),
+        ) as JSONObject
+    }
+
+    suspend fun initializePaystackVerificationCheckout(): JSONObject = withContext(Dispatchers.IO) {
+        postObject(
+            "/functions/v1/paystack-initialize",
+            JSONObject().put("kind", "BLUE_VERIFICATION"),
+        ) as JSONObject
+    }
+
+    suspend fun verifyPaystackCashOrder(orderId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(orderId.isNotBlank()) { "Payment order is missing." }
+        postObject(
+            "/functions/v1/paystack-verify",
+            JSONObject().put("order_id", orderId.trim()),
+        ) as JSONObject
+    }
+
+    suspend fun fetchCashOrderStatus(orderId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(orderId.isNotBlank()) { "Payment order is missing." }
+        postObject(
+            "/rest/v1/rpc/get_blink_cash_order_status",
+            JSONObject().put("p_order_id", orderId.trim()),
+        ) as JSONObject
+    }
+
     suspend fun fetchLeaderboard(): List<DesktopLeaderboardEntry> = withContext(Dispatchers.IO) {
         val rows = getArray(
             "/rest/v1/leaderboard_snapshots?select=user_id,name,handle,university,verification_tier,world_score,world_rank,campus_score,campus_rank&order=world_rank.asc.nullslast&limit=200",
