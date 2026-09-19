@@ -31,6 +31,9 @@ import com.example.notification.BlinkNotificationType
 import com.example.notification.NotificationPreferenceStore
 import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
+import com.example.util.safeBoolean
+import com.example.util.safeInt
+import com.example.util.safeString
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
@@ -585,19 +588,19 @@ private suspend fun restoreSupabaseSession() {
     }
 
     private fun hasLocalAuthenticatedProfile(): Boolean =
-        prefs.getBoolean(KEY_IS_LOGGED_IN, false) || authPrefs.getBoolean(KEY_IS_LOGGED_IN, false)
+        prefs.safeBoolean(KEY_IS_LOGGED_IN, false) || authPrefs.safeBoolean(KEY_IS_LOGGED_IN, false)
 
     private fun restoreLocalSession() {
         if (!hasLocalAuthenticatedProfile()) return
-        val savedEmail = prefs.getString(KEY_EMAIL, authPrefs.getString(KEY_EMAIL, "")).orEmpty()
-        val savedName = prefs.getString(KEY_FULL_NAME, authPrefs.getString(KEY_FULL_NAME, "")).orEmpty()
-        val savedUsername = prefs.getString(KEY_USERNAME, authPrefs.getString(KEY_USERNAME, "")).orEmpty()
+        val savedEmail = prefs.safeString(KEY_EMAIL, authPrefs.safeString(KEY_EMAIL, "")).orEmpty()
+        val savedName = prefs.safeString(KEY_FULL_NAME, authPrefs.safeString(KEY_FULL_NAME, "")).orEmpty()
+        val savedUsername = prefs.safeString(KEY_USERNAME, authPrefs.safeString(KEY_USERNAME, "")).orEmpty()
         if (savedName.isBlank() || savedUsername.isBlank()) return
-        val savedFaculty = prefs.getString(KEY_FACULTY, authPrefs.getString(KEY_FACULTY, "")).orEmpty()
-        val savedUniversity = prefs.getString(KEY_UNIVERSITY, authPrefs.getString(KEY_UNIVERSITY, "")).orEmpty()
-        val savedAvatar = prefs.getString(KEY_AVATAR, authPrefs.getString(KEY_AVATAR, "")).orEmpty()
-        val savedCover = prefs.getString(KEY_COVER, authPrefs.getString(KEY_COVER, "")).orEmpty()
-        val badge = when (prefs.getString(KEY_VERIFICATION, "")?.uppercase()) {
+        val savedFaculty = prefs.safeString(KEY_FACULTY, authPrefs.safeString(KEY_FACULTY, "")).orEmpty()
+        val savedUniversity = prefs.safeString(KEY_UNIVERSITY, authPrefs.safeString(KEY_UNIVERSITY, "")).orEmpty()
+        val savedAvatar = prefs.safeString(KEY_AVATAR, authPrefs.safeString(KEY_AVATAR, "")).orEmpty()
+        val savedCover = prefs.safeString(KEY_COVER, authPrefs.safeString(KEY_COVER, "")).orEmpty()
+        val badge = when (prefs.safeString(KEY_VERIFICATION, "")?.uppercase()) {
             "GOLD" -> VerificationBadge.GOLD
             "BLUE" -> VerificationBadge.BLUE
             else -> VerificationBadge.NONE
@@ -615,7 +618,7 @@ private suspend fun restoreSupabaseSession() {
                 avatarUrl = savedAvatar,
                 coverPhotoUrl = savedCover,
                 verificationBadge = badge,
-                isSellerActive = prefs.getBoolean(KEY_SELLER_ACTIVE, false)
+                isSellerActive = prefs.safeBoolean(KEY_SELLER_ACTIVE, false)
             ),
             // Never carry account A's in-memory chats into account B. The account-scoped
             // Room/snapshot cache below restores B's own conversations immediately.
@@ -643,12 +646,12 @@ private suspend fun restoreSupabaseSession() {
     private fun saveSession(profile: UserProfile) = saveLocalProfile(profile)
 
     private fun restoreUiPreferences() {
-        val tabName = prefs.getString(KEY_SELECTED_TAB, MainTab.HOME.name).orEmpty()
+        val tabName = prefs.safeString(KEY_SELECTED_TAB, MainTab.HOME.name).orEmpty()
         val selected = MainTab.entries.firstOrNull { it.name == tabName } ?: MainTab.HOME
         _uiState.value = _uiState.value.copy(
-            isDarkMode = prefs.getBoolean(KEY_DARK_MODE, true),
+            isDarkMode = prefs.safeBoolean(KEY_DARK_MODE, true),
             selectedTab = selected,
-            feedSubTab = prefs.getInt(KEY_FEED_SUB_TAB, 0).coerceIn(0, 3)
+            feedSubTab = prefs.safeInt(KEY_FEED_SUB_TAB, 0).coerceIn(0, 3)
         )
     }
 
@@ -694,15 +697,15 @@ private suspend fun restoreSupabaseSession() {
         if (!hasLocalAuthenticatedProfile() || _uiState.value.destination != AppDestination.MAIN) return
 
         val state = _uiState.value
-        val profileUsername = prefs.getString(KEY_RESUME_PROFILE_USERNAME, null)
+        val profileUsername = prefs.safeString(KEY_RESUME_PROFILE_USERNAME, null)
             ?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
-        val productId = prefs.getString(KEY_RESUME_PRODUCT_ID, null)?.takeIf { it.isNotBlank() }
-        val commentsPostId = prefs.getString(KEY_RESUME_COMMENTS_POST_ID, null)?.takeIf { it.isNotBlank() }
-        val postOptionsId = prefs.getString(KEY_RESUME_POST_OPTIONS_ID, null)?.takeIf { it.isNotBlank() }
-        val deepLinkPostId = prefs.getString(KEY_RESUME_DEEP_LINK_POST_ID, null)?.takeIf { it.isNotBlank() }
-        val conversation = prefs.getString(KEY_RESUME_CONVERSATION, null)
+        val productId = prefs.safeString(KEY_RESUME_PRODUCT_ID, null)?.takeIf { it.isNotBlank() }
+        val commentsPostId = prefs.safeString(KEY_RESUME_COMMENTS_POST_ID, null)?.takeIf { it.isNotBlank() }
+        val postOptionsId = prefs.safeString(KEY_RESUME_POST_OPTIONS_ID, null)?.takeIf { it.isNotBlank() }
+        val deepLinkPostId = prefs.safeString(KEY_RESUME_DEEP_LINK_POST_ID, null)?.takeIf { it.isNotBlank() }
+        val conversation = prefs.safeString(KEY_RESUME_CONVERSATION, null)
             ?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
-        val storyId = prefs.getString(KEY_RESUME_STORY_ID, null)?.takeIf { it.isNotBlank() }
+        val storyId = prefs.safeString(KEY_RESUME_STORY_ID, null)?.takeIf { it.isNotBlank() }
 
         val knownProfiles = listOf(state.myProfile) + state.profiles
         val knownPosts = state.posts + state.reels
@@ -723,16 +726,16 @@ private suspend fun restoreSupabaseSession() {
             activeConversationPartner = conversation,
             activeViewingStory = restoredStory,
             isConversationFullScreen = conversation != null &&
-                prefs.getBoolean(KEY_RESUME_CONVERSATION_FULLSCREEN, false),
-            isPostItemOpen = prefs.getBoolean(KEY_RESUME_POST_ITEM, false),
-            isBecomeSellerOpen = prefs.getBoolean(KEY_RESUME_BECOME_SELLER, false),
-            showSellerCongratulationsDialog = prefs.getBoolean(KEY_RESUME_SELLER_CONGRATS, false),
-            isEditProfileOpen = prefs.getBoolean(KEY_RESUME_EDIT_PROFILE, false),
-            isActivityOpen = prefs.getBoolean(KEY_RESUME_ACTIVITY, false),
-            isMenuOpen = prefs.getBoolean(KEY_RESUME_MENU, false),
-            isGetVerifiedOpen = prefs.getBoolean(KEY_RESUME_VERIFIED, false),
-            isCreatePostOpen = prefs.getBoolean(KEY_RESUME_CREATE_POST, false),
-            isCreateStoryOpen = prefs.getBoolean(KEY_RESUME_CREATE_STORY, false),
+                prefs.safeBoolean(KEY_RESUME_CONVERSATION_FULLSCREEN, false),
+            isPostItemOpen = prefs.safeBoolean(KEY_RESUME_POST_ITEM, false),
+            isBecomeSellerOpen = prefs.safeBoolean(KEY_RESUME_BECOME_SELLER, false),
+            showSellerCongratulationsDialog = prefs.safeBoolean(KEY_RESUME_SELLER_CONGRATS, false),
+            isEditProfileOpen = prefs.safeBoolean(KEY_RESUME_EDIT_PROFILE, false),
+            isActivityOpen = prefs.safeBoolean(KEY_RESUME_ACTIVITY, false),
+            isMenuOpen = prefs.safeBoolean(KEY_RESUME_MENU, false),
+            isGetVerifiedOpen = prefs.safeBoolean(KEY_RESUME_VERIFIED, false),
+            isCreatePostOpen = prefs.safeBoolean(KEY_RESUME_CREATE_POST, false),
+            isCreateStoryOpen = prefs.safeBoolean(KEY_RESUME_CREATE_STORY, false),
             activeCommentsPostId = commentsPostId,
             isCommentsLoading = commentsPostId != null
         )
@@ -2060,7 +2063,7 @@ private suspend fun restoreSupabaseSession() {
 
     private fun loadDraftsFromPrefs() {
         try {
-            val json = prefs.getString("blink_saved_drafts_data", null)
+            val json = prefs.safeString("blink_saved_drafts_data", null)
             if (!json.isNullOrBlank()) {
                 val drafts = mutableListOf<PostDraft>()
                 for (item in json.split(";;;DRAFT_DELIM;;;")) {
