@@ -1163,7 +1163,7 @@ private fun PremiumHomeFeed(
                         }
                     }
 
-                        AnimatedVisibility(
+                        androidx.compose.animation.AnimatedVisibility(
                             visible = pendingNewPostCount > 0 && !isRefreshing,
                             enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { -it / 2 },
                             exit = fadeOut(tween(110)) + slideOutVertically(tween(130)) { -it / 2 },
