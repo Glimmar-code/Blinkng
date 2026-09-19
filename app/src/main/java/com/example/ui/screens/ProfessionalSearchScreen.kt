@@ -265,10 +265,14 @@ internal fun ProfessionalSearchScreen(
                 when (selectedSort) {
                     ProfessionalDiscoverSort.POPULAR -> compareByDescending<UserProfile> { it.followerCount }
                         .thenByDescending { it.points }
-                    ProfessionalDiscoverSort.NEWEST -> compareByDescending<UserProfile> { it.joinedLabel }
+                        .thenBy { it.username.lowercase() }
+                    ProfessionalDiscoverSort.NEWEST -> compareByDescending<UserProfile> { it.createdAt }
+                        .thenBy { it.username.lowercase() }
                     ProfessionalDiscoverSort.RELEVANCE -> compareByDescending<UserProfile> {
                         professionalProfileRelevance(it, clean)
-                    }.thenByDescending { it.onlineNow }.thenByDescending { it.points }
+                    }.thenByDescending { it.onlineNow }
+                        .thenByDescending { it.points }
+                        .thenBy { it.username.lowercase() }
                 }
             )
             .take(if (clean.isBlank()) 20 else 60)
