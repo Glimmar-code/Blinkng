@@ -125,7 +125,7 @@ fun GetVerifiedSheet(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = "BLINK Verified is a renewable ${economyPolicy.blueVerificationDurationDays}-day status. Pay with Blink Coins or use secure cash checkout when available.",
+                        text = "BLINK Verified is a renewable ${economyPolicy.blueVerificationValidDays}-day status. Pay with Blink Coins or use secure cash checkout when available.",
                         fontSize = 13.sp,
                         color = textSecondary,
                         textAlign = TextAlign.Center,
@@ -268,7 +268,7 @@ fun GetVerifiedSheet(
                                     color = BlinkBlue
                                 )
                                 Text(
-                                    text = "${economyPolicy.blueVerificationDurationDays}-day plan",
+                                    text = "${economyPolicy.blueVerificationValidDays}-day plan",
                                     fontSize = 11.sp,
                                     color = textSecondary
                                 )
@@ -296,7 +296,7 @@ fun GetVerifiedSheet(
                         )
                         VerificationFeatureItem(
                             icon = Icons.Default.WorkspacePremium,
-                            text = "Renewable every ${economyPolicy.blueVerificationDurationDays} days — it does not claim real-world identity verification",
+                            text = "Renewable every ${economyPolicy.blueVerificationValidDays} days — it does not claim real-world identity verification",
                             isDark = isDark
                         )
 
@@ -308,7 +308,7 @@ fun GetVerifiedSheet(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
-                                    text = "✓ Active • renew to extend by ${economyPolicy.blueVerificationDurationDays} days",
+                                    text = "✓ Active • renew to extend by ${economyPolicy.blueVerificationValidDays} days",
                                     color = BlinkBlue,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
@@ -611,7 +611,7 @@ fun GetVerifiedSheet(
                                 if (isGoldActive) {
                                     "Gold Verification is already active on this account."
                                 } else if (isBlueActive) {
-                                    "Your BLINK Verified badge is active. Renewing adds another ${economyPolicy.blueVerificationDurationDays} days without losing remaining time."
+                                    "Your BLINK Verified badge is active. Renewing adds another ${economyPolicy.blueVerificationValidDays} days without losing remaining time."
                                 } else {
                                     "Earn coins with rewarded ads or buy a coin pack. Paying ₦${economyPolicy.blueVerificationCashNgn} is the faster cash route once secure checkout is enabled."
                                 },
@@ -662,7 +662,7 @@ fun GetVerifiedSheet(
                                 Text(
                                     when {
                                         isGoldActive -> "Gold Verification Active"
-                                        isBlueActive && remaining == 0L -> "Renew +${economyPolicy.blueVerificationDurationDays} days • $verificationCost coins"
+                                        isBlueActive && remaining == 0L -> "Renew +${economyPolicy.blueVerificationValidDays} days • $verificationCost coins"
                                         remaining == 0L -> "Use $verificationCost coins"
                                         else -> "Need $remaining more coins"
                                     },
