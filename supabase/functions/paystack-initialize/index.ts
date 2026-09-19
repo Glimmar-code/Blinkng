@@ -114,11 +114,11 @@ Deno.serve(async (req: Request) => {
 
   const paystackBody = {
     email: user.email,
-    amount: amountNgn * 100,
+    amount: String(amountNgn * 100),
     currency,
     reference,
     callback_url: callbackUrl,
-    metadata,
+    metadata: JSON.stringify(metadata),
   };
 
   const response = await fetch("https://api.paystack.co/transaction/initialize", {
