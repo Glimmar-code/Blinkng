@@ -303,7 +303,18 @@ class AuthRepository(private val context: Context, private val supabaseService: 
             profile.email.value.ifBlank { profile.username }
         )
         AccountSessionStore.setSignInRequired(context.applicationContext, false)
-        AccountSessionStore.recordCurrentSession(context.applicationContext, profile.id, profile.username, profile.fullName, profile.email.value, profile.avatarUrl)
-        BlinkFirebaseMessagingService.syncCurrentToken(context.applicationContext)
+        runCatching {
+            AccountSessionStore.recordCurrentSession(
+                context.applicationContext,
+                profile.id,
+                profile.username,
+                profile.fullName,
+                profile.email.value,
+                profile.avatarUrl
+            )
+        }.onFailure { Log.w("AuthRepository", "Unable to update recent-account history", it) }
+        runCatching {
+            BlinkFirebaseMessagingService.syncCurrentToken(context.applicationContext)
+        }.onFailure { Log.w("AuthRepository", "Unable to sync FCM token after sign-in", it) }
     }
 }
