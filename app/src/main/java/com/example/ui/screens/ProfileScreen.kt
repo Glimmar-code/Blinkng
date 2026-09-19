@@ -68,6 +68,9 @@ import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.components.BlinkPremiumAvatarFrame
 import com.example.ui.components.BlinkPremiumProfileSurface
 import com.example.ui.components.rememberBlinkPublicPremiumIdentity
+import com.example.ui.components.BlinkPremiumAvatarFrame
+import com.example.ui.components.BlinkPremiumProfileSurface
+import com.example.ui.components.rememberBlinkPublicPremiumIdentity
 import com.example.ui.theme.*
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
@@ -114,6 +117,8 @@ fun ProfileScreen(
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit = {},
     onProfileClick: (String) -> Unit,
+    economyPolicy: BlinkEconomyPolicy = BlinkEconomyDefaults.policy,
+    rewardedAdsToday: Int = 0,
     onMarketItemClick: (MarketItem) -> Unit,
     onOpenGetVerified: () -> Unit = {},
     blinkCoinBalance: Long = 0L,
@@ -133,10 +138,10 @@ fun ProfileScreen(
     val overlayScope = rememberCoroutineScope()
     val overlayThresholdPx = with(LocalDensity.current) { 88.dp.toPx() }
     var showShareSheet by rememberSaveable { mutableStateOf(false) }
+    var showProgressHub by rememberSaveable { mutableStateOf(false) }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
-    var showProgressHub by rememberSaveable { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
 
     LaunchedEffect(profile.id, isMe) {
@@ -161,9 +166,6 @@ fun ProfileScreen(
     val bgColor = if (isDark) DarkBackground else LightBackground
     val cardBg = if (isDark) DarkSurface else LightSurface
     val textPrimary = if (isDark) Color.White else LightTextPrimary
-    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
-    val borderColor = if (isDark) DarkBorder else LightBorder
-
     if (showProgressHub && isMe) {
         ProgressHubSheet(
             profile = profile,
@@ -172,8 +174,15 @@ fun ProfileScreen(
         )
     }
 
+    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
+    val borderColor = if (isDark) DarkBorder else LightBorder
+
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
+    val premiumIdentity by rememberBlinkPublicPremiumIdentity(
+        username = profile.username,
+        knownVip = profile.isBlinkVip,
+    )
     val scrollState = rememberLazyListState()
 
     val profileCompletion = remember(profile) { calculateProfileCompletion(profile) }
@@ -401,12 +410,18 @@ fun ProfileScreen(
                                 }
                             }
                         }
-                    }
+                    BlinkPremiumProfileSurface(
+                        identity = premiumIdentity,
                 }
 
-                // ============================================================
+                            .padding(horizontal = 10.dp)
                 // IDENTITY — staggered entrance
                 // ============================================================
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 14.dp)
+                        ) {
                 item(key = "identity") {
                     BlinkPremiumProfileSurface(
                         identity = premiumIdentity,
@@ -421,32 +436,37 @@ fun ProfileScreen(
                                 .padding(horizontal = 14.dp, vertical = 14.dp)
                         ) {
 
-                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-
-                            EntranceItem(visible = contentVisible, delayMillis = 0) {
-                                Box(modifier = Modifier.size(100.dp)) {
-                                    val avatarScale by animateFloatAsState(
-                                        targetValue = if (contentVisible) 1f else 0.6f,
-                                        animationSpec = spring(
+                                    BlinkPremiumAvatarFrame(
+                                        identity = premiumIdentity,
+                                        size = 100.dp,
+                                        modifier = Modifier.scale(avatarScale),
                                             dampingRatio = Spring.DampingRatioMediumBouncy,
                                             stiffness = Spring.StiffnessLow
                                         ),
                                         label = "avatarScale"
                                     )
-
+                                                .background(BlinkPink.copy(alpha = glowAlpha))
                                     BlinkPremiumAvatarFrame(
                                         identity = premiumIdentity,
-                                        size = 100.dp,
-                                        modifier = Modifier.scale(avatarScale),
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
+                                            Box(
                                                 .clip(CircleShape)
                                                 .background(BlinkPink.copy(alpha = glowAlpha))
                                                 .padding(3.dp)
-                                        ) {
-                                            Box(
+                                                    .background(bgColor)
+                                                    .padding(3.dp)
+                                            ) {
+                                                AsyncImage(
+                                                    model = profile.avatarUrl,
+                                                    error = painterResource(R.drawable.ic_default_profile),
+                                                    fallback = painterResource(R.drawable.ic_default_profile),
+                                                    contentDescription = "Profile picture",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .clip(CircleShape)
+                                                        .clickable { showAvatarViewer = true }
+                                                )
+                                            }
                                                 modifier = Modifier
                                                     .fillMaxSize()
                                                     .clip(CircleShape)
@@ -717,6 +737,16 @@ fun ProfileScreen(
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(profileRankLabel(profile.campusRank), fontSize = 16.sp, fontWeight = FontWeight.Black, color = BlinkGold)
                                     }
+                        ProfileXpProgressCard(
+                            profile = profile,
+                            cardBg = cardBg,
+                            borderColor = borderColor,
+                            textPrimary = textPrimary,
+                            textSecondary = textSecondary
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
                                     Text("Campus Rank", fontSize = 9.5.sp, color = textSecondary)
                                 }
 
@@ -814,6 +844,7 @@ fun ProfileScreen(
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text("Blink Coin", fontSize = 13.sp, fontWeight = FontWeight.Black, color = textPrimary)
                                         Text(
+                    }
                                             "$blinkCoinBalance coins • Private",
                                             fontSize = 10.sp,
                                             color = textSecondary
@@ -831,6 +862,16 @@ fun ProfileScreen(
                                 }
                             }
                         }
+                if (isMe) {
+                    item(key = "progress_hub_entry") {
+                        ProgressHubEntryCard(
+                            profile = profile,
+                            onClick = { showProgressHub = true },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp),
+                        )
+                    }
+                }
+
                     }
                     }
                 }
@@ -848,16 +889,6 @@ fun ProfileScreen(
                         borderColor = borderColor,
                         onVerify = onOpenGetVerified
                     )
-                }
-
-                if (isMe) {
-                    item(key = "progress_hub_entry") {
-                        ProgressHubEntryCard(
-                            profile = profile,
-                            onClick = { showProgressHub = true },
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp),
-                        )
-                    }
                 }
 
                 // ============================================================
@@ -1020,23 +1051,57 @@ fun ProfileScreen(
     // ================================================================
     if (showAvatarViewer) {
         AlertDialog(
-            onDismissRequest = { showAvatarViewer = false },
+    // EARN BLINK COIN — server-controlled rewarded economy
             confirmButton = {},
             text = {
+        val canWatchRewardedAd = economyPolicy.canWatchRewardedAd(rewardedAdsToday)
+        val nextAdNumber = (rewardedAdsToday + 1).coerceAtMost(economyPolicy.rewardedAdDailyLimit)
+        val nextReward = economyPolicy.rewardForCompletedAd(nextAdNumber)
+
                 AsyncImage(
                     model = profile.avatarUrl,
-                    error = painterResource(R.drawable.ic_default_profile),
+            title = { Text("Earn Blink Coins", fontWeight = FontWeight.Black) },
                     fallback = painterResource(R.drawable.ic_default_profile),
                     contentDescription = "Full profile picture",
+                    Text(
+                        "$rewardedAdsToday / ${economyPolicy.rewardedAdDailyLimit} rewarded ads today",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        economyPolicy.rewardedMilestones.forEach { milestone ->
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (rewardedAdsToday >= milestone.ads) {
+                                    Color(0xFF16A34A).copy(alpha = 0.12f)
+                                } else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text("${milestone.ads} ads", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text("${milestone.totalCoins} coins", fontSize = 9.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(1f)
+                            .clickable(enabled = canWatchRewardedAd) {
                         .clip(CircleShape)
                 )
             }
         )
-    }
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (canWatchRewardedAd) 0.72f else 0.35f)
 
     // ================================================================
     // EARN BLINK COIN — server-controlled rewarded economy
@@ -1049,8 +1114,42 @@ fun ProfileScreen(
         AlertDialog(
             onDismissRequest = { showEarnCoinDialog = false },
             title = { Text("Earn Blink Coins", fontWeight = FontWeight.Black) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(
+                                    if (canWatchRewardedAd) "Watch rewarded ad • +$nextReward coins" else "Daily ad limit reached",
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    if (canWatchRewardedAd) {
+                                        "Base reward is ${economyPolicy.rewardedAdBaseCoins}; milestone ads include the bonus automatically."
+                                    } else {
+                                        "Come back after the daily counter resets."
+                                    },
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showEarnCoinDialog = false
+                                onOpenGetVerified()
+                            },
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(13.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = BlinkBlue)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("Daily missions", fontWeight = FontWeight.Bold)
+                                Text("Build XP and earn up to 20 Blink Coins per day", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
                         "$rewardedAdsToday / ${economyPolicy.rewardedAdDailyLimit} rewarded ads today",
                         fontSize = 11.sp,
@@ -1112,8 +1211,12 @@ fun ProfileScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                        }
-                    }
+                                Text("Buy Blink Coins", fontWeight = FontWeight.Bold)
+                                Text(
+                                    economyPolicy.coinPacks.joinToString("  •  ") { "₦${it.priceNgn} → ${it.coins}" },
+                                    fontSize = 9.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
 
                     Surface(
                         modifier = Modifier
@@ -1492,9 +1595,9 @@ private fun TrustBanner(
             1.dp,
             when (profile.verificationBadge) {
                 VerificationBadge.GOLD -> BlinkGold
-                VerificationBadge.BLUE -> BlinkBlue
-                VerificationBadge.NONE -> borderColor
-            }.copy(alpha = if (verified) 0.55f else 1f)
+                        profile.verificationBadge == VerificationBadge.GOLD -> "Gold BLINK status"
+                        profile.verificationBadge == VerificationBadge.BLUE -> "BLINK Verified"
+                        else -> "Unlock BLINK Verified"
         )
     ) {
         Row(
@@ -1503,9 +1606,9 @@ private fun TrustBanner(
         ) {
             VerifiedMark(
                 badge = if (verified) profile.verificationBadge else VerificationBadge.BLUE,
-                size = 28.dp
+                        "Premium BLINK status is active on this profile."
             )
-
+                        "Earn coins or use the secure cash route when available."
             Spacer(modifier = Modifier.width(10.dp))
 
             Column(modifier = Modifier.weight(1f)) {
@@ -2254,6 +2357,78 @@ private fun calculateProfileCompletion(profile: UserProfile): Int {
         profile.email.value.isNotBlank(),
         profile.phone.value.isNotBlank(),
         profile.links.website.isNotBlank(),
+
+
+@Composable
+private fun ProfileXpProgressCard(
+    profile: UserProfile,
+    cardBg: Color,
+    borderColor: Color,
+    textPrimary: Color,
+    textSecondary: Color
+) {
+    val progress = remember(profile.totalXp, profile.xpLevel) {
+        xpProgress(profile.totalXp, profile.xpLevel)
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = cardBg,
+        border = BorderStroke(1.dp, borderColor)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(100.dp), color = BlinkPurple.copy(alpha = 0.14f)) {
+                    Text(
+                        text = "LV. ${progress.level}",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        color = BlinkPurple,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+                Spacer(modifier = Modifier.width(9.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = progress.tierLabel.uppercase(), color = textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                    Text(text = "${progress.totalXp} XP", color = textSecondary, fontSize = 10.sp)
+                }
+                if (progress.level < 100) {
+                    Text(
+                        text = "${progress.xpToNextLevel} XP to Lv. ${progress.level + 1}",
+                        color = textSecondary,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                } else {
+                    Text(text = "MAX LEVEL", color = BlinkGold, fontSize = 9.5.sp, fontWeight = FontWeight.Black)
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Box(
+                modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(100.dp)).background(borderColor)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress.progressFraction)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(100.dp))
+                        .background(Brush.horizontalGradient(listOf(BlinkPink, BlinkPurple, BlinkBlue)))
+                )
+            }
+            Spacer(modifier = Modifier.height(7.dp))
+            Text(
+                text = if (progress.level >= 100) {
+                    "Long-term BLINK progression complete"
+                } else {
+                    "${progress.xpIntoLevel} / ${progress.xpForLevel} XP in this level"
+                },
+                color = textSecondary,
+                fontSize = 9.5.sp
+            )
+        }
+    }
+}
         profile.links.linkedin.isNotBlank()
     )
 
