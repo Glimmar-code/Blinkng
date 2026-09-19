@@ -86,6 +86,8 @@ import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import com.blinkng.shared.xpProgress
 import kotlinx.coroutines.launch
+import java.awt.Desktop
+import java.net.URI
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -697,6 +699,9 @@ fun ProfileScreen(state: DesktopAppState) {
     var missionsPayload by remember { mutableStateOf<JSONObject?>(null) }
     var economyMessage by remember { mutableStateOf<String?>(null) }
     var economyBusy by remember { mutableStateOf(false) }
+    var cashCheckoutBusy by remember { mutableStateOf(false) }
+    var showCoinPacks by remember { mutableStateOf(false) }
+    var pendingPaystackOrderId by remember { mutableStateOf<String?>(null) }
     var missionBusyKey by remember { mutableStateOf<String?>(null) }
     var premiumCatalogIds by remember(profile?.username) { mutableStateOf<List<String>>(emptyList()) }
     var premiumIsVip by remember(profile?.username) { mutableStateOf(profile?.isBlinkVip == true) }
@@ -704,6 +709,18 @@ fun ProfileScreen(state: DesktopAppState) {
     suspend fun reloadRewards() {
         economyPayload = runCatching { actions.getEconomyStatus() }.getOrNull()
         missionsPayload = runCatching { actions.getDailyMissions() }.getOrNull()
+    }
+
+    fun openHostedPaystackCheckout(payload: JSONObject) {
+        val orderId = payload.optString("order_id").trim()
+        val authorizationUrl = payload.optString("authorization_url").trim()
+        if (orderId.isBlank() || authorizationUrl.isBlank()) {
+            throw IllegalStateException("Paystack did not return a complete checkout session.")
+        }
+        require(Desktop.isDesktopSupported()) { "The default browser is unavailable." }
+        Desktop.getDesktop().browse(URI(authorizationUrl))
+        pendingPaystackOrderId = orderId
+        economyMessage = "Complete the secure Paystack checkout in your browser, then check the payment here."
     }
 
     LaunchedEffect(profile?.id) {
@@ -856,7 +873,7 @@ fun ProfileScreen(state: DesktopAppState) {
                             if (profile.isVerified) {
                                 "Your BLINK Verified status is active across supported identity surfaces."
                             } else {
-                                "Use ${policy.blueVerificationCoinCost} Blink Coins, or ₦${policy.blueVerificationCashNgn} through secure cash checkout when it is enabled."
+                                "Use ${policy.blueVerificationCoinCost} Blink Coins, or ₦${policy.blueVerificationCashNgn} for ${policy.blueVerificationValidDays} days through secure Paystack checkout."
                             },
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -887,6 +904,96 @@ fun ProfileScreen(state: DesktopAppState) {
                                     else "Need $remaining more coins",
                                     fontWeight = FontWeight.Bold,
                                 )
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    cashCheckoutBusy = true
+                                    economyMessage = null
+                                    scope.launch {
+                                        runCatching { state.client.initializePaystackVerificationCheckout() }
+                                            .onSuccess { payload ->
+                                                runCatching { openHostedPaystackCheckout(payload) }
+                                                    .onFailure { economyMessage = it.message ?: "Could not open Paystack checkout." }
+                                            }
+                                            .onFailure { economyMessage = it.message ?: "Could not start secure Paystack checkout." }
+                                        cashCheckoutBusy = false
+                                    }
+                                },
+                                enabled = !cashCheckoutBusy && policy.cashCheckoutEnabled,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    if (policy.cashCheckoutEnabled) "Pay ₦${policy.blueVerificationCashNgn} securely • ${policy.blueVerificationValidDays} days"
+                                    else "Paystack cash checkout is not live yet",
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+
+                        OutlinedButton(
+                            onClick = { showCoinPacks = !showCoinPacks },
+                            enabled = !cashCheckoutBusy && policy.cashCheckoutEnabled,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(if (showCoinPacks) "Hide Blink Coin packs" else "Buy Blink Coins with Paystack")
+                        }
+
+                        AnimatedVisibility(visible = showCoinPacks && policy.cashCheckoutEnabled) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                policy.coinPacks.forEach { pack ->
+                                    OutlinedButton(
+                                        onClick = {
+                                            cashCheckoutBusy = true
+                                            economyMessage = null
+                                            scope.launch {
+                                                runCatching { state.client.initializePaystackCoinCheckout(pack.id) }
+                                                    .onSuccess { payload ->
+                                                        runCatching { openHostedPaystackCheckout(payload) }
+                                                            .onSuccess { showCoinPacks = false }
+                                                            .onFailure { economyMessage = it.message ?: "Could not open Paystack checkout." }
+                                                    }
+                                                    .onFailure { economyMessage = it.message ?: "Could not start secure Paystack checkout." }
+                                                cashCheckoutBusy = false
+                                            }
+                                        },
+                                        enabled = !cashCheckoutBusy,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text(
+                                            "₦${pack.priceNgn} → ${pack.coins} coins" +
+                                                if (pack.bonusCoins > 0) " (+${pack.bonusCoins} bonus)" else ""
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        pendingPaystackOrderId?.let { orderId ->
+                            OutlinedButton(
+                                onClick = {
+                                    cashCheckoutBusy = true
+                                    economyMessage = null
+                                    scope.launch {
+                                        runCatching { state.client.verifyPaystackCashOrder(orderId) }
+                                            .onSuccess { payload ->
+                                                if (payload.optString("status").equals("fulfilled", ignoreCase = true)) {
+                                                    pendingPaystackOrderId = null
+                                                    reloadRewards()
+                                                    state.refreshProfile()
+                                                    economyMessage = "Payment confirmed. Your BLINK purchase is ready."
+                                                } else {
+                                                    economyMessage = "Paystack has not confirmed this payment yet."
+                                                }
+                                            }
+                                            .onFailure { economyMessage = it.message ?: "Could not verify the Paystack payment yet." }
+                                        cashCheckoutBusy = false
+                                    }
+                                },
+                                enabled = !cashCheckoutBusy,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(if (cashCheckoutBusy) "Checking…" else "Check Paystack payment")
                             }
                         }
 
@@ -1262,6 +1369,7 @@ private fun parseDesktopEconomyPolicy(payload: JSONObject?): BlinkEconomyPolicy 
         rewardedMilestones = milestones,
         blueVerificationCashNgn = payload.optInt("blue_verification_cash_ngn", fallback.blueVerificationCashNgn).coerceAtLeast(1),
         blueVerificationCoinCost = payload.optInt("blue_verification_coin_cost", fallback.blueVerificationCoinCost).coerceAtLeast(1),
+        blueVerificationValidDays = payload.optInt("blue_verification_valid_days", fallback.blueVerificationValidDays).coerceIn(1, 366),
         coinPacks = packs,
         cashCheckoutEnabled = payload.optBoolean("cash_checkout_enabled", fallback.cashCheckoutEnabled),
     )
