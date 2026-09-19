@@ -48,7 +48,6 @@ fun BlinkAuthScreen(state: DesktopAppState) {
     var mode by remember { mutableStateOf(AuthMode.SIGN_IN) }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
     var notice by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -112,15 +111,6 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                         colors = authFieldColors,
                         label = { Text("Full name") },
                     )
-                    OutlinedTextField(
-                        value = username,
-                        onValueChange = { username = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        colors = authFieldColors,
-                        label = { Text("Username") },
-                        prefix = { Text("@") },
-                    )
                 }
 
                 OutlinedTextField(
@@ -159,7 +149,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                             runCatching {
                                 when (mode) {
                                     AuthMode.SIGN_IN -> state.signIn(email, password)
-                                    AuthMode.SIGN_UP -> state.signUp(email, password, username, fullName)
+                                    AuthMode.SIGN_UP -> state.signUp(email, password, fullName)
                                     AuthMode.RESET -> {
                                         state.sendPasswordReset(email)
                                         notice = "Password reset email sent. Check your inbox."
