@@ -3322,6 +3322,17 @@ private suspend fun restoreSupabaseSession() {
             persistExtendedCache()
         }
 
+        // Standard social events now have authoritative rows in public.notifications.
+        // Keep the legacy activity row in the timeline as a compatibility fallback, but
+        // let the canonical notification realtime event own foreground delivery.
+        if (normalizedType in setOf(
+                "LIKE", "LIKES", "COMMENT", "COMMENTS", "REPLY", "MENTION",
+                "FOLLOW", "REPOST", "SAVE", "BOOKMARK"
+            )
+        ) {
+            return
+        }
+
         val wireType = when (normalizedType) {
             "LIKES" -> "like"
             "COMMENTS" -> "comment"
@@ -3361,6 +3372,8 @@ private suspend fun restoreSupabaseSession() {
                 senderAvatar = actorProfile?.avatarUrl.orEmpty(),
                 postId = postId,
                 marketId = marketId,
+                targetType = entityType.takeIf { it.isNotBlank() },
+                targetId = event.entityId.takeIf { it.isNotBlank() },
                 activity = activity
             )
         )
@@ -3463,6 +3476,7 @@ private suspend fun restoreSupabaseSession() {
             BlinkInAppNotification(
                 key = "social:" + normalizedType.ifBlank { "social" } + ":" +
                     event.actorId + ":" + targetKey,
+                notificationId = event.id,
                 title = title,
                 body = event.subText.ifBlank {
                     actorUsername.takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty()
@@ -3474,6 +3488,8 @@ private suspend fun restoreSupabaseSession() {
                 senderAvatar = actorProfile?.avatarUrl.orEmpty(),
                 postId = targetPostId,
                 marketId = targetMarketId,
+                targetType = targetType,
+                targetId = event.targetId.takeIf { it.isNotBlank() },
                 activity = activity
             )
         )
@@ -3926,7 +3942,14 @@ private suspend fun restoreSupabaseSession() {
             }
         )
         viewModelScope.launch {
-            runCatching { supabaseService.markActivityRead(activity.id) }
+            val synced = runCatching { supabaseService.markActivityRead(activity.id) }.getOrDefault(false)
+            if (!synced) {
+                _uiState.value = _uiState.value.copy(
+                    activities = _uiState.value.activities.map {
+                        if (it.id == activity.id) it.copy(isUnread = true) else it
+                    }
+                )
+            }
         }
 
         if (activity.targetType.equals("CHAT", ignoreCase = true)) {
@@ -3964,15 +3987,20 @@ private suspend fun restoreSupabaseSession() {
 
         activity.targetPostId?.let { postId ->
             val target = (_uiState.value.posts + _uiState.value.reels).find { it.id == postId }
-            if (target != null) {
-                _uiState.value = _uiState.value.copy(
-                    selectedTab = MainTab.HOME,
-                    feedSubTab = if (target.isReel) 1 else 0,
-                    routedReelId = target.id.takeIf { target.isReel }
+            val isReel = activity.targetType.equals("reel", ignoreCase = true) || target?.isReel == true
+            _uiState.value = _uiState.value.copy(
+                selectedTab = MainTab.HOME,
+                feedSubTab = if (isReel) 1 else 0,
+                routedReelId = postId.takeIf { isReel }
+            )
+            handleDeepLink(
+                AppDeepLink(
+                    type = if (isReel) ShareContentType.REEL else ShareContentType.POST,
+                    id = postId
                 )
-                if (activity.category == NotificationFilter.COMMENTS) {
-                    openCommentsForPost(target.id)
-                }
+            )
+            if (activity.category == NotificationFilter.COMMENTS && target != null) {
+                openCommentsForPost(postId)
             }
             return
         }
@@ -3990,13 +4018,19 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun markAllActivitiesRead() {
-        if (_uiState.value.activities.none { it.isUnread }) return
+        val unreadIds = _uiState.value.activities.filter { it.isUnread }.mapTo(hashSetOf()) { it.id }
+        if (unreadIds.isEmpty()) return
         _uiState.value = _uiState.value.copy(
             activities = _uiState.value.activities.map { it.copy(isUnread = false) }
         )
         viewModelScope.launch {
             val success = runCatching { supabaseService.markAllActivitiesRead() }.getOrDefault(false)
             if (!success) {
+                _uiState.value = _uiState.value.copy(
+                    activities = _uiState.value.activities.map {
+                        if (it.id in unreadIds) it.copy(isUnread = true) else it
+                    }
+                )
                 showToast("Couldn't sync notification read status.")
             }
         }
