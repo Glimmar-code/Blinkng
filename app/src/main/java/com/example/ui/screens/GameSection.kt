@@ -517,7 +517,11 @@ fun GameSection(
                                         "I scored ${r.score} points in ${selectedMode.label} on Blink — ${r.correctCount}/${r.questions.size} correct."
                                     )
                                 }
-                                context.startActivity(Intent.createChooser(share, "Share Blink game result"))
+                                com.example.util.startActivitySafely(
+                                    context,
+                                    Intent.createChooser(share, "Share Blink game result"),
+                                    "No compatible app is available to share this result."
+                                )
                             }
                         )
                     }
@@ -527,7 +531,7 @@ fun GameSection(
                         QuestionCard(
                             question = currentQuestion,
                             questionNumber = currentQuestionIndex + 1,
-                            totalQuestions = round!!.questions.size,
+                            totalQuestions = round?.questions?.size ?: 0,
                             remainingSeconds = remainingSeconds,
                             memoryPreviewVisible = memoryPreviewVisible,
                             selectedIndex = selectedOptionIndex,
@@ -540,11 +544,13 @@ fun GameSection(
                                 val q = currentQuestion
                                 scope.launch {
                                     repository.toggleSavedQuestion(q.id).onSuccess { saved ->
-                                        round = round?.copy(
-                                            questions = round!!.questions.map {
-                                                if (it.id == q.id) it.copy(saved = saved) else it
-                                            }
-                                        )
+                                        round = round?.let { latestRound ->
+                                            latestRound.copy(
+                                                questions = latestRound.questions.map {
+                                                    if (it.id == q.id) it.copy(saved = saved) else it
+                                                }
+                                            )
+                                        }
                                     }.onFailure { errorMessage = it.message }
                                 }
                             },
