@@ -14,6 +14,7 @@ import com.example.data.models.UserProfile
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
 import com.example.notification.BlinkFirebaseMessagingService
+import com.example.util.safeString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -264,8 +265,8 @@ class AuthRepository(private val context: Context, private val supabaseService: 
 
     suspend fun signOut() {
         val currentUserId = supabaseService.getCurrentUserId()
-        val rememberedIdentifier = prefs.getString("email", "").orEmpty()
-            .ifBlank { prefs.getString("username", "").orEmpty() }
+        val rememberedIdentifier = prefs.safeString("email", "").orEmpty()
+            .ifBlank { prefs.safeString("username", "").orEmpty() }
         AccountSessionStore.rememberIdentifier(context.applicationContext, rememberedIdentifier)
         AccountSessionStore.setSignInRequired(context.applicationContext, true)
 
