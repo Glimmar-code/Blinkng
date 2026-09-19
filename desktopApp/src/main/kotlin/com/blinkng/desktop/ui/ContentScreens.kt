@@ -159,7 +159,18 @@ fun HomeScreen(
                             Spacer(Modifier.width(6.dp))
                             Text("Post")
                         }
-                        OutlinedButton(onClick = { scope.launch { reload() } }) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    reload()
+                                    if (listState.firstVisibleItemIndex <= 10) {
+                                        listState.animateScrollToItem(0)
+                                    } else {
+                                        listState.scrollToItem(0)
+                                    }
+                                }
+                            }
+                        ) {
                             Icon(Icons.Rounded.Refresh, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
                             Text("Refresh")
