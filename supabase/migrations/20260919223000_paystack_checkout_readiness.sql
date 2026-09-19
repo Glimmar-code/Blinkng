@@ -112,6 +112,73 @@ $;
 revoke all on function public.purchase_blink_blue_verification_with_coins() from public, anon;
 grant execute on function public.purchase_blink_blue_verification_with_coins() to authenticated;
 
+create or replace function public.get_blink_economy_status()
+returns jsonb
+language plpgsql
+stable security definer
+set search_path = ''
+as $
+declare
+  v_user uuid := auth.uid();
+  v_base integer;
+  v_limit integer;
+  v_cash integer;
+  v_verify_coins integer;
+  v_valid_days integer;
+  v_cash_enabled boolean;
+  v_milestones jsonb;
+  v_packs jsonb;
+  v_ads_today integer;
+  v_earned_today bigint;
+  v_balance bigint;
+begin
+  if v_user is null then raise exception 'AUTH_REQUIRED'; end if;
+
+  select coalesce(int_value,10)::integer into v_base
+    from private.blink_economy_config where key='rewarded_ad_base_coins';
+  select coalesce(int_value,15)::integer into v_limit
+    from private.blink_economy_config where key='rewarded_ad_daily_limit';
+  select coalesce(int_value,800)::integer into v_cash
+    from private.blink_economy_config where key='blue_verification_cash_ngn';
+  select coalesce(int_value,3000)::integer into v_verify_coins
+    from private.blink_economy_config where key='blue_verification_coin_cost';
+  select coalesce(int_value,30)::integer into v_valid_days
+    from private.blink_economy_config where key='blue_verification_valid_days';
+  select coalesce(bool_value,false) into v_cash_enabled
+    from private.blink_economy_config where key='cash_checkout_enabled';
+  select coalesce(json_value,'[]'::jsonb) into v_milestones
+    from private.blink_economy_config where key='rewarded_milestones';
+  select coalesce(json_value,'[]'::jsonb) into v_packs
+    from private.blink_economy_config where key='coin_packs';
+
+  select count(*)::integer,coalesce(sum(credited_amount),0)::bigint
+    into v_ads_today,v_earned_today
+    from public.blink_rewarded_ad_claims
+   where user_id=v_user
+     and rewarded_at >= date_trunc('day',now() at time zone 'UTC') at time zone 'UTC';
+
+  select coalesce(floor(spendable_coin_balance),0)::bigint into v_balance
+    from public.user_balances where user_id=v_user;
+
+  return jsonb_build_object(
+    'rewarded_ad_base_coins',coalesce(v_base,10),
+    'rewarded_ad_daily_limit',coalesce(v_limit,15),
+    'rewarded_milestones',coalesce(v_milestones,'[]'::jsonb),
+    'blue_verification_cash_ngn',coalesce(v_cash,800),
+    'blue_verification_coin_cost',coalesce(v_verify_coins,3000),
+    'blue_verification_valid_days',coalesce(v_valid_days,30),
+    'coin_packs',coalesce(v_packs,'[]'::jsonb),
+    'cash_checkout_enabled',coalesce(v_cash_enabled,false),
+    'ads_today',coalesce(v_ads_today,0),
+    'coins_earned_from_ads_today',coalesce(v_earned_today,0),
+    'balance',coalesce(v_balance,0)
+  );
+end
+$;
+
+revoke all on function public.get_blink_economy_status() from public, anon;
+grant execute on function public.get_blink_economy_status() to authenticated;
+
 create table if not exists public.blink_verification_purchase_orders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
