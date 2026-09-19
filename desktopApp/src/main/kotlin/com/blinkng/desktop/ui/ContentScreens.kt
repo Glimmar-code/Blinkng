@@ -76,6 +76,7 @@ import com.blinkng.desktop.data.DesktopNotification
 import com.blinkng.desktop.data.DesktopSearchResults
 import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
+import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -160,6 +161,9 @@ fun HomeScreen(state: DesktopAppState) {
                     }
                 },
                 onComments = { commentsFor = if (commentsFor == post.id) null else post.id },
+                onCopyLink = {
+                    DesktopShareLinkManager.copyToClipboard(post.id, post.isReel)
+                },
             )
             if (commentsFor == post.id) CommentsPanel(state, post.id)
         }
@@ -256,6 +260,15 @@ fun ReelsScreen(state: DesktopAppState) {
                         }
                     }
                     Text("${reel.viewCount} views • ${reel.likeCount} likes • ${reel.commentCount} comments", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedButton(
+                        onClick = {
+                            DesktopShareLinkManager.copyToClipboard(reel.id, isReel = true)
+                        },
+                    ) {
+                        Icon(Icons.Rounded.Link, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Copy link")
+                    }
                 }
             }
         }
@@ -330,7 +343,16 @@ fun SearchScreen(state: DesktopAppState) {
         }
         if (results.posts.isNotEmpty()) {
             item { SectionTitle("Posts") }
-            items(results.posts, key = { "post-${it.id}" }) { PostCard(it, {}, {}) }
+            items(results.posts, key = { "post-${it.id}" }) { post ->
+                PostCard(
+                    post = post,
+                    onLike = {},
+                    onComments = {},
+                    onCopyLink = {
+                        DesktopShareLinkManager.copyToClipboard(post.id, post.isReel)
+                    },
+                )
+            }
         }
         if (!loading && query.isNotBlank() && results.profiles.isEmpty() && results.posts.isEmpty()) {
             item { EmptyState("No results for “$query”.") }
@@ -779,7 +801,12 @@ fun AdminScreen(state: DesktopAppState) {
 }
 
 @Composable
-private fun PostCard(post: DesktopFeedPost, onLike: () -> Unit, onComments: () -> Unit) {
+private fun PostCard(
+    post: DesktopFeedPost,
+    onLike: () -> Unit,
+    onComments: () -> Unit,
+    onCopyLink: () -> Unit,
+) {
     Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
         Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -806,6 +833,9 @@ private fun PostCard(post: DesktopFeedPost, onLike: () -> Unit, onComments: () -
                 Text(post.likeCount.toString(), fontSize = 12.sp)
                 IconButton(onClick = onComments) { Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments") }
                 Text(post.commentCount.toString(), fontSize = 12.sp)
+                IconButton(onClick = onCopyLink) {
+                    Icon(Icons.Rounded.Link, contentDescription = "Copy link")
+                }
                 Spacer(Modifier.weight(1f))
                 Text("${post.viewCount} views", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
