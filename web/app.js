@@ -81,10 +81,10 @@
     const x=known[String(id).toLowerCase()];return x?{id,label:x[0],colors:x.slice(1,4),priority:x[4]}:null;
   }
   function cosmeticVars(c){return c?`--premium-1:${c.colors[0]};--premium-2:${c.colors[1]};--premium-3:${c.colors[2]}`:'';}
-  function premiumCosmetic(id=''){
-    const known={
-      profile_highlight_1h:['AURA','#7c3aed','#ec4899','#f59e0b',92],profile_glow_1h:['NEON','#7c3aed','#ec4899','#2563eb',80],profile_glow_7d:['AURORA','#06b6d4','#7c3aed','#ec4899',96],profile_spotlight_1h:['SPOTLIGHT','#f59e0b','#ec4899','#7c3aed',88],profile_spotlight_24h:['SPOTLIGHT','#f59e0b','#ec4899','#7c3aed',97],birthday_profile_theme:['CELEBRATE','#ec4899','#f59e0b','#06b6d4',86],profile_background:['MIDNIGHT','#111827','#7c3aed','#2563eb',82],profile_theme_3d:['PRISM','#7c3aed','#2563eb','#06b6d4',90],profile_theme_bundle:['SIGNATURE','#2563eb','#7c3aed','#ec4899',94],profile_banner:['BANNER','#111827','#7c3aed','#ec4899',91],profile_particle_effect:['COSMIC','#7c3aed','#06b6d4','#ec4899',93],profile_ring:['CHROME','#2563eb','#7c3aed','#06b6d4',72],animated_profile_ring:['ORBIT','#06b6d4','#7c3aed','#ec4899',88],premium_profile_frame:['PRESTIGE','#f59e0b','#ec4899','#7c3aed',98],avatar_decoration:['AVATAR FX','#ec4899','#7c3aed','#06b6d4',95],username_glow_24h:['LUMINOUS','#7c3aed','#ec4899','#06b6d4',84],username_font:['SIGNATURE','#2563eb','#7c3aed','#ec4899',78],animated_name:['LIVE NAME','#06b6d4','#7c3aed','#ec4899',93],custom_profile_badge:['PREMIUM','#7c3aed','#ec4899','#f59e0b',82],creator_badge:['CREATOR','#f59e0b','#f97316','#ec4899',96],limited_edition_badge:['LIMITED','#f59e0b','#ef4444','#ec4899',99],profile_entrance_animation:['REVEAL','#7c3aed','#ec4899','#2563eb',76],creator_intro_card:['INTRO','#f59e0b','#ec4899','#7c3aed',91],vip_profile_entrance:['VIP','#f59e0b','#7c3aed','#ec4899',100],blink_vip_10d:['VIP','#f59e0b','#7c3aed','#ec4899',100],
-      comment_highlight:['SPOTLIGHT','#ec4899','#7c3aed','#f59e0b',96],comment_color:['AURORA','#7c3aed','#2563eb','#06b6d4',78],comment_entrance_animation:['PREMIERE','#06b6d4','#7c3aed','#ec4899',92],vip_comment_effect:['VIP','#f59e0b','#ec4899','#7c3aed',100]
+
+  function loadSession(){ try { const raw=storageGet(SESSION_KEY,''); if(!raw)return null; const s=JSON.parse(raw); if(!s?.access_token)return null; return s; } catch { return null; } }
+  function saveSession(s){ state.session=s; if(s)storageSet(SESSION_KEY,JSON.stringify(s)); else storageRemove(SESSION_KEY); }
+  function clearSession(){ saveSession(null); state.profile=null; state.following=new Set(); state.notificationsUnread=0; }
   function isExpiredRefreshResponse(status,payload){
     if(![400,401,403].includes(Number(status)))return false;
     const body=(typeof payload==='string'?payload:JSON.stringify(payload||{})).toLowerCase();
@@ -94,22 +94,13 @@
       body.includes('invalid_grant') ||
       body.includes('session_not_found');
   }
-    };
-    const x=known[String(id).toLowerCase()];return x?{id,label:x[0],colors:x.slice(1,4),priority:x[4]}:null;
-  }
-  function cosmeticVars(c){return c?`--premium-1:${c.colors[0]};--premium-2:${c.colors[1]};--premium-3:${c.colors[2]}`:'';}
-
-  function loadSession(){ try { const raw=storageGet(SESSION_KEY,''); if(!raw)return null; const s=JSON.parse(raw); if(!s?.access_token)return null; return s; } catch { return null; } }
-  function saveSession(s){ state.session=s; if(s)storageSet(SESSION_KEY,JSON.stringify(s)); else storageRemove(SESSION_KEY); }
-  function clearSession(){ saveSession(null); state.profile=null; state.following=new Set(); state.notificationsUnread=0; }
 
   async function parseJsonSafe(res){ const text=await res.text(); if(!text)return null; try{return JSON.parse(text);}catch{return text;} }
   function headers(auth=true, extra={}){ const h={apikey:KEY,Accept:'application/json',...extra}; if(auth && token())h.Authorization=`Bearer ${token()}`; else h.Authorization=`Bearer ${KEY}`; return h; }
   async function refreshSession(){
     if (refreshPromise) return refreshPromise;
     const rt=state.session?.refresh_token; if(!rt)return false;
-        const payload=await parseJsonSafe(res);
-        if(isExpiredRefreshResponse(res.status,payload))clearSession();
+    const previousUser=state.session?.user||null;
     refreshPromise=(async()=>{
       const res=await fetchWithTimeout(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,{
         method:'POST',
@@ -117,7 +108,8 @@
         body:JSON.stringify({refresh_token:rt})
       });
       if(!res.ok){
-        if(res.status===400||res.status===401)clearSession();
+        const payload=await parseJsonSafe(res);
+        if(isExpiredRefreshResponse(res.status,payload))clearSession();
         return false;
       }
       const data=await res.json();
@@ -201,20 +193,20 @@
         token_type:hash.get('token_type')||'bearer',
         user:null
       });
+      const next=type==='recovery'?'/settings/password':safeInternalPath(storageGet(OAUTH_NEXT_KEY,''),'/feed');
+      storageRemove(OAUTH_NEXT_KEY);
+      history.replaceState({},'',routeHref(next));
+    }
+    if(!state.session)return;
+    try{
+      const user=await api('/auth/v1/user',{auth:true}); state.session.user=user; saveSession(state.session);
+      await loadMyProfile(); await loadFollowing(); await refreshUnreadCount();
     }catch(e){
       console.warn('session bootstrap',e);
       // Keep a refreshable session through offline/timeout/5xx/profile failures.
       // Confirmed invalid refresh tokens are cleared inside refreshSession().
       if(!state.session?.refresh_token)clearSession();
     }
-      storageRemove(OAUTH_NEXT_KEY);
-      history.replaceState({},'',routeHref(next));
-  async function loadMyProfile(){ if(!uid())return null; const rows=await table('profiles',`id=eq.${encodeQ(uid())}&select=id,username,full_name,avatar_url,cover_photo_url,bio,professional_headline,university,faculty,department,academic_level,posts_count,follower_count,following_count,is_verified,verification_badge,blink_vip_until,daily_streak,points,total_xp,xp_level&limit=1`); state.profile=Array.isArray(rows)?rows[0]||null:null; return state.profile; }
-    if(!state.session)return;
-    try{
-      const user=await api('/auth/v1/user',{auth:true}); state.session.user=user; saveSession(state.session);
-      await loadMyProfile(); await loadFollowing(); await refreshUnreadCount();
-    }catch(e){ console.warn('session bootstrap',e); clearSession(); }
   }
 
   async function loadMyProfile(){ if(!uid())return null; const rows=await table('profiles',`id=eq.${encodeQ(uid())}&select=id,username,full_name,avatar_url,cover_photo_url,bio,professional_headline,university,faculty,department,academic_level,posts_count,follower_count,following_count,is_verified,verification_badge,blink_vip_until,daily_streak,points,total_xp,xp_level&limit=1`); state.profile=Array.isArray(rows)?rows[0]||null:null; return state.profile; }
@@ -588,15 +580,6 @@
     }catch(e){ROOT.innerHTML=shell(`<div class="card empty"><h2>Couldn’t load reels</h2><p>${esc(e.message)}</p></div>`,'Reels');bindCommon();}
   }
 
-      let publicPremium=null;
-      if(isAuthed()){
-        try{
-          const style=await rpc('get_blink_public_premium_style',{p_username:p.username});
-          const cosmetics=(Array.isArray(style?.items)?style.items:[]).map(x=>premiumCosmetic(x.catalog_id)).filter(Boolean);
-          if(style?.is_vip)cosmetics.push(premiumCosmetic('blink_vip_10d'));
-          publicPremium=cosmetics.sort((a,b)=>b.priority-a.priority)[0]||null;
-        }catch{}
-      }
   async function renderPublicProfile(identifier){
     ROOT.innerHTML='<div class="boot"><div class="spinner"></div></div>';
     try{
@@ -607,7 +590,7 @@
       const p=data.profile,items=Array.isArray(data.items)?data.items:[];
       let publicPremium=null;
       if(isAuthed()){
-      const html=`<div class="profile-card card ${publicPremium?'premium-profile-surface':''}" ${publicPremium?`style="${cosmeticVars(publicPremium)}"`:''}><div class="profile-cover">${cover?`<img class="profile-cover-image" src="${esc(cover)}" alt="" loading="lazy">`:''}</div><div class="profile-content"><div class="profile-top">${avatar(p.avatarUrl,p.fullName,'profile-avatar')}<div>${actions}</div></div><div class="profile-info"><h2>${esc(p.fullName||p.username)}${verifyMark(p)}</h2><div class="handle">@${esc(p.username)}</div>${p.headline?`<div class="profile-meta">${esc(p.headline)}</div>`:''}${p.bio?`<p class="profile-bio">${esc(p.bio)}</p>`:''}<div class="profile-meta">${[p.university,p.faculty,p.department].filter(Boolean).map(esc).join(' · ')}</div><div class="stats-grid"><div class="stat"><strong>${fmt(p.postsCount)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.followerCount)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.followingCount)}</strong><span>Following</span></div></div></div></div>${publicPremium?`<span class="premium-profile-signature">${esc(publicPremium.label)}</span>`:''}</div><div class="profile-grid">${tiles}</div>`;
+        try{
           const style=await rpc('get_blink_public_premium_style',{p_username:p.username});
           const cosmetics=(Array.isArray(style?.items)?style.items:[]).map(x=>premiumCosmetic(x.catalog_id)).filter(Boolean);
           if(style?.is_vip)cosmetics.push(premiumCosmetic('blink_vip_10d'));
@@ -636,7 +619,7 @@
           if(following)state.following.delete(p.id);else state.following.add(p.id);
           button.textContent=following?'Follow':'Following';
           toast(following?'Unfollowed':'Following');
-      body.innerHTML=`<div class="comment-list">${(rows||[]).map(comment=>{const cosmetic=premiumCosmetic(comment.premium_style_id);return `<div class="comment ${cosmetic?'premium-comment-surface':''}" ${cosmetic?`style="${cosmeticVars(cosmetic)}"`:''}><div class="meta"><strong>${esc(comment.display_name||comment.username||'Blink user')}</strong> @${esc(comment.username||'')} · ${esc(ago(comment.created_at))}${cosmetic?`<span class="comment-premium-label">${esc(cosmetic.label)}</span>`:''}</div><div>${esc(comment.content)}</div><button type="button" class="btn small-btn ghost" data-reply-comment="${esc(comment.id)}">Reply · ${fmt(comment.likes_count)} likes</button></div>`;}).join('')||'<p class="muted">No comments yet.</p>'}</div><form id="comment-form" class="chat-compose" style="margin-top:12px"><input class="field" name="text" maxlength="2000" placeholder="Write a comment…" required><button type="submit" class="btn primary">Send</button></form>`;
+        }catch(err){toast(err.message);}
         finally{button.disabled=false;}
       });
       document.getElementById('message-profile')?.addEventListener('click',()=>navigate(`/messages/new?user=${encodeURIComponent(p.username)}`));
@@ -886,21 +869,8 @@
 
   async function renderScheduled(){if(!requireAuth())return;ROOT.innerHTML=shell('<div class="spinner"></div>','Scheduled posts');bindCommon();try{const rows=await table('scheduled_feed_posts','select=id,payload,scheduled_for,status,error_message,published_post_id,created_at&order=scheduled_for.desc&limit=100');ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Schedule a post</h3><form id="schedule-form" class="form-stack"><textarea class="field" name="text" placeholder="Post text" required></textarea><input class="field" name="when" type="datetime-local" required><input class="field" name="tags" placeholder="Tags, comma separated"><label class="checkbox"><input type="checkbox" name="reel"> Reel</label><button class="btn primary">Schedule</button><div id="schedule-msg"></div></form></div><div class="list">${(rows||[]).map(s=>`<div class="card schedule-row"><div><strong>${esc((s.payload?.text||'Scheduled post').slice(0,160))}</strong><div class="muted small">${new Date(s.scheduled_for).toLocaleString()} · ${esc(s.status)}</div>${s.error_message?`<div class="error">${esc(s.error_message)}</div>`:''}</div><div class="schedule-actions">${s.status==='pending'||s.status==='failed'?`<button class="btn small-btn" data-publish-scheduled="${esc(s.id)}">Publish now</button><button class="btn danger small-btn" data-cancel-scheduled="${esc(s.id)}">Cancel</button>`:''}</div></div>`).join('')||'<div class="card empty"><h2>No scheduled posts</h2></div>'}</div>`,'Scheduled posts');bindCommon();document.getElementById('schedule-form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.currentTarget),when=new Date(f.get('when'));if(Number.isNaN(when.valueOf())||when<=new Date()){toast('Choose a future time.');return;}const payload={text:String(f.get('text')).trim(),faculty:state.profile?.faculty||'',video_url:null,images:[],tags:String(f.get('tags')||'').split(',').map(x=>x.trim()).filter(Boolean),is_reel:f.get('reel')==='on',audience:'Everyone',category:'Campus Life',location:null,link_url:null,allow_comments:true,hide_likes:false,is_pinned:false,is_disappearing:false,audio_title:null,alt_text:null};try{await rpc('schedule_feed_post',{p_payload:payload,p_scheduled_for:when.toISOString()});toast('Post scheduled');renderScheduled();}catch(err){document.getElementById('schedule-msg').innerHTML=`<div class="error">${esc(err.message)}</div>`;}};document.querySelectorAll('[data-cancel-scheduled]').forEach(x=>x.onclick=async()=>{try{await rpc('cancel_scheduled_feed_post',{p_schedule_id:x.dataset.cancelScheduled});toast('Schedule cancelled');renderScheduled();}catch(e){toast(e.message);}});document.querySelectorAll('[data-publish-scheduled]').forEach(x=>x.onclick=async()=>{try{const id=await rpc('publish_scheduled_feed_post_now',{p_schedule_id:x.dataset.publishScheduled});toast('Published now');if(id)navigate(`/post/${String(id).replace(/"/g,'')}`);else renderScheduled();}catch(e){toast(e.message);}});}catch(e){ROOT.innerHTML=shell(`<div class="error">${esc(e.message)}</div>`,'Scheduled posts');bindCommon();}}
 
-    let missionPayload={missions:[]};
-    try{missionPayload=await rpc('get_my_daily_missions',{})||missionPayload;}catch(err){console.warn('daily missions',err);}
-    const missions=Array.isArray(missionPayload?.missions)?missionPayload.missions:[];
-    const missionHtml=missions.map(m=>{
-      const progress=Math.max(0,Number(m.progress)||0),target=Math.max(1,Number(m.target)||1),pct=Math.min(100,Math.round(progress*100/target));
-      const status=m.claimed?'Claimed':m.claimable?'Claim':'In progress';
-      return `<div class="card" style="padding:12px;margin-top:9px"><div style="display:flex;gap:10px;justify-content:space-between;align-items:flex-start"><div class="grow"><strong>${esc(m.title||'Daily mission')}</strong><div class="muted small">${esc(m.description||'')}</div></div><span class="small"><strong>${Math.min(progress,target)}/${target}</strong></span></div><div style="height:6px;border-radius:99px;overflow:hidden;background:var(--surface-2,#e5e7eb);margin:9px 0"><div style="height:100%;width:${pct}%;background:currentColor"></div></div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span class="muted small">+${fmt(m.coin_reward||0)} coins · +${fmt(m.xp_reward||0)} XP</span><button type="button" class="btn small-btn ${m.claimable?'primary':'ghost'}" data-claim-mission="${esc(m.key||'')}" ${m.claimable?'':'disabled'}>${status}</button></div></div>`;
-    }).join('');
-    ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Edit profile</h3><form id="profile-form" class="form-stack"><div class="form-grid"><input class="field" name="name" maxlength="100" value="${esc(p.full_name||'')}" placeholder="Full name"><input class="field" name="username" maxlength="30" value="${esc(p.username||'')}" placeholder="Username" autocomplete="off"></div><textarea class="field" name="bio" maxlength="500" placeholder="Bio">${esc(p.bio||'')}</textarea><input class="field" name="headline" maxlength="160" value="${esc(p.professional_headline||'')}" placeholder="Professional headline"><div class="form-grid"><input class="field" name="university" maxlength="160" value="${esc(p.university||'')}" placeholder="University"><input class="field" name="faculty" maxlength="120" value="${esc(p.faculty||'')}" placeholder="Faculty"><input class="field" name="department" maxlength="120" value="${esc(p.department||'')}" placeholder="Department"><input class="field" name="level" maxlength="80" value="${esc(p.academic_level||'')}" placeholder="Academic level"></div><button type="submit" class="btn primary">Save profile</button><div id="profile-msg"></div></form></div><div class="card settings-section"><h3>Profile media</h3><div class="form-grid"><label class="btn" style="text-align:center">Change avatar<input class="hidden" id="avatar-file" type="file" accept="image/*"></label><label class="btn" style="text-align:center">Change cover<input class="hidden" id="cover-file" type="file" accept="image/*"></label></div></div><div class="card settings-section"><h3>Security</h3><button type="button" class="btn" data-nav="/settings/password">Change password</button></div><div class="card settings-section"><h3>Creator snapshot</h3><div class="stats-grid"><div class="stat"><strong>${fmt(p.follower_count)}</strong><span>Followers</span></div><div class="stat"><strong>${fmt(p.posts_count)}</strong><span>Posts</span></div><div class="stat"><strong>${fmt(p.points)}</strong><span>Points</span></div><div class="stat"><strong>Lv. ${fmt(p.xp_level||1)}</strong><span>${fmt(p.total_xp||0)} XP</span></div></div></div><div class="card settings-section"><h3>Daily Missions</h3><p class="muted small">Complete meaningful activity for up to 20 Blink Coins + 80 XP per day.</p>${missionHtml||'<div class="muted small">Missions are syncing. Try again shortly.</div>'}</div>`,'Settings');
+  async function renderSettings(path){
     if(!requireAuth())return;
-    document.querySelectorAll('[data-claim-mission]').forEach(button=>button.onclick=async()=>{
-      const key=button.dataset.claimMission;if(!key)return;button.disabled=true;button.textContent='Claiming…';
-      try{const result=await rpc('claim_daily_mission',{p_mission_key:key});toast(`+${fmt(result?.coin_reward||0)} Blink Coins · +${fmt(result?.xp_reward||0)} XP`);await loadMyProfile();renderSettings('/settings/profile');}
-      catch(err){toast(err.message);button.disabled=false;button.textContent='Claim';}
-    });
     if(path==='/settings/password'){
       ROOT.innerHTML=shell(`<div class="card settings-section"><h3>Change password</h3><form id="password-form" class="form-stack"><input class="field" type="password" name="password" minlength="8" autocomplete="new-password" placeholder="New password" required><input class="field" type="password" name="confirm" minlength="8" autocomplete="new-password" placeholder="Confirm password" required><button type="submit" class="btn primary">Update password</button><div id="password-msg"></div></form></div>`,'Security');
       bindCommon();
