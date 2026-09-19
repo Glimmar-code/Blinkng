@@ -1031,6 +1031,7 @@ private suspend fun restoreSupabaseSession() {
             rewardedMilestones = milestones,
             blueVerificationCashNgn = payload.optInt("blue_verification_cash_ngn", fallback.blueVerificationCashNgn).coerceAtLeast(1),
             blueVerificationCoinCost = payload.optInt("blue_verification_coin_cost", fallback.blueVerificationCoinCost).coerceAtLeast(1),
+            blueVerificationValidDays = payload.optInt("blue_verification_valid_days", fallback.blueVerificationValidDays).coerceIn(1, 366),
             coinPacks = packs,
             cashCheckoutEnabled = payload.optBoolean("cash_checkout_enabled", fallback.cashCheckoutEnabled)
         )
