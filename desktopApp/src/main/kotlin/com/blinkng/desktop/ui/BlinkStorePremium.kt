@@ -28,9 +28,10 @@ data class DesktopPremiumExperience(
 
 /** Windows equivalent of the Android Blink Store experience catalog. */
 fun DesktopStoreItem.premiumExperience(): DesktopPremiumExperience = when (id) {
-    "profile_highlight_1h" -> experience("Makes your profile stand out for one hour.", "Profile, search and discovery", "Activate from Vault when you want the timer to begin.", DesktopPremiumVisibility.PUBLIC_IDENTITY, "HIGHLIGHT", "shimmer", 45)
-    "comment_highlight" -> experience("Highlights one comment with premium treatment.", "Selected comment and thread", "Use it on one of your comments.", DesktopPremiumVisibility.PUBLIC_CONTENT, "COMMENT FX", "glow", 35)
-    "comment_color" -> experience("Unlocks a premium comment accent.", "Comments and replies", "Apply it from Vault; remove it when you want the default style.", DesktopPremiumVisibility.SHARED_SOCIAL, "COLOR", "soft pulse", 24)
+    "profile_highlight_1h" -> experience("Transforms your complete profile header into a coordinated premium identity surface for one hour.", "Full profile, avatar and identity accents", "Activate from Vault when you want the timer to begin.", DesktopPremiumVisibility.PUBLIC_IDENTITY, "AURA", "light sweep", 92)
+    "comment_highlight" -> experience("Transforms one selected comment into a complete premium card with an animated edge and reaction glow.", "Entire selected comment and thread", "Use it on one of your comments.", DesktopPremiumVisibility.PUBLIC_CONTENT, "SPOTLIGHT", "edge reveal", 96)
+    "comment_color" -> experience("Applies a coordinated Aurora surface to your comments and replies.", "Entire comment and reply surface", "Apply it from Vault; remove it when you want the default style.", DesktopPremiumVisibility.SHARED_SOCIAL, "AURORA", "gradient drift", 78)
+    "comment_entrance_animation" -> experience("Gives one selected comment a polished premium entrance and complete highlighted surface.", "Entire selected comment", "Use it on one of your comments.", DesktopPremiumVisibility.PUBLIC_CONTENT, "PREMIERE", "spring reveal", 92)
     "animated_like" -> experience("Unlocks a richer animated like reaction.", "Feed and Reel reactions", "Apply it from Vault as your active like effect.", DesktopPremiumVisibility.SHARED_SOCIAL, "LIKE FX", "burst", 18)
     "profile_glow_1h" -> experience("Adds premium profile glow for one hour.", "Profile and public identity surfaces", "Activate from Vault; the timer begins only after activation.", DesktopPremiumVisibility.PUBLIC_IDENTITY, "GLOW", "pulse", 70)
     "chat_bubble_theme" -> experience("Unlocks premium message-bubble styling.", "Supported direct and group chats", "Apply it from Vault.", DesktopPremiumVisibility.SHARED_SOCIAL, "CHAT", "soft shift", 16)

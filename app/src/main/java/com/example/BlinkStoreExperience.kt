@@ -137,7 +137,10 @@ fun BlinkStoreItem.premiumExperience(): BlinkStoreExperience {
     }
 
     val publicLabel = when (id) {
-        "profile_highlight_1h" -> "HIGHLIGHT"
+        "profile_highlight_1h" -> "AURA"
+        "comment_highlight" -> "SPOTLIGHT"
+        "comment_color" -> "AURORA"
+        "comment_entrance_animation" -> "PREMIERE"
         "profile_glow_1h" -> "GLOW"
         "profile_glow_7d" -> "7D GLOW"
         "profile_ring" -> "RING"

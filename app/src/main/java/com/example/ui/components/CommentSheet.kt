@@ -262,6 +262,7 @@ fun CommentSheet(
                                     isLiked = comment.isLiked,
                                     verificationBadge = comment.verificationBadge,
                                     isVip = comment.isVip,
+                                    premiumStyleId = comment.premiumStyleId,
                                     avatarSize = 38.dp,
                                     onProfileClick = onProfileClick,
                                     onReply = { startReply(comment.id, comment.user) },
@@ -282,6 +283,7 @@ fun CommentSheet(
                                         isLiked = reply.isLiked,
                                         verificationBadge = reply.verificationBadge,
                                         isVip = reply.isVip,
+                                        premiumStyleId = reply.premiumStyleId,
                                         avatarSize = 30.dp,
                                         modifier = Modifier.padding(start = 48.dp, top = 12.dp),
                                         onProfileClick = onProfileClick,
@@ -445,6 +447,7 @@ private fun CommentRow(
     isLiked: Boolean,
     verificationBadge: VerificationBadge,
     isVip: Boolean,
+    premiumStyleId: String?,
     avatarSize: Dp,
     onProfileClick: (String) -> Unit,
     onReply: () -> Unit,
@@ -453,10 +456,16 @@ private fun CommentRow(
     onReport: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        verticalAlignment = Alignment.Top,
-        modifier = modifier.fillMaxWidth()
+    BlinkPremiumCommentSurface(
+        premiumStyleId = premiumStyleId,
+        modifier = modifier.fillMaxWidth(),
     ) {
+        Row(
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(if (premiumStyleId.isNullOrBlank()) 0.dp else 12.dp)
+        ) {
         CommentAvatar(
             avatarUrl = avatar,
             displayName = displayName,
@@ -599,6 +608,7 @@ private fun CommentRow(
                     )
                 }
             }
+        }
         }
     }
 }

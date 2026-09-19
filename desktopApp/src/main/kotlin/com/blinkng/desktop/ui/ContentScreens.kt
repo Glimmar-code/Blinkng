@@ -73,6 +73,7 @@ import com.blinkng.desktop.data.DesktopInventoryItem
 import com.blinkng.desktop.data.DesktopLeaderboardEntry
 import com.blinkng.desktop.data.DesktopMarketItem
 import com.blinkng.desktop.data.DesktopNotification
+import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.data.DesktopSearchResults
 import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
@@ -185,17 +186,29 @@ private fun CommentsPanel(state: DesktopAppState, postId: String) {
             Text("Comments", fontWeight = FontWeight.Bold)
             if (loading) LoadingRow()
             comments.forEach { comment ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AvatarInitial(comment.authorName)
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(comment.authorName, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            if (comment.authorVerified) {
-                                Spacer(Modifier.width(4.dp))
-                                Icon(Icons.Rounded.Verified, contentDescription = "Verified", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+                DesktopPremiumCommentSurface(
+                    premiumStyleId = comment.premiumStyleId,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = if (comment.parentCommentId == null) 0.dp else 44.dp),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(if (comment.premiumStyleId.isNullOrBlank()) 0.dp else 13.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        AvatarInitial(comment.authorName)
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(comment.authorName, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                if (comment.authorVerified) {
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(Icons.Rounded.Verified, contentDescription = "Verified", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+                                }
                             }
+                            Text(comment.content, fontSize = 13.sp)
                         }
-                        Text(comment.content, fontSize = 13.sp)
                     }
                 }
             }
@@ -650,16 +663,46 @@ fun LeaderboardScreen(state: DesktopAppState) {
 @Composable
 fun ProfileScreen(state: DesktopAppState) {
     val profile = state.profile
+    val premiumActions = remember(state.client) { DesktopRpcActions(state.client) }
+    var premiumCatalogIds by remember(profile?.username) { mutableStateOf<List<String>>(emptyList()) }
+    var premiumIsVip by remember(profile?.username) { mutableStateOf(profile?.isBlinkVip == true) }
+
+    LaunchedEffect(profile?.username) {
+        val username = profile?.username.orEmpty()
+        if (username.isNotBlank()) {
+            runCatching { premiumActions.getPublicPremiumStyle(username) }.onSuccess { style ->
+                premiumIsVip = style.optBoolean("is_vip", profile?.isBlinkVip == true)
+                val items = style.optJSONArray("items")
+                premiumCatalogIds = buildList {
+                    if (items != null) for (index in 0 until items.length()) {
+                        val catalogId = items.optJSONObject(index)?.optString("catalog_id").orEmpty()
+                        if (catalogId.isNotBlank()) add(catalogId)
+                    }
+                }
+            }
+        }
+    }
+
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { ScreenHeader("Profile", "Your Blink identity") }
         if (profile == null) {
             item { LoadingRow() }
         } else {
             item {
-                Surface(shape = RoundedCornerShape(24.dp), tonalElevation = 2.dp) {
+                DesktopPremiumProfileSurface(
+                    catalogIds = premiumCatalogIds,
+                    isVip = premiumIsVip,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            PresenceAvatar(profile.fullName, profile.isOnline, 64.dp)
+                            DesktopPremiumAvatarFrame(
+                                catalogIds = premiumCatalogIds,
+                                isVip = premiumIsVip,
+                                size = 72.dp,
+                            ) {
+                                PresenceAvatar(profile.fullName, profile.isOnline, 64.dp)
+                            }
                             Spacer(Modifier.width(14.dp))
                             Column {
                                 VerifiedName(profile.fullName, profile.isVerified, 21.sp)

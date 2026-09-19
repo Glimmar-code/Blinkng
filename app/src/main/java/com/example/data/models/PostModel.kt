@@ -199,7 +199,9 @@ data class CommentReply(
     val postId: String = "",
     val parentCommentId: String = "",
     val authorId: String = "",
-    val displayName: String = ""
+    val displayName: String = "",
+    val premiumStyleId: String? = null,
+    val premiumStyleSource: String? = null,
 )
 
 data class Comment(
@@ -215,7 +217,9 @@ data class Comment(
     val isVip: Boolean = false,
     val postId: String = "",
     val authorId: String = "",
-    val displayName: String = ""
+    val displayName: String = "",
+    val premiumStyleId: String? = null,
+    val premiumStyleSource: String? = null,
 )
 
 enum class MessageStatus {

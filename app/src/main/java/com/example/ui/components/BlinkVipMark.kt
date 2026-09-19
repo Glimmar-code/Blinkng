@@ -23,9 +23,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.blinkng.shared.BlinkPremiumCosmetics
 import com.example.data.models.BlinkStoreCatalog
 import com.example.data.supabase.BlinkEconomyService
-import com.example.premiumExperience
 import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -33,6 +33,7 @@ import java.util.concurrent.ConcurrentHashMap
 data class BlinkPublicPremiumIdentity(
     val isVip: Boolean = false,
     val catalogId: String? = null,
+    val catalogIds: List<String> = emptyList(),
     val publicLabel: String? = null,
     val motion: String = "premium_reveal",
     val collectionCount: Int = 0,
@@ -60,16 +61,17 @@ private object BlinkPublicPremiumCache {
             val candidates = buildList {
                 if (ids != null) for (index in 0 until ids.length()) {
                     val catalogId = ids.optJSONObject(index)?.optString("catalog_id").orEmpty()
-                    val item = BlinkStoreCatalog.items.firstOrNull { it.id == catalogId } ?: continue
-                    add(item to item.premiumExperience())
+                    if (BlinkStoreCatalog.items.none { it.id == catalogId }) continue
+                    add(BlinkPremiumCosmetics.spec(catalogId))
                 }
             }
-            val strongest = candidates.maxByOrNull { it.second.priority }
+            val strongest = candidates.maxByOrNull { it.priority }
             val identity = BlinkPublicPremiumIdentity(
                 isVip = response.optBoolean("is_vip", false) || knownVip == true,
-                catalogId = strongest?.first?.id,
-                publicLabel = strongest?.second?.publicLabel,
-                motion = strongest?.second?.motion ?: "premium_reveal",
+                catalogId = strongest?.catalogId,
+                catalogIds = candidates.sortedByDescending { it.priority }.map { it.catalogId },
+                publicLabel = strongest?.signatureLabel,
+                motion = strongest?.motion?.name?.lowercase() ?: "premium_reveal",
                 collectionCount = response.optInt("collection_count", 0).coerceAtLeast(0),
                 collectionLevel = response.optInt("collection_level", 0).coerceAtLeast(0)
             )
@@ -93,6 +95,22 @@ private object BlinkPublicPremiumCache {
 
 /** Call after Store purchase/equip/activate actions so public identity and Collection refresh immediately. */
 fun invalidateBlinkPublicPremiumIdentityCache() = BlinkPublicPremiumCache.clear()
+
+/** Resolve all public-safe active/equipped cosmetics once and reuse the cached result. */
+@Composable
+fun rememberBlinkPublicPremiumIdentity(
+    username: String,
+    knownVip: Boolean? = null,
+): State<BlinkPublicPremiumIdentity> {
+    val identity = remember(username, knownVip) {
+        mutableStateOf(BlinkPublicPremiumIdentity(isVip = knownVip ?: false))
+    }
+    LaunchedEffect(username, knownVip) {
+        if (knownVip == true) BlinkPublicPremiumCache.putVip(username, true)
+        if (username.isNotBlank()) identity.value = BlinkPublicPremiumCache.resolve(username, knownVip)
+    }
+    return identity
+}
 
 @Composable
 fun BlinkVipMark(isVip: Boolean, modifier: Modifier = Modifier, horizontalPadding: Dp = 5.dp) {
@@ -228,13 +246,8 @@ private fun BlinkCollectionDialog(username: String, onDismiss: () -> Unit) {
 /** Shows VIP, the strongest active/equipped premium effect, and a tappable public Blink Collection count. */
 @Composable
 fun BlinkVipMarkForUsername(username: String, knownVip: Boolean? = null, modifier: Modifier = Modifier) {
-    var identity by remember(username, knownVip) { mutableStateOf(BlinkPublicPremiumIdentity(isVip = knownVip ?: false)) }
+    val identity by rememberBlinkPublicPremiumIdentity(username, knownVip)
     var showCollection by remember(username) { mutableStateOf(false) }
-
-    LaunchedEffect(username, knownVip) {
-        if (knownVip == true) BlinkPublicPremiumCache.putVip(username, true)
-        if (username.isNotBlank()) identity = BlinkPublicPremiumCache.resolve(username, knownVip)
-    }
 
     if (!identity.isVip && identity.catalogId == null && identity.collectionCount <= 0) return
 
