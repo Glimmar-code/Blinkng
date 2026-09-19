@@ -114,6 +114,38 @@ class SupabaseService {
                 }
         }
 
+        data class SessionSnapshot(
+            val accessToken: String?,
+            val refreshToken: String?
+        )
+
+        fun sessionSnapshot(): SessionSnapshot =
+            SessionSnapshot(
+                accessToken = accessToken(),
+                refreshToken = refreshToken()
+            )
+
+        /**
+         * Atomically replace the active auth pair. New sign-in/recovery attempts must not
+         * inherit a refresh token from a different account when Supabase omits one.
+         */
+        fun replaceSession(accessToken: String?, refreshToken: String?) {
+            val context = appContext ?: return
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .apply {
+                    accessToken?.takeIf { it.isNotBlank() }?.let { putString(ACCESS_TOKEN, it) }
+                    refreshToken?.takeIf { it.isNotBlank() }?.let { putString(REFRESH_TOKEN, it) }
+                    apply()
+                }
+        }
+
+        /** Restore the exact session that existed before a transactional auth attempt. */
+        fun restoreSessionSnapshot(snapshot: SessionSnapshot) {
+            replaceSession(snapshot.accessToken, snapshot.refreshToken)
+        }
+
         fun clearSession() {
             appContext
                 ?.getSharedPreferences(
@@ -465,11 +497,10 @@ class SupabaseService {
                         )
                     }
 
-                    saveSession(
-                        accessToken =
-                            accessToken,
-                        refreshToken =
-                            refreshToken
+                    val previousSession = sessionSnapshot()
+                    replaceSession(
+                        accessToken = accessToken,
+                        refreshToken = refreshToken.ifBlank { null }
                     )
 
                     val userId =
@@ -524,7 +555,7 @@ class SupabaseService {
                             }
                             ?: username
 
-                    val profile =
+                    val profile = try {
                         ensureAuthenticatedProfile(
                             userId =
                                 userId,
@@ -547,6 +578,11 @@ class SupabaseService {
                                         ""
                                     )
                         )
+                    } catch (profileError: Exception) {
+                        // Authentication is not committed until Blink's profile is usable.
+                        restoreSessionSnapshot(previousSession)
+                        throw profileError
+                    }
 
                     Result.success(
                         profile
@@ -642,21 +678,31 @@ class SupabaseService {
                     val userObj = json.optJSONObject("user") ?: json
                     val userId = userObj.optString("id", "")
 
-                    if (accessToken.isNotBlank()) {
-                        saveSession(accessToken = accessToken, refreshToken = refreshToken)
-                    }
-
                     if (userId.isBlank() || !isValidUuid(userId) || accessToken.isBlank()) {
                         return@withContext Result.failure(Exception("Supabase did not return a usable authenticated session."))
                     }
-                    val profile = ensureAuthenticatedProfile(
-                        userId = userId,
-                        email = cleanEmail,
-                        username = cleanUsername,
-                        fullName = cleanFullName,
-                        faculty = faculty,
-                        university = university
+
+                    val previousSession = sessionSnapshot()
+                    replaceSession(
+                        accessToken = accessToken,
+                        refreshToken = refreshToken.ifBlank { null }
                     )
+
+                    val profile = try {
+                        ensureAuthenticatedProfile(
+                            userId = userId,
+                            email = cleanEmail,
+                            username = cleanUsername,
+                            fullName = cleanFullName,
+                            faculty = faculty,
+                            university = university
+                        )
+                    } catch (profileError: Exception) {
+                        // Do not strand the app on a half-created local login if profile
+                        // initialization fails after Supabase has accepted the signup.
+                        restoreSessionSnapshot(previousSession)
+                        throw profileError
+                    }
 
                     Result.success(profile)
                 }
@@ -796,7 +842,7 @@ class SupabaseService {
 
                 val request =
                     newRequestBuilder(
-                        "/auth/v1/recover?redirect_to=${URLEncoder.encode("blink://reset-password", StandardCharsets.UTF_8.name())}",
+                        "/auth/v1/recover?redirect_to=${URLEncoder.encode("blink://auth/reset-password", StandardCharsets.UTF_8.name())}",
                         authenticated = false
                     )
                         .post(
