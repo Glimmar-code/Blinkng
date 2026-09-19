@@ -32,6 +32,22 @@ verify_jwt = true
 [functions.verify-payment]
 verify_jwt = true
 
+# Paystack checkout is authenticated with the signed-in BLINK user.
+[functions.paystack-initialize]
+verify_jwt = true
+
+[functions.paystack-verify]
+verify_jwt = true
+
+# Paystack authenticates this webhook with x-paystack-signature (HMAC SHA-512),
+# so it must be reachable without a Supabase user JWT.
+[functions.paystack-webhook]
+verify_jwt = false
+
+# Read-only browser return page after hosted checkout.
+[functions.paystack-return]
+verify_jwt = false
+
 [functions.send-push-notification]
 verify_jwt = true
 
