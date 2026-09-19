@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.ui.components.BlinkMark
 import com.example.ui.theme.*
+import com.blinkng.shared.BlinkOnboardingPolicy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -696,12 +697,8 @@ fun SignInScreen(
 // SIGN UP
 // ================================================================
 
-private fun isStrongBlinkPassword(password: String): Boolean =
-    password.length >= 8 &&
-        password.any(Char::isLowerCase) &&
-        password.any(Char::isUpperCase) &&
-        password.any(Char::isDigit) &&
-        password.any { !it.isLetterOrDigit() && !it.isWhitespace() }
+internal fun isStrongBlinkPassword(password: String): Boolean =
+    BlinkOnboardingPolicy.isStrongPassword(password)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1847,7 +1844,7 @@ fun GoogleSignInButton(
 // ================================================================
 
 @Composable
-private fun AuthField(
+internal fun AuthField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
@@ -1914,7 +1911,7 @@ private fun AuthField(
 // ================================================================
 
 @Composable
-private fun AuthPasswordField(
+internal fun AuthPasswordField(
     value: String,
     onValueChange: (String) -> Unit,
     visible: Boolean,
@@ -2002,7 +1999,7 @@ private fun AuthPasswordField(
 // ================================================================
 
 @Composable
-private fun PasswordStrengthBar(
+internal fun PasswordStrengthBar(
     password: String
 ) {
 
@@ -2087,7 +2084,7 @@ private fun PasswordStrengthBar(
 // ================================================================
 
 @Composable
-private fun AuthTopBar(
+internal fun AuthTopBar(
     onBack: () -> Unit,
     title: String,
     subtitle: String
@@ -2211,7 +2208,7 @@ private fun AuthHeroBadge(
 // ================================================================
 
 @Composable
-private fun AuthDivider(
+internal fun AuthDivider(
     text: String
 ) {
 
@@ -2249,7 +2246,7 @@ private fun AuthDivider(
 // ================================================================
 
 @Composable
-private fun AuthMessageCard(
+internal fun AuthMessageCard(
     message: String,
     success: Boolean,
     onDismiss: () -> Unit
@@ -2852,7 +2849,7 @@ private fun PremiumFeatureCard(
 // ================================================================
 
 @Composable
-private fun PremiumAuthButton(
+internal fun PremiumAuthButton(
     text: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
