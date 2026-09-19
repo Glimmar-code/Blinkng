@@ -2016,8 +2016,16 @@ private suspend fun restoreSupabaseSession() {
             try {
                 val result = authRepository.signUpWithEmail(cleanEmail, password, cleanUsername, cleanName, faculty.trim())
                 if (result.isSuccess && result.userProfile != null) {
-                    _uiState.value = _uiState.value.copy(myProfile = result.userProfile, destination = AppDestination.PROFILE_SETUP)
-                    saveLocalProfile(result.userProfile); showToast("Account created! Set up your campus profile.")
+                    val profile = result.userProfile
+                    _uiState.value = _uiState.value.copy(
+                        myProfile = profile,
+                        destination = authenticatedDestination(profile)
+                    )
+                    saveLocalProfile(profile)
+                    showToast(
+                        if (profile.onboardingCompleted) "Welcome back, @${profile.username}."
+                        else "Account created! Set up your BLINK profile."
+                    )
                 } else showToast(result.errorMessage ?: "Sign up failed.")
             } catch (e: Exception) { Log.e(TAG, "signUp failed", e); showToast(e.message ?: "Sign up failed.") }
         }
