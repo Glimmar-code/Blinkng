@@ -126,6 +126,12 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIncomingIntent(intent: Intent?) {
         handleNotificationIntent(intent)
+        val data = intent?.data
+        if (data?.scheme == "blink" && data.host == "payment") {
+            viewModel.verifyPendingPaystackCheckout()
+            intent.data = null
+            return
+        }
         if (viewModel.handleAuthDeepLink(intent?.data)) {
             intent?.data = null
             return
