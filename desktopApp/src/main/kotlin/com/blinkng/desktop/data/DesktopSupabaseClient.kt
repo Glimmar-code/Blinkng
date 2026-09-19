@@ -1,6 +1,7 @@
 package com.blinkng.desktop.data
 
 import com.blinkng.shared.BlinkBackendDefaults
+import com.blinkng.shared.BlinkOnboardingPolicy
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -21,6 +22,7 @@ import java.security.SecureRandom
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.Base64
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
@@ -85,6 +87,18 @@ class DesktopSupabaseClient(
     suspend fun signUp(
         email: String,
         password: String,
+        fullName: String,
+    ): DesktopSession {
+        val temporaryUsername = "blink_" + UUID.randomUUID()
+            .toString()
+            .replace("-", "")
+            .take(12)
+        return signUp(email, password, temporaryUsername, fullName)
+    }
+
+    suspend fun signUp(
+        email: String,
+        password: String,
         username: String,
         fullName: String,
     ): DesktopSession = withContext(Dispatchers.IO) {
@@ -92,8 +106,8 @@ class DesktopSupabaseClient(
         val cleanUsername = username.trim().lowercase().removePrefix("@").replace(" ", "_")
         require(cleanEmail.contains("@")) { "Enter a valid email address." }
         require(cleanUsername.length >= 3) { "Username must be at least 3 characters." }
-        require(password.length >= 8 && password.any(Char::isUpperCase) && password.any(Char::isLowerCase) && password.any(Char::isDigit)) {
-            "Use at least 8 characters with uppercase, lowercase and a number."
+        require(BlinkOnboardingPolicy.isStrongPassword(password)) {
+            "Use at least 8 characters with uppercase, lowercase, a number, and a symbol."
         }
         val body = JSONObject()
             .put("email", cleanEmail)
@@ -221,7 +235,7 @@ class DesktopSupabaseClient(
     suspend fun fetchProfile(userId: String = requireSession().userId): DesktopProfile = withContext(Dispatchers.IO) {
         profileCache[userId]?.let { return@withContext it }
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
@@ -230,6 +244,109 @@ class DesktopSupabaseClient(
     suspend fun refreshProfile(userId: String = requireSession().userId): DesktopProfile {
         profileCache.remove(userId)
         return fetchProfile(userId)
+    }
+
+    suspend fun isUsernameAvailable(username: String): Boolean = withContext(Dispatchers.IO) {
+        val clean = BlinkOnboardingPolicy.normalizeUsername(username)
+        BlinkOnboardingPolicy.usernameValidationMessage(clean)?.let {
+            return@withContext false
+        }
+        val currentId = requireSession().userId
+        val rows = getArray("/rest/v1/profiles?username=eq.${encode(clean)}&select=id&limit=1")
+        val existingId = rows.optJSONObject(0)?.optString("id").orEmpty()
+        existingId.isBlank() || existingId == currentId
+    }
+
+    suspend fun saveOnboardingProfile(
+        username: String? = null,
+        university: String? = null,
+        department: String? = null,
+        academicLevel: String? = null,
+        gender: String? = null,
+        interests: List<String>? = null,
+        onboardingStep: Int? = null,
+        onboardingCompleted: Boolean? = null,
+    ): DesktopProfile = withContext(Dispatchers.IO) {
+        val body = JSONObject()
+        username?.let {
+            val clean = BlinkOnboardingPolicy.normalizeUsername(it)
+            BlinkOnboardingPolicy.usernameValidationMessage(clean)?.let { message ->
+                throw IllegalArgumentException(message)
+            }
+            require(isUsernameAvailable(clean)) { "Username already taken." }
+            body.put("username", clean)
+        }
+        university?.let { body.put("university", it.trim()) }
+        department?.let { body.put("department", it.trim()) }
+        academicLevel?.let {
+            val clean = it.trim()
+            if (clean.isBlank()) body.put("academic_level", JSONObject.NULL)
+            else body.put("academic_level", clean)
+        }
+        gender?.let {
+            require(it in BlinkOnboardingPolicy.genders) { "Choose a valid gender option." }
+            body.put("gender", it)
+        }
+        interests?.let { selected ->
+            val clean = selected.map(String::trim)
+                .filter { it in BlinkOnboardingPolicy.allInterests }
+                .distinct()
+            require(clean.isNotEmpty()) { "Choose at least one interest." }
+            body.put("interests", JSONArray(clean))
+        }
+        onboardingStep?.let { body.put("onboarding_step", it.coerceIn(0, BlinkOnboardingPolicy.TOTAL_STEPS)) }
+        onboardingCompleted?.let { body.put("onboarding_completed", it) }
+        require(body.length() > 0) { "No onboarding changes to save." }
+        val userId = requireSession().userId
+        patch("/rest/v1/profiles?id=eq.${encode(userId)}", body)
+        profileCache.remove(userId)
+        fetchProfile(userId)
+    }
+
+    suspend fun savePrivateBirthDate(birthDate: String) = withContext(Dispatchers.IO) {
+        val clean = birthDate.trim()
+        val body = JSONObject()
+            .put("user_id", requireSession().userId)
+            .put("birth_date", if (clean.isBlank()) JSONObject.NULL else clean)
+            .put("updated_at", Instant.now().toString())
+        postArray(
+            "/rest/v1/profile_private_details?on_conflict=user_id",
+            body,
+            prefer = "resolution=merge-duplicates,return=minimal",
+        )
+    }
+
+    suspend fun fetchOnboardingSuggestions(limit: Int = 40): List<DesktopProfile> = withContext(Dispatchers.IO) {
+        val currentId = requireSession().userId
+        val rows = getArray(
+            "/rest/v1/profiles?id=neq.${encode(currentId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=${limit.coerceIn(5, 100)}",
+        )
+        (0 until rows.length()).mapNotNull { index -> rows.optJSONObject(index)?.let(::parseProfile) }
+    }
+
+    suspend fun fetchFollowingIds(): Set<String> = withContext(Dispatchers.IO) {
+        val response = postObject("/rest/v1/rpc/get_my_following_ids", JSONObject())
+        val rows = when (response) {
+            is JSONArray -> response
+            is JSONObject -> JSONArray().put(response)
+            else -> JSONArray()
+        }
+        buildSet {
+            for (index in 0 until rows.length()) {
+                when (val item = rows.opt(index)) {
+                    is String -> item.takeIf(String::isNotBlank)?.let(::add)
+                    is JSONObject -> item.optString("following_id").takeIf(String::isNotBlank)?.let(::add)
+                }
+            }
+        }
+    }
+
+    suspend fun setFollowing(profileId: String, shouldFollow: Boolean): Set<String> = withContext(Dispatchers.IO) {
+        val cleanId = profileId.trim()
+        require(cleanId.isNotBlank()) { "Profile is required." }
+        val function = if (shouldFollow) "follow_user" else "unfollow_user"
+        postObject("/rest/v1/rpc/$function", JSONObject().put("p_following_id", cleanId))
+        fetchFollowingIds()
     }
 
     suspend fun fetchFeed(reelsOnly: Boolean = false, search: String? = null): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
@@ -755,6 +872,14 @@ class DesktopSupabaseClient(
         university = row.optNullableString("university"),
         faculty = row.optNullableString("faculty"),
         department = row.optNullableString("department"),
+        academicLevel = row.optNullableString("academic_level"),
+        gender = row.optNullableString("gender"),
+        interests = row.optStringList("interests"),
+        onboardingCompleted = row.optBoolean("onboarding_completed", true),
+        onboardingStep = row.optInt(
+            "onboarding_step",
+            if (row.optBoolean("onboarding_completed", true)) BlinkOnboardingPolicy.TOTAL_STEPS else 0,
+        ).coerceIn(0, BlinkOnboardingPolicy.TOTAL_STEPS),
         bio = row.optNullableString("bio"),
         isVerified = row.optBoolean("is_verified"),
         verificationTier = row.optString("verification_tier"),
