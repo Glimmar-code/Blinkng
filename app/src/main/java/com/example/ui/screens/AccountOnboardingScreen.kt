@@ -244,7 +244,7 @@ fun AccountOnboardingScreen(
                 Spacer(Modifier.height(12.dp))
 
                 LinearProgressIndicator(
-                    progress = { (step + 1) / 4f },
+                    progress = (step + 1) / 4f,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(4.dp),
