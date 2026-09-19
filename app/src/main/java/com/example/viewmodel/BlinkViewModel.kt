@@ -2,6 +2,7 @@ package com.example.viewmodel
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
@@ -119,6 +120,7 @@ data class BlinkUiState(
     val rewardedCoinsToday: Int = 0,
     val dailyMissions: List<BlinkDailyMission> = emptyList(),
     val isDailyMissionsLoading: Boolean = false,
+    val isCoinPackPickerOpen: Boolean = false,
     val discoverProfiles: List<UserProfile> = emptyList(),
     val discoverPosts: List<FeedPost> = emptyList(),
     val isDiscoverSearching: Boolean = false,
@@ -149,6 +151,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_DARK_MODE = "ui_dark_mode"
         private const val KEY_SELECTED_TAB = "ui_selected_tab"
         private const val KEY_FEED_SUB_TAB = "ui_feed_sub_tab"
+        private const val KEY_PENDING_PAYSTACK_ORDER = "pending_paystack_order_id"
         private const val KEY_RESUME_PROFILE_USERNAME = "ui_resume_profile_username"
         private const val KEY_RESUME_PRODUCT_ID = "ui_resume_product_id"
         private const val KEY_RESUME_COMMENTS_POST_ID = "ui_resume_comments_post_id"
@@ -1085,6 +1088,7 @@ private suspend fun restoreSupabaseSession() {
             rewardedMilestones = milestones,
             blueVerificationCashNgn = payload.optInt("blue_verification_cash_ngn", fallback.blueVerificationCashNgn).coerceAtLeast(1),
             blueVerificationCoinCost = payload.optInt("blue_verification_coin_cost", fallback.blueVerificationCoinCost).coerceAtLeast(1),
+            blueVerificationValidDays = payload.optInt("blue_verification_valid_days", fallback.blueVerificationValidDays).coerceIn(1, 366),
             coinPacks = packs,
             cashCheckoutEnabled = payload.optBoolean("cash_checkout_enabled", fallback.cashCheckoutEnabled)
         )
@@ -1201,11 +1205,89 @@ private suspend fun restoreSupabaseSession() {
 
     fun buyBlinkCoins() {
         val policy = _uiState.value.economyPolicy
-        val packs = policy.coinPacks.joinToString(" • ") { "₦${it.priceNgn}→${it.coins}" }
-        showToast(
-            if (policy.cashCheckoutEnabled) "Choose a Blink Coin pack: $packs"
-            else "Blink Coin packs are ready ($packs). Secure cash checkout is not enabled yet."
-        )
+        if (!policy.cashCheckoutEnabled) {
+            val packs = policy.coinPacks.joinToString(" • ") { "₦${it.priceNgn}→${it.coins}" }
+            showToast("Blink Coin packs are ready ($packs). Secure cash checkout is not enabled yet.")
+            return
+        }
+        _uiState.value = _uiState.value.copy(isCoinPackPickerOpen = true)
+    }
+
+    fun closeCoinPackPicker() {
+        _uiState.value = _uiState.value.copy(isCoinPackPickerOpen = false)
+    }
+
+    fun startPaystackCoinCheckout(packId: String) {
+        if (packId.isBlank()) return
+        _uiState.value = _uiState.value.copy(isCoinPackPickerOpen = false)
+        viewModelScope.launch {
+            blinkEconomyService.initializePaystackCoinCheckout(packId).fold(
+                onSuccess = ::openPaystackCheckout,
+                onFailure = { error ->
+                    Log.w(TAG, "Paystack coin checkout failed to initialize", error)
+                    showToast(error.message ?: "Couldn't start secure checkout.")
+                }
+            )
+        }
+    }
+
+    fun startPaystackVerificationCheckout() {
+        val current = _uiState.value
+        if (!current.economyPolicy.cashCheckoutEnabled) {
+            showToast("Secure cash checkout is not enabled yet.")
+            return
+        }
+        if (current.myProfile.verificationBadge == VerificationBadge.GOLD) {
+            showToast("Gold verification is already active on this account.")
+            return
+        }
+        viewModelScope.launch {
+            blinkEconomyService.initializePaystackVerificationCheckout().fold(
+                onSuccess = ::openPaystackCheckout,
+                onFailure = { error ->
+                    Log.w(TAG, "Paystack verification checkout failed to initialize", error)
+                    showToast(error.message ?: "Couldn't start secure checkout.")
+                }
+            )
+        }
+    }
+
+    private fun openPaystackCheckout(payload: JSONObject) {
+        val orderId = payload.optString("order_id").trim()
+        val url = payload.optString("authorization_url").trim()
+        if (orderId.isBlank() || url.isBlank()) {
+            showToast("Paystack did not return a complete checkout session.")
+            return
+        }
+
+        prefs.edit().putString(KEY_PENDING_PAYSTACK_ORDER, orderId).apply()
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { getApplication<Application>().startActivity(intent) }
+            .onFailure {
+                Log.w(TAG, "Unable to open Paystack hosted checkout", it)
+                showToast("Couldn't open the secure payment page.")
+            }
+    }
+
+    fun verifyPendingPaystackCheckout() {
+        val orderId = prefs.getString(KEY_PENDING_PAYSTACK_ORDER, null)?.trim().orEmpty()
+        if (orderId.isBlank() || !_uiState.value.isOnline) return
+
+        viewModelScope.launch {
+            blinkEconomyService.verifyPaystackCashOrder(orderId).fold(
+                onSuccess = { payload ->
+                    if (payload.optString("status").equals("fulfilled", ignoreCase = true)) {
+                        prefs.edit().remove(KEY_PENDING_PAYSTACK_ORDER).apply()
+                        refreshProfileRewards()
+                        fetchSupabaseData()
+                        showToast("Payment confirmed. Your BLINK purchase is ready.")
+                    }
+                },
+                onFailure = { error ->
+                    Log.d(TAG, "Pending Paystack order is not fulfilled yet: ${error.message}")
+                }
+            )
+        }
     }
 
     fun verifyBlueWithCoins() {
