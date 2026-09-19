@@ -1583,7 +1583,6 @@ fun getCurrentUserId(): String? {
                 put("academic_level", profile.academicLevel)
                 if (year != null) put("graduation_year", year) else put("graduation_year", JSONObject.NULL)
                 if (profile.gender.isNotBlank()) put("gender", profile.gender) else put("gender", JSONObject.NULL)
-                if (profile.birthDate.isNotBlank()) put("birth_date", profile.birthDate) else put("birth_date", JSONObject.NULL)
                 put("interests", JSONArray(profile.interests))
                 put("onboarding_completed", profile.onboardingCompleted)
                 put("onboarding_step", profile.onboardingStep.coerceIn(0, 4))
@@ -1611,6 +1610,29 @@ fun getCurrentUserId(): String? {
             }
         } catch (e: Exception) { Log.e(TAG, "PROFILE_UPDATE exception", e); false }
     }
+    suspend fun updatePrivateBirthDate(birthDate: String): Boolean = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId()?.takeIf { it.isNotBlank() } ?: return@withContext false
+        val clean = birthDate.trim()
+        val body = JSONObject()
+            .put("user_id", uid)
+            .put("birth_date", if (clean.isBlank()) JSONObject.NULL else clean)
+            .put("updated_at", nowIso())
+
+        runCatching {
+            executeRequest(
+                newRequestBuilder("/rest/v1/profile_private_details?on_conflict=user_id", true)
+                    .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                response.isSuccessful
+            }
+        }.getOrElse {
+            Log.e(TAG, "PRIVATE_BIRTH_DATE update failed", it)
+            false
+        }
+    }
+
     // ============================================================
     // PROFILE MEDIA / STORAGE
     // ============================================================
@@ -3444,7 +3466,6 @@ suspend fun uploadPostMedia(
             academicLevel = obj.cleanString("academic_level"),
             graduationYear = obj.cleanString("graduation_year"),
             gender = obj.cleanString("gender"),
-            birthDate = obj.cleanString("birth_date"),
             interests = interestsList,
             onboardingCompleted = obj.optBoolean("onboarding_completed", true),
             onboardingStep = obj.optInt(
