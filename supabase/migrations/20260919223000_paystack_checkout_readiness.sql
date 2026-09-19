@@ -16,6 +16,9 @@ values (
 on conflict(key) do update
 set json_value = excluded.json_value, updated_at = now();
 
+alter table public.blink_coin_purchase_orders
+  add column if not exists updated_at timestamptz not null default now();
+
 create table if not exists public.blink_verification_purchase_orders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
