@@ -86,11 +86,12 @@ import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.DarkTextSecondary
+import com.blinkng.shared.BlinkOnboardingPolicy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private const val PINNED_BLINK_CREATOR = "futa_no1_blogger"
-private const val REQUIRED_ONBOARDING_FOLLOWS = 5
+private const val PINNED_BLINK_CREATOR = BlinkOnboardingPolicy.PINNED_CREATOR_USERNAME
+private const val REQUIRED_ONBOARDING_FOLLOWS = BlinkOnboardingPolicy.REQUIRED_FOLLOWS
 
 @Composable
 fun AccountOnboardingScreen(
