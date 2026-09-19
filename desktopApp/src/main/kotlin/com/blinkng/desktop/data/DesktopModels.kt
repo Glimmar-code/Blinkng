@@ -156,6 +156,11 @@ data class DesktopStoreItem(
     val durationSeconds: Long?,
     val vipOnly: Boolean,
     val boostMultipliers: List<Int>,
+    val collectionId: String? = null,
+    val rarity: String = "STANDARD",
+    val unlockLevel: Int? = null,
+    val availableFrom: String? = null,
+    val availableUntil: String? = null,
 )
 
 data class DesktopInventoryItem(
