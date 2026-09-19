@@ -1,6 +1,5 @@
 package com.example.auth
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -63,18 +62,21 @@ class PasswordResetActivity : ComponentActivity() {
     }
 
     private fun finishResetAndRequireFreshSignIn(showSuccess: Boolean = true) {
-        // A recovery token is intentionally not imported as the app's durable session.
-        // Require one clean sign-in so no old account/token state can be mixed in.
-        SupabaseService.clearSession()
-        AccountSessionStore.setSignInRequired(applicationContext, true)
-        getSharedPreferences("blink_auth_prefs", Context.MODE_PRIVATE).edit().clear().apply()
-        getSharedPreferences("blink_user_session", Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean("is_logged_in", false)
-            .apply()
+        // Password recovery uses its own one-use access token and never imports it into
+        // SupabaseService. Therefore cancellation/completion must not erase an unrelated
+        // account that was already signed in before the recovery link was opened.
+        val hasExistingSession =
+            !SupabaseService.accessToken().isNullOrBlank() ||
+                !SupabaseService.refreshToken().isNullOrBlank()
+        AccountSessionStore.setSignInRequired(applicationContext, !hasExistingSession)
 
         if (showSuccess) {
-            Toast.makeText(this, "Password updated. Sign in with your new password.", Toast.LENGTH_LONG).show()
+            val message = if (hasExistingSession) {
+                "Password updated."
+            } else {
+                "Password updated. Sign in with your new password."
+            }
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
         }
         startActivity(
             Intent(this, MainActivity::class.java).apply {
