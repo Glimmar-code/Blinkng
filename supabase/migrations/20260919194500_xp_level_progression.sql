@@ -179,6 +179,18 @@ begin
         if v_today_count >= v_rule.daily_event_limit then
             return 0;
         end if;
+
+        -- Global repeatable-XP soft cap: missions/achievements/milestones remain exempt.
+        if (
+            select coalesce(sum(t.xp_delta), 0)
+            from public.xp_transactions t
+            join public.xp_rules r on r.event_type = t.event_type
+            where t.user_id = p_user_id
+              and r.repeatable = true
+              and t.created_at >= date_trunc('day', now() at time zone 'UTC') at time zone 'UTC'
+        ) >= 250 then
+            return 0;
+        end if;
     end if;
 
     v_amount := case
@@ -245,6 +257,34 @@ begin
 
     v_source := coalesce(v_row->>'id', v_row->>'post_id', v_row->>'comment_id', v_row->>'following_id', '');
     v_parent := coalesce(v_row->>'parent_comment_id', v_row->>'parent_id', '');
+
+    -- Do not let users farm progression from their own content.
+    if tg_table_name in ('post_likes', 'post_bookmarks', 'post_shares', 'post_views') then
+        if exists (
+            select 1
+            from public.feed_posts fp
+            where fp.id::text = coalesce(v_row->>'post_id', '')
+              and fp.user_id = v_user
+        ) then
+            return new;
+        end if;
+    end if;
+
+    if tg_table_name = 'comment_likes' then
+        if exists (
+            select 1
+            from public.comments c
+            where c.id::text = coalesce(v_row->>'comment_id', '')
+              and c.user_id = v_user
+        ) then
+            return new;
+        end if;
+    end if;
+
+    if tg_table_name = 'follows'
+       and coalesce(v_row->>'following_id', '') = v_user::text then
+        return new;
+    end if;
 
     if tg_table_name = 'feed_posts' then
         v_event := 'create_post';
