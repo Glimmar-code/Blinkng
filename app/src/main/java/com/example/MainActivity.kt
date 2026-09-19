@@ -178,7 +178,13 @@ class MainActivity : ComponentActivity() {
             }
 
             BlinkNotificationHelper.ACTION_OPEN_MARKET -> {
+                val marketId = intent.getStringExtra(BlinkNotificationHelper.EXTRA_MARKET_ID)
                 viewModel.setTab(MainTab.MARKET)
+                if (!marketId.isNullOrBlank()) {
+                    viewModel.uiState.value.marketItems
+                        .firstOrNull { it.id == marketId }
+                        ?.let(viewModel::openProductDetail)
+                }
             }
 
             BlinkNotificationHelper.ACTION_OPEN_SOCIAL -> {
@@ -236,7 +242,7 @@ class MainActivity : ComponentActivity() {
 
             BlinkInAppNotificationDestination.MARKET -> {
                 viewModel.setTab(MainTab.MARKET)
-                event.marketId?.let { marketId ->
+                (event.marketId ?: event.targetId)?.let { marketId ->
                     viewModel.uiState.value.marketItems
                         .firstOrNull { it.id == marketId }
                         ?.let(viewModel::openProductDetail)
