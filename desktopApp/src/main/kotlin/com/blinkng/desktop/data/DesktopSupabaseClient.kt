@@ -422,8 +422,8 @@ class DesktopSupabaseClient(
             }
         }
 
-        val activityKeys = activityNotifications.asSequence().map(::semanticKey).toHashSet()
-        (activityNotifications + serverNotifications.filterNot { semanticKey(it) in activityKeys })
+        val notificationKeys = serverNotifications.asSequence().map(::semanticKey).toHashSet()
+        (serverNotifications + activityNotifications.filterNot { semanticKey(it) in notificationKeys })
             .sortedByDescending { it.createdAt }
             .distinctBy { it.id }
             .take(150)
