@@ -16,6 +16,7 @@ import com.example.notification.BlinkFirebaseMessagingService
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.NotificationSyncWorker
 import com.example.performance.HighRefreshRateController
+import com.example.util.safeString
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import java.util.concurrent.TimeUnit
 
@@ -55,12 +56,12 @@ class BlinkApplication : Application(), ImageLoaderFactory {
         val sessionPrefs = getSharedPreferences("blink_supabase_session", MODE_PRIVATE)
         val profilePrefs = getSharedPreferences("blink_user_session", MODE_PRIVATE)
         fun captureRecentAccount() {
-            val access = sessionPrefs.getString("access_token", "").orEmpty()
-            val refresh = sessionPrefs.getString("refresh_token", "").orEmpty()
-            val username = profilePrefs.getString("username", "").orEmpty()
-            val email = profilePrefs.getString("email", "").orEmpty()
-            val fullName = profilePrefs.getString("full_name", "").orEmpty()
-            val avatar = profilePrefs.getString("avatar_url", "").orEmpty()
+            val access = sessionPrefs.safeString("access_token", "").orEmpty()
+            val refresh = sessionPrefs.safeString("refresh_token", "").orEmpty()
+            val username = profilePrefs.safeString("username", "").orEmpty()
+            val email = profilePrefs.safeString("email", "").orEmpty()
+            val fullName = profilePrefs.safeString("full_name", "").orEmpty()
+            val avatar = profilePrefs.safeString("avatar_url", "").orEmpty()
             val userId = SupabaseService.accessToken()?.let { token ->
                 token.split('.').getOrNull(1)?.let { part ->
                     runCatching {

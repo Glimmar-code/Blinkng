@@ -1,5 +1,7 @@
 package com.example.data.local
 
+import com.example.util.safeString
+
 import android.content.Context
 import android.util.Log
 import com.example.data.models.ActivityItem
@@ -59,7 +61,7 @@ class OfflineContentStore(context: Context) {
     private val legacySnapshotFile = File(snapshotDirectory, "blink_main_snapshot.json")
     private val metadataPrefs = context.getSharedPreferences("blink_offline_cache_meta", Context.MODE_PRIVATE)
     private val ownerState = MutableStateFlow(
-        metadataPrefs.getString("owner_username", "").orEmpty().trim().lowercase()
+        metadataPrefs.safeString("owner_username", "").orEmpty().trim().lowercase()
     )
     private val maintenanceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -71,7 +73,7 @@ class OfflineContentStore(context: Context) {
     }
 
     fun cachedOwnerUsername(): String = ownerState.value.ifBlank {
-        metadataPrefs.getString("owner_username", "").orEmpty().trim().lowercase()
+        metadataPrefs.safeString("owner_username", "").orEmpty().trim().lowercase()
     }
 
     fun setActiveOwner(username: String) {

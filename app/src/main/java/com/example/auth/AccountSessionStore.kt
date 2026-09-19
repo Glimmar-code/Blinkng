@@ -1,5 +1,8 @@
 package com.example.auth
 
+import com.example.util.safeBoolean
+import com.example.util.safeString
+
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -70,8 +73,8 @@ object AccountSessionStore {
         if (access.isBlank() || refresh.isBlank()) return
 
         val auth = context.getSharedPreferences(AUTH_PREFS, Context.MODE_PRIVATE)
-        val currentEmail = auth.getString(KEY_EMAIL, "").orEmpty().trim()
-        val currentUsername = auth.getString(KEY_USERNAME, "").orEmpty().trim().removePrefix("@")
+        val currentEmail = auth.safeString(KEY_EMAIL, "").orEmpty().trim()
+        val currentUsername = auth.safeString(KEY_USERNAME, "").orEmpty().trim().removePrefix("@")
         if (currentEmail.isBlank() && currentUsername.isBlank()) return
 
         val accounts = load(context)
@@ -103,7 +106,7 @@ object AccountSessionStore {
 
     fun lastIdentifier(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_LAST_IDENTIFIER, "")
+            .safeString(KEY_LAST_IDENTIFIER, "")
             .orEmpty()
 
     fun setSignInRequired(context: Context, required: Boolean) {
@@ -115,7 +118,7 @@ object AccountSessionStore {
 
     fun isSignInRequired(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_REQUIRE_SIGN_IN, false)
+            .safeBoolean(KEY_REQUIRE_SIGN_IN, false)
 
     /**
      * Ask the next MainActivity/ViewModel instance to show Sign In without destroying
@@ -131,7 +134,7 @@ object AccountSessionStore {
 
     fun consumeAddAccountRequest(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val requested = prefs.getBoolean(KEY_ADD_ACCOUNT_REQUEST, false)
+        val requested = prefs.safeBoolean(KEY_ADD_ACCOUNT_REQUEST, false)
         if (requested) prefs.edit().remove(KEY_ADD_ACCOUNT_REQUEST).apply()
         return requested
     }
@@ -208,7 +211,7 @@ object AccountSessionStore {
     }
 
     private fun load(context: Context): List<Account> = try {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_ACCOUNTS, "[]") ?: "[]"
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).safeString(KEY_ACCOUNTS, "[]") ?: "[]"
         val array = JSONArray(raw)
         buildList {
             for (i in 0 until array.length()) {

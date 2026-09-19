@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.call.CallHistoryActivity
+import com.example.util.startActivitySafely
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
 import com.example.ui.theme.MessagePalette
@@ -276,7 +277,7 @@ internal fun ChatOverflowSheet(
             palette = palette,
             onClick = {
                 onDismiss()
-                context.startActivity(Intent(context, CallHistoryActivity::class.java))
+                context.startActivitySafely(Intent(context, CallHistoryActivity::class.java), "Unable to open call history.")
             }
         )
         OverflowRow(if (pinnedOnly) "Show all messages" else "Pinned messages", Icons.Default.Place, palette, onPinned)
@@ -316,5 +317,5 @@ internal fun shareChatMessage(context: Context, message: ChatMessage) {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, body)
     }
-    context.startActivity(Intent.createChooser(intent, "Share message"))
+    context.startActivitySafely(Intent.createChooser(intent, "Share message"), "No compatible app is available to share this message.")
 }

@@ -1,5 +1,7 @@
 package com.example.auth
 
+import com.example.util.safeString
+
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -87,7 +89,7 @@ object RememberedLoginStore {
 
     fun load(context: Context): Login? = try {
         val encrypted = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(VALUE, null)
+            .safeString(VALUE, null)
             ?: return null
         val obj = JSONObject(decrypt(encrypted))
         Login(obj.optString("identifier"), obj.optString("password"))
