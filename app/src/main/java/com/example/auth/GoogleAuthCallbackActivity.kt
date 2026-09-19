@@ -161,14 +161,18 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
                 !SupabaseService.refreshToken().isNullOrBlank()
         AccountSessionStore.setSignInRequired(applicationContext, !hasDurableSession)
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-        startActivity(
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TASK or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
-            }
-        )
-        finish()
+        if (
+            startActivitySafely(
+                Intent(this, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                },
+                "Unable to reopen Blink."
+            )
+        ) {
+            finish()
+        }
     }
 
     override fun onDestroy() {
