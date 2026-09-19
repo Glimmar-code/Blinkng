@@ -1582,6 +1582,11 @@ fun getCurrentUserId(): String? {
                 put("course_of_study", profile.courseOfStudy)
                 put("academic_level", profile.academicLevel)
                 if (year != null) put("graduation_year", year) else put("graduation_year", JSONObject.NULL)
+                if (profile.gender.isNotBlank()) put("gender", profile.gender) else put("gender", JSONObject.NULL)
+                if (profile.birthDate.isNotBlank()) put("birth_date", profile.birthDate) else put("birth_date", JSONObject.NULL)
+                put("interests", JSONArray(profile.interests))
+                put("onboarding_completed", profile.onboardingCompleted)
+                put("onboarding_step", profile.onboardingStep.coerceIn(0, 4))
                 put("country_of_origin", profile.countryOfOrigin)
                 put("current_city_state", profile.currentCityState)
                 put("phone", profile.phone.value); put("whatsapp", profile.whatsapp.value)
@@ -3365,6 +3370,14 @@ suspend fun uploadPostMedia(
                 if (l.isNotBlank()) languagesList.add(l)
             }
         }
+
+        val interestsList = mutableListOf<String>()
+        obj.optJSONArray("interests")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val interest = arr.optString(i, "")
+                if (interest.isNotBlank()) interestsList.add(interest)
+            }
+        }
         
         val endorsementsList = mutableListOf<SkillEndorsement>()
         obj.optJSONArray("skill_endorsements")?.let { arr ->
@@ -3430,6 +3443,14 @@ suspend fun uploadPostMedia(
             courseOfStudy = obj.cleanString("course_of_study"),
             academicLevel = obj.cleanString("academic_level"),
             graduationYear = obj.cleanString("graduation_year"),
+            gender = obj.cleanString("gender"),
+            birthDate = obj.cleanString("birth_date"),
+            interests = interestsList,
+            onboardingCompleted = obj.optBoolean("onboarding_completed", true),
+            onboardingStep = obj.optInt(
+                "onboarding_step",
+                if (obj.optBoolean("onboarding_completed", true)) 4 else 0
+            ).coerceIn(0, 4),
             bio = obj.cleanString("bio"),
             availability = availabilityStatus,
             countryOfOrigin = obj.cleanString("country_of_origin"),
