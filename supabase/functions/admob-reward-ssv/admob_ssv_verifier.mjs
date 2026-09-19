@@ -76,6 +76,18 @@ export function parseAdMobSignedQuery(rawQuery) {
   };
 }
 
+/**
+ * AdMob's dashboard URL check omits both optional identity fields when the
+ * tester leaves User ID and Custom Data blank. Such a request cannot identify
+ * a Blink claim or user, so acknowledging it cannot grant or mutate rewards.
+ *
+ * Keep this deliberately narrow: callbacks containing either identity field
+ * continue through normal signature verification.
+ */
+export function isAdMobDashboardProbe(params) {
+  return !params.has("custom_data") && !params.has("user_id");
+}
+
 function base64UrlToBytes(value) {
   if (!/^[A-Za-z0-9_-]+={0,2}$/.test(value)) {
     throw new Error("Invalid AdMob signature encoding");

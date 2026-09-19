@@ -1,5 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { verifyAdMobSignedQuery } from "./admob_ssv_verifier.mjs";
+import {
+  isAdMobDashboardProbe,
+  parseAdMobSignedQuery,
+  verifyAdMobSignedQuery,
+} from "./admob_ssv_verifier.mjs";
 
 const ADMOB_KEYS_URL = "https://www.gstatic.com/admob/reward/verifier-keys.json";
 const EXPECTED_REWARD = 10;
@@ -50,6 +54,21 @@ Deno.serve(async (req: Request) => {
     // documented URI-query decoding behavior.
     const queryStart = req.url.indexOf("?");
     const rawQuery = queryStart >= 0 ? req.url.slice(queryStart + 1) : "";
+
+    // The AdMob dashboard's reachability test omits both optional identity fields when
+    // its User ID and Custom Data boxes are blank. It still includes the signature
+    // envelope, but it is not a reward claim and cannot identify any Blink user or claim.
+    // Acknowledge this narrow, structurally valid probe without touching reward state.
+    // Complete callbacks always continue to Google's cryptographic verification below.
+    const envelope = parseAdMobSignedQuery(rawQuery);
+    if (isAdMobDashboardProbe(envelope.params)) {
+      return json(200, {
+        ok: true,
+        verification_probe: true,
+        persisted: false,
+      });
+    }
+
     const verification = await verifyAdMobSignedQuery(rawQuery, await fetchAdMobKeys());
     if (!verification.verified) {
       return json(403, { ok: false, error: "invalid_signature" });
@@ -73,10 +92,8 @@ Deno.serve(async (req: Request) => {
       rewardAmount === EXPECTED_REWARD &&
       Number.isFinite(timestamp);
 
-    // Google's AdMob UI marks user_id/custom_data as optional for URL testing, and its
-    // verification request can also omit reward-specific fields. A correctly signed but
-    // incomplete request is therefore a dashboard verification probe: acknowledge it with
-    // HTTP 200, but never persist or grant reward state.
+    // A correctly signed callback may still be incomplete. Acknowledge it without ever
+    // persisting or granting reward state.
     if (!hasCompleteRewardPayload) {
       return json(200, {
         ok: true,
