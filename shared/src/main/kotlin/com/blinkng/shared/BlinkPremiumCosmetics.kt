@@ -95,8 +95,8 @@ object BlinkPremiumCosmetics {
             "avatar_decoration" -> visual(id, "Floating Avatar Accent", "AVATAR FX", BlinkPremiumSurface.AVATAR_FRAME, PINK, PURPLE, CYAN, BlinkPremiumMotion.ORBIT, 95)
 
             "username_glow_24h" -> visual(id, "Luminous Name", "LUMINOUS", BlinkPremiumSurface.NAME_SIGNATURE, PURPLE, PINK, CYAN, BlinkPremiumMotion.LIGHT_SWEEP, 84)
-            "username_font" -> visual(id, "Signature Name", "SIGNATURE", BlinkPremiumSurface.NAME_SIGNATURE, BLUE, PURPLE, PINK, BlinkPremiumMotion.STATIC, 78)
-            "animated_name" -> visual(id, "Living Name", "LIVE NAME", BlinkPremiumSurface.NAME_SIGNATURE, CYAN, PURPLE, PINK, BlinkPremiumMotion.LIGHT_SWEEP, 93)
+            "username_font" -> visual(id, "Signature Nameplate", "SIGNATURE", BlinkPremiumSurface.NAME_SIGNATURE, BLUE, PURPLE, PINK, BlinkPremiumMotion.STATIC, 78)
+            "animated_name" -> visual(id, "Living Nameplate", "LIVE NAME", BlinkPremiumSurface.NAME_SIGNATURE, CYAN, PURPLE, PINK, BlinkPremiumMotion.LIGHT_SWEEP, 93)
 
             "custom_profile_badge" -> visual(id, "Premium Identity Crest", "PREMIUM", BlinkPremiumSurface.PROFILE_BADGE, PURPLE, PINK, GOLD, BlinkPremiumMotion.SPRING_REVEAL, 82)
             "creator_badge" -> visual(id, "Creator Crest", "CREATOR", BlinkPremiumSurface.PROFILE_BADGE, GOLD, ORANGE, PINK, BlinkPremiumMotion.LIGHT_SWEEP, 96)
@@ -127,6 +127,25 @@ object BlinkPremiumCosmetics {
             "blink_vip_10d", "vip_theme" ->
                 visual(id, "Blink VIP Signature", "VIP", BlinkPremiumSurface.PROFILE_AURA, GOLD, PURPLE, PINK, BlinkPremiumMotion.LIGHT_SWEEP, 100, true)
 
+            "campus_signature_theme" ->
+                visual(id, "Campus Signature Theme", "CAMPUS", BlinkPremiumSurface.PROFILE_THEME, PURPLE, BLUE, CYAN, BlinkPremiumMotion.GRADIENT_DRIFT, 88, true)
+            "campus_signature_frame" ->
+                visual(id, "Campus Signature Frame", "CAMPUS", BlinkPremiumSurface.AVATAR_FRAME, BLUE, PURPLE, CYAN, BlinkPremiumMotion.EDGE_REVEAL, 86)
+            "campus_signature_nameplate" ->
+                visual(id, "Campus Signature Nameplate", "CAMPUS", BlinkPremiumSurface.NAME_SIGNATURE, CYAN, PURPLE, BLUE, BlinkPremiumMotion.LIGHT_SWEEP, 84)
+            "campus_signature_chat" ->
+                visual(id, "Campus Signature Chat", "CAMPUS", BlinkPremiumSurface.CHAT_STYLE, BLUE, PURPLE, CYAN, BlinkPremiumMotion.GRADIENT_DRIFT, 72, true)
+            "level_10_neon_frame" ->
+                visual(id, "Level 10 Neon Frame", "LEVEL 10", BlinkPremiumSurface.AVATAR_FRAME, CYAN, BLUE, PURPLE, BlinkPremiumMotion.LIGHT_SWEEP, 90)
+            "level_25_signature_nameplate" ->
+                visual(id, "Level 25 Signature Nameplate", "LEVEL 25", BlinkPremiumSurface.NAME_SIGNATURE, GOLD, PURPLE, PINK, BlinkPremiumMotion.LIGHT_SWEEP, 94)
+            "level_50_legend_aura" ->
+                visual(id, "Level 50 Legend Aura", "LEGEND", BlinkPremiumSurface.PROFILE_AURA, GOLD, PINK, PURPLE, BlinkPremiumMotion.PARTICLE_FLOAT, 110, true)
+            "christmas_2026_profile_theme" ->
+                visual(id, "Christmas 2026 Theme", "LIMITED", BlinkPremiumSurface.PROFILE_THEME, PINK, GOLD, CYAN, BlinkPremiumMotion.PARTICLE_FLOAT, 98, true)
+            "christmas_2026_nameplate" ->
+                visual(id, "Christmas 2026 Nameplate", "LIMITED", BlinkPremiumSurface.NAME_SIGNATURE, GOLD, PINK, CYAN, BlinkPremiumMotion.LIGHT_SWEEP, 96)
+
             else -> visual(
                 catalogId = id,
                 displayName = id.replace('_', ' ').trim().replaceFirstChar { it.uppercase() }.ifBlank { "Blink Premium" },
@@ -150,13 +169,35 @@ object BlinkPremiumCosmetics {
             .filter { it.surface == surface }
             .maxByOrNull(BlinkPremiumVisualSpec::priority)
 
+        val coordinatedTheme = visuals
+            .firstOrNull { it.catalogId == "profile_theme_bundle" }
+            ?.let { base ->
+                fun layer(surface: BlinkPremiumSurface, label: String, priority: Int) =
+                    base.copy(
+                        displayName = "Signature Profile $label",
+                        surface = surface,
+                        priority = priority,
+                        fullSurface = surface in setOf(
+                            BlinkPremiumSurface.PROFILE_AURA,
+                            BlinkPremiumSurface.PROFILE_THEME,
+                        ),
+                    )
+                mapOf(
+                    BlinkPremiumSurface.PROFILE_AURA to layer(BlinkPremiumSurface.PROFILE_AURA, "Aura", 89),
+                    BlinkPremiumSurface.PROFILE_THEME to layer(BlinkPremiumSurface.PROFILE_THEME, "Theme", 94),
+                    BlinkPremiumSurface.AVATAR_FRAME to layer(BlinkPremiumSurface.AVATAR_FRAME, "Frame", 87),
+                    BlinkPremiumSurface.NAME_SIGNATURE to layer(BlinkPremiumSurface.NAME_SIGNATURE, "Nameplate", 86),
+                    BlinkPremiumSurface.PROFILE_ENTRANCE to layer(BlinkPremiumSurface.PROFILE_ENTRANCE, "Entrance", 84),
+                )
+            }.orEmpty()
+
         return BlinkPremiumProfileLayers(
-            aura = strongest(BlinkPremiumSurface.PROFILE_AURA),
-            theme = strongest(BlinkPremiumSurface.PROFILE_THEME),
-            frame = strongest(BlinkPremiumSurface.AVATAR_FRAME),
-            name = strongest(BlinkPremiumSurface.NAME_SIGNATURE),
+            aura = strongest(BlinkPremiumSurface.PROFILE_AURA) ?: coordinatedTheme[BlinkPremiumSurface.PROFILE_AURA],
+            theme = strongest(BlinkPremiumSurface.PROFILE_THEME) ?: coordinatedTheme[BlinkPremiumSurface.PROFILE_THEME],
+            frame = strongest(BlinkPremiumSurface.AVATAR_FRAME) ?: coordinatedTheme[BlinkPremiumSurface.AVATAR_FRAME],
+            name = strongest(BlinkPremiumSurface.NAME_SIGNATURE) ?: coordinatedTheme[BlinkPremiumSurface.NAME_SIGNATURE],
             badge = strongest(BlinkPremiumSurface.PROFILE_BADGE),
-            entrance = strongest(BlinkPremiumSurface.PROFILE_ENTRANCE),
+            entrance = strongest(BlinkPremiumSurface.PROFILE_ENTRANCE) ?: coordinatedTheme[BlinkPremiumSurface.PROFILE_ENTRANCE],
         )
     }
 
@@ -166,9 +207,13 @@ object BlinkPremiumCosmetics {
         .maxByOrNull(BlinkPremiumVisualSpec::priority)
 
     fun equipmentSlot(catalogId: String): String = when (catalogId) {
-        "profile_ring", "animated_profile_ring", "premium_profile_frame" -> "profile_frame"
-        "profile_background", "profile_theme_bundle" -> "profile_theme"
-        "username_font", "animated_name" -> "name_style"
+        "profile_ring", "animated_profile_ring", "premium_profile_frame",
+        "campus_signature_frame", "level_10_neon_frame" -> "profile_frame"
+        "profile_background", "profile_theme_bundle", "campus_signature_theme",
+        "christmas_2026_profile_theme" -> "profile_theme"
+        "username_font", "animated_name", "campus_signature_nameplate",
+        "level_25_signature_nameplate", "christmas_2026_nameplate" -> "name_style"
+        "level_50_legend_aura" -> "profile_aura"
         "custom_profile_badge", "creator_badge", "limited_edition_badge" -> "profile_badge"
         "profile_entrance_animation", "vip_profile_entrance" -> "profile_entrance"
         "chat_bubble_theme", "special_dm_theme" -> "chat_theme"
