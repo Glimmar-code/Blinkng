@@ -686,7 +686,7 @@ fun GetVerifiedSheet(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(100.dp)
                                 ) {
-                                    Icon(Icons.Default.TaskAlt, contentDescription = null, modifier = Modifier.size(17.dp))
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(17.dp))
                                     Spacer(Modifier.width(5.dp))
                                     Text(
                                         if (showDailyMissions) "Hide missions" else "Missions",
