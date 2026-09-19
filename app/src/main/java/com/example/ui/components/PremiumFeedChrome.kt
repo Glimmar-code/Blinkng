@@ -452,7 +452,7 @@ fun CreatePostFab(
     )
     val horizontalPadding by animateDpAsState(
         targetValue = if (expanded) 18.dp else 15.dp,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = tween(durationMillis = 180),
         label = "createPostPadding"
     )
     val pill = RoundedCornerShape(28.dp)
