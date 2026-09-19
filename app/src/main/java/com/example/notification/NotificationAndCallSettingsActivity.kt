@@ -76,6 +76,7 @@ import com.example.call.CallType
 import com.example.call.IncomingCallNotification
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
+import com.example.util.startActivitySafely
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -468,7 +469,7 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
                     title = "Phone sound & Do Not Disturb",
                     subtitle = "Open Android sound settings for volume, silent mode and DND"
                 ) {
-                    context.startActivity(Intent(Settings.ACTION_SOUND_SETTINGS))
+                    context.startActivitySafely(Intent(Settings.ACTION_SOUND_SETTINGS), "Unable to open Android sound settings.")
                 }
             }
 
@@ -478,7 +479,7 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
                     title = "Call history",
                     subtitle = "Missed, incoming and outgoing Blink calls with callback shortcuts"
                 ) {
-                    context.startActivity(Intent(context, CallHistoryActivity::class.java))
+                    context.startActivitySafely(Intent(context, CallHistoryActivity::class.java), "Unable to open call history.")
                 }
             }
 

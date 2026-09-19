@@ -81,7 +81,7 @@ class IncomingCallBannerActivity : ComponentActivity() {
         ) {
             if (callId.isBlank() || activeCallId == callId) return
             activeCallId = callId
-            context.startActivity(
+            val opened = context.startActivitySafely(
                 Intent(context, IncomingCallBannerActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                     putExtra(CallActivity.EXTRA_CALL_ID, callId)
@@ -91,8 +91,10 @@ class IncomingCallBannerActivity : ComponentActivity() {
                     putExtra(EXTRA_PEER_NAME, peerName)
                     putExtra(EXTRA_PEER_AVATAR, peerAvatar)
                     putExtra(EXTRA_CONVERSATION_ID, conversationId)
-                }
+                },
+                "Unable to open the incoming call."
             )
+            if (!opened) activeCallId = null
         }
 
         fun dismiss(callId: String) {
@@ -208,7 +210,7 @@ class IncomingCallBannerActivity : ComponentActivity() {
         actionInProgress = true
         stopRinging()
         IncomingCallNotification.cancel(this, callId)
-        startActivity(
+        val opened = startActivitySafely(
             CallActivity.incomingIntent(
                 context = this,
                 callId = callId,
@@ -219,9 +221,15 @@ class IncomingCallBannerActivity : ComponentActivity() {
                 callType = callType,
                 conversationId = conversationId,
                 answerImmediately = true
-            )
+            ),
+            "Unable to open the Blink call screen."
         )
-        finish()
+        if (opened) {
+            finish()
+        } else {
+            actionInProgress = false
+            startRinging()
+        }
     }
 
     private fun decline() {

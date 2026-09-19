@@ -103,6 +103,7 @@ import com.example.data.models.VerificationBadge
 import com.example.data.supabase.AdminSupabaseService
 import com.example.notification.NotificationAndCallSettingsActivity
 import com.example.ui.theme.BlinkPink
+import com.example.util.startActivitySafely
 import kotlinx.coroutines.delay
 
 private object MenuMotion {
@@ -151,9 +152,10 @@ fun AppMenuSheet(
 
     fun openProfessional(section: String) {
         onDismiss()
-        context.startActivity(
+        context.startActivitySafely(
             Intent(context, ProfessionalCenterActivity::class.java)
-                .putExtra("section", section)
+                .putExtra("section", section),
+            "Unable to open this Blink tool."
         )
     }
 
@@ -183,7 +185,7 @@ fun AppMenuSheet(
                     "Open Blink administration"
                 ) {
                     onDismiss()
-                    context.startActivity(Intent(context, AdminControlCenterActivity::class.java))
+                    context.startActivitySafely(Intent(context, AdminControlCenterActivity::class.java), "Unable to open admin center.")
                 }
             }
 
@@ -215,7 +217,7 @@ fun AppMenuSheet(
                     "Ringtones, message sounds, vibration and Android call alerts"
                 ) {
                     onDismiss()
-                    context.startActivity(Intent(context, NotificationAndCallSettingsActivity::class.java))
+                    context.startActivitySafely(Intent(context, NotificationAndCallSettingsActivity::class.java), "Unable to open notification settings.")
                 }
                 MenuItemRow(
                     Icons.Outlined.Notifications,
@@ -223,7 +225,7 @@ fun AppMenuSheet(
                     "Missed, incoming and outgoing Blink calls"
                 ) {
                     onDismiss()
-                    context.startActivity(Intent(context, CallHistoryActivity::class.java))
+                    context.startActivitySafely(Intent(context, CallHistoryActivity::class.java), "Unable to open call history.")
                 }
                 if (showAdPrivacyOptions) {
                     MenuItemRow(
@@ -283,7 +285,7 @@ fun AppMenuSheet(
                 }
                 MenuItemRow(Icons.Outlined.SwitchAccount, "Switch account", "Use a saved account") {
                     onDismiss()
-                    context.startActivity(Intent(context, AccountSwitcherActivity::class.java))
+                    context.startActivitySafely(Intent(context, AccountSwitcherActivity::class.java), "Unable to open account switcher.")
                 }
                 MenuItemRow(Icons.Outlined.Info, "About Blink", "About this app") {
                     onShowToast("Blink • Student community, Connect Hub, Games and Marketplace")
