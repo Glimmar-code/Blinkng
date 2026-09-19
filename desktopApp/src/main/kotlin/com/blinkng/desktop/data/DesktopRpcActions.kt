@@ -59,6 +59,11 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
 
     suspend fun getEconomyStatus(): JSONObject = rpc("get_blink_economy_status", JSONObject())
 
+    suspend fun getDailyMissions(): JSONObject = rpc("get_my_daily_missions", JSONObject())
+
+    suspend fun claimDailyMission(missionKey: String): JSONObject =
+        rpc("claim_daily_mission", JSONObject().put("p_mission_key", missionKey.trim()))
+
     suspend fun purchaseBlueVerificationWithCoins(): JSONObject =
         rpc("purchase_blink_blue_verification_with_coins", JSONObject())
 
