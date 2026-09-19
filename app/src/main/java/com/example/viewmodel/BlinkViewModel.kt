@@ -491,7 +491,11 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                     is AuthState.Unauthenticated -> {
                         val recoverable = !AccountSessionStore.isSignInRequired(appContext) &&
                             (!SupabaseService.refreshToken().isNullOrBlank() || AccountSessionStore.list(appContext).isNotEmpty())
-                        if (_uiState.value.destination == AppDestination.MAIN && !recoverable) {
+                        if (
+                            (_uiState.value.destination == AppDestination.MAIN ||
+                                _uiState.value.destination == AppDestination.PROFILE_SETUP) &&
+                            !recoverable
+                        ) {
                             _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
                         }
                     }
@@ -585,7 +589,7 @@ private suspend fun restoreSupabaseSession() {
                 restoreLocalSession()
                 restoreCachedAppSnapshot()
                 _uiState.value = _uiState.value.copy(
-                    destination = AppDestination.MAIN,
+                    destination = authenticatedDestination(),
                     isFeedLoading = false,
                     isRefreshingContent = false,
                     isSyncingContent = false,
@@ -1832,8 +1836,17 @@ private suspend fun restoreSupabaseSession() {
             val result = authRepository.signInWithEmail(emailOrUsername, password)
             if (result.isSuccess && result.userProfile != null) {
                 val profile = result.userProfile
-                _uiState.value = _uiState.value.copy(myProfile = profile, destination = AppDestination.MAIN)
-                saveLocalProfile(profile); fetchSupabaseData(); showToast("✨ Signed in as @${profile.username}"); onResult(true, null)
+                _uiState.value = _uiState.value.copy(
+                    myProfile = profile,
+                    destination = authenticatedDestination(profile)
+                )
+                saveLocalProfile(profile)
+                fetchSupabaseData()
+                showToast(
+                    if (profile.onboardingCompleted) "✨ Signed in as @${profile.username}"
+                    else "Complete your BLINK profile to continue."
+                )
+                onResult(true, null)
             } else { val msg = result.errorMessage ?: "Unable to sign in."; showToast(msg); onResult(false, msg) }
         }
     }
@@ -1846,9 +1859,17 @@ private suspend fun restoreSupabaseSession() {
                 if (result.errorMessage == "GOOGLE_OAUTH_STARTED") return@launch
                 if (result.isSuccess && result.userProfile != null) {
                     val profile = result.userProfile
-                    _uiState.value = _uiState.value.copy(myProfile = profile, destination = AppDestination.MAIN)
-                    saveLocalProfile(profile); refreshMyProfileFromSupabase(false); fetchSupabaseData()
-                    showToast("✨ Welcome back, @${_uiState.value.myProfile.username}")
+                    _uiState.value = _uiState.value.copy(
+                        myProfile = profile,
+                        destination = authenticatedDestination(profile)
+                    )
+                    saveLocalProfile(profile)
+                    refreshMyProfileFromSupabase(false)
+                    fetchSupabaseData()
+                    showToast(
+                        if (profile.onboardingCompleted) "✨ Welcome back, @${_uiState.value.myProfile.username}"
+                        else "Choose your BLINK username to continue."
+                    )
                 } else showToast(result.errorMessage ?: "Google authentication failed.")
             } catch (e: Exception) { Log.e(TAG, "loginWithGoogle failed", e); showToast(e.message ?: "Google authentication failed.") }
         }
@@ -1940,7 +1961,7 @@ private suspend fun restoreSupabaseSession() {
                 return@checkOnboardingUsername
             }
 
-            val clean = username.trim().lowercase().removePrefix("@")
+            val clean = BlinkOnboardingPolicy.normalizeUsername(username)
             viewModelScope.launch {
                 val current = _uiState.value.myProfile
                 val updated = current.copy(
