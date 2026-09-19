@@ -33,6 +33,12 @@ data class DesktopProfile(
     val blinkVipUntil: String? = null,
     val verifiedAtMillis: Long = 0L,
     val profileViewsThisWeek: Int = 0,
+    val academicLevel: String? = null,
+    val gender: String? = null,
+    val birthDate: String? = null,
+    val interests: List<String> = emptyList(),
+    val onboardingCompleted: Boolean = true,
+    val onboardingStep: Int = 4,
 )
 
 data class DesktopFeedPost(
