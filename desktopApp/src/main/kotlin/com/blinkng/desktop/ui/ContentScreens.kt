@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -58,6 +59,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,6 +87,7 @@ import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import com.blinkng.shared.xpProgress
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -92,13 +95,25 @@ import java.time.format.DateTimeFormatter
 import org.json.JSONObject
 
 @Composable
-fun HomeScreen(state: DesktopAppState) {
+fun HomeScreen(
+    state: DesktopAppState,
+    onFeedCompactChange: (Boolean) -> Unit = {},
+) {
     var posts by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var composer by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var commentsFor by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 52
+        }.collect { compact ->
+            onFeedCompactChange(compact)
+        }
+    }
 
     suspend fun reload() {
         loading = true
@@ -111,6 +126,7 @@ fun HomeScreen(state: DesktopAppState) {
     LaunchedEffect(Unit) { reload() }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
