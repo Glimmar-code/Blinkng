@@ -3,6 +3,7 @@ import { createPrivateKey, sign } from "node:crypto";
 import test from "node:test";
 
 import {
+  isAdMobDashboardProbe,
   parseAdMobSignedQuery,
   verifyAdMobSignedQuery,
 } from "../supabase/functions/admob-reward-ssv/admob_ssv_verifier.mjs";
@@ -63,4 +64,22 @@ test("rejects unsigned parameters appended after key_id", () => {
 test("rejects duplicate signature envelopes", () => {
   const callback = signedQuery("reward_amount=10&signature=forged");
   assert.throws(() => parseAdMobSignedQuery(callback), /Duplicate AdMob signature envelope/);
+});
+
+test("recognizes the dashboard test when optional identity fields are blank", () => {
+  const callback = signedQuery(
+    "ad_network=5450213213286189855&ad_unit=4343111201&reward_amount=10&reward_item=Blink%20Coins&timestamp=1507770365237823&transaction_id=test123",
+  );
+  const envelope = parseAdMobSignedQuery(callback);
+
+  assert.equal(isAdMobDashboardProbe(envelope.params), true);
+});
+
+test("does not bypass verification for an identifiable reward callback", () => {
+  const callback = signedQuery(
+    "ad_network=5450213213286189855&ad_unit=4343111201&custom_data=claim123&reward_amount=10&reward_item=Blink%20Coins&timestamp=1507770365237823&transaction_id=real123&user_id=user123",
+  );
+  const envelope = parseAdMobSignedQuery(callback);
+
+  assert.equal(isAdMobDashboardProbe(envelope.params), false);
 });
