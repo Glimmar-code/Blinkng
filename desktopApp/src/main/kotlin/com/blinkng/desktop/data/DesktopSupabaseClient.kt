@@ -235,7 +235,7 @@ class DesktopSupabaseClient(
     suspend fun fetchProfile(userId: String = requireSession().userId): DesktopProfile = withContext(Dispatchers.IO) {
         profileCache[userId]?.let { return@withContext it }
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,academic_level,gender,birth_date,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
@@ -290,10 +290,6 @@ class DesktopSupabaseClient(
             require(it in BlinkOnboardingPolicy.genders) { "Choose a valid gender option." }
             body.put("gender", it)
         }
-        birthDate?.let {
-            if (it.isBlank()) body.put("birth_date", JSONObject.NULL)
-            else body.put("birth_date", it.trim())
-        }
         interests?.let { selected ->
             val clean = selected.map(String::trim)
                 .filter { it in BlinkOnboardingPolicy.allInterests }
@@ -310,10 +306,23 @@ class DesktopSupabaseClient(
         fetchProfile(userId)
     }
 
+    suspend fun savePrivateBirthDate(birthDate: String) = withContext(Dispatchers.IO) {
+        val clean = birthDate.trim()
+        val body = JSONObject()
+            .put("user_id", requireSession().userId)
+            .put("birth_date", if (clean.isBlank()) JSONObject.NULL else clean)
+            .put("updated_at", Instant.now().toString())
+        postArray(
+            "/rest/v1/profile_private_details?on_conflict=user_id",
+            body,
+            prefer = "resolution=merge-duplicates,return=minimal",
+        )
+    }
+
     suspend fun fetchOnboardingSuggestions(limit: Int = 40): List<DesktopProfile> = withContext(Dispatchers.IO) {
         val currentId = requireSession().userId
         val rows = getArray(
-            "/rest/v1/profiles?id=neq.${encode(currentId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,academic_level,gender,birth_date,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=${limit.coerceIn(5, 100)}",
+            "/rest/v1/profiles?id=neq.${encode(currentId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=${limit.coerceIn(5, 100)}",
         )
         (0 until rows.length()).mapNotNull { index -> rows.optJSONObject(index)?.let(::parseProfile) }
     }
@@ -820,7 +829,6 @@ class DesktopSupabaseClient(
         department = row.optNullableString("department"),
         academicLevel = row.optNullableString("academic_level"),
         gender = row.optNullableString("gender"),
-        birthDate = row.optNullableString("birth_date"),
         interests = row.optStringList("interests"),
         onboardingCompleted = row.optBoolean("onboarding_completed", true),
         onboardingStep = row.optInt(
