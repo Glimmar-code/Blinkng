@@ -89,7 +89,7 @@ fun SplashScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(DarkBackground),
+            .background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
         BlinkMark(
@@ -152,16 +152,7 @@ fun OnboardingScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF321143),
-                        Color(0xFF180A26),
-                        DarkBackground
-                    ),
-                    radius = 950f
-                )
-            )
+            .background(Color.Black)
     ) {
 
         DecorativeAuthBackground()
@@ -395,7 +386,7 @@ fun SignInScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(blinkBackgroundBrush(isDark = true))
+            .background(Color.Black)
     ) {
 
         DecorativeAuthBackground()
@@ -781,7 +772,7 @@ fun SignUpScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(blinkBackgroundBrush(isDark = true))
+            .background(Color.Black)
     ) {
 
         DecorativeAuthBackground()
@@ -1215,7 +1206,7 @@ fun ProfileSetupOnboardingScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(DarkBackground)
+            .background(Color.Black)
     ) {
 
         LazyColumn(
@@ -1646,18 +1637,10 @@ fun ForgotPasswordDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
 
-                Surface(
-                    shape = CircleShape,
-                    color = BlinkPink.copy(alpha = 0.10f)
-                ) {
-
-                    Icon(
-                        Icons.Default.LockReset,
-                        contentDescription = "Password reset",
-                        tint = BlinkPink,
-                        modifier = Modifier.padding(15.dp)
-                    )
-                }
+                BlinkMark(
+                    size = 58.dp,
+                    showText = false
+                )
 
                 Spacer(
                     modifier = Modifier.height(15.dp)
@@ -2132,6 +2115,15 @@ private fun AuthTopBar(
                 modifier = Modifier.size(20.dp)
             )
         }
+
+        Spacer(
+            modifier = Modifier.width(10.dp)
+        )
+
+        BlinkMark(
+            size = 30.dp,
+            showText = false
+        )
 
         Spacer(
             modifier = Modifier.width(10.dp)
@@ -2922,57 +2914,9 @@ private fun PremiumAuthButton(
 
 @Composable
 private fun DecorativeAuthBackground() {
-
-    val infinite =
-        rememberInfiniteTransition(
-            label = "background"
-        )
-
-    val y by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = 24f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                2500,
-                easing = FastOutSlowInEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "background_y"
-    )
-
-    Box(
-        modifier = Modifier.fillMaxSize()
-    ) {
-
-        Box(
-            modifier = Modifier
-                .size(190.dp)
-                .offset(
-                    x = (-70).dp,
-                    y = y.dp
-                )
-                .alpha(0.10f)
-                .background(
-                    BlinkPink,
-                    CircleShape
-                )
-        )
-
-        Box(
-            modifier = Modifier
-                .size(220.dp)
-                .offset(
-                    x = 275.dp,
-                    y = 250.dp
-                )
-                .alpha(0.08f)
-                .background(
-                    BlinkPurple,
-                    CircleShape
-                )
-        )
-    }
+    // Authentication stays pure black so the supplied black-square BLINK
+    // mark visually disappears into the page instead of looking boxed-in.
+    Box(modifier = Modifier.fillMaxSize())
 }
 
 // ================================================================
