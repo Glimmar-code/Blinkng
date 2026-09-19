@@ -19,6 +19,99 @@ set json_value = excluded.json_value, updated_at = now();
 alter table public.blink_coin_purchase_orders
   add column if not exists updated_at timestamptz not null default now();
 
+create or replace function public.purchase_blink_blue_verification_with_coins()
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  v_user uuid := auth.uid();
+  v_cost integer := 3000;
+  v_valid_days integer := 30;
+  v_balance bigint;
+  v_badge text;
+  v_expires_at timestamptz;
+begin
+  if v_user is null then raise exception 'AUTH_REQUIRED'; end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext(v_user::text)::bigint);
+
+  select upper(coalesce(verification_badge,'NONE')) into v_badge
+    from public.profiles where id=v_user for update;
+  if not found then raise exception 'PROFILE_NOT_FOUND'; end if;
+
+  if v_badge = 'GOLD' then
+    select coalesce(floor(spendable_coin_balance),0)::bigint into v_balance
+      from public.user_balances where user_id=v_user;
+    return jsonb_build_object(
+      'success',true,'already_verified',true,'cost',0,
+      'balance',coalesce(v_balance,0),'badge','GOLD',
+      'expires_at',null
+    );
+  end if;
+
+  select coalesce(int_value,3000)::integer into v_cost
+    from private.blink_economy_config where key='blue_verification_coin_cost';
+  select coalesce(int_value,30)::integer into v_valid_days
+    from private.blink_economy_config where key='blue_verification_valid_days';
+
+  insert into public.user_balances(user_id,spendable_coin_balance,updated_at)
+  values(v_user,0,now()) on conflict(user_id) do nothing;
+
+  select floor(spendable_coin_balance)::bigint into v_balance
+    from public.user_balances where user_id=v_user for update;
+
+  if coalesce(v_balance,0) < v_cost then raise exception 'INSUFFICIENT_BLINK_COINS'; end if;
+
+  update public.user_balances
+     set spendable_coin_balance=spendable_coin_balance-v_cost,updated_at=now()
+   where user_id=v_user
+  returning floor(spendable_coin_balance)::bigint into v_balance;
+
+  perform set_config('blink.coin_sync_bypass','1',true);
+  insert into public.game_profiles(user_id,coins,updated_at)
+  values(v_user,v_balance,now())
+  on conflict(user_id) do update set coins=excluded.coins,updated_at=now();
+  perform set_config('blink.coin_sync_bypass','0',true);
+
+  update public.profiles
+     set verification_badge='BLUE',
+         verification_tier='Standard'::public.verification_tier_enum,
+         is_verified=true,
+         verified_at=coalesce(verified_at,now()),
+         verification_expires_at=
+           greatest(coalesce(verification_expires_at,now()),now())
+           + make_interval(days=>v_valid_days),
+         updated_at=now()
+   where id=v_user
+  returning verification_expires_at into v_expires_at;
+
+  insert into public.blink_coin_transactions(user_id,kind,item_name,amount,balance_after,metadata)
+  values(
+    v_user,'VERIFICATION_PURCHASE','BLINK Verified',-v_cost,v_balance,
+    jsonb_build_object(
+      'badge','BLUE',
+      'purchase_method','blink_coins','valid_days',v_valid_days,
+      'expires_at',v_expires_at
+    )
+  );
+
+  return jsonb_build_object(
+    'success',true,
+    'already_verified',false,
+    'cost',v_cost,
+    'balance',v_balance,
+    'badge','BLUE',
+    'valid_days',v_valid_days,
+    'expires_at',v_expires_at
+  );
+end
+$;
+
+revoke all on function public.purchase_blink_blue_verification_with_coins() from public, anon;
+grant execute on function public.purchase_blink_blue_verification_with_coins() to authenticated;
+
 create table if not exists public.blink_verification_purchase_orders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
