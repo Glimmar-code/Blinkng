@@ -129,7 +129,7 @@ class BlinkStoreActivity : ComponentActivity() {
 }
 
 private enum class BlinkStoreTab(val label: String) {
-    STORE("Store"), VAULT("Vault"), VIP("VIP"), HISTORY("History"), MORE("More")
+    STORE("Store"), VAULT("Collection"), VIP("VIP"), HISTORY("History"), MORE("More")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -144,6 +144,7 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
     var tab by remember { mutableStateOf(BlinkStoreTab.STORE) }
     var previewItem by remember { mutableStateOf<BlinkStoreItem?>(null) }
     var purchaseItem by remember { mutableStateOf<BlinkStoreItem?>(null) }
+    var giftItem by remember { mutableStateOf<BlinkStoreItem?>(null) }
     var activateRow by remember { mutableStateOf<JSONObject?>(null) }
     var targets by remember { mutableStateOf(JSONObject()) }
 
@@ -178,9 +179,20 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
     }
 
     val balance = snapshot.optLong("balance", 0L)
+    val xpLevel = snapshot.optInt("xp_level", 1).coerceAtLeast(1)
     val inventory = snapshot.optJSONArray("inventory").objects()
+    val serverCatalog = snapshot.optJSONArray("catalog").objects().mapNotNull(::parseStoreCatalogItem)
+    val catalogItems = if (serverCatalog.isNotEmpty()) serverCatalog else BlinkStoreCatalog.items
     val vip = snapshot.optJSONObject("vip") ?: JSONObject()
     val equippedIds = snapshot.optJSONArray("equipped").objects().map { it.optString("catalog_id") }.toSet()
+    val wishlistIds = snapshot.optJSONArray("wishlist")?.let { array ->
+        buildSet {
+            for (index in 0 until array.length()) {
+                array.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+            }
+        }
+    }.orEmpty()
+    val savedLooks = snapshot.optJSONArray("saved_looks").objects()
 
     Scaffold(
         topBar = {
@@ -258,18 +270,42 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
                 ) { selectedTab ->
                     when (selectedTab) {
                         BlinkStoreTab.STORE -> StoreTab(
+                            catalog = catalogItems,
                             inventory = inventory,
+                            xpLevel = xpLevel,
                             vip = vip,
                             equippedIds = equippedIds,
+                            wishlistIds = wishlistIds,
                             onPreview = { previewItem = it },
-                            onBuy = { purchaseItem = it },
+                            onWishlist = { item, enabled ->
+                                runAction(if (enabled) "${item.name} saved to Wishlist." else "${item.name} removed from Wishlist.") {
+                                    service.setWishlist(item.id, enabled)
+                                }
+                            },
                         )
                         BlinkStoreTab.VAULT -> VaultTab(
+                            catalog = catalogItems,
                             inventory = inventory,
                             snapshot = snapshot,
                             equippedIds = equippedIds,
+                            onPreview = { previewItem = it },
+                            onSaveLook = {
+                                runAction("Saved Look ${savedLooks.size + 1}.") {
+                                    service.saveCurrentLook("Look ${savedLooks.size + 1}")
+                                }
+                            },
+                            onApplyLook = { row ->
+                                runAction("${row.optString("name", "Saved look")} applied.") {
+                                    service.applySavedLook(row.optString("id"))
+                                }
+                            },
+                            onDeleteLook = { row ->
+                                runAction("${row.optString("name", "Saved look")} deleted.") {
+                                    service.deleteSavedLook(row.optString("id"))
+                                }
+                            },
                             onUse = { row ->
-                                val item = BlinkStoreCatalog.items.firstOrNull { it.id == row.optString("catalog_id") }
+                                val item = catalogItems.firstOrNull { it.id == row.optString("catalog_id") }
                                     ?: return@VaultTab
                                 val experience = item.premiumExperience()
                                 if (item.type == BlinkStoreItemType.PERMANENT) {
@@ -303,16 +339,17 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
                         BlinkStoreTab.VIP -> VipTab(
                             vip = vip,
                             balance = balance,
+                            vipPrice = catalogItems.firstOrNull { it.id == "blink_vip_10d" }?.price ?: 1_200,
                             working = working,
-                            onClaim = { benefit -> runAction("VIP benefit added to your Vault.") { service.claimVip(benefit) } },
-                            onRenew = { runAction("Blink VIP extended by 10 days.") { service.renewVip() } },
+                            onClaim = { benefit -> runAction("VIP benefit added to your Collection.") { service.claimVip(benefit) } },
+                            onRenew = { runAction("Blink VIP extended by 30 days.") { service.renewVip() } },
                             onAutoRenew = { enabled ->
                                 runAction(if (enabled) "VIP auto-renew enabled." else "VIP auto-renew disabled.") {
                                     service.setAutoRenew(enabled)
                                 }
                             },
                             onGift = { username -> runAction("Blink VIP gift sent to @$username.") { service.giftVip(username) } },
-                            onBuyVip = { previewItem = BlinkStoreCatalog.items.first { it.id == "blink_vip_10d" } }
+                            onBuyVip = { previewItem = catalogItems.first { it.id == "blink_vip_10d" } }
                         )
                         BlinkStoreTab.HISTORY -> HistoryTab(snapshot.optJSONArray("transactions").objects())
                         BlinkStoreTab.MORE -> MoreTab(onClose)
@@ -349,10 +386,27 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
             balance = balance,
             vipActive = vip.optBoolean("active", false),
             owned = owned,
+            xpLevel = xpLevel,
             onDismiss = { previewItem = null },
             onBuy = {
                 previewItem = null
                 purchaseItem = item
+            },
+            onGift = if (item.canGiftCosmetic() && item.isAvailableNow()) {
+                {
+                    previewItem = null
+                    giftItem = item
+                }
+            } else null,
+            onClaimLevelReward = item.unlockLevel?.let { requiredLevel ->
+                {
+                    if (xpLevel >= requiredLevel && !owned) {
+                        previewItem = null
+                        runAction("${item.name} claimed from your Level $requiredLevel reward.") {
+                            service.claimLevelCosmetic(item.id)
+                        }
+                    }
+                }
             },
         )
     }
@@ -365,15 +419,31 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
             onDismiss = { purchaseItem = null },
             onConfirm = { quantity, multiplier ->
                 purchaseItem = null
-                runAction("${item.name} purchased. Open Vault when you are ready to use or apply it.") {
+                runAction("${item.name} purchased. Open My Collection when you are ready to use or apply it.") {
                     service.purchase(item.id, quantity, multiplier)
                 }
             }
         )
     }
 
+    giftItem?.let { item ->
+        CosmeticGiftDialog(
+            item = item,
+            balance = balance,
+            vipActive = vip.optBoolean("active", false),
+            onDismiss = { giftItem = null },
+            onConfirm = { username ->
+                giftItem = null
+                val recipient = username.trim().removePrefix("@")
+                runAction("${item.name} sent to @$recipient.") {
+                    service.giftStoreItem(item.id, recipient)
+                }
+            }
+        )
+    }
+
     activateRow?.let { row ->
-        val item = BlinkStoreCatalog.items.firstOrNull { it.id == row.optString("catalog_id") }
+        val item = catalogItems.firstOrNull { it.id == row.optString("catalog_id") }
         if (item != null) {
             TargetDialog(
                 item = item,
@@ -407,25 +477,44 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
 
 @Composable
 private fun StoreTab(
+    catalog: List<BlinkStoreItem>,
     inventory: List<JSONObject>,
+    xpLevel: Int,
     vip: JSONObject,
     equippedIds: Set<String>,
+    wishlistIds: Set<String>,
     onPreview: (BlinkStoreItem) -> Unit,
-    onBuy: (BlinkStoreItem) -> Unit
+    onWishlist: (BlinkStoreItem, Boolean) -> Unit
 ) {
     var category by remember { mutableStateOf("All") }
     var query by remember { mutableStateOf("") }
-    val categories = remember { listOf("All") + BlinkStoreCatalog.items.map { it.category }.distinct() }
-    val items = BlinkStoreCatalog.items.filter { item ->
+    val categories = remember(catalog) { listOf("All") + catalog.map { it.category }.distinct() }
+    val items = catalog.filter { item ->
         (category == "All" || item.category == category) &&
             (query.isBlank() || listOf(item.name, item.description, item.category)
                 .any { it.contains(query.trim(), ignoreCase = true) })
     }
     val vipActive = vip.optBoolean("active", false)
+    val ownedIds = inventory.map { it.optString("catalog_id") }.filter(String::isNotBlank).toSet()
+    val ownedCategories = catalog
+        .filter { it.id in ownedIds || it.id in equippedIds }
+        .map { it.category }
+        .toSet()
+    val recommendations = catalog
+        .asSequence()
+        .filter { it.id !in ownedIds }
+        .filter { !it.vipOnly || vipActive }
+        .sortedWith(
+            compareByDescending<BlinkStoreItem> { it.category in ownedCategories }
+                .thenByDescending { it.id in wishlistIds }
+                .thenBy { it.price }
+        )
+        .take(6)
+        .toList()
 
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            PremiumStoreHero(vipActive = vipActive, itemCount = BlinkStoreCatalog.items.size)
+            PremiumStoreHero(vipActive = vipActive, itemCount = catalog.size)
         }
         item {
             OutlinedTextField(
@@ -452,6 +541,34 @@ private fun StoreTab(
                 }
             }
         }
+        if (query.isBlank() && category == "All" && recommendations.isNotEmpty()) {
+            item {
+                Column(Modifier.padding(horizontal = 16.dp)) {
+                    Text("Recommended for your look", fontWeight = FontWeight.Black, fontSize = 17.sp)
+                    Text(
+                        "Based only on Store items you own or equipped.",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            item {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                ) {
+                    items(recommendations, key = { "recommended-${it.id}" }) { recommended ->
+                        AssistChip(
+                            onClick = { onPreview(recommended) },
+                            label = { Text(recommended.name, maxLines = 1) },
+                            leadingIcon = {
+                                Icon(storeIcon(recommended), contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        )
+                    }
+                }
+            }
+        }
         items(items, key = { it.id }) { item ->
             val owned = item.type == BlinkStoreItemType.PERMANENT &&
                 inventory.any { it.optString("catalog_id") == item.id && it.optString("status") == "PERMANENT" }
@@ -465,8 +582,10 @@ private fun StoreTab(
                 equipped = equipped,
                 vipLocked = vipLocked,
                 vipActive = vipActive,
+                wishlisted = item.id in wishlistIds,
+                xpLevel = xpLevel,
                 onPreview = onPreview,
-                onBuy = onBuy
+                onWishlist = onWishlist
             )
         }
         if (items.isEmpty()) {
@@ -525,7 +644,7 @@ private fun PremiumStoreHero(vipActive: Boolean, itemCount: Int) {
                 Column(Modifier.weight(1f)) {
                     Text("Make premium visible", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black)
                     Text(
-                        "$itemCount real Store experiences • buy → Vault → use/apply",
+                        "$itemCount real Store experiences • preview → buy → Collection → use/apply",
                         color = Color.White.copy(alpha = .82f),
                         fontSize = 11.sp
                     )
@@ -561,8 +680,10 @@ private fun StoreItemCard(
     equipped: Boolean,
     vipLocked: Boolean,
     vipActive: Boolean,
+    wishlisted: Boolean,
+    xpLevel: Int,
     onPreview: (BlinkStoreItem) -> Unit,
-    onBuy: (BlinkStoreItem) -> Unit
+    onWishlist: (BlinkStoreItem, Boolean) -> Unit
 ) {
     val experience = item.premiumExperience()
     val displayPrice = if (vipActive) max(0, (BlinkStoreCatalog.priceFor(item) * .9).toInt()) else BlinkStoreCatalog.priceFor(item)
@@ -619,6 +740,28 @@ private fun StoreItemCard(
                     accent
                 )
                 PremiumPill(itemTypeLabel(item), MaterialTheme.colorScheme.onSurfaceVariant)
+                if (item.rarity != "STANDARD") {
+                    PremiumPill(item.rarity, accent)
+                }
+            }
+            item.unlockLevel?.let { required ->
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    if (xpLevel >= required) "✓ Level $required reward unlocked — claim it free in Preview"
+                    else "Earn it free at BLINK Level $required • your level: $xpLevel",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (xpLevel >= required) Color(0xFF16A34A) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            item.availabilityLabel()?.let { availability ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    availability,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = if (item.isAvailableNow()) Color(0xFF16A34A) else BlinkPink
+                )
             }
             Spacer(Modifier.height(7.dp))
             Text(
@@ -648,20 +791,29 @@ private fun StoreItemCard(
                 when {
                     equipped -> PremiumPill("APPLIED", Color(0xFF16A34A))
                     active -> PremiumPill("LIVE", Color(0xFF16A34A))
-                    owned -> PremiumPill("IN VAULT", accent)
+                    owned -> PremiumPill("IN COLLECTION", accent)
                 }
             }
             Spacer(Modifier.height(9.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { onPreview(item) }, modifier = Modifier.weight(1f)) {
-                    Text("Preview")
+                OutlinedButton(
+                    onClick = { onWishlist(item, !wishlisted) },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(if (wishlisted) "♥ Saved" else "♡ Wishlist")
                 }
                 Button(
-                    onClick = { onBuy(item) },
-                    enabled = !owned && !vipLocked,
+                    onClick = { onPreview(item) },
+                    enabled = !vipLocked,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text(if (owned) "Owned" else if (vipLocked) "VIP" else "Buy")
+                    Text(
+                        when {
+                            vipLocked -> "VIP required"
+                            owned -> "Preview owned"
+                            else -> "Preview & buy"
+                        }
+                    )
                 }
             }
         }
@@ -688,24 +840,84 @@ private fun PremiumPill(text: String, color: Color) {
 
 @Composable
 private fun VaultTab(
+    catalog: List<BlinkStoreItem>,
     inventory: List<JSONObject>,
     snapshot: JSONObject,
     equippedIds: Set<String>,
+    onPreview: (BlinkStoreItem) -> Unit,
+    onSaveLook: () -> Unit,
+    onApplyLook: (JSONObject) -> Unit,
+    onDeleteLook: (JSONObject) -> Unit,
     onUse: (JSONObject) -> Unit
 ) {
     var filter by remember { mutableStateOf("AVAILABLE") }
     val filters = listOf("AVAILABLE", "ACTIVE", "PERMANENT", "USED", "EXPIRED")
     val rows = inventory.filter { it.optString("status") == filter }
+    val savedLooks = snapshot.optJSONArray("saved_looks").objects()
+    val wishlistCount = snapshot.optJSONArray("wishlist")?.length() ?: 0
 
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Column(Modifier.padding(16.dp)) {
-                Text("Blink Vault", fontSize = 25.sp, fontWeight = FontWeight.Black)
+                Text("My Collection", fontSize = 25.sp, fontWeight = FontWeight.Black)
                 Text(
-                    "Your premium locker. Nothing timed starts until you press Use; permanent cosmetics stay yours and can be applied again.",
+                    "Equip, remove and preview everything you own. Timed items only start when you press Use.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp
                 )
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onSaveLook, enabled = equippedIds.isNotEmpty(), modifier = Modifier.weight(1f)) {
+                        Text("Save current look")
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(100.dp),
+                        color = BlinkPink.copy(alpha = .10f),
+                        border = BorderStroke(1.dp, BlinkPink.copy(alpha = .25f))
+                    ) {
+                        Text(
+                            "♡ $wishlistCount Wishlist",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            color = BlinkPink,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+            }
+        }
+        if (savedLooks.isNotEmpty()) {
+            item {
+                Text(
+                    "Saved Looks",
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+            items(savedLooks, key = { it.optString("id") }) { look ->
+                Card(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Row(
+                        Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(look.optString("name", "Saved look"), fontWeight = FontWeight.Black)
+                            Text(
+                                "${look.optInt("item_count", 0)} equipped cosmetics",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        OutlinedButton(onClick = { onDeleteLook(look) }) { Text("Delete") }
+                        Button(onClick = { onApplyLook(look) }) { Text("Apply") }
+                    }
+                }
             }
         }
         item {
@@ -749,7 +961,7 @@ private fun VaultTab(
                         Spacer(Modifier.height(8.dp))
                         Text("Nothing here yet", fontWeight = FontWeight.Bold)
                         Text(
-                            "Buy an item from Store and it will appear in Vault.",
+                            "Buy an item from Store and it will appear in My Collection.",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -758,7 +970,7 @@ private fun VaultTab(
             }
         } else {
             items(rows, key = { it.optString("id") }) { row ->
-                val item = BlinkStoreCatalog.items.firstOrNull { it.id == row.optString("catalog_id") }
+                val item = catalog.firstOrNull { it.id == row.optString("catalog_id") }
                 val experience = item?.premiumExperience()
                 val accent = experience?.let(::premiumAccent) ?: BlinkPink
                 val equipped = item?.id in equippedIds
@@ -801,8 +1013,15 @@ private fun VaultTab(
                             )
                         }
 
-                        if (row.optString("status") in listOf("AVAILABLE", "PERMANENT")) {
+                        if (item != null) {
                             Spacer(Modifier.height(10.dp))
+                            OutlinedButton(onClick = { onPreview(item) }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Preview")
+                            }
+                        }
+
+                        if (row.optString("status") in listOf("AVAILABLE", "PERMANENT")) {
+                            Spacer(Modifier.height(8.dp))
                             Button(onClick = { onUse(row) }, modifier = Modifier.fillMaxWidth()) {
                                 Text(
                                     when {
@@ -862,6 +1081,7 @@ private fun Metric(label: String, value: Long) {
 private fun VipTab(
     vip: JSONObject,
     balance: Long,
+    vipPrice: Int,
     working: Boolean,
     onClaim: (String) -> Unit,
     onRenew: () -> Unit,
@@ -885,7 +1105,7 @@ private fun VipTab(
                         .background(Brush.linearGradient(listOf(Color(0xFF4C1D95), Color(0xFF7C3AED), Color(0xFFF59E0B))))
                         .padding(19.dp)
                 ) {
-                    Text("👑 Blink VIP — 10 Days", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
+                    Text("👑 Blink VIP — 30 Days", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
                     if (active) {
                         Text(
                             "LIVE • ${durationText(vip.optLong("remaining_seconds", 0))} remaining",
@@ -900,15 +1120,15 @@ private fun VipTab(
                             Text("Auto-renew", Modifier.weight(1f), color = Color.White, fontWeight = FontWeight.Bold)
                             Switch(checked = vip.optBoolean("auto_renew", false), onCheckedChange = onAutoRenew, enabled = !working)
                         }
-                        Button(onClick = onRenew, enabled = !working) { Text("Renew +10 days") }
+                        Button(onClick = onRenew, enabled = !working) { Text("Renew +30 days") }
                     } else {
                         Text(
-                            "Buy into Vault first. Your 10-day timer starts only when you activate the pass.",
+                            "Buy into My Collection first. Your 30-day timer starts only when you activate the pass.",
                             color = Color.White.copy(alpha = .86f),
                             fontSize = 12.sp
                         )
                         Spacer(Modifier.height(10.dp))
-                        Button(onClick = onBuyVip, enabled = balance >= 350 && !working) { Text("Buy for 🪙 350") }
+                        Button(onClick = onBuyVip, enabled = balance >= vipPrice && !working) { Text("Preview • 🪙 $vipPrice") }
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(
@@ -936,7 +1156,7 @@ private fun VipTab(
                 Column(Modifier.padding(16.dp)) {
                     Text("Gift Blink VIP", fontWeight = FontWeight.Black, fontSize = 18.sp)
                     Text(
-                        "The recipient gets a 10-day pass in Vault and chooses when to activate it.",
+                        "The recipient gets a 30-day pass in My Collection and chooses when to activate it.",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -991,33 +1211,106 @@ private fun HistoryTab(rows: List<JSONObject>) {
         item {
             Column(Modifier.padding(16.dp)) {
                 Text("Purchase History", fontSize = 25.sp, fontWeight = FontWeight.Black)
-                Text("Real Blink Coin receipts, rewards and renewals.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "Receipts, price, duration, expiry and current activation status in one place.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
-        items(rows, key = { it.optString("id") }) { row ->
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Outlined.AccountBalanceWallet, null, tint = BlinkPink)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(row.optString("item_name"), fontWeight = FontWeight.SemiBold)
+        if (rows.isEmpty()) {
+            item {
+                Column(
+                    Modifier.fillMaxWidth().padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("No Store activity yet", fontWeight = FontWeight.Black)
                     Text(
-                        "${row.optString("kind").replace('_', ' ')} • ${shortDate(row.optString("created_at"))}",
-                        fontSize = 10.sp,
+                        "Purchases, gifts, rewards and renewals will appear here.",
+                        fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                val amount = row.optLong("amount")
-                Text(
-                    if (amount > 0) "+🪙 $amount" else "-🪙 ${-amount}",
-                    fontWeight = FontWeight.Black,
-                    color = if (amount > 0) Color(0xFF16A34A) else MaterialTheme.colorScheme.onSurface
-                )
             }
-            HorizontalDivider(Modifier.padding(horizontal = 18.dp), color = MaterialTheme.colorScheme.outlineVariant)
         }
+        items(rows, key = { it.optString("id") }) { row ->
+            val amount = row.optLong("amount")
+            val durationSeconds = row.optLong("catalog_duration_seconds", 0L)
+            val status = row.optString("current_inventory_status")
+            val expiresAt = row.optString("current_inventory_expires_at")
+            val activatedAt = row.optString("current_inventory_activated_at")
+            val itemType = row.optString("catalog_item_type")
+            Card(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.AccountBalanceWallet, null, tint = BlinkPink)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                row.optString("item_name").ifBlank { row.optString("kind").replace('_', ' ') },
+                                fontWeight = FontWeight.Black
+                            )
+                            Text(
+                                "${row.optString("kind").replace('_', ' ')} • ${shortDate(row.optString("created_at"))}",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            if (amount > 0) "+🪙 $amount" else "-🪙 ${-amount}",
+                            fontWeight = FontWeight.Black,
+                            color = if (amount > 0) Color(0xFF16A34A) else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    if (row.has("catalog_id") && !row.isNull("catalog_id")) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (itemType.isNotBlank()) {
+                                PremiumPill(itemType.replace('_', ' '), MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (status.isNotBlank()) {
+                                PremiumPill(
+                                    status.replace('_', ' '),
+                                    if (status == "ACTIVE" || status == "PERMANENT") Color(0xFF16A34A) else BlinkPink
+                                )
+                            }
+                        }
+                        if (durationSeconds > 0L) {
+                            Text(
+                                "Duration: ${durationText(durationSeconds)}",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else if (itemType == "PERMANENT") {
+                            Text(
+                                "Duration: Permanent",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (activatedAt.isNotBlank()) {
+                            Text(
+                                "Activated: ${shortDate(activatedAt)}",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (expiresAt.isNotBlank()) {
+                            Text(
+                                "Expires: ${shortDate(expiresAt)}",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(16.dp)) }
     }
 }
 
@@ -1066,8 +1359,11 @@ private fun ProductPreviewDialog(
     balance: Long,
     vipActive: Boolean,
     owned: Boolean,
+    xpLevel: Int,
     onDismiss: () -> Unit,
     onBuy: () -> Unit,
+    onGift: (() -> Unit)? = null,
+    onClaimLevelReward: (() -> Unit)? = null,
 ) {
     var showEffect by remember(item.id) { mutableStateOf(true) }
     val experience = item.premiumExperience()
@@ -1077,6 +1373,9 @@ private fun ProductPreviewDialog(
         BlinkStoreCatalog.priceFor(item)
     }
     val vipLocked = item.vipOnly && !vipActive
+    val availableNow = item.isAvailableNow()
+    val levelRequirement = item.unlockLevel
+    val canClaimLevelReward = !owned && levelRequirement != null && xpLevel >= levelRequirement
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1127,7 +1426,24 @@ private fun ProductPreviewDialog(
                     PremiumPill(if (experience.publiclyVisible) "PUBLIC EFFECT" else "PERSONAL EFFECT", premiumAccent(experience))
                 }
                 Text(experience.activationHint, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (balance < displayPrice && !owned) {
+                item.availabilityLabel()?.let {
+                    Text(
+                        it,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (availableNow) Color(0xFF16A34A) else BlinkPink
+                    )
+                }
+                levelRequirement?.let { required ->
+                    Text(
+                        if (canClaimLevelReward) "Level $required reached — you can claim this permanent cosmetic free."
+                        else "Free Level reward at Level $required • your level: $xpLevel. You can still buy it normally when available.",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (canClaimLevelReward) Color(0xFF16A34A) else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (balance < displayPrice && !owned && availableNow) {
                     Text(
                         "You need ${displayPrice - balance} more Blink Coins.",
                         fontSize = 11.sp,
@@ -1139,18 +1455,83 @@ private fun ProductPreviewDialog(
         confirmButton = {
             Button(
                 onClick = onBuy,
-                enabled = !owned && !vipLocked && balance >= displayPrice,
+                enabled = !owned && !vipLocked && availableNow && balance >= displayPrice,
             ) {
                 Text(
                     when {
                         owned -> "Owned"
                         vipLocked -> "VIP required"
+                        !availableNow -> item.availabilityLabel() ?: "Unavailable"
                         else -> "Buy • 🪙 $displayPrice"
                     }
                 )
             }
         },
-        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (canClaimLevelReward && onClaimLevelReward != null) {
+                    Button(onClick = onClaimLevelReward) {
+                        Text("Claim free")
+                    }
+                }
+                if (onGift != null) {
+                    OutlinedButton(onClick = onGift) {
+                        Icon(Icons.Outlined.Redeem, contentDescription = null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Gift")
+                    }
+                }
+                OutlinedButton(onClick = onDismiss) { Text("Close") }
+            }
+        },
+    )
+}
+
+@Composable
+private fun CosmeticGiftDialog(
+    item: BlinkStoreItem,
+    balance: Long,
+    vipActive: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var username by remember(item.id) { mutableStateOf("") }
+    val price = BlinkStoreCatalog.priceFor(item).let { if (vipActive) max(0, (it * .9).toInt()) else it }
+    val recipient = username.trim().removePrefix("@")
+    val availableNow = item.isAvailableNow()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Gift ${item.name}", fontWeight = FontWeight.Black) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                BlinkStoreLivePreview(catalogId = item.id, itemName = item.name)
+                Text(
+                    "The recipient gets this item in My Collection. Timed cosmetics do not start until they activate them.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it.take(64) },
+                    label = { Text("Recipient username") },
+                    placeholder = { Text("@username") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text("🪙 $price", fontSize = 18.sp, fontWeight = FontWeight.Black)
+                if (balance < price) {
+                    Text("Need ${price - balance} more Blink Coins", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(recipient) },
+                enabled = recipient.isNotBlank() && balance >= price && availableNow,
+            ) { Text("Send Gift") }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
 
@@ -1247,7 +1628,7 @@ private fun PurchaseDialog(
                     Text("Need ${total - balance} more Blink Coins", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
                 }
                 Text(
-                    "Purchase goes to Vault first. Timed items and passes never start automatically.",
+                    "Purchase goes to My Collection first. Timed items and passes never start automatically.",
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1354,10 +1735,101 @@ private fun TargetDialog(
     )
 }
 
+private fun parseStoreCatalogItem(row: JSONObject): BlinkStoreItem? {
+    val id = row.optString("id").trim()
+    if (id.isBlank()) return null
+
+    val fallback = BlinkStoreCatalog.items.firstOrNull { it.id == id }
+    val itemType = runCatching {
+        BlinkStoreItemType.valueOf(row.optString("item_type", fallback?.type?.name ?: "CONSUMABLE").uppercase())
+    }.getOrElse { fallback?.type ?: BlinkStoreItemType.CONSUMABLE }
+    val target = runCatching {
+        BlinkStoreTarget.valueOf(row.optString("target_type", fallback?.target?.name ?: "NONE").uppercase())
+    }.getOrElse { fallback?.target ?: BlinkStoreTarget.NONE }
+
+    val multipliersJson = row.optJSONArray("boost_multipliers")
+    val multipliers = if (multipliersJson != null) {
+        buildList {
+            for (index in 0 until multipliersJson.length()) {
+                multipliersJson.optInt(index, 0).takeIf { it > 0 }?.let(::add)
+            }
+        }
+    } else fallback?.boostMultipliers.orEmpty()
+
+    return BlinkStoreItem(
+        id = id,
+        name = row.optString("name").ifBlank { fallback?.name ?: id.replace('_', ' ').replaceFirstChar(Char::uppercase) },
+        description = row.optString("description").ifBlank { fallback?.description.orEmpty() },
+        iconKey = row.optString("icon_key").ifBlank { fallback?.iconKey ?: "auto_awesome" },
+        category = row.optString("category").ifBlank { fallback?.category ?: "Premium" },
+        price = row.optInt("price", fallback?.price ?: 0).coerceAtLeast(0),
+        type = itemType,
+        target = target,
+        durationSeconds = if (row.isNull("duration_seconds")) fallback?.durationSeconds else row.optLong("duration_seconds").takeIf { it > 0L },
+        stackable = if (row.has("stackable")) row.optBoolean("stackable") else fallback?.stackable ?: false,
+        vipOnly = if (row.has("vip_only")) row.optBoolean("vip_only") else fallback?.vipOnly ?: false,
+        boostMultipliers = multipliers,
+        collectionId = row.stringOrNull("collection_id") ?: fallback?.collectionId,
+        rarity = row.optString("rarity", fallback?.rarity ?: "STANDARD").ifBlank { "STANDARD" },
+        unlockLevel = if (row.isNull("unlock_level")) fallback?.unlockLevel else row.optInt("unlock_level").takeIf { it > 0 },
+        availableFrom = row.stringOrNull("available_from") ?: fallback?.availableFrom,
+        availableUntil = row.stringOrNull("available_until") ?: fallback?.availableUntil,
+    )
+}
+
+private fun BlinkStoreItem.isAvailableNow(now: java.time.Instant = java.time.Instant.now()): Boolean {
+    val starts = availableFrom?.let { raw ->
+        runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }
+            .recoverCatching { java.time.Instant.parse(raw) }
+            .getOrNull()
+    }
+    val ends = availableUntil?.let { raw ->
+        runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }
+            .recoverCatching { java.time.Instant.parse(raw) }
+            .getOrNull()
+    }
+    return (starts == null || !now.isBefore(starts)) && (ends == null || now.isBefore(ends))
+}
+
+private fun BlinkStoreItem.availabilityLabel(now: java.time.Instant = java.time.Instant.now()): String? {
+    val starts = availableFrom?.let { raw ->
+        runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }
+            .recoverCatching { java.time.Instant.parse(raw) }
+            .getOrNull()
+    }
+    val ends = availableUntil?.let { raw ->
+        runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }
+            .recoverCatching { java.time.Instant.parse(raw) }
+            .getOrNull()
+    }
+    return when {
+        starts != null && now.isBefore(starts) -> "Limited drop • available from ${availableFrom.orEmpty().take(10)}"
+        ends != null && !now.isBefore(ends) -> "Limited drop ended ${availableUntil.orEmpty().take(10)}"
+        ends != null -> "Limited drop • available until ${availableUntil.orEmpty().take(10)}"
+        else -> null
+    }
+}
+
+private fun BlinkStoreItem.canGiftCosmetic(): Boolean =
+    !vipOnly &&
+        type in setOf(BlinkStoreItemType.PERMANENT, BlinkStoreItemType.TIMED) &&
+        category !in setOf("Boosts", "Analytics", "Marketplace") &&
+        id !in setOf(
+            "profile_spotlight_1h", "profile_spotlight_24h",
+            "post_spotlight_6h", "post_spotlight_24h",
+            "reel_spotlight_6h", "reel_spotlight_24h",
+            "discovery_boost_7d", "profile_discovery_boost",
+            "birthday_profile_theme",
+        )
+
 private fun equipSlot(item: BlinkStoreItem): String = when (item.id) {
-    "profile_ring", "animated_profile_ring", "premium_profile_frame" -> "profile_frame"
-    "profile_background", "profile_theme_bundle" -> "profile_theme"
-    "username_font", "animated_name" -> "name_style"
+    "profile_ring", "animated_profile_ring", "premium_profile_frame",
+    "campus_signature_frame", "level_10_neon_frame" -> "profile_frame"
+    "profile_background", "profile_theme_bundle", "campus_signature_theme",
+    "christmas_2026_profile_theme" -> "profile_theme"
+    "username_font", "animated_name", "campus_signature_nameplate",
+    "level_25_signature_nameplate", "christmas_2026_nameplate" -> "name_style"
+    "level_50_legend_aura" -> "profile_aura"
     "custom_profile_badge", "creator_badge" -> "profile_badge"
     "chat_bubble_theme", "special_dm_theme" -> "chat_theme"
     "reaction_pack", "emoji_pack", "sticker_pack" -> "social_pack_${item.id}"
@@ -1391,6 +1863,9 @@ private fun storeIcon(item: BlinkStoreItem): ImageVector = when (item.category) 
     "VIP" -> Icons.Outlined.Verified
     "Social" -> Icons.Filled.Favorite
     "Analytics" -> Icons.Filled.Notifications
+    "Campus" -> Icons.Filled.Person
+    "Earned" -> Icons.Outlined.EmojiEvents
+    "Seasonal" -> Icons.Outlined.Redeem
     else -> Icons.Filled.Apps
 }
 
@@ -1399,7 +1874,7 @@ private fun itemTypeLabel(item: BlinkStoreItem): String = when (item.type) {
     BlinkStoreItemType.TIMED -> "Timed • manual start"
     BlinkStoreItemType.PERMANENT -> "Permanent unlock"
     BlinkStoreItemType.CONTENT_SPECIFIC -> "Choose one ${item.target.name.lowercase()}"
-    BlinkStoreItemType.PASS -> "10-day pass"
+    BlinkStoreItemType.PASS -> "30-day pass"
 }
 
 private fun JSONArray?.objects(): List<JSONObject> {
@@ -1439,6 +1914,6 @@ private val vipPerks = listOf(
     "Enhanced Marketplace seller identity treatment.",
     "VIP styling in Connect/discovery surfaces without fake ranking.",
     "Cumulative VIP history, streak and completed-pass badges.",
-    "Gift a 10-day VIP pass; recipient chooses when it starts.",
+    "Gift a 30-day VIP pass; recipient chooses when it starts.",
     "Optional auto-renew, OFF by default."
 )

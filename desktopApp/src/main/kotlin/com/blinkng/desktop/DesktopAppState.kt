@@ -82,7 +82,7 @@ class DesktopAppState(
     }
 
     suspend fun refreshProfile() {
-        profile = client.fetchProfile()
+        profile = client.refreshProfile()
     }
 
     suspend fun updateSettings(value: DesktopUserSettings) {

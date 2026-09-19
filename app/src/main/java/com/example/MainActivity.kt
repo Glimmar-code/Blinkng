@@ -482,7 +482,12 @@ fun MainAppContent(
     val context = androidx.compose.ui.platform.LocalContext.current
 
     fun sharePostOrReel(postId: String) {
-        val post = (uiState.posts + uiState.reels).firstOrNull { it.id == postId }
+        val post = (
+            uiState.posts +
+                uiState.reels +
+                uiState.discoverPosts +
+                listOfNotNull(uiState.deepLinkedPost, uiState.activePostOptionsPost)
+            ).firstOrNull { it.id == postId }
         if (post == null) {
             viewModel.showToast("This content is unavailable.")
             return
@@ -997,6 +1002,8 @@ fun MainAppContent(
                     onMarketItemClick = { viewModel.openProductDetail(it) },
                     onOpenGetVerified = { viewModel.openGetVerified(true) },
                     blinkCoinBalance = if (isMyProfile) uiState.blinkCoinBalance else 0L,
+                    economyPolicy = uiState.economyPolicy,
+                    rewardedAdsToday = if (isMyProfile) uiState.rewardedAdsToday else 0,
                     onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
                     isDark = uiState.isDarkMode
@@ -1165,7 +1172,17 @@ fun MainAppContent(
             GetVerifiedSheet(
                 profile = uiState.myProfile,
                 isDark = uiState.isDarkMode,
+                blinkCoinBalance = uiState.blinkCoinBalance,
+                economyPolicy = uiState.economyPolicy,
+                rewardedAdsToday = uiState.rewardedAdsToday,
+                dailyMissions = uiState.dailyMissions,
+                isDailyMissionsLoading = uiState.isDailyMissionsLoading,
                 onDismiss = { viewModel.openGetVerified(false) },
+                onWatchAdForCoins = onWatchAdForCoins,
+                onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
+                onRefreshDailyMissions = { viewModel.refreshProfileRewards() },
+                onClaimDailyMission = { viewModel.claimDailyMission(it) },
+                onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
                 onUpgrade = { tier ->
                     viewModel.applyVerification(tier)
                 }

@@ -26,6 +26,8 @@ data class DesktopProfile(
     val isOnline: Boolean,
     val lastSeenAt: String?,
     val points: Int = 0,
+    val totalXp: Long = 0L,
+    val xpLevel: Int = 1,
     val createdAt: String = "",
     val isBlinkVip: Boolean = false,
     val blinkVipUntil: String? = null,
@@ -154,6 +156,11 @@ data class DesktopStoreItem(
     val durationSeconds: Long?,
     val vipOnly: Boolean,
     val boostMultipliers: List<Int>,
+    val collectionId: String? = null,
+    val rarity: String = "STANDARD",
+    val unlockLevel: Int? = null,
+    val availableFrom: String? = null,
+    val availableUntil: String? = null,
 )
 
 data class DesktopInventoryItem(

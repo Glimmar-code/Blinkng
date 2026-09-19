@@ -53,6 +53,11 @@ verify_jwt = false
 [functions.blink-web]
 verify_jwt = false
 
+# AdMob authenticates this public webhook with Google's ECDSA signature, not a
+# Supabase user JWT. The handler rejects invalid signatures before any write.
+[functions.admob-reward-ssv]
+verify_jwt = false
+
 # Production Auth provider settings, redirect URLs, SMTP credentials and
 # third-party secret values must be configured through Supabase/secrets
 # management and documented as required configuration in RECOVERY.md.

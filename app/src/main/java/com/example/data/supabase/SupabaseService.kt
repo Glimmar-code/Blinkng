@@ -3435,6 +3435,8 @@ suspend fun uploadPostMedia(
             isSellerActive = obj.optBoolean("is_seller_active", false),
             sellerStoreName = obj.cleanString("seller_store_name"),
             points = obj.optInt("points", 0),
+            totalXp = obj.optLong("total_xp", 0L).coerceAtLeast(0L),
+            xpLevel = obj.optInt("xp_level", 1).coerceIn(1, 100),
             badges = badgesList
         )
     }

@@ -209,10 +209,15 @@ class DesktopSupabaseClient(
     suspend fun fetchProfile(userId: String = requireSession().userId): DesktopProfile = withContext(Dispatchers.IO) {
         profileCache[userId]?.let { return@withContext it }
         val rows = getArray(
-            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at&limit=1",
+            "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
+    }
+
+    suspend fun refreshProfile(userId: String = requireSession().userId): DesktopProfile {
+        profileCache.remove(userId)
+        return fetchProfile(userId)
     }
 
     suspend fun fetchFeed(reelsOnly: Boolean = false, search: String? = null): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
@@ -315,7 +320,7 @@ class DesktopSupabaseClient(
         if (clean.isBlank()) return@withContext DesktopSearchResults(emptyList(), emptyList())
         val encodedPattern = encode("*$clean*")
         val profiles = getArray(
-            "/rest/v1/profiles?or=${encode("(full_name.ilike.*$clean*,username.ilike.*$clean*,handle.ilike.*$clean*)")}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at&limit=30",
+            "/rest/v1/profiles?or=${encode("(full_name.ilike.*$clean*,username.ilike.*$clean*,handle.ilike.*$clean*)")}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=30",
         )
         DesktopSearchResults(
             profiles = (0 until profiles.length()).mapNotNull { profiles.optJSONObject(it)?.let(::parseProfile) },
@@ -542,7 +547,7 @@ class DesktopSupabaseClient(
 
     suspend fun fetchStore(): Pair<List<DesktopStoreItem>, List<DesktopInventoryItem>> = withContext(Dispatchers.IO) {
         val catalogRows = getArray(
-            "/rest/v1/blink_store_catalog?is_active=eq.true&select=id,name,description,category,price,item_type,target_type,duration_seconds,vip_only,boost_multipliers&order=sort_order.asc",
+            "/rest/v1/blink_store_catalog?is_active=eq.true&select=id,name,description,category,price,item_type,target_type,duration_seconds,vip_only,boost_multipliers,collection_id,rarity,unlock_level,available_from,available_until&order=sort_order.asc",
         )
         val inventoryRows = getArray(
             "/rest/v1/blink_inventory?user_id=eq.${encode(requireSession().userId)}&select=id,catalog_id,quantity,status,purchased_at,activated_at,expires_at,target_type,target_id,boost_multiplier&order=purchased_at.desc",
@@ -560,6 +565,11 @@ class DesktopSupabaseClient(
                     durationSeconds = row.optNullableLong("duration_seconds"),
                     vipOnly = row.optBoolean("vip_only"),
                     boostMultipliers = row.optIntList("boost_multipliers"),
+                    collectionId = row.optNullableString("collection_id"),
+                    rarity = row.optString("rarity", "STANDARD").ifBlank { "STANDARD" },
+                    unlockLevel = row.optNullableInt("unlock_level"),
+                    availableFrom = row.optNullableString("available_from"),
+                    availableUntil = row.optNullableString("available_until"),
                 )
             }
         }
@@ -700,6 +710,8 @@ class DesktopSupabaseClient(
         isOnline = row.optBoolean("online_now", row.optBoolean("is_online")),
         lastSeenAt = row.optNullableString("last_seen_at"),
         points = row.optInt("points"),
+        totalXp = row.optLong("total_xp").coerceAtLeast(0L),
+        xpLevel = row.optInt("xp_level", 1).coerceIn(1, 100),
         createdAt = row.optString("created_at"),
         isBlinkVip = isFutureTimestamp(row.optNullableString("blink_vip_until")),
         blinkVipUntil = row.optNullableString("blink_vip_until"),
