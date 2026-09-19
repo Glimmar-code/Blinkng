@@ -200,6 +200,10 @@ begin
   if v_claim.started_at < now()-interval '30 minutes' then raise exception 'REWARDED_AD_CLAIM_EXPIRED'; end if;
   if v_claim.started_at > now()-interval '5 seconds' then raise exception 'REWARDED_AD_TOO_SOON'; end if;
 
+  -- Serialize rewards per user so concurrent callbacks cannot duplicate a milestone
+  -- or race past the daily cap.
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext(v_user::text)::bigint);
+
   select count(*)::integer into v_ads_before
     from public.blink_rewarded_ad_claims
    where user_id=v_user
@@ -270,6 +274,9 @@ declare
   v_badge text;
 begin
   if v_user is null then raise exception 'AUTH_REQUIRED'; end if;
+
+  -- Keep verification purchase atomic with other per-user economy mutations.
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext(v_user::text)::bigint);
 
   select upper(coalesce(verification_badge,'NONE')) into v_badge
     from public.profiles where id=v_user for update;
