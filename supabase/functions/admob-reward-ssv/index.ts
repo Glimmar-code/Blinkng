@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { verifyAdMobSignedQuery } from "./admob_ssv_verifier.mjs";
 
 const ADMOB_KEYS_URL = "https://www.gstatic.com/admob/reward/verifier-keys.json";
 const EXPECTED_REWARD = 10;
@@ -27,120 +28,16 @@ function json(status: number, body: Record<string, unknown>): Response {
   });
 }
 
-function base64UrlToBytes(value: string): Uint8Array {
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-  const binary = atob(padded);
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
-}
-
-function base64ToBytes(value: string): Uint8Array {
-  const binary = atob(value.replace(/\s/g, ""));
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
-}
-
-function readDerLength(bytes: Uint8Array, offset: number): { length: number; next: number } {
-  const first = bytes[offset];
-  if (first < 0x80) return { length: first, next: offset + 1 };
-  const count = first & 0x7f;
-  if (count < 1 || count > 2) throw new Error("Unsupported DER length");
-  let length = 0;
-  for (let i = 0; i < count; i += 1) {
-    length = (length << 8) | bytes[offset + 1 + i];
-  }
-  return { length, next: offset + 1 + count };
-}
-
-function normalizeInteger(bytes: Uint8Array): Uint8Array {
-  let start = 0;
-  while (start < bytes.length - 1 && bytes[start] === 0) start += 1;
-  const trimmed = bytes.slice(start);
-  if (trimmed.length > 32) throw new Error("ECDSA integer is too large");
-  const out = new Uint8Array(32);
-  out.set(trimmed, 32 - trimmed.length);
-  return out;
-}
-
-// Google documents AdMob SSV signatures as DER-encoded ECDSA. WebCrypto expects P-256
-// ECDSA signatures as the fixed-width r||s representation, so convert DER to 64 bytes.
-function derEcdsaToRaw(signature: Uint8Array): Uint8Array {
-  let offset = 0;
-  if (signature[offset++] !== 0x30) throw new Error("Invalid DER sequence");
-  const seq = readDerLength(signature, offset);
-  offset = seq.next;
-  const sequenceEnd = offset + seq.length;
-  if (sequenceEnd !== signature.length) throw new Error("Invalid DER sequence length");
-
-  if (signature[offset++] !== 0x02) throw new Error("Invalid DER r integer");
-  const rLen = readDerLength(signature, offset);
-  offset = rLen.next;
-  const r = signature.slice(offset, offset + rLen.length);
-  offset += rLen.length;
-
-  if (signature[offset++] !== 0x02) throw new Error("Invalid DER s integer");
-  const sLen = readDerLength(signature, offset);
-  offset = sLen.next;
-  const s = signature.slice(offset, offset + sLen.length);
-  offset += sLen.length;
-
-  if (offset !== sequenceEnd) throw new Error("Trailing DER data");
-
-  const raw = new Uint8Array(64);
-  raw.set(normalizeInteger(r), 0);
-  raw.set(normalizeInteger(s), 32);
-  return raw;
-}
-
-async function verifySignature(
-  rawQuery: string,
-  signatureValue: string,
-  keyId: number,
-): Promise<boolean> {
-  const signatureMarker = "&signature=";
-  const markerIndex = rawQuery.indexOf(signatureMarker);
-  if (markerIndex <= 0) throw new Error("Missing ordered signature parameter");
-
-  // Per Google's SSV spec, everything before &signature= is the exact signed payload.
-  const signedContent = rawQuery.slice(0, markerIndex);
-
+async function fetchAdMobKeys(): Promise<AdMobKeysResponse> {
   const keysResponse = await fetch(ADMOB_KEYS_URL, {
     headers: { "cache-control": "no-cache" },
   });
   if (!keysResponse.ok) throw new Error(`Unable to fetch AdMob keys: ${keysResponse.status}`);
-
   const keyData = (await keysResponse.json()) as AdMobKeysResponse;
-  const key = keyData.keys?.find((candidate) => candidate.keyId === keyId);
-  if (!key) throw new Error("Unknown AdMob verification key");
-
-  let spki: Uint8Array;
-  if (key.base64) {
-    spki = base64ToBytes(key.base64);
-  } else if (key.pem) {
-    spki = base64ToBytes(
-      key.pem
-        .replace("-----BEGIN PUBLIC KEY-----", "")
-        .replace("-----END PUBLIC KEY-----", ""),
-    );
-  } else {
-    throw new Error("AdMob key has no public-key material");
+  if (!Array.isArray(keyData.keys) || keyData.keys.length === 0) {
+    throw new Error("AdMob returned no verification keys");
   }
-
-  const publicKey = await crypto.subtle.importKey(
-    "spki",
-    spki,
-    { name: "ECDSA", namedCurve: "P-256" },
-    false,
-    ["verify"],
-  );
-
-  const derSignature = base64UrlToBytes(signatureValue);
-  const rawSignature = derEcdsaToRaw(derSignature);
-  return await crypto.subtle.verify(
-    { name: "ECDSA", hash: "SHA-256" },
-    publicKey,
-    rawSignature,
-    new TextEncoder().encode(signedContent),
-  );
+  return keyData;
 }
 
 Deno.serve(async (req: Request) => {
@@ -149,31 +46,24 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const url = new URL(req.url);
-    const rawQuery = url.search.startsWith("?") ? url.search.slice(1) : url.search;
-    const params = url.searchParams;
+    // Preserve the received encoding and ordering until the verifier applies Google's
+    // documented URI-query decoding behavior.
+    const queryStart = req.url.indexOf("?");
+    const rawQuery = queryStart >= 0 ? req.url.slice(queryStart + 1) : "";
+    const verification = await verifyAdMobSignedQuery(rawQuery, await fetchAdMobKeys());
+    if (!verification.verified) {
+      return json(403, { ok: false, error: "invalid_signature" });
+    }
 
-    const signature = params.get("signature") ?? "";
-    const keyIdRaw = params.get("key_id") ?? "";
-    const keyId = Number(keyIdRaw);
+    // Read business fields only from the cryptographically signed part of the query.
+    // Unsigned parameters after key_id are rejected by the verifier.
+    const params = verification.params;
     const claimId = params.get("custom_data") ?? "";
     const userId = params.get("user_id") ?? "";
     const transactionId = params.get("transaction_id") ?? "";
     const adUnit = params.get("ad_unit") ?? "";
     const rewardAmount = Number(params.get("reward_amount") ?? "");
     const timestamp = Number(params.get("timestamp") ?? "");
-
-    // The AdMob dashboard verification tool can omit optional and reward-specific fields.
-    // Authenticate the request first using Google's signature. Only after that do we decide
-    // whether it is a dashboard probe or a real reward callback.
-    if (!signature || !Number.isFinite(keyId)) {
-      return json(400, { ok: false, error: "invalid_signature_envelope" });
-    }
-
-    const verified = await verifySignature(rawQuery, signature, keyId);
-    if (!verified) {
-      return json(403, { ok: false, error: "invalid_signature" });
-    }
 
     const hasCompleteRewardPayload =
       Boolean(claimId) &&
@@ -223,7 +113,7 @@ Deno.serve(async (req: Request) => {
           p_transaction_id: transactionId,
           p_ad_unit: adUnit,
           p_reward_amount: rewardAmount,
-          p_key_id: keyIdRaw,
+          p_key_id: verification.keyIdRaw,
         }),
       },
     );
