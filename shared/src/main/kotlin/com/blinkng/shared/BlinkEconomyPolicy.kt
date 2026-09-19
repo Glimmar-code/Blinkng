@@ -23,6 +23,7 @@ data class BlinkEconomyPolicy(
     val rewardedMilestones: List<BlinkRewardMilestone> = BlinkEconomyDefaults.MILESTONES,
     val blueVerificationCashNgn: Int = 800,
     val blueVerificationCoinCost: Int = 3_000,
+    val blueVerificationDurationDays: Int = 30,
     val coinPacks: List<BlinkCoinPack> = BlinkEconomyDefaults.COIN_PACKS,
     val cashCheckoutEnabled: Boolean = false,
 ) {
