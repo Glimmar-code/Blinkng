@@ -51,6 +51,15 @@ class BlinkEconomyService {
     suspend fun state() = runCatching { rpc("get_blink_store_state") }
     suspend fun boostableContent() = runCatching { rpc("get_my_blink_boostable_content") }
     suspend fun economyStatus() = runCatching { rpc("get_blink_economy_status") }
+    suspend fun dailyMissions() = runCatching { rpc("get_my_daily_missions") }
+
+    suspend fun claimDailyMission(missionKey: String) = runCatching {
+        require(missionKey.isNotBlank()) { "Choose a mission first." }
+        rpc(
+            "claim_daily_mission",
+            JSONObject().put("p_mission_key", missionKey.trim())
+        )
+    }
 
     suspend fun beginRewardedAdClaim() = runCatching {
         rpc("begin_blink_rewarded_ad_claim")
@@ -158,6 +167,9 @@ class BlinkEconomyService {
             message.contains("INVALID_COIN_PACK") -> "That Blink Coin pack is no longer available."
             message.contains("COIN_PURCHASE_ORDER_NOT_FOUND") -> "That Blink Coin purchase could not be found."
             message.contains("PAYMENT_REFERENCE_REQUIRED") -> "The payment has not been verified yet."
+            message.contains("MISSION_NOT_COMPLETE") -> "Complete the mission before claiming its reward."
+            message.contains("MISSION_NOT_FOUND") -> "That daily mission is no longer available."
+            message.contains("MISSION_REQUIRED") -> "Choose a daily mission first."
             message.contains("INVALID_RECIPIENT") -> "That account cannot receive this gift."
             message.contains("RECIPIENT_REQUIRED") -> "Enter the recipient's Blink username."
             message.contains("DIGITAL_GIFT_NOT_AVAILABLE") -> "This digital gift is no longer available in your Vault."
