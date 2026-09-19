@@ -696,7 +696,7 @@ fun SignInScreen(
 // SIGN UP
 // ================================================================
 
-private fun isStrongBlinkPassword(password: String): Boolean =
+internal fun isStrongBlinkPassword(password: String): Boolean =
     password.length >= 8 &&
         password.any(Char::isLowerCase) &&
         password.any(Char::isUpperCase) &&
@@ -1847,7 +1847,7 @@ fun GoogleSignInButton(
 // ================================================================
 
 @Composable
-private fun AuthField(
+internal fun AuthField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
@@ -1914,7 +1914,7 @@ private fun AuthField(
 // ================================================================
 
 @Composable
-private fun AuthPasswordField(
+internal fun AuthPasswordField(
     value: String,
     onValueChange: (String) -> Unit,
     visible: Boolean,
@@ -2002,7 +2002,7 @@ private fun AuthPasswordField(
 // ================================================================
 
 @Composable
-private fun PasswordStrengthBar(
+internal fun PasswordStrengthBar(
     password: String
 ) {
 
@@ -2087,7 +2087,7 @@ private fun PasswordStrengthBar(
 // ================================================================
 
 @Composable
-private fun AuthTopBar(
+internal fun AuthTopBar(
     onBack: () -> Unit,
     title: String,
     subtitle: String
@@ -2211,7 +2211,7 @@ private fun AuthHeroBadge(
 // ================================================================
 
 @Composable
-private fun AuthDivider(
+internal fun AuthDivider(
     text: String
 ) {
 
@@ -2249,7 +2249,7 @@ private fun AuthDivider(
 // ================================================================
 
 @Composable
-private fun AuthMessageCard(
+internal fun AuthMessageCard(
     message: String,
     success: Boolean,
     onDismiss: () -> Unit
@@ -2852,7 +2852,7 @@ private fun PremiumFeatureCard(
 // ================================================================
 
 @Composable
-private fun PremiumAuthButton(
+internal fun PremiumAuthButton(
     text: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
