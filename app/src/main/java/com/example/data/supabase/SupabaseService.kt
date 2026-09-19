@@ -3984,9 +3984,12 @@ suspend fun uploadPostMedia(
                 }
             }
 
-            val activityKeys = activityItems.asSequence().map(::semanticKey).toHashSet()
-            val merged = (activityItems + notificationItems.filterNot {
-                semanticKey(it) in activityKeys
+            // Canonical notification rows win whenever both legacy activity and
+            // notification records describe the same event. Activities remain only as a
+            // compatibility fallback for event types that have not migrated yet.
+            val notificationKeys = notificationItems.asSequence().map(::semanticKey).toHashSet()
+            val merged = (notificationItems + activityItems.filterNot {
+                semanticKey(it) in notificationKeys
             })
                 .sortedByDescending { it.rawTimestamp }
                 .distinctBy { it.id }
