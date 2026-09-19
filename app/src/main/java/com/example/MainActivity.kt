@@ -768,7 +768,8 @@ fun MainAppContent(
                 .zIndex(30f)
         )
 
-        // Floating Bottom Nav (Visible on all main tabs, auto-hides on feed scroll down, re-appears on scroll up)
+        // Floating bottom navigation follows the feed chrome state. Its transition is
+        // deliberately non-bouncy so a restored bar glides in instead of springing back.
         val shouldShowBottomBar = uiState.viewingProduct == null &&
                 uiState.viewingProfile == null &&
                 !uiState.isPostItemOpen &&
@@ -792,21 +793,21 @@ fun MainAppContent(
             visible = shouldShowBottomBar,
             enter = androidx.compose.animation.slideInVertically(
                 initialOffsetY = { it },
-                animationSpec = androidx.compose.animation.core.spring(
-                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioLowBouncy,
-                    stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+                animationSpec = androidx.compose.animation.core.tween(
+                    durationMillis = 200,
+                    easing = androidx.compose.animation.core.FastOutSlowInEasing
                 )
             ) + androidx.compose.animation.fadeIn(
-                animationSpec = androidx.compose.animation.core.tween(durationMillis = 220)
+                animationSpec = androidx.compose.animation.core.tween(durationMillis = 170)
             ),
             exit = androidx.compose.animation.slideOutVertically(
                 targetOffsetY = { it },
                 animationSpec = androidx.compose.animation.core.tween(
-                    durationMillis = 240,
+                    durationMillis = 180,
                     easing = androidx.compose.animation.core.FastOutLinearInEasing
                 )
             ) + androidx.compose.animation.fadeOut(
-                animationSpec = androidx.compose.animation.core.tween(durationMillis = 180)
+                animationSpec = androidx.compose.animation.core.tween(durationMillis = 150)
             ),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
