@@ -881,7 +881,8 @@ object BlinkNotificationHelper {
                         targetType.equals("market", ignoreCase = true) ->
                             buildMarketPendingIntent(context, targetId)
                         targetType.equals("story", ignoreCase = true) ||
-                            targetType.equals("notification", ignoreCase = true) ->
+                            targetType.equals("notification", ignoreCase = true) ||
+                            (targetPostId.isNullOrBlank() && targetId.isNullOrBlank()) ->
                             buildSocialPendingIntent(context)
                         else ->
                             buildPostPendingIntent(
