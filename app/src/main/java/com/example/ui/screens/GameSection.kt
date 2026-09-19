@@ -495,7 +495,7 @@ fun GameSection(
                     item {
                         Spacer(Modifier.height(12.dp))
                         RoundSummaryCard(
-                            round = round!!,
+                            round = round ?: return@item,
                             records = answerRecords,
                             onPlayAgain = {
                                 round = null
