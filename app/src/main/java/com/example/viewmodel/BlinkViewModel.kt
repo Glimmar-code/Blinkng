@@ -1308,6 +1308,22 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    fun refreshOnboardingSuggestions() {
+        fetchSupabaseData()
+        viewModelScope.launch {
+            val featured = runCatching {
+                supabaseService.fetchProfileByUsername(BlinkOnboardingPolicy.PINNED_CREATOR_USERNAME)
+            }.getOrNull() ?: return@launch
+
+            if (featured.id == _uiState.value.myProfile.id) return@launch
+            val current = _uiState.value
+            _uiState.value = current.copy(
+                profiles = (listOf(featured) + current.profiles)
+                    .distinctBy { it.id.ifBlank { it.username.lowercase() } }
+            )
+        }
+    }
+
     fun refreshIfStale(maxAgeMillis: Long = 60_000L) {
         val lastSync = lastSuccessfulSyncAt
         val isFresh = lastSync != 0L && SystemClock.elapsedRealtime() - lastSync < maxAgeMillis
