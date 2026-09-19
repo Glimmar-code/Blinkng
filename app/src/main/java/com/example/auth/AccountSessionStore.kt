@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import com.example.data.supabase.SupabaseService
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
@@ -22,6 +23,7 @@ object AccountSessionStore {
     private const val KEY_ACCOUNTS = "accounts"
     private const val KEY_LAST_IDENTIFIER = "last_identifier"
     private const val KEY_REQUIRE_SIGN_IN = "require_sign_in"
+    private const val KEY_ADD_ACCOUNT_REQUEST = "add_account_request"
     private const val KEYSTORE = "AndroidKeyStore"
     private const val KEY_ALIAS = "blink_recent_account_tokens_v1"
     private const val MAX_ACCOUNTS = 5
@@ -115,6 +117,25 @@ object AccountSessionStore {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_REQUIRE_SIGN_IN, false)
 
+    /**
+     * Ask the next MainActivity/ViewModel instance to show Sign In without destroying
+     * the currently active account. The request is one-shot so cancelling simply falls
+     * back to the previous durable session on the next normal launch.
+     */
+    fun requestAddAccount(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_ADD_ACCOUNT_REQUEST, true)
+            .apply()
+    }
+
+    fun consumeAddAccountRequest(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val requested = prefs.getBoolean(KEY_ADD_ACCOUNT_REQUEST, false)
+        if (requested) prefs.edit().remove(KEY_ADD_ACCOUNT_REQUEST).apply()
+        return requested
+    }
+
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
@@ -128,7 +149,7 @@ object AccountSessionStore {
     }
 
     fun switchTo(context: Context, account: Account, accessToken: String, refreshToken: String) {
-        SupabaseService.saveSession(accessToken, refreshToken)
+        SupabaseService.replaceSession(accessToken, refreshToken)
         rememberIdentifier(context, account.email.ifBlank { account.username })
         setSignInRequired(context, false)
         persistSelectedAccount(context, account)
@@ -196,10 +217,17 @@ object AccountSessionStore {
                     val access = decrypt(o.optString("accessToken"))
                     val refresh = decrypt(o.optString("refreshToken"))
                     add(Account(o.optString("userId"), o.optString("username"), o.optString("fullName"), o.optString("email"), o.optString("avatarUrl"), access, refresh, o.optLong("lastUsedAt", 0L)))
-                } catch (_: Exception) { /* discard legacy/plaintext or corrupted credentials */ }
+                } catch (error: Exception) {
+                    // A corrupted saved-account entry must not affect the active Supabase
+                    // session. Skip only that entry and leave the current login untouched.
+                    Log.w("AccountSessionStore", "Skipping unreadable saved account entry", error)
+                }
             }
         }
-    } catch (_: Exception) { emptyList() }
+    } catch (error: Exception) {
+        Log.w("AccountSessionStore", "Unable to read saved account list", error)
+        emptyList()
+    }
 
     private fun save(context: Context, accounts: List<Account>) {
         val array = JSONArray()
