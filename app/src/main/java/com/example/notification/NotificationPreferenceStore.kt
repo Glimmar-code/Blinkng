@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
+import com.example.util.safeBoolean
+import com.example.util.safeInt
+import com.example.util.safeString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -42,8 +45,8 @@ object NotificationPreferenceStore {
 
     fun isAllowed(context: Context, type: BlinkNotificationType): Boolean {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (!prefs.getBoolean(MASTER, true)) return false
-        if (!prefs.getBoolean(type.preferenceKey, true)) return false
+        if (!prefs.safeBoolean(MASTER, true)) return false
+        if (!prefs.safeBoolean(type.preferenceKey, true)) return false
         if (!type.critical && isQuietNow(context)) return false
         return true
     }
@@ -101,13 +104,13 @@ object NotificationPreferenceStore {
 
     private fun isQuietNow(context: Context): Boolean {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (!prefs.getBoolean(QUIET_ENABLED, false)) return false
-        val start = prefs.getInt(QUIET_START, DEFAULT_QUIET_START).coerceIn(0, 1439)
-        val end = prefs.getInt(QUIET_END, DEFAULT_QUIET_END).coerceIn(0, 1439)
+        if (!prefs.safeBoolean(QUIET_ENABLED, false)) return false
+        val start = prefs.safeInt(QUIET_START, DEFAULT_QUIET_START).coerceIn(0, 1439)
+        val end = prefs.safeInt(QUIET_END, DEFAULT_QUIET_END).coerceIn(0, 1439)
         if (start == end) return false
 
         val zone = runCatching {
-            ZoneId.of(prefs.getString(TIMEZONE, ZoneId.systemDefault().id).orEmpty())
+            ZoneId.of(prefs.safeString(TIMEZONE, ZoneId.systemDefault().id).orEmpty())
         }.getOrElse { ZoneId.systemDefault() }
         val now = ZonedDateTime.ofInstant(Instant.now(), zone)
         val minute = now.hour * 60 + now.minute
@@ -175,25 +178,25 @@ object NotificationPreferenceStore {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val payload = JSONObject()
                 .put("user_id", uid)
-                .put("master_enabled", prefs.getBoolean(MASTER, true))
-                .put("messages_enabled", prefs.getBoolean("messages", true))
-                .put("calls_enabled", prefs.getBoolean("calls", true))
-                .put("social_enabled", prefs.getBoolean("social", true))
-                .put("mentions_enabled", prefs.getBoolean("mentions", true))
-                .put("comments_enabled", prefs.getBoolean("comments", true))
-                .put("follows_enabled", prefs.getBoolean("follows", true))
-                .put("market_enabled", prefs.getBoolean("market", true))
-                .put("admin_enabled", prefs.getBoolean("admin", true))
-                .put("coins_enabled", prefs.getBoolean("coins", true))
-                .put("stories_enabled", prefs.getBoolean("stories", true))
-                .put("reels_enabled", prefs.getBoolean("reels", true))
-                .put("vip_enabled", prefs.getBoolean("vip", true))
-                .put("boosts_enabled", prefs.getBoolean("boosts", true))
-                .put("security_enabled", prefs.getBoolean("security", true))
-                .put("quiet_hours_enabled", prefs.getBoolean(QUIET_ENABLED, false))
-                .put("quiet_start_minute", prefs.getInt(QUIET_START, DEFAULT_QUIET_START).coerceIn(0, 1439))
-                .put("quiet_end_minute", prefs.getInt(QUIET_END, DEFAULT_QUIET_END).coerceIn(0, 1439))
-                .put("timezone", prefs.getString(TIMEZONE, ZoneId.systemDefault().id) ?: ZoneId.systemDefault().id)
+                .put("master_enabled", prefs.safeBoolean(MASTER, true))
+                .put("messages_enabled", prefs.safeBoolean("messages", true))
+                .put("calls_enabled", prefs.safeBoolean("calls", true))
+                .put("social_enabled", prefs.safeBoolean("social", true))
+                .put("mentions_enabled", prefs.safeBoolean("mentions", true))
+                .put("comments_enabled", prefs.safeBoolean("comments", true))
+                .put("follows_enabled", prefs.safeBoolean("follows", true))
+                .put("market_enabled", prefs.safeBoolean("market", true))
+                .put("admin_enabled", prefs.safeBoolean("admin", true))
+                .put("coins_enabled", prefs.safeBoolean("coins", true))
+                .put("stories_enabled", prefs.safeBoolean("stories", true))
+                .put("reels_enabled", prefs.safeBoolean("reels", true))
+                .put("vip_enabled", prefs.safeBoolean("vip", true))
+                .put("boosts_enabled", prefs.safeBoolean("boosts", true))
+                .put("security_enabled", prefs.safeBoolean("security", true))
+                .put("quiet_hours_enabled", prefs.safeBoolean(QUIET_ENABLED, false))
+                .put("quiet_start_minute", prefs.safeInt(QUIET_START, DEFAULT_QUIET_START).coerceIn(0, 1439))
+                .put("quiet_end_minute", prefs.safeInt(QUIET_END, DEFAULT_QUIET_END).coerceIn(0, 1439))
+                .put("timezone", prefs.safeString(TIMEZONE, ZoneId.systemDefault().id) ?: ZoneId.systemDefault().id)
                 .toString()
                 .toRequestBody("application/json; charset=utf-8".toMediaType())
 
