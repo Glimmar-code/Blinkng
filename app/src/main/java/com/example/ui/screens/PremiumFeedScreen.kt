@@ -94,6 +94,7 @@ import com.example.ui.theme.FeedPurple
 import com.example.ui.theme.FeedTextPrimary
 import com.example.ui.theme.FeedTextSecondary
 import com.example.util.safeInt
+import com.example.util.safeString
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.random.Random
@@ -507,7 +508,7 @@ private fun PremiumHomeFeed(
         mutableStateOf(
             runCatching {
                 PremiumFeedFilter.valueOf(
-                    resumePrefs.getString(
+                    resumePrefs.safeString(
                         "home_filter:$laneResumeKey",
                         PremiumFeedFilter.ALL.name
                     ) ?: PremiumFeedFilter.ALL.name
