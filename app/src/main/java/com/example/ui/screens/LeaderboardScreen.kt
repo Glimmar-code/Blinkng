@@ -46,7 +46,7 @@ private enum class LeaderboardScope(val label: String) {
     WORLD("World"),
     CAMPUS("Campus"),
     FACULTY("Faculty"),
-    LEVEL("Level")
+    LEVEL("Academic Level")
 }
 
 @Composable
