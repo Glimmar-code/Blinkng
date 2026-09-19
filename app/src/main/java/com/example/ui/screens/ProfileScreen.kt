@@ -1082,6 +1082,29 @@ fun ProfileScreen(
                             .fillMaxWidth()
                             .clickable {
                                 showEarnCoinDialog = false
+                                onOpenGetVerified()
+                            },
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(13.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = BlinkBlue)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("Daily missions", fontWeight = FontWeight.Bold)
+                                Text("Build XP and earn up to 20 Blink Coins per day", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showEarnCoinDialog = false
                                 onBuyBlinkCoins()
                             },
                         shape = RoundedCornerShape(16.dp),

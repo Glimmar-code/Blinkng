@@ -32,6 +32,7 @@ import coil.compose.AsyncImage
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.ui.theme.*
+import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 
@@ -43,9 +44,13 @@ fun GetVerifiedSheet(
     blinkCoinBalance: Long = 0L,
     economyPolicy: BlinkEconomyPolicy = BlinkEconomyDefaults.policy,
     rewardedAdsToday: Int = 0,
+    dailyMissions: List<BlinkDailyMission> = emptyList(),
+    isDailyMissionsLoading: Boolean = false,
     onDismiss: () -> Unit,
     onWatchAdForCoins: () -> Unit = {},
     onBuyBlinkCoins: () -> Unit = {},
+    onRefreshDailyMissions: () -> Unit = {},
+    onClaimDailyMission: (String) -> Unit = {},
     onVerifyWithCoins: () -> Unit = {},
     onUpgrade: (VerificationBadge) -> Unit
 ) {
@@ -56,6 +61,11 @@ fun GetVerifiedSheet(
         )
     }
     val isGoldEligible = profile.followerCount >= 1000
+    var showDailyMissions by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        onRefreshDailyMissions()
+    }
 
     val sheetBg = if (isDark) DarkSurface else LightSurface
     val textPrimary = if (isDark) Color.White else LightTextPrimary
@@ -669,13 +679,140 @@ fun GetVerifiedSheet(
                                     )
                                 }
                                 OutlinedButton(
-                                    onClick = onBuyBlinkCoins,
+                                    onClick = {
+                                        showDailyMissions = !showDailyMissions
+                                        if (showDailyMissions) onRefreshDailyMissions()
+                                    },
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(100.dp)
                                 ) {
-                                    Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(17.dp))
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(17.dp))
                                     Spacer(Modifier.width(5.dp))
-                                    Text("Buy coins", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        if (showDailyMissions) "Hide missions" else "Missions",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = onBuyBlinkCoins,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(100.dp)
+                            ) {
+                                Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, modifier = Modifier.size(17.dp))
+                                Spacer(Modifier.width(5.dp))
+                                Text("Buy Blink Coins", fontWeight = FontWeight.Bold)
+                            }
+
+                            AnimatedVisibility(visible = showDailyMissions) {
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text("Daily Missions", fontSize = 13.sp, fontWeight = FontWeight.Black, color = textPrimary)
+                                                Text("Up to 20 coins + 80 XP every day", fontSize = 10.sp, color = textSecondary)
+                                            }
+                                            if (isDailyMissionsLoading) {
+                                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                            }
+                                        }
+
+                                        if (!isDailyMissionsLoading && dailyMissions.isEmpty()) {
+                                            Text(
+                                                "Missions are syncing. Try again shortly.",
+                                                fontSize = 10.5.sp,
+                                                color = textSecondary
+                                            )
+                                        }
+
+                                        dailyMissions.forEach { mission ->
+                                            Surface(
+                                                shape = RoundedCornerShape(13.dp),
+                                                color = if (mission.claimed) {
+                                                    Color(0xFF16A34A).copy(alpha = 0.08f)
+                                                } else {
+                                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+                                                },
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (mission.claimable) BlinkBlue.copy(alpha = 0.42f) else borderColor
+                                                )
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(11.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text(mission.title, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+                                                            Text(mission.description, fontSize = 9.5.sp, color = textSecondary)
+                                                        }
+                                                        Spacer(Modifier.width(8.dp))
+                                                        Text(
+                                                            "${mission.progress.coerceAtMost(mission.target)}/${mission.target}",
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Black,
+                                                            color = if (mission.completed) Color(0xFF16A34A) else BlinkBlue
+                                                        )
+                                                    }
+
+                                                    LinearProgressIndicator(
+                                                        progress = { mission.progressFraction },
+                                                        color = if (mission.completed) Color(0xFF16A34A) else BlinkBlue,
+                                                        trackColor = borderColor,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .height(5.dp)
+                                                            .clip(RoundedCornerShape(100.dp))
+                                                    )
+
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            "+${mission.coinReward} coins • +${mission.xpReward} XP",
+                                                            fontSize = 9.5.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = textSecondary
+                                                        )
+                                                        TextButton(
+                                                            onClick = { onClaimDailyMission(mission.key) },
+                                                            enabled = mission.claimable
+                                                        ) {
+                                                            Text(
+                                                                when {
+                                                                    mission.claimed -> "Claimed"
+                                                                    mission.claimable -> "Claim"
+                                                                    else -> "In progress"
+                                                                },
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
 

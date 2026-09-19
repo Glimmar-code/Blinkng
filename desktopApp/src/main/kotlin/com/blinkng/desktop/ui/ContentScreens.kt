@@ -80,9 +80,11 @@ import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import com.blinkng.shared.BlinkCoinPack
+import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
+import com.blinkng.shared.xpProgress
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -680,16 +682,22 @@ fun ProfileScreen(state: DesktopAppState) {
     val scope = rememberCoroutineScope()
     val actions = remember(state.client) { DesktopRpcActions(state.client) }
     var economyPayload by remember { mutableStateOf<JSONObject?>(null) }
+    var missionsPayload by remember { mutableStateOf<JSONObject?>(null) }
     var economyMessage by remember { mutableStateOf<String?>(null) }
     var economyBusy by remember { mutableStateOf(false) }
+    var missionBusyKey by remember { mutableStateOf<String?>(null) }
+
+    suspend fun reloadRewards() {
+        economyPayload = runCatching { actions.getEconomyStatus() }.getOrNull()
+        missionsPayload = runCatching { actions.getDailyMissions() }.getOrNull()
+    }
 
     LaunchedEffect(profile?.id) {
-        if (profile != null) {
-            economyPayload = runCatching { actions.getEconomyStatus() }.getOrNull()
-        }
+        if (profile != null) reloadRewards()
     }
 
     val policy = remember(economyPayload?.toString()) { parseDesktopEconomyPolicy(economyPayload) }
+    val missions = remember(missionsPayload?.toString()) { parseDesktopDailyMissions(missionsPayload) }
     val balance = economyPayload?.optLong("balance", profile?.coinBalance ?: 0L) ?: profile?.coinBalance ?: 0L
     val remaining = policy.verificationCoinsRemaining(balance)
 
@@ -698,6 +706,8 @@ fun ProfileScreen(state: DesktopAppState) {
         if (profile == null) {
             item { LoadingRow() }
         } else {
+            val xp = xpProgress(profile.totalXp, profile.xpLevel)
+
             item {
                 Surface(shape = RoundedCornerShape(24.dp), tonalElevation = 2.dp) {
                     Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -723,6 +733,45 @@ fun ProfileScreen(state: DesktopAppState) {
                             Stat("Following", profile.followingCount.toString())
                             Stat("Coins", balance.toString())
                         }
+                    }
+                }
+            }
+
+            item {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f),
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column {
+                                Text("Level ${xp.level} • ${xp.tierLabel}", fontWeight = FontWeight.Black, fontSize = 16.sp)
+                                Text("${xp.totalXp} XP", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(
+                                if (xp.level >= 100) "MAX LEVEL" else "${xp.xpToNextLevel} XP to Lv. ${xp.level + 1}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        LinearProgressIndicator(
+                            progress = { xp.progressFraction },
+                            modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(100.dp)),
+                        )
+                        Text(
+                            if (xp.level >= 100) "Long-term BLINK progression complete."
+                            else "${xp.xpIntoLevel} / ${xp.xpForLevel} XP in this level",
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -781,7 +830,7 @@ fun ProfileScreen(state: DesktopAppState) {
                                     scope.launch {
                                         runCatching { actions.purchaseBlueVerificationWithCoins() }
                                             .onSuccess {
-                                                economyPayload = runCatching { actions.getEconomyStatus() }.getOrNull()
+                                                reloadRewards()
                                                 state.refreshProfile()
                                                 economyMessage = "BLINK Verified activated."
                                             }
@@ -802,7 +851,7 @@ fun ProfileScreen(state: DesktopAppState) {
                         }
 
                         Text(
-                            "Rewarded ads are an Android earning surface; Android and Windows share the same server wallet and verification balance.",
+                            "Rewarded ads are Android-only. Daily missions, XP, wallet balance and verification are shared across Android and Windows.",
                             fontSize = 10.5.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -813,6 +862,91 @@ fun ProfileScreen(state: DesktopAppState) {
                                 fontSize = 11.sp,
                                 color = if (message.contains("activated", ignoreCase = true)) Color(0xFF22C55E) else MaterialTheme.colorScheme.error,
                             )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Surface(shape = RoundedCornerShape(22.dp), tonalElevation = 1.dp) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text("Daily Missions", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                        Text(
+                            "Complete meaningful activity for up to 20 Blink Coins + 80 XP per day.",
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (missions.isEmpty()) {
+                            Text("Missions are syncing…", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        missions.forEach { mission ->
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (mission.claimed) Color(0xFF22C55E).copy(alpha = 0.08f)
+                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(mission.title, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                            Text(mission.description, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Text(
+                                            "${mission.progress.coerceAtMost(mission.target)}/${mission.target}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = if (mission.completed) Color(0xFF22C55E) else MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                    LinearProgressIndicator(
+                                        progress = { mission.progressFraction },
+                                        modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(100.dp)),
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text("+${mission.coinReward} coins • +${mission.xpReward} XP", fontSize = 10.sp)
+                                        OutlinedButton(
+                                            onClick = {
+                                                missionBusyKey = mission.key
+                                                economyMessage = null
+                                                scope.launch {
+                                                    runCatching { actions.claimDailyMission(mission.key) }
+                                                        .onSuccess {
+                                                            reloadRewards()
+                                                            state.refreshProfile()
+                                                            economyMessage = "${mission.title} claimed."
+                                                        }
+                                                        .onFailure { economyMessage = it.message ?: "Mission claim failed." }
+                                                    missionBusyKey = null
+                                                }
+                                            },
+                                            enabled = mission.claimable && missionBusyKey == null,
+                                        ) {
+                                            Text(
+                                                when {
+                                                    mission.claimed -> "Claimed"
+                                                    missionBusyKey == mission.key -> "Claiming…"
+                                                    mission.claimable -> "Claim"
+                                                    else -> "In progress"
+                                                },
+                                                fontSize = 10.sp,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1024,6 +1158,31 @@ private fun EmptyState(message: String) {
 @Composable
 private fun InlineError(message: String) {
     Text(message, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+}
+
+private fun parseDesktopDailyMissions(payload: JSONObject?): List<BlinkDailyMission> {
+    val array = payload?.optJSONArray("missions") ?: return emptyList()
+    return buildList {
+        for (index in 0 until array.length()) {
+            val row = array.optJSONObject(index) ?: continue
+            val key = row.optString("key").trim()
+            val title = row.optString("title").trim()
+            val target = row.optInt("target", 0)
+            if (key.isBlank() || title.isBlank() || target <= 0) continue
+            add(
+                BlinkDailyMission(
+                    key = key,
+                    title = title,
+                    description = row.optString("description").trim(),
+                    progress = row.optInt("progress", 0).coerceAtLeast(0),
+                    target = target,
+                    coinReward = row.optInt("coin_reward", 0).coerceAtLeast(0),
+                    xpReward = row.optInt("xp_reward", 0).coerceAtLeast(0),
+                    claimed = row.optBoolean("claimed", false),
+                )
+            )
+        }
+    }
 }
 
 private fun parseDesktopEconomyPolicy(payload: JSONObject?): BlinkEconomyPolicy {
