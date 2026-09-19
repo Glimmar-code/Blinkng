@@ -36,6 +36,7 @@ import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
+import com.blinkng.shared.BlinkOnboardingPolicy
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -137,11 +138,19 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         private const val PREFS = "blink_user_session"
         private const val AUTH_PREFS = "blink_auth_prefs"
         private const val KEY_IS_LOGGED_IN = "is_logged_in"
+        private const val KEY_USER_ID = "user_id"
         private const val KEY_EMAIL = "email"
         private const val KEY_FULL_NAME = "full_name"
         private const val KEY_USERNAME = "username"
         private const val KEY_FACULTY = "faculty"
         private const val KEY_UNIVERSITY = "university"
+        private const val KEY_DEPARTMENT = "department"
+        private const val KEY_ACADEMIC_LEVEL = "academic_level"
+        private const val KEY_GENDER = "gender"
+        private const val KEY_BIRTH_DATE = "birth_date"
+        private const val KEY_INTERESTS = "interests"
+        private const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
+        private const val KEY_ONBOARDING_STEP = "onboarding_step"
         private const val KEY_AVATAR = "avatar_url"
         private const val KEY_COVER = "cover_url"
         private const val KEY_VERIFICATION = "verification_badge"
@@ -226,7 +235,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
             restoreResumableRouteFromCurrentState()
             if (hasLocalSession && !_uiState.value.isOnline) {
                 _uiState.value = _uiState.value.copy(
-                    destination = AppDestination.MAIN,
+                    destination = authenticatedDestination(),
                     isFeedLoading = false,
                     isRefreshingContent = false,
                     isSyncingContent = false,
@@ -313,7 +322,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
             // An old/broken recovery link is not an instruction to sign the current user out.
             if (!AccountSessionStore.isSignInRequired(appContext) && hasLocalAuthenticatedProfile()) {
                 restoreLocalSession()
-                _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN)
+                _uiState.value = _uiState.value.copy(destination = authenticatedDestination())
             } else {
                 _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
             }
@@ -379,7 +388,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
             AccountSessionStore.setSignInRequired(appContext, false)
             if (hasLocalAuthenticatedProfile()) {
                 restoreLocalSession()
-                _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN)
+                _uiState.value = _uiState.value.copy(destination = authenticatedDestination())
             } else {
                 _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
             }
@@ -465,10 +474,16 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                     is AuthState.Authenticated -> {
                         addAccountMode = false
                         val profile = authState.userProfile
-                        _uiState.value = _uiState.value.copy(myProfile = profile, destination = when (_uiState.value.destination) {
-                            AppDestination.SIGN_IN, AppDestination.SIGN_UP, AppDestination.ONBOARDING, AppDestination.SPLASH -> AppDestination.MAIN
-                            else -> _uiState.value.destination
-                        })
+                        _uiState.value = _uiState.value.copy(
+                            myProfile = profile,
+                            destination = when (_uiState.value.destination) {
+                                AppDestination.SIGN_IN,
+                                AppDestination.SIGN_UP,
+                                AppDestination.ONBOARDING,
+                                AppDestination.SPLASH -> authenticatedDestination(profile)
+                                else -> _uiState.value.destination
+                            }
+                        )
                         saveLocalProfile(profile)
                         refreshMyProfileFromSupabase(showErrorToast = false)
                         fetchSupabaseData()
@@ -503,7 +518,7 @@ private suspend fun restoreSupabaseSession() {
                 restoreLocalSession()
                 restoreCachedAppSnapshot()
                 _uiState.value = _uiState.value.copy(
-                    destination = AppDestination.MAIN,
+                    destination = authenticatedDestination(),
                     isFeedLoading = false,
                     isRefreshingContent = false,
                     isSyncingContent = false,
@@ -537,7 +552,7 @@ private suspend fun restoreSupabaseSession() {
                 if (!uid.isNullOrBlank()) {
                     val profile = profileRepository.fetchById(uid)
                     if (profile != null) {
-                        _uiState.value = _uiState.value.copy(myProfile = profile, destination = AppDestination.MAIN)
+                        _uiState.value = _uiState.value.copy(myProfile = profile, destination = authenticatedDestination(profile))
                         saveLocalProfile(profile)
                         persistProfile(profile)
                         authRepository.markAuthenticated(profile)
@@ -550,7 +565,7 @@ private suspend fun restoreSupabaseSession() {
                 if (hasLocalAuthenticatedProfile()) {
                     restoreLocalSession()
                     authRepository.markAuthenticated(_uiState.value.myProfile)
-                    _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN)
+                    _uiState.value = _uiState.value.copy(destination = authenticatedDestination())
                     fetchSupabaseData()
                     return
                 }
@@ -559,7 +574,7 @@ private suspend fun restoreSupabaseSession() {
             if (hasLocalAuthenticatedProfile() &&
                 (SupabaseService.accessToken() != null || AccountSessionStore.list(appContext).isNotEmpty())) {
                 restoreLocalSession()
-                _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN)
+                _uiState.value = _uiState.value.copy(destination = authenticatedDestination())
                 fetchSupabaseData()
             } else {
                 _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
@@ -587,14 +602,36 @@ private suspend fun restoreSupabaseSession() {
     private fun hasLocalAuthenticatedProfile(): Boolean =
         prefs.getBoolean(KEY_IS_LOGGED_IN, false) || authPrefs.getBoolean(KEY_IS_LOGGED_IN, false)
 
+    private fun authenticatedDestination(profile: UserProfile = _uiState.value.myProfile): AppDestination =
+        if (profile.onboardingCompleted) AppDestination.MAIN else AppDestination.PROFILE_SETUP
+
     private fun restoreLocalSession() {
         if (!hasLocalAuthenticatedProfile()) return
+        val savedId = prefs.getString(KEY_USER_ID, "").orEmpty()
         val savedEmail = prefs.getString(KEY_EMAIL, authPrefs.getString(KEY_EMAIL, "")).orEmpty()
         val savedName = prefs.getString(KEY_FULL_NAME, authPrefs.getString(KEY_FULL_NAME, "")).orEmpty()
         val savedUsername = prefs.getString(KEY_USERNAME, authPrefs.getString(KEY_USERNAME, "")).orEmpty()
         if (savedName.isBlank() || savedUsername.isBlank()) return
         val savedFaculty = prefs.getString(KEY_FACULTY, authPrefs.getString(KEY_FACULTY, "")).orEmpty()
         val savedUniversity = prefs.getString(KEY_UNIVERSITY, authPrefs.getString(KEY_UNIVERSITY, "")).orEmpty()
+        val savedDepartment = prefs.getString(KEY_DEPARTMENT, "").orEmpty()
+        val savedAcademicLevel = prefs.getString(KEY_ACADEMIC_LEVEL, "").orEmpty()
+        val savedGender = prefs.getString(KEY_GENDER, "").orEmpty()
+        val savedBirthDate = prefs.getString(KEY_BIRTH_DATE, "").orEmpty()
+        val savedInterests = runCatching {
+            val raw = prefs.getString(KEY_INTERESTS, "[]").orEmpty()
+            val array = JSONArray(if (raw.isBlank()) "[]" else raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    array.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+                }
+            }
+        }.getOrDefault(emptyList())
+        val savedOnboardingCompleted = prefs.getBoolean(KEY_ONBOARDING_COMPLETED, true)
+        val savedOnboardingStep = prefs.getInt(
+            KEY_ONBOARDING_STEP,
+            if (savedOnboardingCompleted) 4 else 0
+        ).coerceIn(0, 4)
         val savedAvatar = prefs.getString(KEY_AVATAR, authPrefs.getString(KEY_AVATAR, "")).orEmpty()
         val savedCover = prefs.getString(KEY_COVER, authPrefs.getString(KEY_COVER, "")).orEmpty()
         val badge = when (prefs.getString(KEY_VERIFICATION, "")?.uppercase()) {
@@ -607,11 +644,19 @@ private suspend fun restoreSupabaseSession() {
         offlineContentStore.setActiveOwner(savedUsername)
         _uiState.value = _uiState.value.copy(
             myProfile = UserProfile(
+                id = savedId,
                 fullName = savedName,
                 username = savedUsername,
                 email = ContactField(savedEmail, true),
                 faculty = savedFaculty,
                 university = savedUniversity,
+                department = savedDepartment,
+                academicLevel = savedAcademicLevel,
+                gender = savedGender,
+                birthDate = savedBirthDate,
+                interests = savedInterests,
+                onboardingCompleted = savedOnboardingCompleted,
+                onboardingStep = savedOnboardingStep,
                 avatarUrl = savedAvatar,
                 coverPhotoUrl = savedCover,
                 verificationBadge = badge,
@@ -620,7 +665,7 @@ private suspend fun restoreSupabaseSession() {
             // Never carry account A's in-memory chats into account B. The account-scoped
             // Room/snapshot cache below restores B's own conversations immediately.
             conversations = if (accountChanged) emptyList() else _uiState.value.conversations,
-            destination = AppDestination.MAIN
+            destination = authenticatedDestination(UserProfile(onboardingCompleted = savedOnboardingCompleted))
         )
     }
 
@@ -628,11 +673,19 @@ private suspend fun restoreSupabaseSession() {
         offlineContentStore.setActiveOwner(profile.username)
         prefs.edit()
             .putBoolean(KEY_IS_LOGGED_IN, true)
+            .putString(KEY_USER_ID, profile.id)
             .putString(KEY_EMAIL, profile.email.value)
             .putString(KEY_FULL_NAME, profile.fullName)
             .putString(KEY_USERNAME, profile.username)
             .putString(KEY_FACULTY, profile.faculty)
             .putString(KEY_UNIVERSITY, profile.university)
+            .putString(KEY_DEPARTMENT, profile.department)
+            .putString(KEY_ACADEMIC_LEVEL, profile.academicLevel)
+            .putString(KEY_GENDER, profile.gender)
+            .putString(KEY_BIRTH_DATE, profile.birthDate)
+            .putString(KEY_INTERESTS, JSONArray(profile.interests).toString())
+            .putBoolean(KEY_ONBOARDING_COMPLETED, profile.onboardingCompleted)
+            .putInt(KEY_ONBOARDING_STEP, profile.onboardingStep.coerceIn(0, 4))
             .putString(KEY_AVATAR, profile.avatarUrl)
             .putString(KEY_COVER, profile.coverPhotoUrl)
             .putString(KEY_VERIFICATION, profile.verificationBadge.name)
@@ -1810,6 +1863,21 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    fun signUp(fullName: String, email: String, password: String) {
+        val temporaryUsername = "blink_" + UUID.randomUUID()
+            .toString()
+            .replace("-", "")
+            .take(12)
+
+        signUp(
+            fullName = fullName,
+            username = temporaryUsername,
+            email = email,
+            password = password,
+            faculty = ""
+        )
+    }
+
     fun signUp(fullName: String, username: String, email: String, password: String = "", faculty: String = "") {
         if (fullName.isBlank()) { showToast("Please enter your real name."); return }
         if (username.isBlank()) { showToast("Please choose a username."); return }
@@ -1836,6 +1904,201 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    fun checkOnboardingUsername(
+        username: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        val clean = BlinkOnboardingPolicy.normalizeUsername(username)
+        BlinkOnboardingPolicy.usernameValidationMessage(clean)?.let { validationMessage ->
+            onResult(false, validationMessage)
+            return
+        }
+
+        viewModelScope.launch {
+            val existing = runCatching {
+                supabaseService.fetchProfileByUsername(clean)
+            }.getOrNull()
+            val currentId = _uiState.value.myProfile.id
+            val available = existing == null || (
+                currentId.isNotBlank() &&
+                    existing.id.equals(currentId, ignoreCase = true)
+                )
+            onResult(
+                available,
+                if (available) "Username available" else "Username already taken."
+            )
+        }
+    }
+
+    fun saveOnboardingUsername(
+        username: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        checkOnboardingUsername(username) { available, message ->
+            if (!available) {
+                onResult(false, message)
+                return@checkOnboardingUsername
+            }
+
+            val clean = username.trim().lowercase().removePrefix("@")
+            viewModelScope.launch {
+                val current = _uiState.value.myProfile
+                val updated = current.copy(
+                    username = clean,
+                    onboardingCompleted = false,
+                    onboardingStep = maxOf(current.onboardingStep, 1)
+                )
+                val saved = runCatching { supabaseService.updateProfile(updated) }
+                    .getOrDefault(false)
+                if (saved) {
+                    _uiState.value = _uiState.value.copy(myProfile = updated)
+                    saveLocalProfile(updated)
+                    onResult(true, null)
+                } else {
+                    onResult(false, "Unable to save your username. Check your connection and try again.")
+                }
+            }
+        }
+    }
+
+    fun saveOnboardingBasics(
+        university: String,
+        department: String,
+        level: String,
+        gender: String,
+        birthDate: String,
+        avatarUrl: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        val cleanUniversity = university.trim()
+        val cleanDepartment = department.trim()
+        val cleanLevel = level.trim()
+        val cleanGender = gender.trim()
+        val cleanBirthDate = birthDate.trim()
+
+        when {
+            cleanUniversity.isBlank() -> {
+                onResult(false, "Choose your university.")
+                return
+            }
+            cleanDepartment.isBlank() -> {
+                onResult(false, "Choose your department.")
+                return
+            }
+            cleanGender !in BlinkOnboardingCatalog.genders -> {
+                onResult(false, "Choose a valid gender option.")
+                return
+            }
+            cleanBirthDate.isNotBlank() &&
+                !cleanBirthDate.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$")) -> {
+                onResult(false, "Use YYYY-MM-DD for your birthday, or leave it blank.")
+                return
+            }
+        }
+
+        viewModelScope.launch {
+            val current = _uiState.value.myProfile
+            val updated = current.copy(
+                university = cleanUniversity,
+                department = cleanDepartment,
+                academicLevel = cleanLevel,
+                gender = cleanGender,
+                birthDate = cleanBirthDate,
+                avatarUrl = avatarUrl.trim(),
+                onboardingCompleted = false,
+                onboardingStep = maxOf(current.onboardingStep, 2)
+            )
+            val saved = runCatching { supabaseService.updateProfile(updated) }
+                .getOrDefault(false)
+            if (saved) {
+                _uiState.value = _uiState.value.copy(myProfile = updated)
+                saveLocalProfile(updated)
+                onResult(true, null)
+            } else {
+                onResult(false, "Unable to save your profile. Check your connection and try again.")
+            }
+        }
+    }
+
+    fun saveOnboardingInterests(
+        interests: List<String>,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        val cleanInterests = interests
+            .map { it.trim() }
+            .filter { it.isNotBlank() && it in BlinkOnboardingCatalog.allInterests }
+            .distinct()
+
+        if (cleanInterests.isEmpty()) {
+            onResult(false, "Choose at least one interest.")
+            return
+        }
+
+        viewModelScope.launch {
+            val current = _uiState.value.myProfile
+            val updated = current.copy(
+                interests = cleanInterests,
+                onboardingCompleted = false,
+                onboardingStep = maxOf(current.onboardingStep, 3)
+            )
+            val saved = runCatching { supabaseService.updateProfile(updated) }
+                .getOrDefault(false)
+            if (saved) {
+                _uiState.value = _uiState.value.copy(myProfile = updated)
+                saveLocalProfile(updated)
+                onResult(true, null)
+            } else {
+                onResult(false, "Unable to save your interests. Check your connection and try again.")
+            }
+        }
+    }
+
+    fun finishAccountOnboarding(
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val following = runCatching { FollowStateStore.refresh() }
+                .getOrDefault(emptySet())
+
+            if (following.size < BlinkOnboardingPolicy.REQUIRED_FOLLOWS) {
+                onResult(false, "Follow at least ${BlinkOnboardingPolicy.REQUIRED_FOLLOWS} people to continue.")
+                return@launch
+            }
+
+            val current = _uiState.value.myProfile
+            if (
+                current.username.isBlank() ||
+                current.university.isBlank() ||
+                current.department.isBlank() ||
+                current.gender.isBlank() ||
+                current.interests.isEmpty()
+            ) {
+                onResult(false, "Complete the required onboarding details before continuing.")
+                return@launch
+            }
+
+            val completed = current.copy(
+                onboardingCompleted = true,
+                onboardingStep = 4
+            )
+            val saved = runCatching { supabaseService.updateProfile(completed) }
+                .getOrDefault(false)
+
+            if (saved) {
+                _uiState.value = _uiState.value.copy(
+                    myProfile = completed,
+                    destination = AppDestination.MAIN
+                )
+                saveLocalProfile(completed)
+                fetchSupabaseData()
+                showToast("Welcome to BLINK, @${completed.username} ✨")
+                onResult(true, null)
+            } else {
+                onResult(false, "Unable to finish onboarding. Check your connection and try again.")
+            }
+        }
+    }
+
     fun completeProfileOnboarding(university: String, department: String, academicLevel: String, bio: String, skills: List<String>, phone: String = "", whatsapp: String = "") {
         val current = _uiState.value.myProfile
         val updatedSkills = skills.filter { it.isNotBlank() }.map { SkillEndorsement(it, 1, true) }
@@ -1848,9 +2111,9 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = _uiState.value.copy(myProfile = completed); saveLocalProfile(completed)
         viewModelScope.launch {
             val userId = supabaseService.getCurrentUserId()
-            if (userId.isNullOrBlank()) { _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN); showToast("Profile saved locally. Sign in to sync it with Supabase."); return@launch }
+            if (userId.isNullOrBlank()) { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved locally. Sign in to sync it with Supabase."); return@launch }
             if (supabaseService.updateProfile(completed)) { _uiState.value = _uiState.value.copy(myProfile = completed, destination = AppDestination.MAIN); showToast("🎉 Profile created and synced with Supabase.") }
-            else { _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN); showToast("Profile saved locally, but Supabase sync failed.") }
+            else { _uiState.value = _uiState.value.copy(destination = authenticatedDestination()); showToast("Profile saved locally, but Supabase sync failed.") }
         }
     }
 
