@@ -2029,6 +2029,15 @@ private suspend fun restoreSupabaseSession() {
                 onboardingCompleted = false,
                 onboardingStep = maxOf(current.onboardingStep, 2)
             )
+
+            val privateSaved = runCatching {
+                supabaseService.updatePrivateBirthDate(cleanBirthDate)
+            }.getOrDefault(false)
+            if (!privateSaved) {
+                onResult(false, "Unable to save your private birthday setting. Check your connection and try again.")
+                return@launch
+            }
+
             val saved = runCatching { supabaseService.updateProfile(updated) }
                 .getOrDefault(false)
             if (saved) {
