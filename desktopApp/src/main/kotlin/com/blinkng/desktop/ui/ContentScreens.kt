@@ -265,8 +265,6 @@ fun ReelsScreen(state: DesktopAppState) {
                             DesktopShareLinkManager.copyToClipboard(reel.id, isReel = true)
                         },
                     ) {
-                        Icon(Icons.Rounded.Link, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
                         Text("Copy link")
                     }
                 }
@@ -833,8 +831,8 @@ private fun PostCard(
                 Text(post.likeCount.toString(), fontSize = 12.sp)
                 IconButton(onClick = onComments) { Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments") }
                 Text(post.commentCount.toString(), fontSize = 12.sp)
-                IconButton(onClick = onCopyLink) {
-                    Icon(Icons.Rounded.Link, contentDescription = "Copy link")
+                TextButton(onClick = onCopyLink) {
+                    Text("Copy link", fontSize = 11.sp)
                 }
                 Spacer(Modifier.weight(1f))
                 Text("${post.viewCount} views", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
