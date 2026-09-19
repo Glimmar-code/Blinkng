@@ -908,6 +908,10 @@ fun ProfileScreen(state: DesktopAppState) {
             }
 
             item {
+                DesktopProgressHubPanel(state = state, actions = actions)
+            }
+
+            item {
                 Surface(shape = RoundedCornerShape(22.dp), tonalElevation = 1.dp) {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(18.dp),
