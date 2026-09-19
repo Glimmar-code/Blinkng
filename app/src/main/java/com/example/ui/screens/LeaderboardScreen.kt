@@ -97,17 +97,33 @@ fun LeaderboardScreen(
     }
 
     val scoped = remember(world, scope, campusName, facultyName, levelName, verifiedOnly) {
+        fun rankWithinScope(source: List<LeaderboardUser>): List<LeaderboardUser> {
+            var previousWorldRank: Int? = null
+            var previousScopedRank = 0
+
+            return source.mapIndexed { index, user ->
+                val scopedRank = if (previousWorldRank == user.rank) {
+                    previousScopedRank
+                } else {
+                    index + 1
+                }
+                previousWorldRank = user.rank
+                previousScopedRank = scopedRank
+                user.copy(rank = scopedRank)
+            }
+        }
+
         val rankedScope = when (scope) {
             LeaderboardScope.WORLD -> world
-            LeaderboardScope.CAMPUS -> world
-                .filter { it.university.equals(campusName, ignoreCase = true) }
-                .mapIndexed { index, user -> user.copy(rank = index + 1) }
-            LeaderboardScope.FACULTY -> world
-                .filter { it.faculty.equals(facultyName, ignoreCase = true) }
-                .mapIndexed { index, user -> user.copy(rank = index + 1) }
-            LeaderboardScope.LEVEL -> world
-                .filter { it.level.equals(levelName, ignoreCase = true) }
-                .mapIndexed { index, user -> user.copy(rank = index + 1) }
+            LeaderboardScope.CAMPUS -> rankWithinScope(
+                world.filter { it.university.equals(campusName, ignoreCase = true) }
+            )
+            LeaderboardScope.FACULTY -> rankWithinScope(
+                world.filter { it.faculty.equals(facultyName, ignoreCase = true) }
+            )
+            LeaderboardScope.LEVEL -> rankWithinScope(
+                world.filter { it.level.equals(levelName, ignoreCase = true) }
+            )
         }
 
         rankedScope.filter { !verifiedOnly || it.verificationBadge != VerificationBadge.NONE }
