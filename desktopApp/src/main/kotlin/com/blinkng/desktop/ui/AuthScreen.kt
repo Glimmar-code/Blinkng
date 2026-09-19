@@ -213,24 +213,32 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                             OutlinedButton(
                                 onClick = { mode = AuthMode.SIGN_UP; state.clearError() },
                                 border = authOutline,
-) { Text("Create account", color = Color.White) }
+                            ) {
+                                Text("Create account", color = Color.White)
+                            }
                             OutlinedButton(
                                 onClick = { mode = AuthMode.RESET; state.clearError() },
                                 border = authOutline,
-) { Text("Forgot password", color = Color.White) }
+                            ) {
+                                Text("Forgot password", color = Color.White)
+                            }
                         }
                         AuthMode.SIGN_UP -> {
                             OutlinedButton(
                                 onClick = { mode = AuthMode.SIGN_IN; state.clearError() },
                                 border = authOutline,
-) { Text("Back to sign in", color = Color.White) }
+                            ) {
+                                Text("Back to sign in", color = Color.White)
+                            }
                             Spacer(Modifier.weight(1f))
                         }
                         AuthMode.RESET -> {
                             OutlinedButton(
                                 onClick = { mode = AuthMode.SIGN_IN; state.clearError() },
                                 border = authOutline,
-) { Text("Back to sign in", color = Color.White) }
+                            ) {
+                                Text("Back to sign in", color = Color.White)
+                            }
                             Spacer(Modifier.weight(1f))
                         }
                     }
