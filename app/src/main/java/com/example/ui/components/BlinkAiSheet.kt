@@ -56,6 +56,7 @@ import coil.compose.AsyncImage
 import com.example.data.supabase.BlinkAiAction
 import com.example.data.supabase.BlinkAiConversation
 import com.example.data.supabase.BlinkAiService
+import com.example.util.startActivitySafely
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -363,7 +364,7 @@ fun BlinkAiSheet(
         val intent = Intent(Intent.ACTION_SEND)
             .setType("text/plain")
             .putExtra(Intent.EXTRA_TEXT, text)
-        context.startActivity(Intent.createChooser(intent, "Share Blink AI response"))
+        context.startActivitySafely(Intent.createChooser(intent, "Share Blink AI response"), "No compatible app is available to share this response.")
     }
 
     LaunchedEffect(messages.size, isSending) {

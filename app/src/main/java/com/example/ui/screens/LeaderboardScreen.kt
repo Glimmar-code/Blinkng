@@ -41,6 +41,7 @@ import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.BlinkGold
 import com.example.ui.theme.BlinkPink
+import com.example.util.startActivitySafely
 
 private enum class LeaderboardScope(val label: String) {
     WORLD("World"),
@@ -667,5 +668,5 @@ private fun shareLeaderboardUser(context: android.content.Context, user: Leaderb
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, text)
     }
-    context.startActivity(Intent.createChooser(intent, "Share leaderboard rank"))
+    context.startActivitySafely(Intent.createChooser(intent, "Share leaderboard rank"), "No compatible app is available to share this rank.")
 }

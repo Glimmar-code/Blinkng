@@ -482,7 +482,7 @@ fun PostCard(
                         ) {
                             itemsIndexed(
                                 items = displayImages,
-                                key = { _, image -> image }
+                                key = { index, image -> "image:$index:$image" }
                             ) { index, image ->
                                 NaturalAspectPostImage(
                                     imageUrl = image,
@@ -873,7 +873,7 @@ private fun ImageFullscreenDialog(
                         state = state,
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        itemsIndexed(images, key = { _, image -> image }) { index, image ->
+                        itemsIndexed(images, key = { index, image -> "image:$index:$image" }) { index, image ->
                             ZoomableFullscreenImage(
                                 imageUrl = image,
                                 contentDescription = "Fullscreen image ${index + 1} of ${images.size}",
