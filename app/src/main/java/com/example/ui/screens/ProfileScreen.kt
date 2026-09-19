@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.blinkng.shared.profileRankLabel
+import com.blinkng.shared.xpProgress
 import com.example.data.models.FeedPost
 import com.example.data.models.MarketItem
 import com.example.data.models.UserProfile
@@ -700,6 +701,16 @@ fun ProfileScreen(
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        ProfileXpProgressCard(
+                            profile = profile,
+                            cardBg = cardBg,
+                            borderColor = borderColor,
+                            textPrimary = textPrimary,
+                            textSecondary = textSecondary
+                        )
 
                         Spacer(modifier = Modifier.height(10.dp))
 
@@ -2145,5 +2156,77 @@ private fun openExternalUrl(context: android.content.Context, url: String) {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(normalized)))
     } catch (_: Exception) {
         Toast.makeText(context, "Unable to open link", Toast.LENGTH_SHORT).show()
+    }
+}
+
+
+@Composable
+private fun ProfileXpProgressCard(
+    profile: UserProfile,
+    cardBg: Color,
+    borderColor: Color,
+    textPrimary: Color,
+    textSecondary: Color
+) {
+    val progress = remember(profile.totalXp, profile.xpLevel) {
+        xpProgress(profile.totalXp, profile.xpLevel)
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = cardBg,
+        border = BorderStroke(1.dp, borderColor)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = RoundedCornerShape(100.dp), color = BlinkPurple.copy(alpha = 0.14f)) {
+                    Text(
+                        text = "LV. ${progress.level}",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        color = BlinkPurple,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+                Spacer(modifier = Modifier.width(9.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = progress.tierLabel.uppercase(), color = textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                    Text(text = "${progress.totalXp} XP", color = textSecondary, fontSize = 10.sp)
+                }
+                if (progress.level < 100) {
+                    Text(
+                        text = "${progress.xpToNextLevel} XP to Lv. ${progress.level + 1}",
+                        color = textSecondary,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                } else {
+                    Text(text = "MAX LEVEL", color = BlinkGold, fontSize = 9.5.sp, fontWeight = FontWeight.Black)
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Box(
+                modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(100.dp)).background(borderColor)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress.progressFraction)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(100.dp))
+                        .background(Brush.horizontalGradient(listOf(BlinkPink, BlinkPurple, BlinkBlue)))
+                )
+            }
+            Spacer(modifier = Modifier.height(7.dp))
+            Text(
+                text = if (progress.level >= 100) {
+                    "Long-term BLINK progression complete"
+                } else {
+                    "${progress.xpIntoLevel} / ${progress.xpForLevel} XP in this level"
+                },
+                color = textSecondary,
+                fontSize = 9.5.sp
+            )
+        }
     }
 }
