@@ -5,6 +5,8 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
+import com.example.util.safeBoolean
+import com.example.util.safeString
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -70,7 +72,7 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
             // On a fresh install/cleared app data, the local delivery ledger is empty while
             // Supabase can still contain months of unread history. Baseline those rows instead
             // of replaying stale heads-up alerts after sign-in. They remain unread in chat.
-            if (!syncPrefs.getBoolean(initializedKey, false)) {
+            if (!syncPrefs.safeBoolean(initializedKey, false)) {
                 for (index in 0 until rows.length()) {
                     val messageId = rows.optJSONObject(index)?.optString("message_id").orEmpty()
                     if (messageId.isNotBlank()) {
@@ -111,7 +113,7 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
     private fun recoverSocialNotifications(token: String, uid: String) {
         val prefs = applicationContext.getSharedPreferences("blink_notification_sync", Context.MODE_PRIVATE)
         val cursorKey = "last_social_created_at_$uid"
-        val lastSeen = prefs.getString(cursorKey, "") ?: ""
+        val lastSeen = prefs.safeString(cursorKey, "") ?: ""
         val endpoint = "${SupabaseConfig.url.trimEnd('/')}/rest/v1/notifications?select=*&is_read=eq.false&order=created_at.asc&limit=1000"
         val request = Request.Builder()
             .url(endpoint)
