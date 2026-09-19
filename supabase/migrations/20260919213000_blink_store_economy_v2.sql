@@ -447,7 +447,7 @@ begin
   insert into public.blink_coin_transactions(user_id,kind,catalog_id,item_name,amount,balance_after,metadata)
   values(v_user,'VIP_GIFT','blink_vip_10d','Blink VIP — 30 Days gift',-v_price,v_balance,jsonb_build_object('recipient_id',v_recipient));
 
-  insert into public.notifications(user_id,actor_id,type,comment)
+  insert into public.notifications(user_id,actor_id,type,text)
   values(v_recipient,v_user,'system','👑 You received Blink VIP — 30 Days. Open Blink Store → Collection to activate it.');
 
   return jsonb_build_object('success',true,'balance',v_balance,'recipient_id',v_recipient,'inventory_id',v_inv);
@@ -1050,7 +1050,7 @@ begin
     )
   );
 
-  insert into public.notifications(user_id,actor_id,type,comment)
+  insert into public.notifications(user_id,actor_id,type,text)
   values(
     v_recipient,v_sender,'system',
     '🎁 You received '||v_item.name||'. Open Blink Store → Collection to preview or apply it.'
@@ -1407,7 +1407,7 @@ begin
     on conflict do nothing
     returning user_id,catalog_id
   )
-  insert into public.notifications(user_id,type,comment)
+  insert into public.notifications(user_id,type,text)
   select r.user_id,'system','✨ '||c.name||' is now available in Blink Store.'
   from ready r
   join public.blink_store_catalog c on c.id=r.catalog_id;
