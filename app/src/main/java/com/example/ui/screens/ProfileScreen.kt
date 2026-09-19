@@ -136,6 +136,7 @@ fun ProfileScreen(
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
     var showAvatarViewer by rememberSaveable { mutableStateOf(false) }
     var showEarnCoinDialog by rememberSaveable { mutableStateOf(false) }
+    var showProgressHub by rememberSaveable { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
 
     LaunchedEffect(profile.id, isMe) {
@@ -162,6 +163,14 @@ fun ProfileScreen(
     val textPrimary = if (isDark) Color.White else LightTextPrimary
     val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
     val borderColor = if (isDark) DarkBorder else LightBorder
+
+    if (showProgressHub && isMe) {
+        ProgressHubSheet(
+            profile = profile,
+            onDismiss = { showProgressHub = false },
+            onProgressChanged = onRefreshProfile,
+        )
+    }
 
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
@@ -839,6 +848,16 @@ fun ProfileScreen(
                         borderColor = borderColor,
                         onVerify = onOpenGetVerified
                     )
+                }
+
+                if (isMe) {
+                    item(key = "progress_hub_entry") {
+                        ProgressHubEntryCard(
+                            profile = profile,
+                            onClick = { showProgressHub = true },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp),
+                        )
+                    }
                 }
 
                 // ============================================================

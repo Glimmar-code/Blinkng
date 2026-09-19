@@ -1006,7 +1006,8 @@ fun MainAppContent(
                     rewardedAdsToday = if (isMyProfile) uiState.rewardedAdsToday else 0,
                     onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
-                    isDark = uiState.isDarkMode
+                    isDark = uiState.isDarkMode,
+                    onRefreshProfile = { viewModel.refreshProgressState() }
                 )
             }
         }
