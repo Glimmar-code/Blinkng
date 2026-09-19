@@ -53,6 +53,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -93,7 +94,10 @@ import com.example.ui.theme.FeedElevatedSurface
 import com.example.ui.theme.FeedPurple
 import com.example.ui.theme.FeedTextPrimary
 import com.example.ui.theme.FeedTextSecondary
+import coil.imageLoader
+import coil.request.ImageRequest
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.random.Random
 
@@ -483,6 +487,8 @@ private fun PremiumHomeFeed(
     onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
 ) {
     val context = LocalContext.current
+    val imageLoader = context.imageLoader
+    val uiScope = rememberCoroutineScope()
     val authorPresenceByKey = remember(profiles) {
         buildMap<String, Boolean> {
             profiles.forEach { profile ->
@@ -628,7 +634,37 @@ private fun PremiumHomeFeed(
     val homeRows = remember(filteredPosts, rankedInlineReels, reelMixSeed) {
         buildPremiumHomeRows(filteredPosts, rankedInlineReels, reelMixSeed)
     }
+    val pendingNewPostCount = remember(
+        posts,
+        stableRankedPosts,
+        filter,
+        laneIndex,
+        followedAuthorKeys,
+        isLoadingMorePosts
+    ) {
+        if (stableRankedPosts.isEmpty() || isLoadingMorePosts) {
+            0
+        } else {
+            val stableIds = stableRankedPosts.asSequence().map { it.id }.toHashSet()
+            posts.asSequence()
+                .filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
+                .filter { post ->
+                    laneIndex == 0 ||
+                        post.author.trim().removePrefix("@").lowercase() in followedAuthorKeys
+                }
+                .filter { post ->
+                    when (filter) {
+                        PremiumFeedFilter.ALL -> true
+                        PremiumFeedFilter.PHOTOS ->
+                            post.images.any { it.isNotBlank() && !it.equals("null", true) }
+                        PremiumFeedFilter.POLLS -> post.poll != null
+                    }
+                }
+                .count { it.id !in stableIds }
+        }
+    }
     var activeInlineReelKey by remember(laneResumeKey) { mutableStateOf<String?>(null) }
+    val prefetchedMediaUrls = remember(laneResumeKey) { mutableSetOf<String>() }
 
     LaunchedEffect(isOnline, isLoading, stableRankedPosts.isEmpty(), filteredPosts.isEmpty(), filter, laneIndex) {
         offlineEmptyConfirmed = false
@@ -781,12 +817,14 @@ private fun PremiumHomeFeed(
 
     LaunchedEffect(homeReselectSignal) {
         if (homeReselectSignal > 0) {
-            // Home-on-Home is intentionally lightweight:
-            // - about ten posts deep or farther: return to the first post instantly;
-            // - still within the first ten posts: keep position and refresh in place.
-            // Do not reset the user's For You/Following lane or active feed filter.
+            // Home-on-Home keeps ranking untouched: nearby positions glide to the top,
+            // deep positions jump instantly to avoid a long expensive animation.
             if (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset > 1) {
-                listState.scrollToItem(0)
+                if (listState.firstVisibleItemIndex <= 10) {
+                    listState.animateScrollToItem(0)
+                } else {
+                    listState.scrollToItem(0)
+                }
             } else {
                 onRefresh()
             }
@@ -828,6 +866,39 @@ private fun PremiumHomeFeed(
                 }.toSet()
                 impressionTracker.update(ids).forEach(latestViewed)
             }
+    }
+
+    // Prefetch only visual media for the next few post cards. This never touches the
+    // exposure tracker, qualified-view callbacks, ranking data, or reel playback state.
+    LaunchedEffect(listState, homeRows, laneResumeKey) {
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+        }.collectLatest { lastVisibleIndex ->
+            if (lastVisibleIndex < 0) return@collectLatest
+
+            homeRows.asSequence()
+                .drop(lastVisibleIndex + 1)
+                .filterIsInstance<PremiumHomeRow.PostRow>()
+                .take(3)
+                .flatMap { row ->
+                    sequenceOf(row.post.authorAvatar) +
+                        row.post.images.asSequence().take(1)
+                }
+                .map(String::trim)
+                .filter { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+                .distinct()
+                .forEach { mediaUrl ->
+                    if (prefetchedMediaUrls.add(mediaUrl)) {
+                        imageLoader.enqueue(
+                            ImageRequest.Builder(context)
+                                .data(mediaUrl)
+                                .size(720, 720)
+                                .crossfade(false)
+                                .build()
+                        )
+                    }
+                }
+        }
     }
 
     // This list-level visibility state only controls two-second muted autoplay. The
@@ -945,6 +1016,7 @@ private fun PremiumHomeFeed(
                         )
                     }
                 ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
@@ -1081,6 +1153,38 @@ private fun PremiumHomeFeed(
                             }
                         }
                     }
+
+                        AnimatedVisibility(
+                            visible = pendingNewPostCount > 0 && !isRefreshing,
+                            enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { -it / 2 },
+                            exit = fadeOut(tween(110)) + slideOutVertically(tween(130)) { -it / 2 },
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 12.dp)
+                        ) {
+                            PremiumNewPostsPill(
+                                count = pendingNewPostCount,
+                                onClick = {
+                                    uiScope.launch {
+                                        // Reveal only the ranking already supplied by the existing
+                                        // feed pipeline, and only after explicit user intent.
+                                        stableRankedPosts = posts
+                                        stableRankedReels = reels
+                                        if (listState.firstVisibleItemIndex <= 10) {
+                                            listState.animateScrollToItem(0)
+                                        } else {
+                                            listState.scrollToItem(0)
+                                        }
+                                        chromeState = PremiumFeedChromeState.EXPANDED
+                                        downwardScrollAccumulator[0] = 0f
+                                        upwardScrollAccumulator[0] = 0f
+                                        onBottomBarVisibilityChange(true)
+                                        onRefresh()
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1098,6 +1202,39 @@ private fun PremiumHomeFeed(
                         .padding(end = 18.dp, bottom = 72.dp)
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun PremiumNewPostsPill(
+    count: Int,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(22.dp),
+        color = FeedElevatedSurface,
+        border = BorderStroke(1.dp, FeedBorder.copy(alpha = 0.85f)),
+        shadowElevation = 8.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Refresh,
+                contentDescription = null,
+                tint = FeedPurple,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = if (count == 1) "1 new post" else "$count new posts",
+                color = FeedTextPrimary,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
         }
     }
 }
