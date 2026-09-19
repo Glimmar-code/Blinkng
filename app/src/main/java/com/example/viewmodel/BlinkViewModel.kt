@@ -1491,6 +1491,18 @@ private suspend fun restoreSupabaseSession() {
 
     fun refreshContent() = fetchSupabaseData(showRefreshIndicator = true)
 
+    fun refreshProgressState() {
+        viewModelScope.launch {
+            refreshMyProfileFromSupabase(showErrorToast = false)
+            refreshProfileRewards()
+            runCatching { supabaseService.fetchLeaderboard() }
+                .onSuccess { live ->
+                    _uiState.value = _uiState.value.copy(leaderboardUsers = live)
+                }
+                .onFailure { Log.w(TAG, "Progress leaderboard refresh failed", it) }
+        }
+    }
+
     fun refreshLeaderboard() {
         viewModelScope.launch {
             runCatching { supabaseService.fetchLeaderboard() }

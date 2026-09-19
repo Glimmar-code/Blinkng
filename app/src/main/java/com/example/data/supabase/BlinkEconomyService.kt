@@ -52,12 +52,41 @@ class BlinkEconomyService {
     suspend fun boostableContent() = runCatching { rpc("get_my_blink_boostable_content") }
     suspend fun economyStatus() = runCatching { rpc("get_blink_economy_status") }
     suspend fun dailyMissions() = runCatching { rpc("get_my_daily_missions") }
+    suspend fun progressHub() = runCatching { rpc("get_my_progress_hub") }
 
     suspend fun claimDailyMission(missionKey: String) = runCatching {
         require(missionKey.isNotBlank()) { "Choose a mission first." }
         rpc(
             "claim_daily_mission",
             JSONObject().put("p_mission_key", missionKey.trim())
+        )
+    }
+
+    suspend fun claimWeeklyMission(missionKey: String) = runCatching {
+        require(missionKey.isNotBlank()) { "Choose a weekly mission first." }
+        rpc(
+            "claim_weekly_mission",
+            JSONObject().put("p_mission_key", missionKey.trim())
+        )
+    }
+
+    suspend fun claimWeeklyCompletionChest() = runCatching {
+        rpc("claim_weekly_completion_chest")
+    }
+
+    suspend fun claimAchievement(achievementKey: String) = runCatching {
+        require(achievementKey.isNotBlank()) { "Choose an achievement first." }
+        rpc(
+            "claim_blink_achievement",
+            JSONObject().put("p_achievement_key", achievementKey.trim())
+        )
+    }
+
+    suspend fun claimProgressReward(rewardKey: String) = runCatching {
+        require(rewardKey.isNotBlank()) { "Choose a milestone reward first." }
+        rpc(
+            "claim_blink_progress_reward",
+            JSONObject().put("p_reward_key", rewardKey.trim())
         )
     }
 
@@ -169,7 +198,14 @@ class BlinkEconomyService {
             message.contains("PAYMENT_REFERENCE_REQUIRED") -> "The payment has not been verified yet."
             message.contains("MISSION_NOT_COMPLETE") -> "Complete the mission before claiming its reward."
             message.contains("MISSION_NOT_FOUND") -> "That daily mission is no longer available."
-            message.contains("MISSION_REQUIRED") -> "Choose a daily mission first."
+            message.contains("MISSION_REQUIRED") -> "Choose a mission first."
+            message.contains("WEEKLY_CHEST_NOT_READY") -> "Complete at least 4 weekly missions to unlock the weekly chest."
+            message.contains("ACHIEVEMENT_REQUIRED") -> "Choose an achievement first."
+            message.contains("ACHIEVEMENT_NOT_FOUND") -> "That achievement is no longer available."
+            message.contains("ACHIEVEMENT_LOCKED") -> "You have not unlocked that achievement yet."
+            message.contains("REWARD_REQUIRED") -> "Choose a milestone reward first."
+            message.contains("REWARD_NOT_FOUND") -> "That milestone reward is no longer available."
+            message.contains("REWARD_LOCKED") -> "Reach the required level or streak before claiming this reward."
             message.contains("INVALID_RECIPIENT") -> "That account cannot receive this gift."
             message.contains("RECIPIENT_REQUIRED") -> "Enter the recipient's Blink username."
             message.contains("DIGITAL_GIFT_NOT_AVAILABLE") -> "This digital gift is no longer available in your Vault."
