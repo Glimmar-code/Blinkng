@@ -101,12 +101,16 @@ class AuthRepository(private val context: Context, private val supabaseService: 
                     return@withContext Result.failure(Exception("Supabase did not return a valid authenticated session."))
                 }
 
-                SupabaseService.saveSession(accessToken = accessToken, refreshToken = refreshToken)
+                val previousSession = SupabaseService.sessionSnapshot()
+                SupabaseService.replaceSession(
+                    accessToken = accessToken,
+                    refreshToken = refreshToken.ifBlank { null }
+                )
 
                 val userId = user.optString("id", "")
                 val userEmail = user.optString("email", "")
                 if (userId.isBlank() || userEmail.isBlank()) {
-                    SupabaseService.clearSession()
+                    SupabaseService.restoreSessionSnapshot(previousSession)
                     return@withContext Result.failure(Exception("Supabase did not return a complete user session."))
                 }
 
@@ -116,14 +120,19 @@ class AuthRepository(private val context: Context, private val supabaseService: 
                     ?: metadata?.optString("name", "")?.trim()?.takeIf { it.isNotBlank() }
                     ?: resolvedUsername
 
-                val profile = supabaseService.ensureAuthenticatedProfile(
-                    userId = userId,
-                    email = userEmail,
-                    username = resolvedUsername,
-                    fullName = fullName,
-                    faculty = metadata?.optString("faculty", "")?.trim()?.takeIf { it.isNotBlank() },
-                    university = metadata?.optString("university", "")?.trim()?.takeIf { it.isNotBlank() }
-                )
+                val profile = try {
+                    supabaseService.ensureAuthenticatedProfile(
+                        userId = userId,
+                        email = userEmail,
+                        username = resolvedUsername,
+                        fullName = fullName,
+                        faculty = metadata?.optString("faculty", "")?.trim()?.takeIf { it.isNotBlank() },
+                        university = metadata?.optString("university", "")?.trim()?.takeIf { it.isNotBlank() }
+                    )
+                } catch (profileError: Exception) {
+                    SupabaseService.restoreSessionSnapshot(previousSession)
+                    throw profileError
+                }
                 Result.success(profile)
             }
         } catch (e: Exception) {
@@ -207,7 +216,8 @@ class AuthRepository(private val context: Context, private val supabaseService: 
                     return@withContext AuthResult.failure("Google account information was incomplete.")
                 }
 
-                SupabaseService.saveSession(
+                val previousSession = SupabaseService.sessionSnapshot()
+                SupabaseService.replaceSession(
                     accessToken = accessToken,
                     refreshToken = refreshToken.ifBlank { null }
                 )
@@ -227,7 +237,7 @@ class AuthRepository(private val context: Context, private val supabaseService: 
                         avatarUrl = avatarUrl
                     )
                 } catch (profileError: Exception) {
-                    SupabaseService.clearSession()
+                    SupabaseService.restoreSessionSnapshot(previousSession)
                     throw profileError
                 }
 
