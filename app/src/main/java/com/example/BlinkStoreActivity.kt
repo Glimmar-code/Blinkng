@@ -284,6 +284,7 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
                             },
                         )
                         BlinkStoreTab.VAULT -> VaultTab(
+                            catalog = catalogItems,
                             inventory = inventory,
                             snapshot = snapshot,
                             equippedIds = equippedIds,
@@ -304,7 +305,7 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
                                 }
                             },
                             onUse = { row ->
-                                val item = catalogItems.firstOrNull { it.id == row.optString("catalog_id") }
+                                val item = catalog.firstOrNull { it.id == row.optString("catalog_id") }
                                     ?: return@VaultTab
                                 val experience = item.premiumExperience()
                                 if (item.type == BlinkStoreItemType.PERMANENT) {
@@ -442,7 +443,7 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
     }
 
     activateRow?.let { row ->
-        val item = catalogItems.firstOrNull { it.id == row.optString("catalog_id") }
+        val item = catalog.firstOrNull { it.id == row.optString("catalog_id") }
         if (item != null) {
             TargetDialog(
                 item = item,
@@ -839,6 +840,7 @@ private fun PremiumPill(text: String, color: Color) {
 
 @Composable
 private fun VaultTab(
+    catalog: List<BlinkStoreItem>,
     inventory: List<JSONObject>,
     snapshot: JSONObject,
     equippedIds: Set<String>,
@@ -968,7 +970,7 @@ private fun VaultTab(
             }
         } else {
             items(rows, key = { it.optString("id") }) { row ->
-                val item = catalogItems.firstOrNull { it.id == row.optString("catalog_id") }
+                val item = catalog.firstOrNull { it.id == row.optString("catalog_id") }
                 val experience = item?.premiumExperience()
                 val accent = experience?.let(::premiumAccent) ?: BlinkPink
                 val equipped = item?.id in equippedIds
@@ -1861,8 +1863,8 @@ private fun storeIcon(item: BlinkStoreItem): ImageVector = when (item.category) 
     "VIP" -> Icons.Outlined.Verified
     "Social" -> Icons.Filled.Favorite
     "Analytics" -> Icons.Filled.Notifications
-    "Campus" -> Icons.Filled.School
-    "Earned" -> Icons.Filled.EmojiEvents
+    "Campus" -> Icons.Filled.Person
+    "Earned" -> Icons.Outlined.EmojiEvents
     "Seasonal" -> Icons.Outlined.Redeem
     else -> Icons.Filled.Apps
 }
