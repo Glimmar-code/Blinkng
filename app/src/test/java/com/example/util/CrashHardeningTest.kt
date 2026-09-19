@@ -2,12 +2,14 @@ package com.example.util
 
 import android.app.Application
 import android.content.Intent
+import com.example.BlinkStoreActivity
 import com.example.data.models.BlinkStoreCatalog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -48,6 +50,13 @@ class CrashHardeningTest {
                 failureMessage = "Unable to open test activity."
             )
         )
+    }
+
+    @Test
+    fun `Blink Store activity can be created without closing immediately`() {
+        val controller = Robolectric.buildActivity(BlinkStoreActivity::class.java).setup()
+        assertFalse(controller.get().isFinishing)
+        controller.pause().stop().destroy()
     }
 
     @Test
