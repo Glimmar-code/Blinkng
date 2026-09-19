@@ -32,6 +32,7 @@ import com.example.notification.NotificationPreferenceStore
 import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
 import com.blinkng.shared.BlinkCoinPack
+import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
@@ -116,6 +117,8 @@ data class BlinkUiState(
     val economyPolicy: BlinkEconomyPolicy = BlinkEconomyDefaults.policy,
     val rewardedAdsToday: Int = 0,
     val rewardedCoinsToday: Int = 0,
+    val dailyMissions: List<BlinkDailyMission> = emptyList(),
+    val isDailyMissionsLoading: Boolean = false,
     val discoverProfiles: List<UserProfile> = emptyList(),
     val discoverPosts: List<FeedPost> = emptyList(),
     val isDiscoverSearching: Boolean = false,
@@ -914,6 +917,7 @@ private suspend fun restoreSupabaseSession() {
         val before = _uiState.value
         if (!before.isOnline || before.myProfile.id.isBlank()) return
 
+        _uiState.value = before.copy(isDailyMissionsLoading = true)
         viewModelScope.launch(Dispatchers.IO) {
             val streak = runCatching { supabaseService.touchDailyStreak() }
                 .onFailure { Log.w(TAG, "Daily streak refresh failed", it) }
@@ -929,6 +933,10 @@ private suspend fun restoreSupabaseSession() {
             val adsToday = economy?.optInt("ads_today", before.rewardedAdsToday) ?: before.rewardedAdsToday
             val coinsToday = economy?.optInt("coins_earned_from_ads_today", before.rewardedCoinsToday)
                 ?: before.rewardedCoinsToday
+            val missionsPayload = blinkEconomyService.dailyMissions()
+                .onFailure { Log.w(TAG, "Daily missions refresh failed", it) }
+                .getOrNull()
+            val missions = missionsPayload?.let(::parseDailyMissions) ?: before.dailyMissions
 
             withContext(Dispatchers.Main) {
                 val latest = _uiState.value
@@ -956,11 +964,38 @@ private suspend fun restoreSupabaseSession() {
                     blinkCoinBalance = balance,
                     economyPolicy = policy,
                     rewardedAdsToday = adsToday.coerceIn(0, policy.rewardedAdDailyLimit),
-                    rewardedCoinsToday = coinsToday.coerceAtLeast(0)
+                    rewardedCoinsToday = coinsToday.coerceAtLeast(0),
+                    dailyMissions = missions,
+                    isDailyMissionsLoading = false
                 )
                 saveLocalProfile(updatedMe)
                 persistProfile(updatedMe)
                 persistExtendedCache()
+            }
+        }
+    }
+
+    private fun parseDailyMissions(payload: JSONObject): List<BlinkDailyMission> {
+        val array = payload.optJSONArray("missions") ?: return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val row = array.optJSONObject(index) ?: continue
+                val key = row.optString("key").trim()
+                val title = row.optString("title").trim()
+                val target = row.optInt("target", 0)
+                if (key.isBlank() || title.isBlank() || target <= 0) continue
+                add(
+                    BlinkDailyMission(
+                        key = key,
+                        title = title,
+                        description = row.optString("description").trim(),
+                        progress = row.optInt("progress", 0).coerceAtLeast(0),
+                        target = target,
+                        coinReward = row.optInt("coin_reward", 0).coerceAtLeast(0),
+                        xpReward = row.optInt("xp_reward", 0).coerceAtLeast(0),
+                        claimed = row.optBoolean("claimed", false)
+                    )
+                )
             }
         }
     }
@@ -1063,6 +1098,50 @@ private suspend fun restoreSupabaseSession() {
 
     fun rewardedAdUnavailable(message: String) {
         showToast(message)
+    }
+
+    fun claimDailyMission(missionKey: String) {
+        if (missionKey.isBlank()) return
+        viewModelScope.launch {
+            blinkEconomyService.claimDailyMission(missionKey).fold(
+                onSuccess = { payload ->
+                    val latest = _uiState.value
+                    val balance = payload.optLong("balance", latest.blinkCoinBalance)
+                    val totalXp = payload.optLong("total_xp", latest.myProfile.totalXp).coerceAtLeast(0L)
+                    val xpLevel = payload.optInt("xp_level", latest.myProfile.xpLevel).coerceIn(1, 100)
+                    val updatedMe = latest.myProfile.copy(totalXp = totalXp, xpLevel = xpLevel)
+                    val coinReward = payload.optInt("coin_reward", 0)
+                    val xpReward = payload.optInt("xp_reward", 0)
+                    _uiState.value = latest.copy(
+                        myProfile = updatedMe,
+                        profiles = latest.profiles.map {
+                            if (it.id == updatedMe.id || it.username.equals(updatedMe.username, true)) updatedMe else it
+                        },
+                        viewingProfile = latest.viewingProfile?.let {
+                            if (it.id == updatedMe.id || it.username.equals(updatedMe.username, true)) updatedMe else it
+                        },
+                        blinkCoinBalance = balance
+                    )
+                    saveLocalProfile(updatedMe)
+                    persistProfile(updatedMe)
+                    persistExtendedCache()
+                    showToast(
+                        when {
+                            coinReward > 0 && xpReward > 0 -> "+$coinReward Blink Coins • +$xpReward XP"
+                            coinReward > 0 -> "+$coinReward Blink Coins"
+                            xpReward > 0 -> "+$xpReward XP"
+                            else -> "Mission already claimed."
+                        }
+                    )
+                    refreshProfileRewards()
+                },
+                onFailure = { error ->
+                    Log.w(TAG, "Daily mission claim failed", error)
+                    showToast(error.message ?: "Couldn't claim this mission.")
+                    refreshProfileRewards()
+                }
+            )
+        }
     }
 
     fun buyBlinkCoins() {
