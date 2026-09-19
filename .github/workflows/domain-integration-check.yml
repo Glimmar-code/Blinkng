@@ -7,6 +7,7 @@ on:
     paths:
       - 'app/build.gradle.kts'
       - 'app/src/main/AndroidManifest.xml'
+      - 'app/src/main/java/com/example/MainActivity.kt'
       - 'app/src/main/java/com/example/sharing/**'
       - 'app/src/test/java/com/example/sharing/**'
       - 'web/**'
@@ -16,6 +17,7 @@ on:
     paths:
       - 'app/build.gradle.kts'
       - 'app/src/main/AndroidManifest.xml'
+      - 'app/src/main/java/com/example/MainActivity.kt'
       - 'app/src/main/java/com/example/sharing/**'
       - 'app/src/test/java/com/example/sharing/**'
       - 'web/**'
