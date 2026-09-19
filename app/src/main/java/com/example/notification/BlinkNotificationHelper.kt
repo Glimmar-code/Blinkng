@@ -437,7 +437,10 @@ object BlinkNotificationHelper {
             Intent.FLAG_ACTIVITY_NEW_TASK
         )
 
-        context.startActivity(intent)
+        context.startActivitySafely(
+            intent,
+            failureMessage = "Unable to open notification settings."
+        )
     }
 
     fun openChannelSettings(
@@ -476,7 +479,10 @@ object BlinkNotificationHelper {
             Intent.FLAG_ACTIVITY_NEW_TASK
         )
 
-        context.startActivity(intent)
+        context.startActivitySafely(
+            intent,
+            failureMessage = "Unable to open notification channel settings."
+        )
     }
 
     // ================================================================
