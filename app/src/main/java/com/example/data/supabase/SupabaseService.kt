@@ -4008,10 +4008,26 @@ suspend fun uploadPostMedia(
             }
 
             // Canonical notification rows win whenever both legacy activity and
-            // notification records describe the same event. Activities remain only as a
-            // compatibility fallback for event types that have not migrated yet.
+            // notification records describe the same event. The known mirrored social
+            // activity types are removed from the fallback path entirely now that the
+            // production notification trigger/function set is live.
+            fun isCanonicalMirror(item: ActivityItem): Boolean {
+                val action = item.action.lowercase(Locale.US)
+                return action.contains("liked your") ||
+                    action.contains("commented on") ||
+                    action.contains("replied") ||
+                    action.contains("mentioned") ||
+                    action.contains("follow") ||
+                    action.contains("repost")
+            }
+
             val notificationKeys = notificationItems.asSequence().map(::semanticKey).toHashSet()
-            val merged = (notificationItems + activityItems.filterNot {
+            val legacyFallback = if (notificationItems.isEmpty()) {
+                activityItems
+            } else {
+                activityItems.filterNot(::isCanonicalMirror)
+            }
+            val merged = (notificationItems + legacyFallback.filterNot {
                 semanticKey(it) in notificationKeys
             })
                 .sortedByDescending { it.rawTimestamp }
