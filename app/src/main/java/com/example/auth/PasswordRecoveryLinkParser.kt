@@ -15,7 +15,9 @@ object PasswordRecoveryLinkParser {
         val raw = rawUrl?.trim().orEmpty()
         if (raw.isBlank()) return null
 
-        val isBlinkRecovery = raw.startsWith("blink://reset-password", ignoreCase = true)
+        val isBlinkRecovery =
+            raw.startsWith("blink://auth/reset-password", ignoreCase = true) ||
+                raw.startsWith("blink://reset-password", ignoreCase = true)
         val isHttpsRecovery = Regex("^https://[^/]+/.*/?auth/reset-password", RegexOption.IGNORE_CASE)
             .containsMatchIn(raw) || raw.contains("/auth/reset-password", ignoreCase = true)
         if (!isBlinkRecovery && !isHttpsRecovery) return null

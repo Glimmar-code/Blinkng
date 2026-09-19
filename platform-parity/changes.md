@@ -23,6 +23,8 @@ Every pull request that changes a user-facing Android feature must update Window
 
 | 2026-09-19 | BLINK logo placement + black authentication surfaces | Android auth/onboarding/reset surfaces use pure black so the exact black-square/white BLINK mark blends cleanly; auth top bars and the Home feed header now include the shared BLINK mark | Windows auth uses the same logo on a pure-black branded surface; existing window, tray and sidebar logo placements remain unchanged | Presentation/branding only; no Supabase schema, auth contract, ranking, messaging, coins, verification, moderation, notifications, or account semantics changed |
 
+| 2026-09-19 | Auth session stability | Android keeps valid local/Supabase sessions through transient refresh failures, syncs rotated refresh tokens, makes email/username/Google/signup session replacement transactional, preserves the current account during Add account/Google cancellation/password recovery, and only marks local login after successful signup | Windows keeps the encrypted desktop session through network/5xx/profile restore failures and clears only on confirmed refresh-token expiry | Web preserves refreshable sessions through bootstrap/network/profile failures and clears only when the refresh token is confirmed invalid; password recovery now uses the canonical `blink://auth/reset-password` Android route; no schema or auth-policy change. Current-main compatibility is validated by the Testlab gates before promotion. |
+
 ## Platform exception policy
 
 A platform exception is allowed only when the behavior is genuinely tied to one operating system and cannot sensibly exist on the other platform. It must not be used to avoid implementing normal feature parity.

@@ -194,6 +194,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private var syncJob: Job? = null
     private var lastSuccessfulSyncAt = 0L
     private var discoverSearchJob: Job? = null
+    private var addAccountMode = AccountSessionStore.consumeAddAccountRequest(appContext)
+    private var recoveryPreviousSession: SupabaseService.SessionSnapshot? = null
+    private var recoveryHadExistingLogin: Boolean = false
     private var pendingDeepLink: AppDeepLink? = null
     private val _uiState = MutableStateFlow(BlinkUiState())
     val uiState: StateFlow<BlinkUiState> = _uiState.asStateFlow()
@@ -208,8 +211,14 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         // Local-first startup: a previously authenticated account remains usable with
         // airplane mode / mobile data off. Cloud session verification happens afterwards.
         val explicitSignInRequired = AccountSessionStore.isSignInRequired(appContext)
-        val hasLocalSession = !explicitSignInRequired && hasLocalAuthenticatedProfile()
-        if (hasLocalSession) restoreLocalSession()
+        val hasLocalSession = !explicitSignInRequired && !addAccountMode && hasLocalAuthenticatedProfile()
+        if (addAccountMode) {
+            // "Add account" is an auth surface only. Keep the previous account/token/cache
+            // untouched until a replacement login has fully succeeded.
+            _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+        } else if (hasLocalSession) {
+            restoreLocalSession()
+        }
 
         observeCachedContent()
         viewModelScope.launch {
@@ -227,7 +236,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         }
         observeNetworkStatus()
         observeAuthState()
-        viewModelScope.launch { restoreSupabaseSession() }
+        if (!addAccountMode) {
+            viewModelScope.launch { restoreSupabaseSession() }
+        }
         loadDraftsFromPrefs()
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { offlineContentStore.pruneOldCaches() }
@@ -260,6 +271,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         if (_uiState.value.destination != AppDestination.SPLASH) return
 
         when {
+            AccountSessionStore.isSignInRequired(appContext) -> {
+                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+            }
             hasLocalAuthenticatedProfile() -> {
                 restoreLocalSession()
                 viewModelScope.launch {
@@ -295,25 +309,37 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     /** Returns true when the incoming URI is an authentication/recovery route. */
     fun handleAuthDeepLink(uri: Uri?): Boolean {
         val recovery = PasswordRecoveryLinkParser.parse(uri?.toString()) ?: return false
-        if (!recovery.error.isNullOrBlank()) {
-            SupabaseService.clearSession()
-            AccountSessionStore.setSignInRequired(appContext, true)
-            _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
-            showToast("That password reset link is invalid or expired. Request a new one.")
+        if (!recovery.error.isNullOrBlank() || recovery.accessToken.isBlank()) {
+            // An old/broken recovery link is not an instruction to sign the current user out.
+            if (!AccountSessionStore.isSignInRequired(appContext) && hasLocalAuthenticatedProfile()) {
+                restoreLocalSession()
+                _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN)
+            } else {
+                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+            }
+            showToast(
+                if (!recovery.error.isNullOrBlank()) {
+                    "That password reset link is invalid or expired. Request a new one."
+                } else {
+                    "That password reset link is incomplete or expired. Request a new one."
+                }
+            )
             return true
         }
-        if (recovery.accessToken.isBlank()) {
-            SupabaseService.clearSession()
-            AccountSessionStore.setSignInRequired(appContext, true)
-            _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
-            showToast("That password reset link is incomplete or expired. Request a new one.")
-            return true
-        }
-        SupabaseService.saveSession(
+
+        recoveryPreviousSession = SupabaseService.sessionSnapshot()
+        recoveryHadExistingLogin =
+            !AccountSessionStore.isSignInRequired(appContext) &&
+                (hasLocalAuthenticatedProfile() ||
+                    !recoveryPreviousSession?.accessToken.isNullOrBlank() ||
+                    !recoveryPreviousSession?.refreshToken.isNullOrBlank())
+
+        // Recovery credentials are temporary. Preserve the pre-recovery session so cancel
+        // or completion can restore it instead of turning recovery into a logout.
+        SupabaseService.replaceSession(
             accessToken = recovery.accessToken,
             refreshToken = recovery.refreshToken.ifBlank { null }
         )
-        AccountSessionStore.setSignInRequired(appContext, false)
         _uiState.value = _uiState.value.copy(destination = AppDestination.RESET_PASSWORD)
         return true
     }
@@ -322,12 +348,12 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val result = supabaseService.updatePassword(newPassword)
             if (result.isSuccess) {
-                SupabaseService.clearSession()
-                AccountSessionStore.setSignInRequired(appContext, true)
-                prefs.edit().putBoolean(KEY_IS_LOGGED_IN, false).apply()
-                authPrefs.edit().putBoolean(KEY_IS_LOGGED_IN, false).apply()
-                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
-                val message = "Password updated. Sign in with your new password."
+                finishPasswordRecovery()
+                val message = if (_uiState.value.destination == AppDestination.MAIN) {
+                    "Password updated."
+                } else {
+                    "Password updated. Sign in with your new password."
+                }
                 showToast(message)
                 onResult(true, message)
             } else {
@@ -341,9 +367,32 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun cancelPasswordRecovery() {
-        SupabaseService.clearSession()
-        AccountSessionStore.setSignInRequired(appContext, true)
-        _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+        finishPasswordRecovery()
+    }
+
+    private fun finishPasswordRecovery() {
+        val previous = recoveryPreviousSession
+        recoveryPreviousSession = null
+
+        if (recoveryHadExistingLogin && previous != null) {
+            SupabaseService.restoreSessionSnapshot(previous)
+            AccountSessionStore.setSignInRequired(appContext, false)
+            if (hasLocalAuthenticatedProfile()) {
+                restoreLocalSession()
+                _uiState.value = _uiState.value.copy(destination = AppDestination.MAIN)
+            } else {
+                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+            }
+        } else {
+            // Never persist a password-recovery token as the normal application session.
+            SupabaseService.clearSession()
+            AccountSessionStore.setSignInRequired(appContext, true)
+            prefs.edit().putBoolean(KEY_IS_LOGGED_IN, false).apply()
+            authPrefs.edit().putBoolean(KEY_IS_LOGGED_IN, false).apply()
+            _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+        }
+
+        recoveryHadExistingLogin = false
     }
 
     private fun routeDeepLink(link: AppDeepLink) {
@@ -414,6 +463,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
             authRepository.authState.collect { authState ->
                 when (authState) {
                     is AuthState.Authenticated -> {
+                        addAccountMode = false
                         val profile = authState.userProfile
                         _uiState.value = _uiState.value.copy(myProfile = profile, destination = when (_uiState.value.destination) {
                             AppDestination.SIGN_IN, AppDestination.SIGN_UP, AppDestination.ONBOARDING, AppDestination.SPLASH -> AppDestination.MAIN
@@ -438,6 +488,10 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
 private suspend fun restoreSupabaseSession() {
         try {
+            if (addAccountMode) {
+                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                return
+            }
             if (AccountSessionStore.isSignInRequired(appContext)) {
                 SupabaseService.clearSession()
                 _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
@@ -1769,7 +1823,8 @@ private suspend fun restoreSupabaseSession() {
         if (cleanEmail.isBlank() || !cleanEmail.contains("@")) { showToast("Please enter a valid email address."); return }
         val initialProfile = _uiState.value.myProfile.copy(fullName = cleanName, username = cleanUsername, email = ContactField(cleanEmail, true), faculty = faculty.trim())
         _uiState.value = _uiState.value.copy(myProfile = initialProfile)
-        saveLocalProfile(initialProfile)
+        // Keep signup input in memory only. Mark the user logged in locally only after
+        // Supabase Auth and BLINK profile initialization have both succeeded.
         viewModelScope.launch {
             try {
                 val result = authRepository.signUpWithEmail(cleanEmail, password, cleanUsername, cleanName, faculty.trim())

@@ -85,6 +85,15 @@
   function loadSession(){ try { const raw=storageGet(SESSION_KEY,''); if(!raw)return null; const s=JSON.parse(raw); if(!s?.access_token)return null; return s; } catch { return null; } }
   function saveSession(s){ state.session=s; if(s)storageSet(SESSION_KEY,JSON.stringify(s)); else storageRemove(SESSION_KEY); }
   function clearSession(){ saveSession(null); state.profile=null; state.following=new Set(); state.notificationsUnread=0; }
+  function isExpiredRefreshResponse(status,payload){
+    if(![400,401,403].includes(Number(status)))return false;
+    const body=(typeof payload==='string'?payload:JSON.stringify(payload||{})).toLowerCase();
+    return body.includes('refresh_token_not_found') ||
+      body.includes('invalid refresh token') ||
+      (body.includes('refresh token')&&body.includes('revoked')) ||
+      body.includes('invalid_grant') ||
+      body.includes('session_not_found');
+  }
 
   async function parseJsonSafe(res){ const text=await res.text(); if(!text)return null; try{return JSON.parse(text);}catch{return text;} }
   function headers(auth=true, extra={}){ const h={apikey:KEY,Accept:'application/json',...extra}; if(auth && token())h.Authorization=`Bearer ${token()}`; else h.Authorization=`Bearer ${KEY}`; return h; }
@@ -99,7 +108,8 @@
         body:JSON.stringify({refresh_token:rt})
       });
       if(!res.ok){
-        if(res.status===400||res.status===401)clearSession();
+        const payload=await parseJsonSafe(res);
+        if(isExpiredRefreshResponse(res.status,payload))clearSession();
         return false;
       }
       const data=await res.json();
@@ -191,7 +201,12 @@
     try{
       const user=await api('/auth/v1/user',{auth:true}); state.session.user=user; saveSession(state.session);
       await loadMyProfile(); await loadFollowing(); await refreshUnreadCount();
-    }catch(e){ console.warn('session bootstrap',e); clearSession(); }
+    }catch(e){
+      console.warn('session bootstrap',e);
+      // Keep a refreshable session through offline/timeout/5xx/profile failures.
+      // Confirmed invalid refresh tokens are cleared inside refreshSession().
+      if(!state.session?.refresh_token)clearSession();
+    }
   }
 
   async function loadMyProfile(){ if(!uid())return null; const rows=await table('profiles',`id=eq.${encodeQ(uid())}&select=id,username,full_name,avatar_url,cover_photo_url,bio,professional_headline,university,faculty,department,academic_level,posts_count,follower_count,following_count,is_verified,verification_badge,blink_vip_until,daily_streak,points,total_xp,xp_level&limit=1`); state.profile=Array.isArray(rows)?rows[0]||null:null; return state.profile; }

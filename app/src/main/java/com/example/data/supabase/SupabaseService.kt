@@ -1,6 +1,8 @@
 package com.example.data.supabase
 
 import com.blinkng.shared.ProfileRankSnapshot
+import com.example.auth.AccountSessionStore
+import com.example.auth.SupabaseSessionRefresher
 import android.content.Context
 import android.util.Base64
 import android.util.Log
@@ -51,6 +53,11 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class SupabaseService {
+
+    data class SessionSnapshot(
+        val accessToken: String?,
+        val refreshToken: String?
+    )
 
     companion object {
         private const val TAG = "SupabaseService"
@@ -110,6 +117,33 @@ class SupabaseService {
 
                     apply()
                 }
+        }
+
+        fun sessionSnapshot(): SessionSnapshot =
+            SessionSnapshot(
+                accessToken = accessToken(),
+                refreshToken = refreshToken()
+            )
+
+        /**
+         * Atomically replace the active auth pair. New sign-in/recovery attempts must not
+         * inherit a refresh token from a different account when Supabase omits one.
+         */
+        fun replaceSession(accessToken: String?, refreshToken: String?) {
+            val context = appContext ?: return
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .clear()
+                .apply {
+                    accessToken?.takeIf { it.isNotBlank() }?.let { putString(ACCESS_TOKEN, it) }
+                    refreshToken?.takeIf { it.isNotBlank() }?.let { putString(REFRESH_TOKEN, it) }
+                    apply()
+                }
+        }
+
+        /** Restore the exact session that existed before a transactional auth attempt. */
+        fun restoreSessionSnapshot(snapshot: SessionSnapshot) {
+            replaceSession(snapshot.accessToken, snapshot.refreshToken)
         }
 
         fun clearSession() {
@@ -277,6 +311,8 @@ class SupabaseService {
     }
 
     
+    private enum class SessionRefreshOutcome { REFRESHED, EXPIRED, TRANSIENT_FAILURE }
+
     private val refreshMutex = Mutex()
     private val discoveryCursorMutex = Mutex()
     private val discoveryOffsets = mutableMapOf<String, Int>()
@@ -304,16 +340,23 @@ class SupabaseService {
                         .build()
                     response = withContext(Dispatchers.IO) { client.newCall(activeRequest).execute() }
                 } else {
-                    val refreshed = refreshSession()
-                    if (refreshed) {
-                        val refreshedToken = accessToken() ?: ""
-                        activeRequest = activeRequest.newBuilder()
-                            .header("Authorization", "Bearer $refreshedToken")
-                            .build()
-                        response = withContext(Dispatchers.IO) { client.newCall(activeRequest).execute() }
-                    } else {
-                        clearSession()
-                        throw java.io.IOException("Unauthorized - Refresh failed")
+                    when (refreshSessionOutcome()) {
+                        SessionRefreshOutcome.REFRESHED -> {
+                            val refreshedToken = accessToken().orEmpty()
+                            activeRequest = activeRequest.newBuilder()
+                                .header("Authorization", "Bearer $refreshedToken")
+                                .build()
+                            response = withContext(Dispatchers.IO) { client.newCall(activeRequest).execute() }
+                        }
+                        SessionRefreshOutcome.EXPIRED -> {
+                            clearSession()
+                            throw java.io.IOException("Supabase session expired. Sign in again.")
+                        }
+                        SessionRefreshOutcome.TRANSIENT_FAILURE -> {
+                            // Keep the saved refresh token. A timeout, 5xx, rate-limit, or
+                            // temporary auth outage must never become an accidental logout.
+                            throw java.io.IOException("Session refresh temporarily unavailable.")
+                        }
                     }
                 }
             }
@@ -454,11 +497,10 @@ class SupabaseService {
                         )
                     }
 
-                    saveSession(
-                        accessToken =
-                            accessToken,
-                        refreshToken =
-                            refreshToken
+                    val previousSession = sessionSnapshot()
+                    replaceSession(
+                        accessToken = accessToken,
+                        refreshToken = refreshToken.ifBlank { null }
                     )
 
                     val userId =
@@ -513,7 +555,7 @@ class SupabaseService {
                             }
                             ?: username
 
-                    val profile =
+                    val profile = try {
                         ensureAuthenticatedProfile(
                             userId =
                                 userId,
@@ -536,6 +578,11 @@ class SupabaseService {
                                         ""
                                     )
                         )
+                    } catch (profileError: Exception) {
+                        // Authentication is not committed until Blink's profile is usable.
+                        restoreSessionSnapshot(previousSession)
+                        throw profileError
+                    }
 
                     Result.success(
                         profile
@@ -631,21 +678,31 @@ class SupabaseService {
                     val userObj = json.optJSONObject("user") ?: json
                     val userId = userObj.optString("id", "")
 
-                    if (accessToken.isNotBlank()) {
-                        saveSession(accessToken = accessToken, refreshToken = refreshToken)
-                    }
-
                     if (userId.isBlank() || !isValidUuid(userId) || accessToken.isBlank()) {
                         return@withContext Result.failure(Exception("Supabase did not return a usable authenticated session."))
                     }
-                    val profile = ensureAuthenticatedProfile(
-                        userId = userId,
-                        email = cleanEmail,
-                        username = cleanUsername,
-                        fullName = cleanFullName,
-                        faculty = faculty,
-                        university = university
+
+                    val previousSession = sessionSnapshot()
+                    replaceSession(
+                        accessToken = accessToken,
+                        refreshToken = refreshToken.ifBlank { null }
                     )
+
+                    val profile = try {
+                        ensureAuthenticatedProfile(
+                            userId = userId,
+                            email = cleanEmail,
+                            username = cleanUsername,
+                            fullName = cleanFullName,
+                            faculty = faculty,
+                            university = university
+                        )
+                    } catch (profileError: Exception) {
+                        // Do not strand the app on a half-created local login if profile
+                        // initialization fails after Supabase has accepted the signup.
+                        restoreSessionSnapshot(previousSession)
+                        throw profileError
+                    }
 
                     Result.success(profile)
                 }
@@ -662,105 +719,71 @@ class SupabaseService {
      * startup when you want to restore an expired access token.
      */
     suspend fun refreshSession(): Boolean =
+        refreshSessionOutcome() == SessionRefreshOutcome.REFRESHED
+
+    private suspend fun refreshSessionOutcome(): SessionRefreshOutcome =
         withContext(Dispatchers.IO) {
+            val storedRefreshToken = refreshToken().orEmpty()
+            if (storedRefreshToken.isBlank()) {
+                return@withContext SessionRefreshOutcome.EXPIRED
+            }
 
             try {
+                val body = JSONObject()
+                    .put("refresh_token", storedRefreshToken)
+                    .toString()
+                    .toRequestBody(jsonMediaType)
 
-                val storedRefreshToken =
-                    refreshToken()
-                        ?: return@withContext false
-
-                if (
-                    storedRefreshToken.isBlank()
-                ) {
-                    return@withContext false
-                }
-
-                val body =
-                    JSONObject().apply {
-                        put(
-                            "refresh_token",
-                            storedRefreshToken
-                        )
-                    }
-
-                val request =
-                    newRequestBuilder(
-                        "/auth/v1/token?grant_type=refresh_token",
-                        authenticated = false
-                    )
-                        .post(
-                            body.toString()
-                                .toRequestBody(
-                                    jsonMediaType
-                                )
-                        )
-                        .build()
+                val request = newRequestBuilder(
+                    "/auth/v1/token?grant_type=refresh_token",
+                    authenticated = false
+                )
+                    .post(body)
+                    .build()
 
                 executeRequest(request).use { response ->
-
-                    val responseBody =
-                        response.body
-                            ?.string()
-                            .orEmpty()
+                    val responseBody = response.body?.string().orEmpty()
 
                     if (!response.isSuccessful) {
-
-                        Log.e(
-                            TAG,
-                            "AUTH_REFRESH failed " +
-                                    "status=${response.code} " +
-                                    "body=$responseBody"
-                        )
-
-                        return@withContext false
-                    }
-
-                    val json =
-                        JSONObject(
+                        val expired = SupabaseSessionRefresher.isExpiredRefreshResponse(
+                            response.code,
                             responseBody
                         )
-
-                    val newAccessToken =
-                        json.optString(
-                            "access_token",
-                            ""
+                        Log.e(
+                            TAG,
+                            "AUTH_REFRESH failed status=${response.code} expired=$expired body=$responseBody"
                         )
+                        return@withContext if (expired) {
+                            SessionRefreshOutcome.EXPIRED
+                        } else {
+                            SessionRefreshOutcome.TRANSIENT_FAILURE
+                        }
+                    }
 
-                    val newRefreshToken =
-                        json.optString(
-                            "refresh_token",
-                            ""
-                        )
-
-                    if (
-                        newAccessToken.isBlank()
-                    ) {
-                        return@withContext false
+                    val json = JSONObject(responseBody)
+                    val newAccessToken = json.optString("access_token", "")
+                    val newRefreshToken = json.optString("refresh_token", "")
+                    if (newAccessToken.isBlank()) {
+                        return@withContext SessionRefreshOutcome.TRANSIENT_FAILURE
                     }
 
                     saveSession(
-                        accessToken =
-                            newAccessToken,
-                        refreshToken =
-                            newRefreshToken
-                                .ifBlank {
-                                    storedRefreshToken
-                                }
+                        accessToken = newAccessToken,
+                        refreshToken = newRefreshToken.ifBlank { storedRefreshToken }
                     )
 
-                    true
+                    // Supabase rotates refresh tokens. Keep the encrypted recent-account
+                    // copy aligned immediately instead of waiting for a later feed sync.
+                    appContext?.let { context ->
+                        runCatching { AccountSessionStore.syncCurrentTokens(context) }
+                            .onFailure { Log.w(TAG, "Unable to sync rotated refresh token", it) }
+                    }
+
+                    SessionRefreshOutcome.REFRESHED
                 }
-
             } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "AUTH_REFRESH exception",
-                    e
-                )
-
-                false
+                Log.e(TAG, "AUTH_REFRESH exception", e)
+                SessionRefreshOutcome.TRANSIENT_FAILURE
             }
         }
 
@@ -819,7 +842,7 @@ class SupabaseService {
 
                 val request =
                     newRequestBuilder(
-                        "/auth/v1/recover?redirect_to=${URLEncoder.encode("blink://reset-password", StandardCharsets.UTF_8.name())}",
+                        "/auth/v1/recover?redirect_to=${URLEncoder.encode("blink://auth/reset-password", StandardCharsets.UTF_8.name())}",
                         authenticated = false
                     )
                         .post(
