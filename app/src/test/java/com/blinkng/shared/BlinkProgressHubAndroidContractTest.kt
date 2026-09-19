@@ -1,9 +1,9 @@
 package com.blinkng.shared
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
 
 class BlinkProgressHubAndroidContractTest {
     @Test
@@ -19,7 +19,7 @@ class BlinkProgressHubAndroidContractTest {
             claimed = false,
         )
         assertFalse(mission.claimable)
-        assertEquals(2f / 3f, mission.progressFraction)
+        assertEquals(2f / 3f, mission.progressFraction, 0.0001f)
 
         val complete = mission.copy(progress = 3)
         assertTrue(complete.claimable)
