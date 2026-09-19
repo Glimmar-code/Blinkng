@@ -201,7 +201,7 @@ fun BlinkDesktopOnboardingScreen(state: DesktopAppState) {
                     }
                     Spacer(Modifier.height(12.dp))
                     LinearProgressIndicator(
-                        progress = { (step + 1) / BlinkOnboardingPolicy.TOTAL_STEPS.toFloat() },
+                        progress = (step + 1) / BlinkOnboardingPolicy.TOTAL_STEPS.toFloat(),
                         modifier = Modifier.fillMaxWidth().height(4.dp),
                         color = OnboardingAccent,
                         trackColor = Color.White.copy(alpha = 0.10f),
