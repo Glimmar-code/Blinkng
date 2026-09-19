@@ -69,7 +69,11 @@ fun DesktopProgressHubPanel(
         scope.launch {
             runCatching { action() }
                 .onSuccess {
-                    runCatching { state.refreshProfile() }
+                    try {
+                        state.refreshProfile()
+                    } catch (_: Throwable) {
+                        // Hub reload below remains authoritative even if the profile cache refresh fails.
+                    }
                     reloadKey += 1
                 }
                 .onFailure { error = it.message ?: "That progress reward could not be claimed." }
