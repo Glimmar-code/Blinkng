@@ -32,6 +32,7 @@ import com.example.data.models.NotificationFilter
 import com.example.data.models.GameActionResult
 import com.example.data.models.IdentityAvailability
 import com.example.util.TimeFormatters
+import com.example.util.safeString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Mutex
@@ -908,7 +909,7 @@ class SupabaseService {
     // ============================================================
     fun getCurrentUsername(): String? {
         val c=SupabaseService.appContext ?: return null
-        return c.getSharedPreferences("blink_auth_prefs", Context.MODE_PRIVATE).getString("username",null)
+        return c.getSharedPreferences("blink_auth_prefs", Context.MODE_PRIVATE).safeString("username", null)
     }
 
 fun getCurrentUserId(): String? {
