@@ -250,6 +250,7 @@ class MainActivity : ComponentActivity() {
         playInAppUpdateCoordinator.onResume()
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
             viewModel.refreshIfStale()
+            viewModel.verifyPendingPaystackCheckout()
             startPresenceHeartbeat()
         }
     }
@@ -1185,7 +1186,50 @@ fun MainAppContent(
                 onClaimDailyMission = { viewModel.claimDailyMission(it) },
                 onVerifyWithCoins = { viewModel.verifyBlueWithCoins() },
                 onUpgrade = { tier ->
-                    viewModel.applyVerification(tier)
+                    if (tier == com.example.data.models.VerificationBadge.BLUE) {
+                        viewModel.startPaystackVerificationCheckout()
+                    } else {
+                        viewModel.applyVerification(tier)
+                    }
+                }
+            )
+        }
+
+        if (uiState.isCoinPackPickerOpen) {
+            AlertDialog(
+                onDismissRequest = { viewModel.closeCoinPackPicker() },
+                title = { Text("Choose a Blink Coin pack") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Paystack will open a secure hosted checkout. Coins are delivered only after server verification.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        uiState.economyPolicy.coinPacks.forEach { pack ->
+                            OutlinedButton(
+                                onClick = { viewModel.startPaystackCoinCheckout(pack.id) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Text("₦${pack.priceNgn} → ${pack.coins} coins")
+                                    if (pack.bonusCoins > 0) {
+                                        Text(
+                                            "+${pack.bonusCoins} bonus coins",
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { viewModel.closeCoinPackPicker() }) { Text("Cancel") }
                 }
             )
         }
