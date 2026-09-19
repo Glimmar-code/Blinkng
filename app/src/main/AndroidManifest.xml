@@ -115,6 +115,15 @@
                 <data android:scheme="blink" android:host="reset-password" />
             </intent-filter>
 
+            <!-- Paystack hosted checkout returns through the server first. This
+                 app-only link merely reopens BLINK; payment is still verified server-side. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="blink" android:host="payment" />
+            </intent-filter>
+
             <!-- Temporary/fallback app-only links let the web preview hand an
                  interaction to Blink before the production domain is available. -->
             <intent-filter>
