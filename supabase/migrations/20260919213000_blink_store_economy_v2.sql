@@ -458,7 +458,7 @@ grant execute on function public.gift_blink_vip(text) to authenticated;
 
 -- 5) Paid BLINK Verified is a 30-day renewable entitlement.
 insert into private.blink_economy_config(key,int_value)
-values ('blue_verification_duration_days',30)
+values ('blue_verification_valid_days',30)
 on conflict(key) do update set int_value=excluded.int_value,updated_at=now();
 
 create or replace function public.purchase_blink_blue_verification_with_coins()
@@ -511,7 +511,7 @@ begin
   select coalesce(int_value,3000)::integer into v_cost
     from private.blink_economy_config where key='blue_verification_coin_cost';
   select coalesce(int_value,30)::integer into v_days
-    from private.blink_economy_config where key='blue_verification_duration_days';
+    from private.blink_economy_config where key='blue_verification_valid_days';
 
   insert into public.user_balances(user_id,spendable_coin_balance,updated_at)
   values(v_user,0,now()) on conflict(user_id) do nothing;
@@ -784,7 +784,7 @@ begin
   select coalesce(int_value,3000)::integer into v_verify_coins
     from private.blink_economy_config where key='blue_verification_coin_cost';
   select coalesce(int_value,30)::integer into v_verify_days
-    from private.blink_economy_config where key='blue_verification_duration_days';
+    from private.blink_economy_config where key='blue_verification_valid_days';
   select coalesce(bool_value,false) into v_cash_enabled
     from private.blink_economy_config where key='cash_checkout_enabled';
   select coalesce(json_value,'[]'::jsonb) into v_milestones
@@ -807,7 +807,7 @@ begin
     'rewarded_milestones',coalesce(v_milestones,'[]'::jsonb),
     'blue_verification_cash_ngn',coalesce(v_cash,800),
     'blue_verification_coin_cost',coalesce(v_verify_coins,3000),
-    'blue_verification_duration_days',coalesce(v_verify_days,30),
+    'blue_verification_valid_days',coalesce(v_verify_days,30),
     'coin_packs',coalesce(v_packs,'[]'::jsonb),
     'cash_checkout_enabled',coalesce(v_cash_enabled,false),
     'ads_today',coalesce(v_ads_today,0),
