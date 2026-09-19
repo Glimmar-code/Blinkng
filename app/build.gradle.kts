@@ -15,6 +15,14 @@ if (file("google-services.json").exists()) {
   apply(plugin = "com.google.firebase.crashlytics")
 }
 
+// Paystack checkout is server-authoritative through Supabase Edge Functions.
+// These values must never be auto-exposed in Android BuildConfig by the Secrets plugin.
+// PAYSTACK_CALLBACK_URL is optional server configuration; PAYSTACK_SECRET_KEY is server-only.
+secrets {
+  ignoreList.add("PAYSTACK_CALLBACK_URL")
+  ignoreList.add("PAYSTACK_SECRET_KEY")
+}
+
 val releaseTaskRequested = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
 val requestedVersionCodeRaw = providers.environmentVariable("VERSION_CODE").orNull?.trim()
 val requestedVersionCode = requestedVersionCodeRaw?.toIntOrNull()
