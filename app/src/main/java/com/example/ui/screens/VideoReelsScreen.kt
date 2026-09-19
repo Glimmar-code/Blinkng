@@ -58,6 +58,8 @@ import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
 import com.example.data.repository.UserInteractionRepository
 import com.example.data.supabase.ReelRecommendationService
+import com.example.sharing.ShareContentType
+import com.example.sharing.ShareLinkManager
 import com.example.ui.components.BlinkNativeAdPlacement
 import com.example.ui.components.BlinkSponsoredNativeAd
 import com.example.ui.components.PremiumPullRefreshIndicator
@@ -573,6 +575,7 @@ private fun ReelPage(
     initialPositionMs: Long,
     onInitialPositionConsumed: () -> Unit
 ) {
+    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val displayedViewsCount = rememberDelayedContentViewCount(reel.id, reel.viewsCount)
     val reelUsername = reel.authorUsername.trim().removePrefix("@").ifBlank {
@@ -758,6 +761,19 @@ private fun ReelPage(
                 tint = Color.White,
                 contentDescription = "Share"
             ) { onShare(reel.id) }
+            ReelAction(
+                icon = Icons.Default.Link,
+                text = "Link",
+                tint = Color.White,
+                contentDescription = "Copy reel link"
+            ) {
+                ShareLinkManager.copyLink(
+                    context = context,
+                    type = ShareContentType.REEL,
+                    id = reel.id,
+                    toastMessage = "Reel link copied"
+                )
+            }
             if (isAuthor) {
                 ReelAction(
                     icon = Icons.Default.DeleteOutline,

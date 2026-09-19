@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.aistudio.blink.appvtwo",
+      "sha256_cert_fingerprints": [
+        "88:B4:18:51:36:2B:F2:BC:B2:60:58:91:49:3B:B4:1C:40:F3:23:31:84:DF:77:35:69:F8:7D:B9:03:C5:26:64"
+      ]
+    }
+  }
+]
