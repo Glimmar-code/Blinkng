@@ -21,7 +21,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedButtonDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -199,10 +198,9 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                                 scope.launch { runCatching { state.signInWithGoogle() } }
                             },
                             enabled = !state.busy,
-                            colors = OutlinedButtonDefaults.colors(contentColor = Color.White),
                             border = authOutline,
                         ) {
-                            Text("Continue with Google")
+                            Text("Continue with Google", color = Color.White)
                         }
                     }
                 }
@@ -214,29 +212,25 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                         AuthMode.SIGN_IN -> {
                             OutlinedButton(
                                 onClick = { mode = AuthMode.SIGN_UP; state.clearError() },
-                                colors = OutlinedButtonDefaults.colors(contentColor = Color.White),
                                 border = authOutline,
-                            ) { Text("Create account") }
+) { Text("Create account", color = Color.White) }
                             OutlinedButton(
                                 onClick = { mode = AuthMode.RESET; state.clearError() },
-                                colors = OutlinedButtonDefaults.colors(contentColor = Color.White),
                                 border = authOutline,
-                            ) { Text("Forgot password") }
+) { Text("Forgot password", color = Color.White) }
                         }
                         AuthMode.SIGN_UP -> {
                             OutlinedButton(
                                 onClick = { mode = AuthMode.SIGN_IN; state.clearError() },
-                                colors = OutlinedButtonDefaults.colors(contentColor = Color.White),
                                 border = authOutline,
-                            ) { Text("Back to sign in") }
+) { Text("Back to sign in", color = Color.White) }
                             Spacer(Modifier.weight(1f))
                         }
                         AuthMode.RESET -> {
                             OutlinedButton(
                                 onClick = { mode = AuthMode.SIGN_IN; state.clearError() },
-                                colors = OutlinedButtonDefaults.colors(contentColor = Color.White),
                                 border = authOutline,
-                            ) { Text("Back to sign in") }
+) { Text("Back to sign in", color = Color.White) }
                             Spacer(Modifier.weight(1f))
                         }
                     }
