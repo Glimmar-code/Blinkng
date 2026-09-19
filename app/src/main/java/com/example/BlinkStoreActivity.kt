@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -104,6 +105,7 @@ import com.example.ui.components.BlinkMark
 import com.example.ui.components.BlinkStoreLivePreview
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
+import com.example.util.startActivitySafely
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -312,7 +314,11 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
                                 }
                             },
                             onGift = { username -> runAction("Blink VIP gift sent to @$username.") { service.giftVip(username) } },
-                            onBuyVip = { previewItem = BlinkStoreCatalog.items.first { it.id == "blink_vip_10d" } }
+                            onBuyVip = {
+                                BlinkStoreCatalog.items.firstOrNull { it.id == "blink_vip_10d" }
+                                    ?.let { previewItem = it }
+                                    ?: run { message = "Blink VIP is temporarily unavailable." }
+                            }
                         )
                         BlinkStoreTab.HISTORY -> HistoryTab(snapshot.optJSONArray("transactions").objects())
                         BlinkStoreTab.MORE -> MoreTab(onClose)
@@ -734,7 +740,12 @@ private fun VaultTab(
                         fontSize = 18.sp
                     )
                 }
-                items(boosts, key = { it.optString("id") }) { BoostCard(it) }
+                itemsIndexed(
+                    boosts,
+                    key = { index, row -> "boost:$index:${row.optString("id")}" }
+                ) { _, row ->
+                    BoostCard(row)
+                }
             }
         }
 
@@ -757,7 +768,7 @@ private fun VaultTab(
                 }
             }
         } else {
-            items(rows, key = { it.optString("id") }) { row ->
+            itemsIndexed(rows, key = { index, row -> "row:$index:${row.optString("id")}" }) { _, row ->
                 val item = BlinkStoreCatalog.items.firstOrNull { it.id == row.optString("catalog_id") }
                 val experience = item?.premiumExperience()
                 val accent = experience?.let(::premiumAccent) ?: BlinkPink
@@ -994,7 +1005,7 @@ private fun HistoryTab(rows: List<JSONObject>) {
                 Text("Real Blink Coin receipts, rewards and renewals.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        items(rows, key = { it.optString("id") }) { row ->
+        itemsIndexed(rows, key = { index, row -> "row:$index:${row.optString("id")}" }) { _, row ->
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -1025,7 +1036,10 @@ private fun HistoryTab(rows: List<JSONObject>) {
 private fun MoreTab(onClose: () -> Unit) {
     val context = LocalContext.current
     fun professional(section: String) {
-        context.startActivity(Intent(context, ProfessionalCenterActivity::class.java).putExtra("section", section))
+        context.startActivitySafely(
+            Intent(context, ProfessionalCenterActivity::class.java).putExtra("section", section),
+            "Unable to open this Blink tool."
+        )
     }
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -1041,8 +1055,8 @@ private fun MoreTab(onClose: () -> Unit) {
         item { MoreRoute("Login & account security", Icons.Outlined.Verified) { professional("account") } }
         item { MoreRoute("Marketplace tools", Icons.Filled.Storefront) { professional("market") } }
         item { MoreRoute("Study & group center", Icons.Filled.ChatBubble) { professional("groups") } }
-        item { MoreRoute("Switch account", Icons.Filled.Person) { context.startActivity(Intent(context, AccountSwitcherActivity::class.java)) } }
-        item { MoreRoute("Admin control center", Icons.Outlined.Verified) { context.startActivity(Intent(context, AdminControlCenterActivity::class.java)) } }
+        item { MoreRoute("Switch account", Icons.Filled.Person) { context.startActivitySafely(Intent(context, AccountSwitcherActivity::class.java), "Unable to open account switcher.") } }
+        item { MoreRoute("Admin control center", Icons.Outlined.Verified) { context.startActivitySafely(Intent(context, AdminControlCenterActivity::class.java), "Unable to open admin center.") } }
     }
 }
 
@@ -1318,7 +1332,7 @@ private fun TargetDialog(
                     Text("Choose exactly where the premium effect should appear.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(8.dp))
                     LazyColumn(Modifier.height(360.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(rows, key = { it.optString("id") }) { row ->
+                        itemsIndexed(rows, key = { index, row -> "row:$index:${row.optString("id")}" }) { _, row ->
                             Card(
                                 Modifier.fillMaxWidth().clickable { onSelect(row.optString("id")) },
                                 shape = RoundedCornerShape(16.dp)

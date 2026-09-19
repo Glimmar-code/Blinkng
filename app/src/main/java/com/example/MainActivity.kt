@@ -1108,8 +1108,7 @@ fun MainAppContent(
         }
 
         // Modals: Post Options Menu Sheet (Save, Share, Delete, Report, Mute)
-        if (uiState.activePostOptionsPost != null) {
-            val post = uiState.activePostOptionsPost!!
+        uiState.activePostOptionsPost?.let { post ->
             PostOptionsMenuSheet(
                 post = post,
                 isAuthor = post.author.equals(uiState.myProfile.username, ignoreCase = true),
@@ -1336,10 +1335,10 @@ fun MainAppContent(
         }
 
         // Modals: Interactive Fullscreen Story Viewer
-        if (uiState.activeViewingStory != null) {
+        uiState.activeViewingStory?.let { activeStory ->
             StoryViewerDialog(
                 stories = uiState.stories,
-                initialStory = uiState.activeViewingStory!!,
+                initialStory = activeStory,
                 currentUserId = "you",
                 onDismiss = { viewModel.closeStory() },
                 onStoryViewed = { storyId -> viewModel.markStoryViewed(storyId) },

@@ -1,5 +1,7 @@
 package com.example.notification
 
+import com.example.util.safeString
+
 import android.content.Context
 
 /**
@@ -41,7 +43,7 @@ object SocialNotificationRecovery {
     private fun readIds(context: Context, userId: String): List<String> {
         return context.applicationContext
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(SHOWN_IDS_PREFIX + userId, "")
+            .safeString(SHOWN_IDS_PREFIX + userId, "")
             .orEmpty()
             .lineSequence()
             .map(String::trim)

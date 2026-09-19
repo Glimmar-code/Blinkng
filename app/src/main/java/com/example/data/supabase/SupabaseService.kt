@@ -1,5 +1,7 @@
 package com.example.data.supabase
 
+import com.example.util.safeString
+
 import com.blinkng.shared.ProfileRankSnapshot
 import com.example.auth.AccountSessionStore
 import com.example.auth.SupabaseSessionRefresher
@@ -908,7 +910,7 @@ class SupabaseService {
     // ============================================================
     fun getCurrentUsername(): String? {
         val c=SupabaseService.appContext ?: return null
-        return c.getSharedPreferences("blink_auth_prefs", Context.MODE_PRIVATE).getString("username",null)
+        return c.getSharedPreferences("blink_auth_prefs", Context.MODE_PRIVATE).safeString("username", null)
     }
 
 fun getCurrentUserId(): String? {

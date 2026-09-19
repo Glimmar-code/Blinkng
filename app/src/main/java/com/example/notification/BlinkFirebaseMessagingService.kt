@@ -1,5 +1,7 @@
 package com.example.notification
 
+import com.example.util.safeString
+
 import android.content.Context
 import android.util.Log
 import androidx.work.Constraints
@@ -74,7 +76,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         suspend fun unregisterCurrentToken(context: Context): Boolean = withContext(Dispatchers.IO) {
             val appContext = context.applicationContext
             val token = appContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
-                .getString(TOKEN_KEY, "")
+                .safeString(TOKEN_KEY, "")
                 .orEmpty()
             if (token.isBlank()) return@withContext true
 

@@ -784,7 +784,7 @@ private fun NotificationCard(
                 if (!item.previewText.isNullOrBlank()) {
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        item.previewText!!,
+                        item.previewText.orEmpty(),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         fontSize = 12.sp,

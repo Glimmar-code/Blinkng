@@ -1,5 +1,7 @@
 package com.example.data.local
 
+import com.example.util.safeString
+
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -37,8 +39,8 @@ object PersistentTextDraftStore {
     private fun accountScope(context: Context): String {
         fun from(name: String): String {
             val prefs = context.getSharedPreferences(name, Context.MODE_PRIVATE)
-            return prefs.getString("email", "").orEmpty().trim().lowercase().ifBlank {
-                prefs.getString("username", "").orEmpty().trim().removePrefix("@").lowercase()
+            return prefs.safeString("email", "").orEmpty().trim().lowercase().ifBlank {
+                prefs.safeString("username", "").orEmpty().trim().removePrefix("@").lowercase()
             }
         }
         return from("blink_auth_prefs").ifBlank { from("blink_user_session") }.ifBlank { "guest" }
@@ -94,7 +96,7 @@ object PersistentTextDraftStore {
 
     internal fun readStorageKey(context: Context, storageKey: String): String? = try {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(storageKey, null)
+            .safeString(storageKey, null)
             ?: return null
         decrypt(raw)
     } catch (_: Exception) {
