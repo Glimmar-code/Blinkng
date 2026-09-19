@@ -94,8 +94,8 @@ class DesktopSupabaseClient(
         val cleanUsername = username.trim().lowercase().removePrefix("@").replace(" ", "_")
         require(cleanEmail.contains("@")) { "Enter a valid email address." }
         require(cleanUsername.length >= 3) { "Username must be at least 3 characters." }
-        require(password.length >= 8 && password.any(Char::isUpperCase) && password.any(Char::isLowerCase) && password.any(Char::isDigit)) {
-            "Use at least 8 characters with uppercase, lowercase and a number."
+        require(BlinkOnboardingPolicy.isStrongPassword(password)) {
+            "Use at least 8 characters with uppercase, lowercase, a number, and a symbol."
         }
         val body = JSONObject()
             .put("email", cleanEmail)
