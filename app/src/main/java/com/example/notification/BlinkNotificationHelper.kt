@@ -577,6 +577,19 @@ object BlinkNotificationHelper {
         )
     }
 
+    private fun buildSocialPendingIntent(context: Context): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_ACTION, ACTION_OPEN_SOCIAL)
+        }
+        return PendingIntent.getActivity(
+            context,
+            positiveHash("blink_social"),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
     // ================================================================
     // PROFILE DEEP LINK
     // ================================================================
@@ -867,6 +880,9 @@ object BlinkNotificationHelper {
                             buildProfilePendingIntent(context, targetId)
                         targetType.equals("market", ignoreCase = true) ->
                             buildMarketPendingIntent(context, targetId)
+                        targetType.equals("story", ignoreCase = true) ||
+                            targetType.equals("notification", ignoreCase = true) ->
+                            buildSocialPendingIntent(context)
                         else ->
                             buildPostPendingIntent(
                                 context,
