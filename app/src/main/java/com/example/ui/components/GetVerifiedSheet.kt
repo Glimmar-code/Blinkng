@@ -252,7 +252,7 @@ fun GetVerifiedSheet(
 
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
-                                    text = "₦800",
+                                    text = "₦${economyPolicy.blueVerificationCashNgn}",
                                     fontWeight = FontWeight.Black,
                                     fontSize = 18.sp,
                                     color = BlinkBlue
