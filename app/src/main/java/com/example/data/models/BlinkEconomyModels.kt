@@ -16,7 +16,12 @@ data class BlinkStoreItem(
     val durationSeconds: Long? = null,
     val stackable: Boolean = false,
     val vipOnly: Boolean = false,
-    val boostMultipliers: List<Int> = emptyList()
+    val boostMultipliers: List<Int> = emptyList(),
+    val collectionId: String? = null,
+    val rarity: String = "STANDARD",
+    val unlockLevel: Int? = null,
+    val availableFrom: String? = null,
+    val availableUntil: String? = null,
 )
 
 data class BlinkInventoryItem(
@@ -100,7 +105,7 @@ data class BlinkActivationResult(
  * same ids/prices and remains authoritative for charging and entitlement validation.
  */
 object BlinkStoreCatalog {
-    val items: List<BlinkStoreItem> = listOf(
+    private val baseItems: List<BlinkStoreItem> = listOf(
         BlinkStoreItem("profile_highlight_1h", "Profile Aura — 1 hour", "Transform your complete public profile header with an animated aura, avatar light and coordinated identity accents for one hour.", "auto_awesome", "Profile", 10, BlinkStoreItemType.TIMED, BlinkStoreTarget.PROFILE, 3600),
         BlinkStoreItem("comment_highlight", "Comment Spotlight", "Transform one selected comment into a complete premium card with an animated edge, avatar accent and reaction glow.", "push_pin", "Social", 10, BlinkStoreItemType.CONTENT_SPECIFIC, BlinkStoreTarget.COMMENT, stackable = true),
         BlinkStoreItem("comment_color", "Aurora Comment Style", "Apply a coordinated Aurora surface to your comments and replies instead of a small cosmetic label.", "palette", "Social", 15, BlinkStoreItemType.PERMANENT, BlinkStoreTarget.COMMENT),
@@ -173,6 +178,119 @@ object BlinkStoreCatalog {
         BlinkStoreItem("vip_reaction_pack", "VIP Reaction Pack", "Unlock exclusive VIP reactions while your Blink VIP pass is active.", "diamond", "VIP", 70, BlinkStoreItemType.PERMANENT, BlinkStoreTarget.CHAT, vipOnly = true),
         BlinkStoreItem("vip_profile_entrance", "VIP Profile Entrance", "Unlock an advanced premium profile entrance while Blink VIP is active.", "diamond", "VIP", 140, BlinkStoreItemType.PERMANENT, BlinkStoreTarget.PROFILE, vipOnly = true)
     )
+
+
+    private data class EconomyV2(
+        val name: String? = null,
+        val price: Int,
+        val durationSeconds: Long? = null,
+        val overrideDuration: Boolean = false,
+    )
+
+    private val economyV2 = mapOf(
+        "profile_highlight_1h" to EconomyV2("Profile Aura — 7 Days", 300, 604800, true),
+        "comment_highlight" to EconomyV2("Comment Spotlight — 7 Days", 150, 604800, true),
+        "comment_color" to EconomyV2(price = 500),
+        "animated_like" to EconomyV2(price = 250),
+        "profile_glow_1h" to EconomyV2("Profile Glow — 7 Days", 350, 604800, true),
+        "chat_bubble_theme" to EconomyV2(price = 500),
+        "reaction_pack" to EconomyV2(price = 400),
+        "profile_ring" to EconomyV2(price = 500),
+        "username_glow_24h" to EconomyV2("Username Glow — 7 Days", 300, 604800, true),
+        "post_border" to EconomyV2(price = 150),
+        "story_highlight" to EconomyV2(price = 80),
+        "profile_background" to EconomyV2(price = 650),
+        "emoji_pack" to EconomyV2(price = 350),
+        "animated_profile_ring" to EconomyV2(price = 750),
+        "chat_background" to EconomyV2(price = 600),
+        "profile_entrance_animation" to EconomyV2(price = 700),
+        "post_highlight_1h" to EconomyV2("Post Highlight — 7 Days", 300, 604800, true),
+        "reel_highlight_1h" to EconomyV2("Reel Highlight — 7 Days", 300, 604800, true),
+        "visitor_insights_24h" to EconomyV2("Profile Visitor Insights — 7 Days", 350, 604800, true),
+        "notification_sound_pack" to EconomyV2(price = 250),
+        "app_icon_pack" to EconomyV2(price = 300),
+        "profile_spotlight_1h" to EconomyV2("Profile Spotlight — 7 Days", 550, 604800, true),
+        "username_font" to EconomyV2("Signature Nameplate", 450),
+        "sticker_pack" to EconomyV2(price = 400),
+        "digital_gift" to EconomyV2(price = 80),
+        "post_boost" to EconomyV2("Post Boost — 6 Hours", 150, 21600, true),
+        "reel_boost" to EconomyV2("Reel Boost — 6 Hours", 150, 21600, true),
+        "market_listing_highlight" to EconomyV2("Marketplace Listing Highlight — 7 Days", 300, 604800, true),
+        "profile_discovery_boost" to EconomyV2("Profile Discovery Boost — 6 Hours", 200, 21600, true),
+        "custom_profile_badge" to EconomyV2(price = 700),
+        "profile_theme_3d" to EconomyV2("Premium Profile Theme — 30 Days", 1000, 2592000, true),
+        "animated_name" to EconomyV2("Living Nameplate", 850),
+        "special_dm_theme" to EconomyV2(price = 800),
+        "post_spotlight_6h" to EconomyV2("Post Spotlight — 7 Days", 500, 604800, true),
+        "reel_spotlight_6h" to EconomyV2("Reel Spotlight — 7 Days", 500, 604800, true),
+        "market_seller_spotlight" to EconomyV2("Marketplace Seller Spotlight — 7 Days", 500, 604800, true),
+        "profile_spotlight_24h" to EconomyV2("Profile Spotlight Plus — 30 Days", 1200, 2592000, true),
+        "post_boost_plus" to EconomyV2("Post Boost Plus — 2× / 6 Hours", 250, 21600, true),
+        "reel_boost_plus" to EconomyV2("Reel Boost Plus — 2× / 6 Hours", 250, 21600, true),
+        "vip_theme" to EconomyV2(price = 400),
+        "profile_glow_7d" to EconomyV2("Premium Profile Glow — 7 Days", 500, 604800, true),
+        "premium_profile_frame" to EconomyV2(price = 1000),
+        "creator_badge" to EconomyV2(price = 1200),
+        "post_spotlight_24h" to EconomyV2("Post Spotlight Plus — 30 Days", 1200, 2592000, true),
+        "reel_spotlight_24h" to EconomyV2("Reel Spotlight Plus — 30 Days", 1200, 2592000, true),
+        "discovery_boost_7d" to EconomyV2(price = 900),
+        "profile_theme_bundle" to EconomyV2(price = 1600),
+        "creator_promo_bundle" to EconomyV2(price = 900),
+        "market_promo_bundle" to EconomyV2(price = 700),
+        "blink_vip_10d" to EconomyV2("Blink VIP — 30 Days", 1200, 2592000, true),
+        "super_reaction" to EconomyV2(price = 300),
+        "profile_banner" to EconomyV2(price = 800),
+        "avatar_decoration" to EconomyV2(price = 800),
+        "reel_frame_effect" to EconomyV2(price = 150),
+        "post_entrance_animation" to EconomyV2(price = 150),
+        "profile_particle_effect" to EconomyV2(price = 900),
+        "comment_entrance_animation" to EconomyV2("Comment Premiere — 7 Days", 150, 604800, true),
+        "follow_animation" to EconomyV2(price = 400),
+        "birthday_profile_theme" to EconomyV2("Birthday Profile Theme — 7 Days", 350, 604800, true),
+        "limited_edition_badge" to EconomyV2(price = 1500),
+        "gift_crown" to EconomyV2(price = 700),
+        "gift_rose" to EconomyV2(price = 200),
+        "gift_trophy" to EconomyV2(price = 500),
+        "gift_galaxy" to EconomyV2(price = 1500),
+        "profile_music_theme" to EconomyV2(price = 1000),
+        "creator_intro_card" to EconomyV2(price = 1200),
+        "premium_poll_style" to EconomyV2(price = 500),
+        "vip_comment_effect" to EconomyV2(price = 300),
+        "vip_reaction_pack" to EconomyV2(price = 400),
+        "vip_profile_entrance" to EconomyV2(price = 700),
+    )
+
+    private val economyV2Descriptions = mapOf(
+        "profile_highlight_1h" to "Transform your complete public profile header with an animated aura, avatar light and coordinated identity accents for seven days.",
+        "comment_highlight" to "Transform one selected comment into a complete premium card with an animated edge, avatar accent and reaction glow for seven days.",
+        "profile_glow_1h" to "Add a premium animated glow around your profile identity for seven days.",
+        "username_glow_24h" to "Make your display name glow on supported identity surfaces for seven days.",
+        "post_highlight_1h" to "Visually highlight one selected post for seven days.",
+        "reel_highlight_1h" to "Visually highlight one selected Reel for seven days.",
+        "visitor_insights_24h" to "Unlock private aggregate profile-visitor analytics for seven days while ownership remains visible in your Blink Collection.",
+        "profile_spotlight_1h" to "Place your profile in eligible Spotlight discovery surfaces for seven days.",
+        "market_listing_highlight" to "Give one Marketplace listing a premium highlighted card and featured treatment for seven days.",
+        "profile_theme_3d" to "Transform your public profile with a premium coordinated theme for thirty days.",
+        "post_spotlight_6h" to "Place one selected post in eligible Spotlight surfaces for seven days.",
+        "reel_spotlight_6h" to "Place one selected Reel in eligible Reel Spotlight surfaces for seven days.",
+        "market_seller_spotlight" to "Feature your Marketplace seller storefront for seven days.",
+        "profile_spotlight_24h" to "Keep your profile prominently featured in eligible discovery surfaces for thirty days.",
+        "post_spotlight_24h" to "Prominently feature one selected post for thirty days.",
+        "reel_spotlight_24h" to "Prominently feature one selected Reel for thirty days.",
+        "comment_entrance_animation" to "Give one selected comment a polished premium entrance and complete highlighted surface for seven days.",
+        "birthday_profile_theme" to "Activate a celebration profile theme visible for seven days.",
+        "blink_vip_10d" to "Thirty days of VIP identity styling, Store discount, analytics and claimable promotion benefits."
+    )
+
+    val items: List<BlinkStoreItem> = baseItems.map { item ->
+        val v2 = economyV2[item.id] ?: return@map item
+        item.copy(
+            name = v2.name ?: item.name,
+            description = economyV2Descriptions[item.id] ?: item.description,
+            price = v2.price,
+            durationSeconds = if (v2.overrideDuration) v2.durationSeconds else item.durationSeconds,
+        )
+    }
 
     fun priceFor(item: BlinkStoreItem, multiplier: Int = 1): Int {
         if (item.boostMultipliers.isEmpty()) return item.price
