@@ -75,17 +75,8 @@ import com.blinkng.desktop.data.DesktopLeaderboardEntry
 import com.blinkng.desktop.data.DesktopMarketItem
 import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.data.DesktopNotification
-import com.blinkng.desktop.data.DesktopRpcActions
-import com.blinkng.desktop.data.DesktopNotification
 import com.blinkng.desktop.data.DesktopSearchResults
 import com.blinkng.desktop.data.DesktopStoreItem
-import com.blinkng.desktop.sharing.DesktopShareLinkManager
-import com.blinkng.shared.BlinkCoinPack
-import com.blinkng.shared.BlinkDailyMission
-import com.blinkng.shared.BlinkEconomyDefaults
-import com.blinkng.shared.BlinkEconomyPolicy
-import com.blinkng.shared.BlinkRewardMilestone
-import com.blinkng.shared.xpProgress
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import com.blinkng.shared.BlinkCoinPack
@@ -97,7 +88,6 @@ import com.blinkng.shared.xpProgress
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
-import org.json.JSONObject
 import java.time.format.DateTimeFormatter
 import org.json.JSONObject
 
@@ -179,9 +169,6 @@ fun HomeScreen(state: DesktopAppState) {
                         }
                     }
                 },
-                onCopyLink = {
-                    DesktopShareLinkManager.copyToClipboard(post.id, post.isReel)
-                },
                 onComments = { commentsFor = if (commentsFor == post.id) null else post.id },
                 onCopyLink = {
                     DesktopShareLinkManager.copyToClipboard(post.id, post.isReel)
@@ -210,6 +197,7 @@ private fun CommentsPanel(state: DesktopAppState, postId: String) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Comments", fontWeight = FontWeight.Bold)
             if (loading) LoadingRow()
+            comments.forEach { comment ->
                 DesktopPremiumCommentSurface(
                     premiumStyleId = comment.premiumStyleId,
                     modifier = Modifier
@@ -220,19 +208,6 @@ private fun CommentsPanel(state: DesktopAppState, postId: String) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(if (comment.premiumStyleId.isNullOrBlank()) 0.dp else 13.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        AvatarInitial(comment.authorName)
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(comment.authorName, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                                if (comment.authorVerified) {
-                                    Spacer(Modifier.width(4.dp))
-                                    Icon(Icons.Rounded.Verified, contentDescription = "Verified", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
-                                }
-                        modifier = Modifier
-                            Text(comment.content, fontSize = 13.sp)
-                            .fillMaxWidth()
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         AvatarInitial(comment.authorName)
@@ -293,13 +268,6 @@ fun ReelsScreen(state: DesktopAppState) {
                     VerifiedName(reel.authorName, reel.authorVerified)
                     reel.caption?.takeIf(String::isNotBlank)?.let { Text(it) }
                     Surface(
-                    OutlinedButton(
-                        onClick = {
-                            DesktopShareLinkManager.copyToClipboard(reel.id, isReel = true)
-                        },
-                    ) {
-                        Text("Copy link")
-                    }
                         modifier = Modifier.fillMaxWidth().height(320.dp),
                         shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -381,16 +349,7 @@ fun SearchScreen(state: DesktopAppState) {
                         Spacer(Modifier.width(10.dp))
                         Column {
                             VerifiedName(profile.fullName, profile.isVerified)
-            items(results.posts, key = { "post-${it.id}" }) { post ->
-                PostCard(
-                    post = post,
-                    onLike = {},
-                    onComments = {},
-                    onCopyLink = {
-                        DesktopShareLinkManager.copyToClipboard(post.id, post.isReel)
-                    },
-                )
-            }
+                            Text("@${profile.username} • ${profile.university ?: "Blinkng"}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 desktopPresenceStatus(profile.isOnline, profile.lastSeenAt),
                                 fontSize = 10.sp,
@@ -719,6 +678,19 @@ fun LeaderboardScreen(state: DesktopAppState) {
                         VerifiedName(entry.name, entry.verificationTier.lowercase() != "none" && entry.verificationTier.isNotBlank())
                         Text("@${entry.handle} • ${entry.university ?: "Blinkng"}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("${entry.worldScore} pts", fontWeight = FontWeight.Bold)
+                        Text("Campus #${entry.campusRank ?: "–"}", fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ProfileScreen(state: DesktopAppState) {
+    val profile = state.profile
     val scope = rememberCoroutineScope()
     val actions = remember(state.client) { DesktopRpcActions(state.client) }
     var economyPayload by remember { mutableStateOf<JSONObject?>(null) }
@@ -759,21 +731,21 @@ fun LeaderboardScreen(state: DesktopAppState) {
         }
     }
 
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("${entry.worldScore} pts", fontWeight = FontWeight.Bold)
-                        Text("Campus #${entry.campusRank ?: "–"}", fontSize = 11.sp)
-                    }
-                }
+    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item { ScreenHeader("Profile", "Your Blink identity") }
+        if (profile == null) {
+            item { LoadingRow() }
+        } else {
             val xp = xpProgress(profile.totalXp, profile.xpLevel)
 
-            }
+            item {
                 DesktopPremiumProfileSurface(
                     catalogIds = premiumCatalogIds,
                     isVip = premiumIsVip,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-    }
-}
+                    Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             DesktopPremiumAvatarFrame(
                                 catalogIds = premiumCatalogIds,
                                 isVip = premiumIsVip,
@@ -781,44 +753,24 @@ fun LeaderboardScreen(state: DesktopAppState) {
                             ) {
                                 PresenceAvatar(profile.fullName, profile.isOnline, 64.dp)
                             }
-@Composable
-fun ProfileScreen(state: DesktopAppState) {
-    val profile = state.profile
-    val scope = rememberCoroutineScope()
-    val actions = remember(state.client) { DesktopRpcActions(state.client) }
-    var economyPayload by remember { mutableStateOf<JSONObject?>(null) }
-    var missionsPayload by remember { mutableStateOf<JSONObject?>(null) }
-    var economyMessage by remember { mutableStateOf<String?>(null) }
-    var economyBusy by remember { mutableStateOf(false) }
-    var missionBusyKey by remember { mutableStateOf<String?>(null) }
-    var premiumCatalogIds by remember(profile?.username) { mutableStateOf<List<String>>(emptyList()) }
-    var premiumIsVip by remember(profile?.username) { mutableStateOf(profile?.isBlinkVip == true) }
-
-    suspend fun reloadRewards() {
-        economyPayload = runCatching { actions.getEconomyStatus() }.getOrNull()
-        missionsPayload = runCatching { actions.getDailyMissions() }.getOrNull()
-    }
-
-    LaunchedEffect(profile?.id) {
-        if (profile != null) reloadRewards()
-    }
-
-    val policy = remember(economyPayload?.toString()) { parseDesktopEconomyPolicy(economyPayload) }
-    val missions = remember(missionsPayload?.toString()) { parseDesktopDailyMissions(missionsPayload) }
-    val balance = economyPayload?.optLong("balance", profile?.coinBalance ?: 0L) ?: profile?.coinBalance ?: 0L
-    val remaining = policy.verificationCoinsRemaining(balance)
-
-    LaunchedEffect(profile?.username) {
-        val username = profile?.username.orEmpty()
-        if (username.isNotBlank()) {
-            runCatching { actions.getPublicPremiumStyle(username) }.onSuccess { style ->
-                premiumIsVip = style.optBoolean("is_vip", profile?.isBlinkVip == true)
-                val items = style.optJSONArray("items")
-                premiumCatalogIds = buildList {
-                    if (items != null) for (index in 0 until items.length()) {
-                        val catalogId = items.optJSONObject(index)?.optString("catalog_id").orEmpty()
-                        if (catalogId.isNotBlank()) add(catalogId)
-                    }
+                            Spacer(Modifier.width(14.dp))
+                            Column {
+                                VerifiedName(profile.fullName, profile.isVerified, 21.sp)
+                                Text("@${profile.username}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    desktopPresenceStatus(profile.isOnline, profile.lastSeenAt),
+                                    fontSize = 11.sp,
+                                    color = if (profile.isOnline) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(listOfNotNull(profile.university, profile.faculty, profile.department).joinToString(" • "), fontSize = 12.sp)
+                            }
+                        }
+                        profile.bio?.takeIf(String::isNotBlank)?.let { Text(it) }
+                        HorizontalDivider()
+                        Row(horizontalArrangement = Arrangement.spacedBy(30.dp)) {
+                            Stat("Posts", profile.postsCount.toString())
+                            Stat("Followers", profile.followerCount.toString())
+                            Stat("Following", profile.followingCount.toString())
                             Stat("Coins", balance.toString())
                         }
                     }
@@ -1039,266 +991,6 @@ fun ProfileScreen(state: DesktopAppState) {
                                     }
                                 }
                             }
-            }
-        }
-    }
-
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { ScreenHeader("Profile", "Your Blink identity") }
-        if (profile == null) {
-            item { LoadingRow() }
-        } else {
-            val xp = xpProgress(profile.totalXp, profile.xpLevel)
-
-            item {
-                DesktopPremiumProfileSurface(
-                    catalogIds = premiumCatalogIds,
-                    isVip = premiumIsVip,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            DesktopPremiumAvatarFrame(
-                                catalogIds = premiumCatalogIds,
-                                isVip = premiumIsVip,
-                                size = 72.dp,
-                            ) {
-                                PresenceAvatar(profile.fullName, profile.isOnline, 64.dp)
-                            }
-                            Spacer(Modifier.width(14.dp))
-                            Column {
-                                VerifiedName(profile.fullName, profile.isVerified, 21.sp)
-                                Text("@${profile.username}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(
-                                    desktopPresenceStatus(profile.isOnline, profile.lastSeenAt),
-                                    fontSize = 11.sp,
-                                    color = if (profile.isOnline) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(listOfNotNull(profile.university, profile.faculty, profile.department).joinToString(" • "), fontSize = 12.sp)
-                            }
-                        }
-                        profile.bio?.takeIf(String::isNotBlank)?.let { Text(it) }
-                        HorizontalDivider()
-                        Row(horizontalArrangement = Arrangement.spacedBy(30.dp)) {
-                            Stat("Posts", profile.postsCount.toString())
-                            Stat("Followers", profile.followerCount.toString())
-                            Stat("Following", profile.followingCount.toString())
-                            Stat("Coins", balance.toString())
-                        }
-                    }
-                }
-            }
-
-            item {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f),
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(9.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column {
-                                Text("Level ${xp.level} • ${xp.tierLabel}", fontWeight = FontWeight.Black, fontSize = 16.sp)
-                                Text("${xp.totalXp} XP", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text(
-                                if (xp.level >= 100) "MAX LEVEL" else "${xp.xpToNextLevel} XP to Lv. ${xp.level + 1}",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                        LinearProgressIndicator(
-                            progress = { xp.progressFraction },
-                            modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(100.dp)),
-                        )
-                        Text(
-                            if (xp.level >= 100) "Long-term BLINK progression complete."
-                            else "${xp.xpIntoLevel} / ${xp.xpForLevel} XP in this level",
-                            fontSize = 10.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-
-            item {
-                Surface(
-                    shape = RoundedCornerShape(22.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.07f),
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column {
-                                Text("BLINK Verified", fontWeight = FontWeight.Black, fontSize = 18.sp)
-                                Text(
-                                    if (profile.isVerified) "Premium BLINK status active"
-                                    else "$balance / ${policy.blueVerificationCoinCost} coins",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Icon(
-                                Icons.Rounded.Verified,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(28.dp),
-                            )
-                        }
-
-                        LinearProgressIndicator(
-                            progress = { if (profile.isVerified) 1f else policy.verificationProgress(balance) },
-                            modifier = Modifier.fillMaxWidth().height(7.dp).clip(RoundedCornerShape(100.dp)),
-                        )
-
-                        Text(
-                            if (profile.isVerified) {
-                                "Your BLINK Verified status is active across supported identity surfaces."
-                            } else {
-                                "Use ${policy.blueVerificationCoinCost} Blink Coins, or ₦${policy.blueVerificationCashNgn} through secure cash checkout when it is enabled."
-                            },
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-
-                        if (!profile.isVerified) {
-                            Button(
-                                onClick = {
-                                    economyBusy = true
-                                    economyMessage = null
-                                    scope.launch {
-                                        runCatching { actions.purchaseBlueVerificationWithCoins() }
-                                            .onSuccess {
-                                                reloadRewards()
-                                                state.refreshProfile()
-                                                economyMessage = "BLINK Verified activated."
-                                            }
-                                            .onFailure { economyMessage = it.message ?: "Verification could not be completed." }
-                                        economyBusy = false
-                                    }
-                                },
-                                enabled = !economyBusy && remaining == 0L,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(
-                                    if (economyBusy) "Activating…"
-                                    else if (remaining == 0L) "Use ${policy.blueVerificationCoinCost} coins"
-                                    else "Need $remaining more coins",
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
-                        }
-
-                        Text(
-                            "Rewarded ads are Android-only. Daily missions, XP, wallet balance and verification are shared across Android and Windows.",
-                            fontSize = 10.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-
-                        economyMessage?.let { message ->
-                            Text(
-                                message,
-                                fontSize = 11.sp,
-                                color = if (message.contains("activated", ignoreCase = true)) Color(0xFF22C55E) else MaterialTheme.colorScheme.error,
-                            )
-                        }
-                    }
-                }
-            }
-
-            item {
-                Surface(shape = RoundedCornerShape(22.dp), tonalElevation = 1.dp) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Text("Daily Missions", fontWeight = FontWeight.Black, fontSize = 18.sp)
-                        Text(
-                            "Complete meaningful activity for up to 20 Blink Coins + 80 XP per day.",
-                            fontSize = 11.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        if (missions.isEmpty()) {
-                            Text("Missions are syncing…", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        missions.forEach { mission ->
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = if (mission.claimed) Color(0xFF22C55E).copy(alpha = 0.08f)
-                                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                            ) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(mission.title, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                            Text(mission.description, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                        Text(
-                                            "${mission.progress.coerceAtMost(mission.target)}/${mission.target}",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = if (mission.completed) Color(0xFF22C55E) else MaterialTheme.colorScheme.primary,
-                                        )
-                                    }
-                                    LinearProgressIndicator(
-                                        progress = { mission.progressFraction },
-                                        modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(100.dp)),
-                                    )
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text("+${mission.coinReward} coins • +${mission.xpReward} XP", fontSize = 10.sp)
-                                        OutlinedButton(
-                                            onClick = {
-                                                missionBusyKey = mission.key
-                                                economyMessage = null
-                                                scope.launch {
-                                                    runCatching { actions.claimDailyMission(mission.key) }
-                                                        .onSuccess {
-                                                            reloadRewards()
-                                                            state.refreshProfile()
-                                                            economyMessage = "${mission.title} claimed."
-                                                        }
-                                                        .onFailure { economyMessage = it.message ?: "Mission claim failed." }
-                                                    missionBusyKey = null
-                                                }
-                                            },
-                                            enabled = mission.claimable && missionBusyKey == null,
-                                        ) {
-                                            Text(
-                                                when {
-                                                    mission.claimed -> "Claimed"
-                                                    missionBusyKey == mission.key -> "Claiming…"
-                                                    mission.claimable -> "Claim"
-                                                    else -> "In progress"
-                                                },
-                                                fontSize = 10.sp,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
                 }
@@ -1356,12 +1048,7 @@ fun SettingsScreen(state: DesktopAppState) {
         item { SettingToggle("Show online status", local.showOnlineStatus) { local = local.copy(showOnlineStatus = it); saved = false } }
         item { SettingToggle("Read receipts", local.readReceipts) { local = local.copy(readReceipts = it); saved = false } }
         item { SettingToggle("Push notifications", local.pushNotificationsEnabled) { local = local.copy(pushNotificationsEnabled = it); saved = false } }
-private fun PostCard(
-    post: DesktopFeedPost,
-    onLike: () -> Unit,
-    onComments: () -> Unit,
-    onCopyLink: () -> Unit,
-) {
+        item { SettingToggle("Email notifications", local.emailNotificationsEnabled) { local = local.copy(emailNotificationsEnabled = it); saved = false } }
         item { SettingToggle("Autoplay videos", local.autoplayVideos) { local = local.copy(autoplayVideos = it); saved = false } }
         item { SettingToggle("Data saver", local.dataSaver) { local = local.copy(dataSaver = it); saved = false } }
         item { SettingToggle("Reduce motion", local.reduceMotion) { local = local.copy(reduceMotion = it); saved = false } }
@@ -1388,9 +1075,6 @@ fun AdminScreen(state: DesktopAppState) {
         item { ScreenHeader("Admin", "Protected Blinkng administration") }
         if (!capability.allowed) {
             item { EmptyState("Your account does not have server-authorized admin access.") }
-                OutlinedButton(onClick = onCopyLink) {
-                    Text("Copy link", fontSize = 11.sp)
-                }
         } else {
             item {
                 Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 2.dp) {
@@ -1477,69 +1161,6 @@ private fun Stat(label: String, value: String) {
     Column {
         Text(value, fontWeight = FontWeight.Black, fontSize = 19.sp)
         Text(label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-private fun parseDesktopDailyMissions(payload: JSONObject?): List<BlinkDailyMission> {
-    val array = payload?.optJSONArray("missions") ?: return emptyList()
-    return buildList {
-        for (index in 0 until array.length()) {
-            val row = array.optJSONObject(index) ?: continue
-            val key = row.optString("key").trim()
-            val title = row.optString("title").trim()
-            val target = row.optInt("target", 0)
-            if (key.isBlank() || title.isBlank() || target <= 0) continue
-            add(
-                BlinkDailyMission(
-                    key = key,
-                    title = title,
-                    description = row.optString("description").trim(),
-                    progress = row.optInt("progress", 0).coerceAtLeast(0),
-                    target = target,
-                    coinReward = row.optInt("coin_reward", 0).coerceAtLeast(0),
-                    xpReward = row.optInt("xp_reward", 0).coerceAtLeast(0),
-                    claimed = row.optBoolean("claimed", false),
-                )
-            )
-        }
-    }
-}
-
-private fun parseDesktopEconomyPolicy(payload: JSONObject?): BlinkEconomyPolicy {
-    val fallback = BlinkEconomyDefaults.policy
-    if (payload == null) return fallback
-
-    val milestones = payload.optJSONArray("rewarded_milestones")?.let { array ->
-        buildList {
-            for (index in 0 until array.length()) {
-                val row = array.optJSONObject(index) ?: continue
-                val ads = row.optInt("ads", 0)
-                val total = row.optInt("total_coins", 0)
-                if (ads > 0 && total > 0) add(BlinkRewardMilestone(ads, total))
-            }
-        }.sortedBy { it.ads }
-    }.orEmpty().ifEmpty { fallback.rewardedMilestones }
-
-    val packs = payload.optJSONArray("coin_packs")?.let { array ->
-        buildList {
-            for (index in 0 until array.length()) {
-                val row = array.optJSONObject(index) ?: continue
-                val id = row.optString("id").trim()
-                val price = row.optInt("price_ngn", 0)
-                val coins = row.optInt("coins", 0)
-                if (id.isNotBlank() && price > 0 && coins > 0) add(BlinkCoinPack(id, price, coins))
-            }
-        }
-    }.orEmpty().ifEmpty { fallback.coinPacks }
-
-    return BlinkEconomyPolicy(
-        rewardedAdBaseCoins = payload.optInt("rewarded_ad_base_coins", fallback.rewardedAdBaseCoins).coerceAtLeast(1),
-        rewardedAdDailyLimit = payload.optInt("rewarded_ad_daily_limit", fallback.rewardedAdDailyLimit).coerceIn(1, 100),
-        rewardedMilestones = milestones,
-        blueVerificationCashNgn = payload.optInt("blue_verification_cash_ngn", fallback.blueVerificationCashNgn).coerceAtLeast(1),
-        blueVerificationCoinCost = payload.optInt("blue_verification_coin_cost", fallback.blueVerificationCoinCost).coerceAtLeast(1),
-        coinPacks = packs,
-        cashCheckoutEnabled = payload.optBoolean("cash_checkout_enabled", fallback.cashCheckoutEnabled),
-    )
-}
-
     }
 }
 
@@ -1641,7 +1262,6 @@ private fun parseDesktopEconomyPolicy(payload: JSONObject?): BlinkEconomyPolicy 
         rewardedMilestones = milestones,
         blueVerificationCashNgn = payload.optInt("blue_verification_cash_ngn", fallback.blueVerificationCashNgn).coerceAtLeast(1),
         blueVerificationCoinCost = payload.optInt("blue_verification_coin_cost", fallback.blueVerificationCoinCost).coerceAtLeast(1),
-        blueVerificationDurationDays = payload.optInt("blue_verification_duration_days", fallback.blueVerificationDurationDays).coerceIn(1, 365),
         coinPacks = packs,
         cashCheckoutEnabled = payload.optBoolean("cash_checkout_enabled", fallback.cashCheckoutEnabled),
     )
