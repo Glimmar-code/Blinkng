@@ -55,10 +55,25 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 
 private enum class NotificationViewMode(val label: String) {
     ALL("All"),
     UNREAD("Unread")
+}
+
+private enum class NotificationCategory(val label: String) {
+    ALL("All"),
+    MENTIONS("Mentions"),
+    COMMENTS("Comments"),
+    LIKES("Likes"),
+    FOLLOWS("Follows"),
+    MARKET("Market"),
+    BLINK("BLINK")
 }
 
 private data class NotificationSection(
@@ -81,7 +96,7 @@ fun ActivityScreen(
     onRefresh: () -> Unit = {},
     onMarkAllRead: () -> Unit = {}
 ) {
-    var filter by remember { mutableStateOf(NotificationFilter.ALL) }
+    var filter by remember { mutableStateOf(NotificationCategory.ALL) }
     var viewMode by remember { mutableStateOf(NotificationViewMode.ALL) }
     var searchVisible by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -133,7 +148,7 @@ fun ActivityScreen(
     val unread = activities.count { it.isUnread }
     val filtered = remember(activities, actorProfiles, filter, viewMode, searchQuery) {
         activities.filter { item ->
-            val categoryMatches = filter == NotificationFilter.ALL || resolvedNotificationCategory(item) == filter
+            val categoryMatches = filter == NotificationCategory.ALL || resolvedNotificationCategory(item) == filter
             val unreadMatches = viewMode == NotificationViewMode.ALL || item.isUnread
             val query = searchQuery.trim().lowercase()
             val profile = actorProfiles[item.user]
@@ -336,8 +351,8 @@ fun ActivityScreen(
 
 @Composable
 private fun NotificationControls(
-    filter: NotificationFilter,
-    onFilterChange: (NotificationFilter) -> Unit,
+    filter: NotificationCategory,
+    onFilterChange: (NotificationCategory) -> Unit,
     viewMode: NotificationViewMode,
     onViewModeChange: (NotificationViewMode) -> Unit
 ) {
@@ -359,7 +374,7 @@ private fun NotificationControls(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(NotificationFilter.values()) { item ->
+            items(NotificationCategory.values()) { item ->
                 FilterChip(
                     selected = filter == item,
                     onClick = { onFilterChange(item) },
@@ -520,25 +535,31 @@ private fun NotificationLoadError(message: String, onRefresh: () -> Unit) {
 
 @Composable
 private fun NotificationEmptyState(
-    filter: NotificationFilter,
+    filter: NotificationCategory,
     viewMode: NotificationViewMode,
     hasSearch: Boolean
 ) {
     val title = when {
         hasSearch -> "No matching notifications"
         viewMode == NotificationViewMode.UNREAD -> "No unread notifications"
-        filter == NotificationFilter.COMMENTS -> "No mentions or comments"
-        filter == NotificationFilter.LIKES -> "No likes or saves"
-        filter == NotificationFilter.MARKET -> "No campus or market activity"
+        filter == NotificationCategory.MENTIONS -> "No mentions"
+        filter == NotificationCategory.COMMENTS -> "No comments or replies"
+        filter == NotificationCategory.LIKES -> "No likes, saves or reposts"
+        filter == NotificationCategory.FOLLOWS -> "No new followers"
+        filter == NotificationCategory.MARKET -> "No market activity"
+        filter == NotificationCategory.BLINK -> "No BLINK notices"
         else -> "No notifications"
     }
     val description = when {
         hasSearch -> "Try another name or activity keyword."
         viewMode == NotificationViewMode.UNREAD -> "You're all caught up."
-        filter == NotificationFilter.COMMENTS -> "Mentions, comments and replies will appear here."
-        filter == NotificationFilter.LIKES -> "Likes, saves and repost activity will appear here."
-        filter == NotificationFilter.MARKET -> "Campus and marketplace updates will appear here."
-        else -> "Likes, comments, follows and profile views will appear here."
+        filter == NotificationCategory.MENTIONS -> "Mentions will appear here."
+        filter == NotificationCategory.COMMENTS -> "Comments and replies will appear here."
+        filter == NotificationCategory.LIKES -> "Likes, saves and repost activity will appear here."
+        filter == NotificationCategory.FOLLOWS -> "New followers will appear here."
+        filter == NotificationCategory.MARKET -> "Marketplace updates will appear here."
+        filter == NotificationCategory.BLINK -> "Official BLINK notices will appear here."
+        else -> "Likes, comments, follows and profile activity will appear here."
     }
 
     Box(Modifier.fillMaxSize(), Alignment.Center) {
@@ -833,36 +854,45 @@ private fun buildNotificationSections(
 }
 
 private fun notificationDateBucket(item: ActivityItem): String {
-    val value = item.time.trim().lowercase()
-    if (value.isBlank()) return "Earlier"
-    if (value.contains("yesterday")) return "Yesterday"
-    if (value.contains("today") || value.contains("just now") || value == "now") return "Today"
-
-    val hours = Regex("(\\d+)\\s*(h|hr|hrs|hour|hours)").find(value)
-        ?.groupValues?.getOrNull(1)?.toIntOrNull()
-    if (hours != null && hours < 24) return "Today"
-
-    val minutes = Regex("(\\d+)\\s*(m|min|mins|minute|minutes)").find(value)
-    if (minutes != null) return "Today"
-
-    val days = Regex("(\\d+)\\s*(d|day|days)").find(value)
-        ?.groupValues?.getOrNull(1)?.toIntOrNull()
-    if (days != null) {
+    val timestampDate = item.rawTimestamp.trim().takeIf { it.isNotBlank() }?.let { raw ->
+        runCatching { OffsetDateTime.parse(raw).atZoneSameInstant(ZoneId.systemDefault()).toLocalDate() }
+            .recoverCatching { Instant.parse(raw).atZone(ZoneId.systemDefault()).toLocalDate() }
+            .getOrNull()
+    }
+    if (timestampDate != null) {
+        val days = ChronoUnit.DAYS.between(timestampDate, LocalDate.now()).coerceAtLeast(0)
         return when {
-            days <= 1 -> "Yesterday"
-            days <= 7 -> "This week"
+            days == 0L -> "Today"
+            days == 1L -> "Yesterday"
+            days <= 7L -> "This week"
             else -> "Earlier"
         }
     }
 
-    return "Earlier"
+    // Compatibility fallback for cached rows created by older app versions.
+    val value = item.time.trim().lowercase()
+    if (value.isBlank()) return "Earlier"
+    if (value.contains("yesterday")) return "Yesterday"
+    if (value.contains("today") || value.contains("just now") || value == "now") return "Today"
+    val days = Regex("(\\d+)\\s*(d|day|days)").find(value)
+        ?.groupValues?.getOrNull(1)?.toIntOrNull()
+    return when {
+        Regex("(\\d+)\\s*(h|hr|hrs|hour|hours)").containsMatchIn(value) -> "Today"
+        Regex("(\\d+)\\s*(m|min|mins|minute|minutes)").containsMatchIn(value) -> "Today"
+        days == 1 -> "Yesterday"
+        days != null && days <= 7 -> "This week"
+        else -> "Earlier"
+    }
 }
 
-private fun filterIcon(filter: NotificationFilter): ImageVector = when (filter) {
-    NotificationFilter.ALL -> Icons.Default.Notifications
-    NotificationFilter.COMMENTS -> Icons.Default.ChatBubble
-    NotificationFilter.LIKES -> Icons.Default.Favorite
-    NotificationFilter.MARKET -> Icons.Default.Storefront
+private fun filterIcon(filter: NotificationCategory): ImageVector = when (filter) {
+    NotificationCategory.ALL -> Icons.Default.Notifications
+    NotificationCategory.MENTIONS -> Icons.Default.AlternateEmail
+    NotificationCategory.COMMENTS -> Icons.Default.ChatBubble
+    NotificationCategory.LIKES -> Icons.Default.Favorite
+    NotificationCategory.FOLLOWS -> Icons.Default.PersonAdd
+    NotificationCategory.MARKET -> Icons.Default.Storefront
+    NotificationCategory.BLINK -> Icons.Default.Campaign
 }
 
 private fun notificationIcon(item: ActivityItem): ImageVector {
@@ -882,25 +912,34 @@ private fun notificationIcon(item: ActivityItem): ImageVector {
     }
 }
 
-private fun notificationAccent(category: NotificationFilter, isOfficial: Boolean): Color {
+private fun notificationAccent(category: NotificationCategory, isOfficial: Boolean): Color {
     if (isOfficial) return BlinkPurple
     return when (category) {
-        NotificationFilter.LIKES -> BlinkPink
-        NotificationFilter.COMMENTS -> BlinkPurple
-        NotificationFilter.MARKET -> Color(0xFF22C55E)
-        NotificationFilter.ALL -> BlinkPink
+        NotificationCategory.MARKET -> Color(0xFF22C55E)
+        NotificationCategory.MENTIONS,
+        NotificationCategory.COMMENTS,
+        NotificationCategory.BLINK -> BlinkPurple
+        NotificationCategory.ALL,
+        NotificationCategory.LIKES,
+        NotificationCategory.FOLLOWS -> BlinkPink
     }
 }
 
-private fun resolvedNotificationCategory(item: ActivityItem): NotificationFilter {
-    if (item.category != NotificationFilter.ALL) return item.category
-
+private fun resolvedNotificationCategory(item: ActivityItem): NotificationCategory {
     val action = item.action.lowercase()
     return when {
-        item.targetType.equals("market", ignoreCase = true) || action.contains("market") -> NotificationFilter.MARKET
-        action.contains("like") || action.contains("save") || action.contains("repost") -> NotificationFilter.LIKES
-        action.contains("comment") || action.contains("reply") || action.contains("mention") -> NotificationFilter.COMMENTS
-        else -> NotificationFilter.ALL
+        item.targetType.equals("notification", ignoreCase = true) -> NotificationCategory.BLINK
+        item.targetType.equals("market", ignoreCase = true) || action.contains("market") || action.contains("order") ->
+            NotificationCategory.MARKET
+        action.contains("mention") -> NotificationCategory.MENTIONS
+        action.contains("comment") || action.contains("reply") -> NotificationCategory.COMMENTS
+        action.contains("follow") -> NotificationCategory.FOLLOWS
+        action.contains("like") || action.contains("save") || action.contains("bookmark") || action.contains("repost") ->
+            NotificationCategory.LIKES
+        item.category == NotificationFilter.MARKET -> NotificationCategory.MARKET
+        item.category == NotificationFilter.COMMENTS -> NotificationCategory.COMMENTS
+        item.category == NotificationFilter.LIKES -> NotificationCategory.LIKES
+        else -> NotificationCategory.ALL
     }
 }
 
