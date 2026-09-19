@@ -146,15 +146,15 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
     }
 
     /**
-     * A failed Google attempt must never expose the stale Sign Up screen underneath.
-     * Reset the partial auth attempt, force a fresh Sign In destination, and rebuild
-     * MainActivity from a clean task. A later successful Google login clears the
-     * sign-in-required flag again in AuthRepository.persistSession().
+     * A failed/cancelled Google attempt must not destroy an account that was already
+     * signed in. AuthRepository rolls back any partially exchanged Google session.
      */
     private fun failAndReturnToSignIn(message: String) {
-        Log.w(TAG, "Returning to Blink sign-in after Google auth failure: $message")
-        SupabaseService.clearSession()
-        AccountSessionStore.setSignInRequired(applicationContext, true)
+        Log.w(TAG, "Returning from Google auth failure: $message")
+        val hasDurableSession =
+            !SupabaseService.accessToken().isNullOrBlank() ||
+                !SupabaseService.refreshToken().isNullOrBlank()
+        AccountSessionStore.setSignInRequired(applicationContext, !hasDurableSession)
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
         startActivity(
             Intent(this, MainActivity::class.java).apply {
