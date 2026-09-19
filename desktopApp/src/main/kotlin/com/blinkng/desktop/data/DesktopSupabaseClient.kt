@@ -24,6 +24,12 @@ import java.util.Base64
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
+private class DesktopApiException(
+    val statusCode: Int,
+    val responseBody: String,
+    message: String,
+) : IllegalStateException(message)
+
 class DesktopSupabaseClient(
     private val sessionStore: DesktopSessionStore = DesktopSessionStore(),
 ) {
@@ -53,9 +59,15 @@ class DesktopSupabaseClient(
             ensureFreshSession()
             fetchProfile(requireSession().userId)
             session
-        }.getOrElse {
-            clearSession()
-            null
+        }.getOrElse { error ->
+            if (isConfirmedSessionExpiry(error)) {
+                clearSession()
+                null
+            } else {
+                // Network outages, 5xx responses, rate limits and temporary profile
+                // failures must not erase a valid desktop session.
+                session ?: stored
+            }
         }
     }
 
@@ -811,6 +823,17 @@ class DesktopSupabaseClient(
         reduceMotion = row.optBoolean("reduce_motion"),
     )
 
+    private fun isConfirmedSessionExpiry(error: Throwable): Boolean {
+        val apiError = error as? DesktopApiException ?: return false
+        if (apiError.statusCode !in setOf(400, 401, 403)) return false
+        val body = apiError.responseBody.lowercase()
+        return body.contains("refresh_token_not_found") ||
+            body.contains("invalid refresh token") ||
+            (body.contains("refresh token") && body.contains("revoked")) ||
+            body.contains("invalid_grant") ||
+            body.contains("session_not_found")
+    }
+
     private fun clearSession() {
         session = null
         profileCache.clear()
@@ -929,7 +952,11 @@ class DesktopSupabaseClient(
                         json.optString("message").ifBlank { json.optString("error_description").ifBlank { json.optString("error") } }
                     }
                 }.getOrNull().orEmpty()
-                throw IllegalStateException(message.ifBlank { "Blinkng server request failed (${response.code})." })
+                throw DesktopApiException(
+                    statusCode = response.code,
+                    responseBody = body,
+                    message = message.ifBlank { "Blinkng server request failed (${response.code})." },
+                )
             }
             return body
         }
