@@ -145,9 +145,12 @@ fun ActivityScreen(
             }
     }
 
-    val unread = activities.count { it.isUnread }
-    val filtered = remember(activities, actorProfiles, filter, viewMode, searchQuery) {
-        activities.filter { item ->
+    val timelineActivities = remember(activities) {
+        activities.filterNot { it.targetType.equals("CHAT", ignoreCase = true) }
+    }
+    val unread = timelineActivities.count { it.isUnread }
+    val filtered = remember(timelineActivities, actorProfiles, filter, viewMode, searchQuery) {
+        timelineActivities.filter { item ->
             val categoryMatches = filter == NotificationCategory.ALL || resolvedNotificationCategory(item) == filter
             val unreadMatches = viewMode == NotificationViewMode.ALL || item.isUnread
             val query = searchQuery.trim().lowercase()
