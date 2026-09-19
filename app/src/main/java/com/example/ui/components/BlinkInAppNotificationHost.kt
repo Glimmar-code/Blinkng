@@ -45,8 +45,9 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.notification.BlinkInAppNotification
 import com.example.notification.BlinkInAppNotificationCenter
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
 fun BlinkInAppNotificationHost(
@@ -56,19 +57,21 @@ fun BlinkInAppNotificationHost(
     var current by remember { mutableStateOf<BlinkInAppNotification?>(null) }
     var visible by remember { mutableStateOf(false) }
     var upwardDrag by remember { mutableStateOf(0f) }
+    val dismissRequests = remember { Channel<Unit>(capacity = Channel.CONFLATED) }
 
+    // Consume sequentially instead of collectLatest: SharedFlow's buffer becomes a small
+    // foreground queue, so a burst of notifications no longer replaces the banner on screen.
     LaunchedEffect(Unit) {
-        BlinkInAppNotificationCenter.events.collectLatest { event ->
+        BlinkInAppNotificationCenter.events.collect { event ->
             current = event
             upwardDrag = 0f
             visible = true
-        }
-    }
-
-    LaunchedEffect(current?.key, visible) {
-        if (current != null && visible) {
-            delay(4_500L)
+            withTimeoutOrNull(4_500L) {
+                dismissRequests.receive()
+            }
             visible = false
+            delay(200L)
+            current = null
         }
     }
 
@@ -102,14 +105,16 @@ fun BlinkInAppNotificationHost(
                                     upwardDrag += dragAmount
                                 },
                                 onDragEnd = {
-                                    if (upwardDrag < -24f) visible = false
+                                    if (upwardDrag < -24f) {
+                                        dismissRequests.trySend(Unit)
+                                    }
                                     upwardDrag = 0f
                                 },
                                 onDragCancel = { upwardDrag = 0f }
                             )
                         }
                         .clickable {
-                            visible = false
+                            dismissRequests.trySend(Unit)
                             onOpen(event)
                         },
                     shape = RoundedCornerShape(18.dp),
