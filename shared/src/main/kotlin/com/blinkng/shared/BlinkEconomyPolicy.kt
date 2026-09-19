@@ -23,10 +23,13 @@ data class BlinkEconomyPolicy(
     val rewardedMilestones: List<BlinkRewardMilestone> = BlinkEconomyDefaults.MILESTONES,
     val blueVerificationCashNgn: Int = 800,
     val blueVerificationCoinCost: Int = 3_000,
-    val blueVerificationDurationDays: Int = 30,
+    val blueVerificationValidDays: Int = 30,
     val coinPacks: List<BlinkCoinPack> = BlinkEconomyDefaults.COIN_PACKS,
     val cashCheckoutEnabled: Boolean = false,
 ) {
+    val blueVerificationDurationDays: Int
+        get() = blueVerificationValidDays
+
     fun totalRewardForAds(completedAds: Int): Int {
         val clamped = completedAds.coerceIn(0, rewardedAdDailyLimit)
         if (clamped == 0) return 0
