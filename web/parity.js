@@ -240,17 +240,85 @@
   const arrayish=(v)=>Array.isArray(v)?v:(Array.isArray(v?.items)?v.items:[]);
   const pick=(o,...keys)=>keys.find(k=>o&&o[k]!==undefined)?o[keys.find(k=>o&&o[k]!==undefined)]:undefined;
 
+  let activeStoreCatalog=[];
+  let activeStoreBalance=0;
+  let activeStoreVip=false;
+  const storeDisplayPrice=price=>activeStoreVip?Math.max(0,Math.floor(Number(price||0)*.9)):Number(price||0);
+
+  function storePresentation(item) {
+    const id=pick(item,'id','catalog_id','catalogId')||'';
+    const defaults={
+      id,name:pick(item,'name','title')||'Blink item',description:pick(item,'description')||'',
+      label:'PREMIUM',surface:'utility',motion:'Premium reveal',colors:['#7c3aed','#ec4899','#2563eb'],
+      visibleAt:pick(item,'target_type','targetType')||'Blink',fullSurface:false
+    };
+    const known={
+      profile_highlight_1h:{name:'Profile Aura — 1 hour',description:'Transform your complete public profile header with an animated aura, avatar light and coordinated identity accents.',label:'AURA',surface:'profile',motion:'Light sweep',colors:['#7c3aed','#ec4899','#f59e0b'],visibleAt:'Full profile, avatar and identity accents',fullSurface:true},
+      profile_glow_1h:{name:'Neon Profile Aura',label:'NEON',surface:'profile',motion:'Aura pulse',colors:['#7c3aed','#ec4899','#2563eb'],visibleAt:'Full public profile',fullSurface:true},
+      profile_glow_7d:{name:'Seven-Day Aurora',label:'AURORA',surface:'profile',motion:'Aura pulse',colors:['#06b6d4','#7c3aed','#ec4899'],visibleAt:'Full public profile',fullSurface:true},
+      profile_background:{name:'Midnight Profile Theme',label:'MIDNIGHT',surface:'profile',motion:'Gradient drift',colors:['#111827','#7c3aed','#2563eb'],visibleAt:'Full public profile',fullSurface:true},
+      profile_theme_3d:{name:'Prism Profile Theme',label:'PRISM',surface:'profile',motion:'Gradient drift',colors:['#7c3aed','#2563eb','#06b6d4'],visibleAt:'Full public profile',fullSurface:true},
+      profile_ring:{name:'Chrome Avatar Ring',label:'CHROME',surface:'profile',motion:'Static frame',colors:['#2563eb','#7c3aed','#06b6d4'],visibleAt:'Avatar and public identity'},
+      animated_profile_ring:{name:'Orbit Avatar Ring',label:'ORBIT',surface:'profile',motion:'Orbit reveal',colors:['#06b6d4','#7c3aed','#ec4899'],visibleAt:'Avatar and public identity'},
+      premium_profile_frame:{name:'Prestige Avatar Frame',label:'PRESTIGE',surface:'profile',motion:'Light sweep',colors:['#f59e0b','#ec4899','#7c3aed'],visibleAt:'Avatar and public identity'},
+      comment_highlight:{name:'Comment Spotlight',description:'Transform one selected comment into a complete premium card with an animated edge, avatar accent and reaction glow.',label:'SPOTLIGHT',surface:'comment',motion:'Edge reveal',colors:['#ec4899','#7c3aed','#f59e0b'],visibleAt:'Entire selected comment and thread',fullSurface:true},
+      comment_color:{name:'Aurora Comment Style',description:'Apply a coordinated Aurora surface to your comments and replies instead of a small label.',label:'AURORA',surface:'comment',motion:'Gradient drift',colors:['#7c3aed','#2563eb','#06b6d4'],visibleAt:'Entire comment and reply surface',fullSurface:true},
+      comment_entrance_animation:{name:'Comment Premiere',description:'Give one selected comment a polished premium entrance and complete highlighted surface.',label:'PREMIERE',surface:'comment',motion:'Spring reveal',colors:['#06b6d4','#7c3aed','#ec4899'],visibleAt:'Entire selected comment',fullSurface:true},
+      vip_comment_effect:{name:'VIP Comment Signature',label:'VIP',surface:'comment',motion:'Light sweep',colors:['#f59e0b','#ec4899','#7c3aed'],visibleAt:'Entire comment surface',fullSurface:true},
+      chat_bubble_theme:{name:'Premium Conversation Style',label:'CHAT',surface:'chat',motion:'Gradient drift',colors:['#2563eb','#7c3aed','#ec4899'],visibleAt:'Supported conversations',fullSurface:true},
+      special_dm_theme:{name:'Signature DM Theme',label:'CHAT',surface:'chat',motion:'Gradient drift',colors:['#2563eb','#7c3aed','#ec4899'],visibleAt:'Supported direct messages',fullSurface:true},
+      post_border:{name:'Premium Post Signature',label:'POST FX',surface:'post',motion:'Edge reveal',colors:['#7c3aed','#ec4899','#f59e0b'],visibleAt:'Selected post',fullSurface:true},
+      post_highlight_1h:{name:'Premium Post Signature',label:'POST FX',surface:'post',motion:'Edge reveal',colors:['#7c3aed','#ec4899','#f59e0b'],visibleAt:'Selected post',fullSurface:true},
+      blink_vip_10d:{name:'Blink VIP Signature',label:'VIP',surface:'profile',motion:'Royal light sweep',colors:['#f59e0b','#7c3aed','#ec4899'],visibleAt:'Profile, comments, Reels, search and chats',fullSurface:true}
+    };
+    return {...defaults,...(known[id]||{})};
+  }
+
+  function storePreviewMarkup(p,compact=false) {
+    const vars=`--fx1:${p.colors[0]};--fx2:${p.colors[1]};--fx3:${p.colors[2]}`;
+    if(compact)return `<div class="store-mini-preview ${esc(p.surface)}" style="${vars}"><span>${esc(p.label)}</span><i></i></div>`;
+    if(p.surface==='profile')return `<div class="premium-preview profile" style="${vars}"><div class="premium-avatar">B</div><div><strong>Blink Creator</strong><small>@blinkcreator</small><p>128 posts&nbsp; • &nbsp;12.4K followers&nbsp; • &nbsp;Campus #7</p></div><b>${esc(p.label)}</b></div>`;
+    if(p.surface==='comment')return `<div class="premium-preview comment" style="${vars}"><div class="premium-avatar">B</div><div><strong>Blink Creator <small>@blinkcreator</small></strong><p>This comment now owns the complete premium surface—not a tiny label.</p><small>Reply&nbsp;&nbsp; ♡ 248</small></div><b>${esc(p.label)}</b></div>`;
+    if(p.surface==='chat')return `<div class="premium-preview chat" style="${vars}"><p>The new Blink Store feels premium.</p><p>Every item shows exactly where it works.</p></div>`;
+    if(p.surface==='post')return `<div class="premium-preview post" style="${vars}"><strong>Blink Creator</strong><p>A complete premium post treatment with a real visual signature.</p><small>♡ 2.8K&nbsp;&nbsp; ◯ 418&nbsp;&nbsp; ↗ Share</small></div>`;
+    return `<div class="premium-preview utility" style="${vars}"><div class="premium-avatar">B</div><strong>${esc(p.name)}</strong><small>${esc(p.label)}</small></div>`;
+  }
+
   async function renderStore() {
     if (!authGuard()) return; loading('Blink Store');
     try {
       const s=await storeState(); const catalog=arrayish(s?.catalog||s?.items||[]); const balance=pick(s,'balance','coin_balance','coinBalance')||0; const vip=s?.vip||{};
-      shell('Blink Store',`<section class="parity-hero"><div><span class="parity-eyebrow">Same economy as Android</span><h2>${money(balance)}</h2><p>Buy with Blink Coins. Charges and entitlements remain server-side.</p></div><div class="hero-actions"><button class="parity-btn" data-parity-go="/vault">Open Vault</button><button class="parity-btn" data-parity-go="/vip">VIP ${pick(vip,'active')?'active':'status'}</button></div></section><div class="parity-grid store-grid">${catalog.map(item=>storeCard(item,balance)).join('')||'<div class="parity-panel"><h3>Store catalog unavailable</h3><p>Refresh after your server catalog is available.</p></div>'}</div>`, `<section class="parity-panel"><h3>Wallet</h3><div class="parity-big">${fmt(balance)}</div><p class="muted">Blink Coins</p><button class="parity-btn" data-parity-go="/vault">Inventory</button></section>${rightRail()}`);
+      activeStoreCatalog=catalog; activeStoreBalance=Number(balance); activeStoreVip=!!pick(vip,'active');
+      const categories=[...new Set(catalog.map(x=>pick(x,'category')||'Store'))].sort();
+      shell('Blink Store',`<section class="parity-hero store-hero"><div><span class="parity-eyebrow">Premium surfaces · honest previews</span><h2>${money(balance)}</h2><p>See the real effect before you buy. Charges, ownership, activation and expiry stay server-authoritative.</p></div><div class="hero-actions"><button class="parity-btn" data-parity-go="/vault">Open Vault</button><button class="parity-btn" data-parity-go="/vip">VIP ${activeStoreVip?'active':'status'}</button></div></section><section class="store-tools"><input class="parity-field" data-store-search placeholder="Search effects, themes and boosts" aria-label="Search Blink Store"><select class="parity-field compact" data-store-category aria-label="Store category"><option value="">All categories</option>${categories.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select></section><div class="parity-grid store-grid" data-store-grid>${catalog.map(item=>storeCard(item,balance)).join('')||'<div class="parity-panel"><h3>Store catalog unavailable</h3><p>Refresh after your server catalog is available.</p></div>'}</div><div class="parity-panel store-empty" data-store-empty hidden><h3>No matching items</h3><p>Try another effect, theme or category.</p></div>`, `<section class="parity-panel"><h3>Wallet</h3><div class="parity-big">${fmt(balance)}</div><p class="muted">Blink Coins</p><button class="parity-btn" data-parity-go="/vault">Inventory</button></section>${rightRail()}`);
       document.querySelectorAll('[data-buy]').forEach(btn=>btn.onclick=()=>purchaseItem(btn.dataset.buy,Number(btn.dataset.multiplier||1)));
+      document.querySelectorAll('[data-store-preview]').forEach(btn=>btn.onclick=()=>openStorePreview(btn.dataset.storePreview));
+      const search=document.querySelector('[data-store-search]'),category=document.querySelector('[data-store-category]');
+      const filter=()=>{
+        const q=String(search?.value||'').trim().toLowerCase(),c=String(category?.value||'').toLowerCase(); let visible=0;
+        document.querySelectorAll('[data-store-card]').forEach(card=>{const show=(!q||card.dataset.search.includes(q))&&(!c||card.dataset.category===c);card.hidden=!show;if(show)visible++;});
+        const empty=document.querySelector('[data-store-empty]');if(empty)empty.hidden=visible!==0;
+      };
+      if(search)search.oninput=filter;if(category)category.onchange=filter;
     } catch(e) { shell('Blink Store',errorCard(e)); }
   }
   function storeCard(item,balance) {
-    const id=pick(item,'id','catalog_id','catalogId')||''; const name=pick(item,'name','title')||'Blink item'; const desc=pick(item,'description')||''; const price=Number(pick(item,'price','coin_price','coinPrice')||0); const category=pick(item,'category')||'Store'; const multipliers=pick(item,'boost_multipliers','boostMultipliers')||[];
-    return `<article class="parity-panel store-card"><div class="store-icon">${esc(iconFor(category))}</div><span class="parity-chip">${esc(category)}</span><h3>${esc(name)}</h3><p>${esc(desc)}</p><div class="store-foot"><strong>${fmt(price)} coins</strong>${Array.isArray(multipliers)&&multipliers.length>1?`<select data-mult-select="${esc(id)}">${multipliers.map(m=>`<option value="${m}">${m}×</option>`).join('')}</select>`:''}<button class="parity-btn primary" data-buy="${esc(id)}" ${balance<price?'disabled':''}>Buy</button></div></article>`;
+    const id=pick(item,'id','catalog_id','catalogId')||''; const p=storePresentation(item); const name=p.name; const desc=p.description; const price=Number(pick(item,'price','coin_price','coinPrice')||0); const category=pick(item,'category')||'Store'; const multipliers=pick(item,'boost_multipliers','boostMultipliers')||[];
+    const displayPrice=storeDisplayPrice(price);
+    const searchable=`${name} ${desc} ${category} ${p.label} ${p.visibleAt}`.toLowerCase();
+    return `<article class="parity-panel store-card" data-store-card data-search="${esc(searchable)}" data-category="${esc(String(category).toLowerCase())}">${storePreviewMarkup(p,true)}<div class="store-card-meta"><span class="parity-chip">${esc(category)}</span><span class="effect-label">${esc(p.label)}</span></div><h3>${esc(name)}</h3><p>${esc(desc)}</p><small class="store-visible">Visible on: ${esc(p.visibleAt)}</small><div class="store-foot"><strong>${fmt(displayPrice)} coins${activeStoreVip?` <small>VIP · was ${fmt(price)}</small>`:''}</strong>${Array.isArray(multipliers)&&multipliers.length>1?`<select data-mult-select="${esc(id)}">${multipliers.map(m=>`<option value="${m}">${m}×</option>`).join('')}</select>`:''}<button class="parity-btn" data-store-preview="${esc(id)}">Preview</button><button class="parity-btn primary" data-buy="${esc(id)}" ${balance<displayPrice?'disabled':''}>Buy</button></div></article>`;
+  }
+  function openStorePreview(id) {
+    const item=activeStoreCatalog.find(x=>(pick(x,'id','catalog_id','catalogId')||'')===id);if(!item)return;
+    const p=storePresentation(item),price=Number(pick(item,'price','coin_price','coinPrice')||0),vipOnly=!!pick(item,'vip_only','vipOnly');
+    const displayPrice=storeDisplayPrice(price);
+    document.querySelector('[data-store-preview-modal]')?.remove();
+    document.body.insertAdjacentHTML('beforeend',`<div class="parity-modal-backdrop store-preview-backdrop" data-store-preview-modal role="dialog" aria-modal="true" aria-labelledby="store-preview-title"><div class="parity-modal store-preview-modal"><header><div><span class="parity-eyebrow">${esc(p.label)} · ${esc(p.motion)}</span><h2 id="store-preview-title">${esc(p.name)}</h2></div><button data-close-store-preview aria-label="Close preview">×</button></header><div class="preview-kicker">Before</div><div class="standard-preview">Standard Blink surface</div><div class="preview-kicker premium">With effect</div>${storePreviewMarkup(p)}<p>${esc(p.description)}</p><div class="preview-facts"><span><b>Visibility</b>${esc(p.visibleAt)}</span><span><b>Surface</b>${p.fullSurface?'Complete surface':'Premium accent'}</span><span><b>Motion</b>${esc(p.motion)}</span></div><div class="preview-purchase"><div><strong>${fmt(displayPrice)} Blink Coins</strong><small>Balance: ${fmt(activeStoreBalance)}${activeStoreVip?` · VIP price (was ${fmt(price)})`:''}</small></div><button class="parity-btn primary" data-preview-buy ${activeStoreBalance<displayPrice||vipOnly&&!activeStoreVip?'disabled':''}>${vipOnly&&!activeStoreVip?'VIP required':activeStoreBalance<displayPrice?'Not enough coins':'Buy'}</button></div></div></div>`);
+    const modal=document.querySelector('[data-store-preview-modal]');
+    const close=()=>modal?.remove();modal.querySelector('[data-close-store-preview]').onclick=close;
+    modal.onclick=e=>{if(e.target===modal)close();};
+    const buy=modal.querySelector('[data-preview-buy]');if(buy)buy.onclick=()=>{close();purchaseItem(id,1);};
+    modal.querySelector('[data-close-store-preview]')?.focus();
   }
   async function purchaseItem(id,multiplier=1) {
     const select=document.querySelector(`[data-mult-select="${CSS.escape(id)}"]`); if(select) multiplier=Number(select.value||1);

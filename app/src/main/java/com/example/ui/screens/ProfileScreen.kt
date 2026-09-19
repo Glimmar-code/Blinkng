@@ -65,6 +65,9 @@ import com.example.ui.components.FollowerGrowthChart
 import com.example.ui.components.PostCard
 import com.example.ui.components.VerifiedMark
 import com.example.ui.components.BlinkVipMarkForUsername
+import com.example.ui.components.BlinkPremiumAvatarFrame
+import com.example.ui.components.BlinkPremiumProfileSurface
+import com.example.ui.components.rememberBlinkPublicPremiumIdentity
 import com.example.ui.theme.*
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
@@ -165,6 +168,10 @@ fun ProfileScreen(
     val scrollState = rememberLazyListState()
 
     val profileCompletion = remember(profile) { calculateProfileCompletion(profile) }
+    val premiumIdentity by rememberBlinkPublicPremiumIdentity(
+        username = profile.username,
+        knownVip = profile.isBlinkVip,
+    )
 
     val headerCollapsed by remember {
         derivedStateOf { scrollState.firstVisibleItemIndex > 0 }
@@ -392,12 +399,18 @@ fun ProfileScreen(
                 // IDENTITY — staggered entrance
                 // ============================================================
                 item(key = "identity") {
-                    Column(
+                    BlinkPremiumProfileSurface(
+                        identity = premiumIdentity,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 18.dp)
+                            .padding(horizontal = 10.dp)
                             .offset(y = (-40).dp)
                     ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 14.dp)
+                        ) {
 
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
 
@@ -412,32 +425,37 @@ fun ProfileScreen(
                                         label = "avatarScale"
                                     )
 
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .scale(avatarScale)
-                                            .clip(CircleShape)
-                                            .background(BlinkPink.copy(alpha = glowAlpha))
-                                            .padding(3.dp)
+                                    BlinkPremiumAvatarFrame(
+                                        identity = premiumIdentity,
+                                        size = 100.dp,
+                                        modifier = Modifier.scale(avatarScale),
                                     ) {
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize()
                                                 .clip(CircleShape)
-                                                .background(bgColor)
+                                                .background(BlinkPink.copy(alpha = glowAlpha))
                                                 .padding(3.dp)
                                         ) {
-                                            AsyncImage(
-                                                model = profile.avatarUrl,
-                                                error = painterResource(R.drawable.ic_default_profile),
-                                                fallback = painterResource(R.drawable.ic_default_profile),
-                                                contentDescription = "Profile picture",
-                                                contentScale = ContentScale.Crop,
+                                            Box(
                                                 modifier = Modifier
                                                     .fillMaxSize()
                                                     .clip(CircleShape)
-                                                    .clickable { showAvatarViewer = true }
-                                            )
+                                                    .background(bgColor)
+                                                    .padding(3.dp)
+                                            ) {
+                                                AsyncImage(
+                                                    model = profile.avatarUrl,
+                                                    error = painterResource(R.drawable.ic_default_profile),
+                                                    fallback = painterResource(R.drawable.ic_default_profile),
+                                                    contentDescription = "Profile picture",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .clip(CircleShape)
+                                                        .clickable { showAvatarViewer = true }
+                                                )
+                                            }
                                         }
                                     }
 
@@ -804,6 +822,7 @@ fun ProfileScreen(
                                 }
                             }
                         }
+                    }
                     }
                 }
 
