@@ -1185,7 +1185,7 @@ fun getCurrentUserId(): String? {
                     ) {
                         null
                     } else {
-                        enrichProfileWithLatestRanks(
+                        enrichProfileForDetail(
                             parseUserProfile(
                                 array.getJSONObject(0)
                             )
@@ -1266,7 +1266,7 @@ fun getCurrentUserId(): String? {
                     ) {
                         null
                     } else {
-                        enrichProfileWithLatestRanks(
+                        enrichProfileForDetail(
                             parseUserProfile(
                                 array.getJSONObject(0)
                             )
@@ -1350,7 +1350,7 @@ fun getCurrentUserId(): String? {
                     ) {
                         null
                     } else {
-                        enrichProfileWithLatestRanks(
+                        enrichProfileForDetail(
                             parseUserProfile(
                                 array.getJSONObject(0)
                             )
@@ -1369,6 +1369,46 @@ fun getCurrentUserId(): String? {
                 null
             }
         }
+
+    private suspend fun enrichProfileForDetail(profile: UserProfile): UserProfile {
+        val ranked = enrichProfileWithLatestRanks(profile)
+        return enrichOwnerProfileViews(ranked)
+    }
+
+    private suspend fun enrichOwnerProfileViews(profile: UserProfile): UserProfile {
+        val currentUserId = getCurrentUserId() ?: return profile
+        if (!profile.id.equals(currentUserId, ignoreCase = true)) return profile
+
+        return try {
+            val since = java.time.Instant.now()
+                .minus(7, java.time.temporal.ChronoUnit.DAYS)
+                .toString()
+            val request = newRequestBuilder(
+                "/rest/v1/profile_views" +
+                    "?select=id" +
+                    "&profile_id=eq.${encodeValue(profile.id)}" +
+                    "&created_at=gte.${encodeValue(since)}" +
+                    "&limit=1",
+                authenticated = true
+            )
+                .addHeader("Prefer", "count=exact")
+                .get()
+                .build()
+
+            executeRequest(request).use { response ->
+                if (!response.isSuccessful) return@use profile
+                val total = response.header("Content-Range")
+                    ?.substringAfterLast("/")
+                    ?.takeIf { it != "*" }
+                    ?.toIntOrNull()
+                    ?: return@use profile
+                profile.copy(profileViewsThisWeek = total)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "PROFILE_VIEWS_LIVE exception user=${profile.username}", e)
+            profile
+        }
+    }
 
     private suspend fun enrichProfileWithLatestRanks(profile: UserProfile): UserProfile {
         if (profile.id.isBlank() && profile.username.isBlank()) return profile
@@ -2718,7 +2758,7 @@ suspend fun uploadPostMedia(
 
     suspend fun fetchLeaderboard(): List<LeaderboardUser> = withContext(Dispatchers.IO) {
         try {
-            val raw = executeRequest(newRequestBuilder("/rest/v1/game_leaderboard?select=*&order=score.desc,world_rank.asc&limit=50", true).get().build()).use { resp ->
+            val raw = executeRequest(newRequestBuilder("/rest/v1/game_leaderboard?select=*&order=world_rank.asc&limit=50", true).get().build()).use { resp ->
                 val body = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) return@withContext emptyList()
                 body
@@ -2846,6 +2886,17 @@ suspend fun uploadPostMedia(
                             "image_url",
                             item.images.firstOrNull()
                                 ?: ""
+                        )
+
+                        put(
+                            "image_urls",
+                            JSONArray().apply {
+                                item.images
+                                    .map { it.trim() }
+                                    .filter { it.isNotBlank() }
+                                    .distinct()
+                                    .forEach { put(it) }
+                            }
                         )
 
                         put(
@@ -3200,16 +3251,21 @@ suspend fun uploadPostMedia(
     }
 
     private fun parseMarketItem(obj: JSONObject): MarketItem {
-        val imagesArray = obj.optJSONArray("images")
         val imagesList = mutableListOf<String>()
-        if (imagesArray != null) {
-            for (i in 0 until imagesArray.length()) {
-                val url = imagesArray.optString(i, "")
-                if (url.isNotBlank()) imagesList.add(url)
+
+        fun appendImages(array: JSONArray?) {
+            if (array == null) return
+            for (i in 0 until array.length()) {
+                val url = array.optString(i, "").trim()
+                if (url.isNotBlank() && url !in imagesList) imagesList.add(url)
             }
-        } else {
-            val img = obj.optString("image_url", "")
-            if (img.isNotBlank()) imagesList.add(img)
+        }
+
+        appendImages(obj.optJSONArray("image_urls"))
+        if (imagesList.isEmpty()) appendImages(obj.optJSONArray("images"))
+        if (imagesList.isEmpty()) {
+            val image = obj.cleanString("image_url")
+            if (image.isNotBlank()) imagesList.add(image)
         }
 
         val sellerIsVerified = obj.optBoolean("seller_is_verified", false) || obj.optString("verification_badge", "").equals("BLUE", ignoreCase = true) || obj.optString("verification_badge", "").equals("GOLD", ignoreCase = true)
@@ -3239,7 +3295,9 @@ suspend fun uploadPostMedia(
             category = obj.optString("category", ""),
             condition = obj.optString("condition", ""),
             description = obj.optString("description", ""),
-            postedTime = obj.optString("posted_time", obj.optString("time_ago", "Recently")),
+            postedTime = obj.cleanString("posted_time")
+                .ifBlank { obj.cleanString("time_ago") }
+                .ifBlank { formatTimeAgo(obj.cleanString("created_at")) },
             isFeatured = obj.optBoolean("is_featured", false),
             isSold = obj.optBoolean("is_sold", false)
         )
@@ -3324,6 +3382,11 @@ suspend fun uploadPostMedia(
                 it.name.equals(availabilityStr, ignoreCase = true)
         } ?: AvailabilityStatus.NONE
 
+        val blinkVipUntil = obj.cleanString("blink_vip_until")
+        val verifiedAtMillis = parseTimestampMillis(obj.cleanString("verified_at"))
+            .takeIf { it > 0L }
+            ?: obj.optLong("verified_at_millis", 0L)
+
         return UserProfile(
             id = obj.optString("id", ""),
             fullName = obj.cleanString("full_name").ifBlank { obj.cleanString("name") },
@@ -3331,6 +3394,11 @@ suspend fun uploadPostMedia(
             avatarUrl = obj.cleanString("avatar_url"),
             coverPhotoUrl = obj.cleanString("cover_photo").ifBlank { obj.cleanString("cover_photo_url").ifBlank { obj.cleanString("cover_url") } },
             verificationBadge = badge,
+            isBlinkVip = obj.optBoolean(
+                "is_blink_vip",
+                obj.optBoolean("is_vip", false)
+            ) || isFutureTimestamp(blinkVipUntil),
+            blinkVipUntil = blinkVipUntil,
             professionalHeadline = obj.cleanString("professional_headline"),
             currentJobTitle = obj.cleanString("current_job_title"),
             university = obj.cleanString("university"),
@@ -3361,10 +3429,12 @@ suspend fun uploadPostMedia(
             onlineNow = obj.optBoolean("online_now", obj.optBoolean("is_online", false)),
             relationshipStatus = obj.cleanString("relationship_status").ifBlank { "Single" },
             lastSeenAt = obj.cleanString("last_seen_at").ifBlank { obj.cleanString("last_seen") },
-            verifiedAtMillis = obj.optLong("verified_at_millis", 0L),
+            verifiedAtMillis = verifiedAtMillis,
+            createdAt = obj.cleanString("created_at"),
             joinedLabel = obj.cleanString("joined_label"),
             isSellerActive = obj.optBoolean("is_seller_active", false),
             sellerStoreName = obj.cleanString("seller_store_name"),
+            points = obj.optInt("points", 0),
             badges = badgesList
         )
     }
@@ -3575,6 +3645,21 @@ suspend fun uploadPostMedia(
                 Date()
             )
     }
+
+    private fun parseTimestampMillis(rawTimestamp: String): Long {
+        val raw = rawTimestamp.trim()
+        if (raw.isBlank() || raw.equals("null", ignoreCase = true)) return 0L
+
+        return runCatching {
+            java.time.Instant.parse(raw).toEpochMilli()
+        }.getOrNull()
+            ?: runCatching {
+                java.time.OffsetDateTime.parse(raw).toInstant().toEpochMilli()
+            }.getOrDefault(0L)
+    }
+
+    private fun isFutureTimestamp(rawTimestamp: String): Boolean =
+        parseTimestampMillis(rawTimestamp) > System.currentTimeMillis()
 
     private fun formatTimeAgo(dateString: String): String =
         TimeFormatters.relativeOrDate(dateString)
