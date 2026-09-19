@@ -54,6 +54,11 @@ import java.util.concurrent.TimeUnit
 
 class SupabaseService {
 
+    data class SessionSnapshot(
+        val accessToken: String?,
+        val refreshToken: String?
+    )
+
     companion object {
         private const val TAG = "SupabaseService"
 
@@ -113,11 +118,6 @@ class SupabaseService {
                     apply()
                 }
         }
-
-        data class SessionSnapshot(
-            val accessToken: String?,
-            val refreshToken: String?
-        )
 
         fun sessionSnapshot(): SessionSnapshot =
             SessionSnapshot(
