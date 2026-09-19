@@ -15,6 +15,7 @@ import com.example.MainActivity
 import com.example.R
 import com.example.data.repository.AuthRepository
 import com.example.data.supabase.SupabaseService
+import com.example.util.startActivitySafely
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.launch
@@ -120,14 +121,18 @@ class GoogleAuthCallbackActivity : ComponentActivity() {
             }
 
             Log.d(TAG, "Native Google authentication completed successfully")
-            startActivity(
-                Intent(this, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TASK or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-                }
-            )
-            finish()
+            if (
+                startActivitySafely(
+                    Intent(this, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    },
+                    "Unable to reopen Blink."
+                )
+            ) {
+                finish()
+            }
         } catch (error: GetCredentialCancellationException) {
             Log.i(TAG, "Google credential flow cancelled by user")
             failAndReturnToSignIn("Google sign-in was cancelled. Tap Continue with Google to try again.")
