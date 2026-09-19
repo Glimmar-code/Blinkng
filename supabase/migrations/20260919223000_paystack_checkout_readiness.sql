@@ -24,7 +24,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   v_user uuid := auth.uid();
   v_cost integer := 3000;
@@ -107,7 +107,7 @@ begin
     'expires_at',v_expires_at
   );
 end
-$;
+$$;
 
 revoke all on function public.purchase_blink_blue_verification_with_coins() from public, anon;
 grant execute on function public.purchase_blink_blue_verification_with_coins() to authenticated;
@@ -117,7 +117,7 @@ returns jsonb
 language plpgsql
 stable security definer
 set search_path = ''
-as $
+as $$
 declare
   v_user uuid := auth.uid();
   v_base integer;
@@ -174,7 +174,7 @@ begin
     'balance',coalesce(v_balance,0)
   );
 end
-$;
+$$;
 
 revoke all on function public.get_blink_economy_status() from public, anon;
 grant execute on function public.get_blink_economy_status() to authenticated;
