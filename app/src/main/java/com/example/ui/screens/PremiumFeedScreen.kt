@@ -649,8 +649,15 @@ private fun PremiumHomeFeed(
             posts.asSequence()
                 .filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
                 .filter { post ->
-                    laneIndex == 0 ||
-                        post.author.trim().removePrefix("@").lowercase() in followedAuthorKeys
+                    if (laneIndex == 0) {
+                        true
+                    } else {
+                        post.authorUsername
+                            .ifBlank { post.author }
+                            .trim()
+                            .removePrefix("@")
+                            .lowercase() in followedAuthorKeys
+                    }
                 }
                 .filter { post ->
                     when (filter) {
