@@ -39,7 +39,7 @@ class BlinkEconomyPolicyTest {
     @Test
     fun blueVerificationIsThirtyDayRenewablePolicy() {
         assertEquals(3_000, policy.blueVerificationCoinCost)
-        assertEquals(30, policy.blueVerificationDurationDays)
+        assertEquals(30, policy.blueVerificationValidDays)
     }
 
     @Test
