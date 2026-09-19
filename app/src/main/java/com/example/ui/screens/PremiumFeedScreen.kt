@@ -50,7 +50,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -98,6 +97,12 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlin.random.Random
 
 private enum class PremiumFeedFilter { ALL, PHOTOS, POLLS }
+
+private enum class PremiumFeedChromeState {
+    EXPANDED,
+    COMPACT,
+    IMMERSIVE
+}
 
 private const val FEED_SPONSORED_INTERVAL = 8
 
@@ -514,17 +519,24 @@ private fun PremiumHomeFeed(
             .apply()
     }
     var filterMenuVisible by remember { mutableStateOf(false) }
-    var fabExpanded by remember { mutableStateOf(true) }
     var screenVisible by remember { mutableStateOf(false) }
     var horizontalDrag by remember { mutableStateOf(0f) }
     val swipeThreshold = with(density) { 64.dp.toPx() }
-    val primaryCollapseThreshold = with(density) { 20.dp.toPx() }
-    val immersiveCollapseThreshold = with(density) { 56.dp.toPx() }
-    val scrollAccumulator = remember { floatArrayOf(0f) }
-    var chromeStage by remember(laneResumeKey) { mutableIntStateOf(0) }
-    var primaryHeaderVisible by remember(laneResumeKey) { mutableStateOf(true) }
-    var secondaryChromeVisible by remember(laneResumeKey) { mutableStateOf(true) }
-    var bottomChromeVisible by remember { mutableStateOf(true) }
+
+    // One state machine owns all feed chrome. Direction changes must travel far enough
+    // to be intentional, so fling settling and tiny finger jitter cannot make controls
+    // disappear and immediately bounce back.
+    val primaryCollapseThreshold = with(density) { 52.dp.toPx() }
+    val immersiveCollapseThreshold = with(density) { 104.dp.toPx() }
+    val restoreChromeThreshold = with(density) { 40.dp.toPx() }
+    val downwardScrollAccumulator = remember { floatArrayOf(0f) }
+    val upwardScrollAccumulator = remember { floatArrayOf(0f) }
+    var chromeState by remember(laneResumeKey) {
+        mutableStateOf(PremiumFeedChromeState.EXPANDED)
+    }
+    val primaryHeaderVisible = chromeState == PremiumFeedChromeState.EXPANDED
+    val secondaryChromeVisible = chromeState != PremiumFeedChromeState.IMMERSIVE
+    val fabExpanded = chromeState == PremiumFeedChromeState.EXPANDED
 
     val networkMonitor = remember(context) { NetworkMonitor(context) }
     val isOnline by networkMonitor.isOnline.collectAsState(
@@ -644,7 +656,8 @@ private fun PremiumHomeFeed(
     val scrollConnection = remember(
         onBottomBarVisibilityChange,
         primaryCollapseThreshold,
-        immersiveCollapseThreshold
+        immersiveCollapseThreshold,
+        restoreChromeThreshold
     ) {
         object : NestedScrollConnection {
             override fun onPreScroll(
@@ -652,45 +665,41 @@ private fun PremiumHomeFeed(
                 source: NestedScrollSource
             ): androidx.compose.ui.geometry.Offset {
                 when {
-                    available.y < 0f -> {
-                        // Moving deeper into the feed. Collapse the primary header first,
-                        // then require a second deliberate scroll distance before entering
-                        // immersive mode. This hysteresis avoids tiny-movement flicker.
-                        scrollAccumulator[0] += -available.y
+                    available.y < -0.5f -> {
+                        upwardScrollAccumulator[0] = 0f
+                        downwardScrollAccumulator[0] += -available.y
+
                         when {
-                            chromeStage == 0 && scrollAccumulator[0] >= primaryCollapseThreshold -> {
-                                chromeStage = 1
-                                primaryHeaderVisible = false
-                                secondaryChromeVisible = true
-                                bottomChromeVisible = true
-                                fabExpanded = true
-                                scrollAccumulator[0] = 0f
+                            chromeState == PremiumFeedChromeState.EXPANDED &&
+                                downwardScrollAccumulator[0] >= primaryCollapseThreshold -> {
+                                chromeState = PremiumFeedChromeState.COMPACT
+                                downwardScrollAccumulator[0] = 0f
                                 onBottomBarVisibilityChange(true)
                             }
-                            chromeStage == 1 && scrollAccumulator[0] >= immersiveCollapseThreshold -> {
-                                chromeStage = 2
-                                primaryHeaderVisible = false
-                                secondaryChromeVisible = false
-                                bottomChromeVisible = false
-                                fabExpanded = false
-                                scrollAccumulator[0] = 0f
+
+                            chromeState == PremiumFeedChromeState.COMPACT &&
+                                downwardScrollAccumulator[0] >= immersiveCollapseThreshold -> {
+                                chromeState = PremiumFeedChromeState.IMMERSIVE
+                                downwardScrollAccumulator[0] = 0f
                                 onBottomBarVisibilityChange(false)
                             }
                         }
                     }
 
-                    available.y > 0f -> {
-                        // Any meaningful reverse scroll leaves immersive mode immediately.
-                        // The primary header intentionally stays hidden until the list is
-                        // genuinely back at the first post.
-                        scrollAccumulator[0] = 0f
-                        if (chromeStage == 2) {
-                            chromeStage = 1
-                            primaryHeaderVisible = false
-                            secondaryChromeVisible = true
-                            bottomChromeVisible = true
-                            fabExpanded = true
-                            onBottomBarVisibilityChange(true)
+                    available.y > 0.5f -> {
+                        downwardScrollAccumulator[0] = 0f
+
+                        // Only a deliberate upward travel restores immersive chrome.
+                        // A tiny reverse delta from fling physics is intentionally ignored.
+                        if (chromeState == PremiumFeedChromeState.IMMERSIVE) {
+                            upwardScrollAccumulator[0] += available.y
+                            if (upwardScrollAccumulator[0] >= restoreChromeThreshold) {
+                                chromeState = PremiumFeedChromeState.COMPACT
+                                upwardScrollAccumulator[0] = 0f
+                                onBottomBarVisibilityChange(true)
+                            }
+                        } else {
+                            upwardScrollAccumulator[0] = 0f
                         }
                     }
                 }
@@ -727,17 +736,16 @@ private fun PremiumHomeFeed(
             }
         }
 
-        scrollAccumulator[0] = 0f
-        if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 1) {
-            chromeStage = 0
-            primaryHeaderVisible = true
+        downwardScrollAccumulator[0] = 0f
+        upwardScrollAccumulator[0] = 0f
+        chromeState = if (
+            listState.firstVisibleItemIndex == 0 &&
+            listState.firstVisibleItemScrollOffset <= 1
+        ) {
+            PremiumFeedChromeState.EXPANDED
         } else {
-            chromeStage = 1
-            primaryHeaderVisible = false
+            PremiumFeedChromeState.COMPACT
         }
-        secondaryChromeVisible = true
-        bottomChromeVisible = true
-        fabExpanded = true
         onBottomBarVisibilityChange(true)
     }
 
@@ -745,23 +753,27 @@ private fun PremiumHomeFeed(
         snapshotFlow {
             listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
         }.collectLatest { (index, offset) ->
+            // Reaching the real top is the only automatic route back to the fully
+            // expanded header. Reverse scrolling elsewhere stays compact.
+            if (
+                index == 0 &&
+                offset <= 1 &&
+                chromeState != PremiumFeedChromeState.EXPANDED
+            ) {
+                chromeState = PremiumFeedChromeState.EXPANDED
+                downwardScrollAccumulator[0] = 0f
+                upwardScrollAccumulator[0] = 0f
+                onBottomBarVisibilityChange(true)
+            }
+
+            // Debounce resume-position writes so SharedPreferences is not updated on
+            // every scroll frame. collectLatest cancels this delay while motion continues.
             if (!restoringScroll && restoredLaneResumeKey == laneResumeKey) {
+                delay(300)
                 resumePrefs.edit()
                     .putInt("home_scroll_index:$laneResumeKey", index)
                     .putInt("home_scroll_offset:$laneResumeKey", offset)
                     .apply()
-            }
-
-            // The primary header is special: reverse scrolling never restores it.
-            // Only the actual top of the feed (first item, zero offset) can do that.
-            if (index == 0 && offset <= 1 && chromeStage != 0) {
-                chromeStage = 0
-                primaryHeaderVisible = true
-                secondaryChromeVisible = true
-                bottomChromeVisible = true
-                fabExpanded = true
-                scrollAccumulator[0] = 0f
-                onBottomBarVisibilityChange(true)
             }
         }
     }
@@ -777,12 +789,9 @@ private fun PremiumHomeFeed(
             } else {
                 onRefresh()
             }
-            scrollAccumulator[0] = 0f
-            chromeStage = 0
-            primaryHeaderVisible = true
-            secondaryChromeVisible = true
-            bottomChromeVisible = true
-            fabExpanded = true
+            downwardScrollAccumulator[0] = 0f
+            upwardScrollAccumulator[0] = 0f
+            chromeState = PremiumFeedChromeState.EXPANDED
             onBottomBarVisibilityChange(true)
         }
     }
