@@ -1861,8 +1861,8 @@ private fun storeIcon(item: BlinkStoreItem): ImageVector = when (item.category) 
     "VIP" -> Icons.Outlined.Verified
     "Social" -> Icons.Filled.Favorite
     "Analytics" -> Icons.Filled.Notifications
-    "Campus" -> Icons.Filled.School
-    "Earned" -> Icons.Filled.EmojiEvents
+    "Campus" -> Icons.Filled.Person
+    "Earned" -> Icons.Outlined.EmojiEvents
     "Seasonal" -> Icons.Outlined.Redeem
     else -> Icons.Filled.Apps
 }
