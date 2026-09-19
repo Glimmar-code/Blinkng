@@ -230,19 +230,28 @@ object AccountSessionStore {
     }
 
     private fun save(context: Context, accounts: List<Account>) {
-        val array = JSONArray()
-        accounts.forEach { a ->
-            array.put(JSONObject().apply {
-                put("userId", a.userId)
-                put("username", a.username)
-                put("fullName", a.fullName)
-                put("email", a.email)
-                put("avatarUrl", a.avatarUrl)
-                put("accessToken", encrypt(a.accessToken))
-                put("refreshToken", encrypt(a.refreshToken))
-                put("lastUsedAt", a.lastUsedAt)
-            })
+        try {
+            val array = JSONArray()
+            accounts.forEach { a ->
+                array.put(JSONObject().apply {
+                    put("userId", a.userId)
+                    put("username", a.username)
+                    put("fullName", a.fullName)
+                    put("email", a.email)
+                    put("avatarUrl", a.avatarUrl)
+                    put("accessToken", encrypt(a.accessToken))
+                    put("refreshToken", encrypt(a.refreshToken))
+                    put("lastUsedAt", a.lastUsedAt)
+                })
+            }
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_ACCOUNTS, array.toString())
+                .apply()
+        } catch (error: Exception) {
+            // Recent-account history is a convenience layer. Never let a Keystore/history
+            // failure invalidate the already authenticated primary Supabase session.
+            Log.w("AccountSessionStore", "Unable to persist saved account history", error)
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_ACCOUNTS, array.toString()).apply()
     }
 }
