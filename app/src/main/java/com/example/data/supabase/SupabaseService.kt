@@ -3710,6 +3710,8 @@ suspend fun uploadPostMedia(
             val badge: VerificationBadge,
             val premiumStyleId: String?,
             val premiumStyleSource: String?,
+            val premiumStyleId: String?,
+            val premiumStyleSource: String?,
         )
 
         val array = JSONArray(if (raw.isBlank()) "[]" else raw)
@@ -3737,7 +3739,11 @@ suspend fun uploadPostMedia(
                         avatar = row.optString("avatar_url", ""),
                         content = row.optString("content", ""),
                         time = formatTimeAgo(row.optString("created_at", "")),
-                        likes = row.optInt("likes_count", 0),
+                        badge = commentVerificationBadge(row),
+                        premiumStyleId = row.optString("premium_style_id", "")
+                            .takeIf { it.isNotBlank() && it != "null" },
+                        premiumStyleSource = row.optString("premium_style_source", "")
+                            .takeIf { it.isNotBlank() && it != "null" },
                         isLiked = row.optBoolean("is_liked", false),
                         badge = commentVerificationBadge(row),
                         premiumStyleId = row.optString("premium_style_id", "")
@@ -3760,6 +3766,8 @@ suspend fun uploadPostMedia(
                 authorId = row.authorId,
                 user = row.username,
                 displayName = row.displayName,
+                premiumStyleId = row.premiumStyleId,
+                premiumStyleSource = row.premiumStyleSource,
                 avatar = row.avatar,
                 text = row.content,
                 time = row.time,
@@ -3773,7 +3781,9 @@ suspend fun uploadPostMedia(
                         id = reply.id,
                         postId = reply.postId,
                         parentCommentId = row.id,
-                        authorId = reply.authorId,
+                        verificationBadge = reply.badge,
+                        premiumStyleId = reply.premiumStyleId,
+                        premiumStyleSource = reply.premiumStyleSource,
                         user = reply.username,
                         displayName = reply.displayName,
                         avatar = reply.avatar,
