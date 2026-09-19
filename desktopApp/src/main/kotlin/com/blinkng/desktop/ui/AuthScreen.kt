@@ -1,5 +1,7 @@
 package com.blinkng.desktop.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,11 +16,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Login
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -47,18 +52,47 @@ fun BlinkAuthScreen(state: DesktopAppState) {
     var fullName by remember { mutableStateOf("") }
     var notice by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val authFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color.White,
+        unfocusedTextColor = Color.White,
+        focusedLabelColor = Color.White,
+        unfocusedLabelColor = Color(0xFFB8B8B8),
+        cursorColor = Color.White,
+        focusedBorderColor = Color.White,
+        unfocusedBorderColor = Color(0xFF454545),
+        focusedContainerColor = Color.Transparent,
+        unfocusedContainerColor = Color.Transparent,
+    )
+    val authOutline = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
 
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color.Black),
+        contentAlignment = Alignment.Center,
+    ) {
         Surface(
             modifier = Modifier.widthIn(max = 520.dp).padding(24.dp),
             shape = RoundedCornerShape(28.dp),
-            tonalElevation = 6.dp,
+            color = Color(0xFF080808),
+            contentColor = Color.White,
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+            tonalElevation = 0.dp,
         ) {
             Column(
                 modifier = Modifier.padding(32.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                BlinkDesktopLogo(size = 46.dp, showText = true)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    BlinkDesktopLogo(size = 54.dp, showText = false)
+                    Text(
+                        "BLINK",
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black,
+                    )
+                }
                 Text(
                     when (mode) {
                         AuthMode.SIGN_IN -> "Sign in to your Blink account"
@@ -75,6 +109,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                         onValueChange = { fullName = it },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        colors = authFieldColors,
                         label = { Text("Full name") },
                     )
                     OutlinedTextField(
@@ -82,6 +117,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                         onValueChange = { username = it },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        colors = authFieldColors,
                         label = { Text("Username") },
                         prefix = { Text("@") },
                     )
@@ -92,6 +128,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                     onValueChange = { email = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    colors = authFieldColors,
                     label = { Text("Email") },
                 )
 
@@ -101,16 +138,17 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                         onValueChange = { password = it },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
+                        colors = authFieldColors,
                         label = { Text("Password") },
                         visualTransformation = PasswordVisualTransformation(),
                     )
                 }
 
                 state.errorMessage?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                    Text(it, color = Color(0xFFFF7A7A), fontSize = 13.sp)
                 }
                 notice?.let {
-                    Text(it, color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
+                    Text(it, color = Color(0xFFD0D0D0), fontSize = 13.sp)
                 }
 
                 Button(
@@ -131,6 +169,12 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                         }
                     },
                     enabled = !state.busy,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White,
+                        contentColor = Color.Black,
+                        disabledContainerColor = Color(0xFF333333),
+                        disabledContentColor = Color(0xFF8A8A8A),
+                    ),
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                 ) {
                     if (state.busy) {
@@ -154,26 +198,47 @@ fun BlinkAuthScreen(state: DesktopAppState) {
                                 scope.launch { runCatching { state.signInWithGoogle() } }
                             },
                             enabled = !state.busy,
+                            border = authOutline,
                         ) {
-                            Text("Continue with Google")
+                            Text("Continue with Google", color = Color.White)
                         }
                     }
                 }
 
-                HorizontalDivider()
+                HorizontalDivider(color = Color.White.copy(alpha = 0.12f))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     when (mode) {
                         AuthMode.SIGN_IN -> {
-                            OutlinedButton(onClick = { mode = AuthMode.SIGN_UP; state.clearError() }) { Text("Create account") }
-                            OutlinedButton(onClick = { mode = AuthMode.RESET; state.clearError() }) { Text("Forgot password") }
+                            OutlinedButton(
+                                onClick = { mode = AuthMode.SIGN_UP; state.clearError() },
+                                border = authOutline,
+                            ) {
+                                Text("Create account", color = Color.White)
+                            }
+                            OutlinedButton(
+                                onClick = { mode = AuthMode.RESET; state.clearError() },
+                                border = authOutline,
+                            ) {
+                                Text("Forgot password", color = Color.White)
+                            }
                         }
                         AuthMode.SIGN_UP -> {
-                            OutlinedButton(onClick = { mode = AuthMode.SIGN_IN; state.clearError() }) { Text("Back to sign in") }
+                            OutlinedButton(
+                                onClick = { mode = AuthMode.SIGN_IN; state.clearError() },
+                                border = authOutline,
+                            ) {
+                                Text("Back to sign in", color = Color.White)
+                            }
                             Spacer(Modifier.weight(1f))
                         }
                         AuthMode.RESET -> {
-                            OutlinedButton(onClick = { mode = AuthMode.SIGN_IN; state.clearError() }) { Text("Back to sign in") }
+                            OutlinedButton(
+                                onClick = { mode = AuthMode.SIGN_IN; state.clearError() },
+                                border = authOutline,
+                            ) {
+                                Text("Back to sign in", color = Color.White)
+                            }
                             Spacer(Modifier.weight(1f))
                         }
                     }
@@ -181,7 +246,7 @@ fun BlinkAuthScreen(state: DesktopAppState) {
 
                 Text(
                     "Blinkng for Windows uses the same account, posts, messages and Supabase backend as the Android app.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color(0xFF9A9A9A),
                     fontSize = 12.sp,
                 )
             }
