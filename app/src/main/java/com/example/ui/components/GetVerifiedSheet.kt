@@ -268,7 +268,7 @@ fun GetVerifiedSheet(
                                     color = BlinkBlue
                                 )
                                 Text(
-                                    text = "One-time fee",
+                                    text = "${economyPolicy.blueVerificationValidDays} days",
                                     fontSize = 11.sp,
                                     color = textSecondary
                                 )
@@ -296,7 +296,7 @@ fun GetVerifiedSheet(
                         )
                         VerificationFeatureItem(
                             icon = Icons.Default.WorkspacePremium,
-                            text = "A permanent status purchase — it does not claim real-world identity verification",
+                            text = "A ${economyPolicy.blueVerificationValidDays}-day BLINK status period — it does not claim real-world identity verification",
                             isDark = isDark
                         )
 
@@ -604,7 +604,7 @@ fun GetVerifiedSheet(
                                 if (alreadyBlueOrGold) {
                                     "BLINK Verified is already active on this account."
                                 } else {
-                                    "Earn coins with rewarded ads or buy a coin pack. Paying ₦${economyPolicy.blueVerificationCashNgn} is the faster cash route once secure checkout is enabled."
+                                    "Earn coins with rewarded ads or buy a coin pack. Paying ₦${economyPolicy.blueVerificationCashNgn} activates ${economyPolicy.blueVerificationValidDays} days once secure checkout is enabled."
                                 },
                                 fontSize = 11.5.sp,
                                 color = textSecondary,
@@ -822,7 +822,7 @@ fun GetVerifiedSheet(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(100.dp)
                             ) {
-                                Text("Pay ₦${economyPolicy.blueVerificationCashNgn} securely", fontWeight = FontWeight.Bold)
+                                Text("Pay ₦${economyPolicy.blueVerificationCashNgn} • ${economyPolicy.blueVerificationValidDays} days", fontWeight = FontWeight.Bold)
                             }
                             if (!economyPolicy.cashCheckoutEnabled && !alreadyBlueOrGold) {
                                 Text(
@@ -859,7 +859,7 @@ fun GetVerifiedSheet(
                     val eligible = isGoldEligible && !isCurrentBadge
                     Button(
                         onClick = { onUpgrade(VerificationBadge.GOLD) },
-                        enabled = eligible && economyPolicy.cashCheckoutEnabled,
+                        enabled = false,
                         colors = ButtonDefaults.buttonColors(containerColor = BlinkGold),
                         shape = RoundedCornerShape(100.dp),
                         modifier = Modifier.fillMaxWidth().height(52.dp)
@@ -868,8 +868,7 @@ fun GetVerifiedSheet(
                             when {
                                 isCurrentBadge -> "Gold Verification Active"
                                 !isGoldEligible -> "Requires 1,000 Followers (${profile.followerCount}/1,000)"
-                                economyPolicy.cashCheckoutEnabled -> "Continue to secure Gold checkout"
-                                else -> "Secure Gold checkout not connected"
+                                else -> "Gold verification is not sold through Paystack"
                             },
                             fontWeight = FontWeight.Bold,
                             color = Color.Black
