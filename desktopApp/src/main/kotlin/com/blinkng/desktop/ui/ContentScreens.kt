@@ -831,7 +831,7 @@ private fun PostCard(
                 Text(post.likeCount.toString(), fontSize = 12.sp)
                 IconButton(onClick = onComments) { Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments") }
                 Text(post.commentCount.toString(), fontSize = 12.sp)
-                TextButton(onClick = onCopyLink) {
+                OutlinedButton(onClick = onCopyLink) {
                     Text("Copy link", fontSize = 11.sp)
                 }
                 Spacer(Modifier.weight(1f))
