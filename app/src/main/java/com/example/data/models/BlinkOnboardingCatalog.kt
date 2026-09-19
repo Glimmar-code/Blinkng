@@ -1,5 +1,7 @@
 package com.example.data.models
 
+import com.blinkng.shared.BlinkOnboardingPolicy
+
 /**
  * Controlled onboarding options used by BLINK account setup.
  *
@@ -85,53 +87,9 @@ object BlinkOnboardingCatalog {
         "Urban and Regional Planning"
     ).distinct().sorted()
 
-    val levels: List<String> = listOf(
-        "100 Level",
-        "200 Level",
-        "300 Level",
-        "400 Level",
-        "500 Level",
-        "600 Level",
-        "700 Level",
-        "Postgraduate",
-        "Graduate",
-        "Other"
-    )
+    val levels: List<String> = BlinkOnboardingPolicy.levels
+    val genders: List<String> = BlinkOnboardingPolicy.genders
+    val interestGroups: Map<String, List<String>> = BlinkOnboardingPolicy.interestGroups
+    val allInterests: List<String> = BlinkOnboardingPolicy.allInterests
 
-    val genders: List<String> = listOf(
-        "Male",
-        "Female",
-        "Prefer not to say"
-    )
-
-    val interestGroups: Map<String, List<String>> = linkedMapOf(
-        "Campus & Community" to listOf(
-            "Campus News", "Student Community", "Events", "Volunteering",
-            "Leadership", "Clubs", "Scholarships", "Academic Tips"
-        ),
-        "Tech & Building" to listOf(
-            "Technology", "Programming", "Android", "Web Development",
-            "Artificial Intelligence", "Cyber Security", "Data Science",
-            "Product Design", "Startups", "Engineering"
-        ),
-        "Entertainment" to listOf(
-            "Afrobeats", "Music", "Movies", "Comedy", "Gaming",
-            "Anime", "Photography", "Content Creation", "Memes"
-        ),
-        "Lifestyle" to listOf(
-            "Fashion", "Beauty", "Food", "Fitness", "Travel",
-            "Relationships", "Friendship", "Wellness"
-        ),
-        "Sports" to listOf(
-            "Football", "Basketball", "Athletics", "Esports",
-            "Formula 1", "Tennis"
-        ),
-        "Learning & Career" to listOf(
-            "Business", "Entrepreneurship", "Finance", "Career",
-            "Internships", "Books", "Science", "Mathematics",
-            "Statistics", "Research"
-        )
-    )
-
-    val allInterests: List<String> = interestGroups.values.flatten().distinct()
 }
