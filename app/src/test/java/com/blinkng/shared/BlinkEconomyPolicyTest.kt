@@ -35,6 +35,13 @@ class BlinkEconomyPolicyTest {
         assertEquals(2_140f / 3_000f, policy.verificationProgress(2_140), 0.0001f)
     }
 
+
+    @Test
+    fun blueVerificationIsThirtyDayRenewablePolicy() {
+        assertEquals(3_000, policy.blueVerificationCoinCost)
+        assertEquals(30, policy.blueVerificationDurationDays)
+    }
+
     @Test
     fun dailyLimitStopsAdditionalRewardedAds() {
         assertTrue(policy.canWatchRewardedAd(14))
