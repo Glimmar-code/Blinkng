@@ -93,6 +93,7 @@ import com.example.ui.theme.FeedElevatedSurface
 import com.example.ui.theme.FeedPurple
 import com.example.ui.theme.FeedTextPrimary
 import com.example.ui.theme.FeedTextSecondary
+import com.example.util.safeInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.random.Random
@@ -254,7 +255,7 @@ fun PremiumFeedScreen(
     }
     var feedLane by rememberSaveable(resumeUserKey) {
         mutableIntStateOf(
-            resumePrefs.getInt("home_lane:$resumeUserKey", 0).coerceIn(0, 1)
+            resumePrefs.safeInt("home_lane:$resumeUserKey", 0).coerceIn(0, 1)
         )
     }
     LaunchedEffect(feedLane, resumeUserKey) {
@@ -714,10 +715,10 @@ private fun PremiumHomeFeed(
     LaunchedEffect(laneResumeKey, filteredPosts.isNotEmpty()) {
         if (restoredLaneResumeKey != laneResumeKey) {
             val savedIndex = resumePrefs
-                .getInt("home_scroll_index:$laneResumeKey", 0)
+                .safeInt("home_scroll_index:$laneResumeKey", 0)
                 .coerceAtLeast(0)
             val savedOffset = resumePrefs
-                .getInt("home_scroll_offset:$laneResumeKey", 0)
+                .safeInt("home_scroll_offset:$laneResumeKey", 0)
                 .coerceAtLeast(0)
 
             // Wait until the cached/ranked rows have had one frame to enter the LazyColumn.
@@ -1003,7 +1004,7 @@ private fun PremiumHomeFeed(
                                     count = homeRows.size,
                                     key = { index ->
                                         when (val row = homeRows[index]) {
-                                            is PremiumHomeRow.PostRow -> "post:${row.post.id}"
+                                            is PremiumHomeRow.PostRow -> "post:$index:${row.post.id}"
                                             is PremiumHomeRow.ReelPreviewRow -> "reel_preview:${row.slot}:${row.reel.id}"
                                             is PremiumHomeRow.SponsoredRow -> "sponsored:${row.slot}"
                                         }
