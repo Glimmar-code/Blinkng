@@ -43,6 +43,13 @@ alter table public.blink_rewarded_ad_claims
   add column if not exists credited_amount integer not null default 0 check (credited_amount >= 0),
   add column if not exists milestone_bonus integer not null default 0 check (milestone_bonus >= 0);
 
+-- Existing completed claims were already paid under the original 10-coin rule.
+-- Backfill their accounting so today's earned total and idempotent retries stay correct.
+update public.blink_rewarded_ad_claims
+set credited_amount = reward_amount
+where rewarded_at is not null
+  and credited_amount = 0;
+
 create table if not exists public.blink_coin_purchase_orders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
