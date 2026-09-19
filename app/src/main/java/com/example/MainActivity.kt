@@ -1,13 +1,9 @@
 package com.example
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -23,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.example.ui.components.*
@@ -304,10 +299,6 @@ class MainActivity : ComponentActivity() {
                     stopPresenceHeartbeat(markOffline = false)
                 }
             }
-            val notificationPermissionLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.RequestPermission()
-            ) { }
-
             // Persist the account that has actually reached the authenticated main app.
             // Keying by destination + user id prevents repeated writes during recomposition.
             LaunchedEffect(uiState.destination, uiState.myProfile.id) {
@@ -322,15 +313,6 @@ class MainActivity : ComponentActivity() {
                     )
                     BlinkFirebaseMessagingService.syncCurrentToken(this@MainActivity)
                     viewModel.refreshProfileRewards()
-                    if (
-                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                        ContextCompat.checkSelfPermission(
-                            this@MainActivity,
-                            Manifest.permission.POST_NOTIFICATIONS
-                        ) != PackageManager.PERMISSION_GRANTED
-                    ) {
-                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    }
                 }
             }
 
@@ -390,10 +372,10 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 AppDestination.ONBOARDING -> {
-                                    OnboardingScreen(
-                                        onSignInClick = { viewModel.setDestination(AppDestination.SIGN_IN) },
-                                        onSignUpClick = { viewModel.setDestination(AppDestination.SIGN_UP) },
-                                        onGoogleSignIn = { email -> viewModel.loginWithGoogle(email) }
+                                    BlinkWelcomeScreen(
+                                        onCreateAccount = { viewModel.setDestination(AppDestination.SIGN_UP) },
+                                        onLogin = { viewModel.setDestination(AppDestination.SIGN_IN) },
+                                        onGoogle = { email -> viewModel.loginWithGoogle(email) }
                                     )
                                 }
 
@@ -419,13 +401,13 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 AppDestination.SIGN_UP -> {
-                                    SignUpScreen(
+                                    CreateAccountScreen(
                                         onBack = { viewModel.setDestination(AppDestination.ONBOARDING) },
-                                        onSuccess = { name, user, email, pass, fac ->
-                                            viewModel.signUp(name, user, email, pass, fac)
+                                        onCreateAccount = { name, email, password ->
+                                            viewModel.signUp(name, email, password)
                                         },
-                                        onGoogleSignUp = { email -> viewModel.loginWithGoogle(email) },
-                                        onSwitchToSignIn = { viewModel.setDestination(AppDestination.SIGN_IN) }
+                                        onGoogle = { email -> viewModel.loginWithGoogle(email) },
+                                        onLogin = { viewModel.setDestination(AppDestination.SIGN_IN) }
                                     )
                                 }
 
@@ -439,11 +421,35 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 AppDestination.PROFILE_SETUP -> {
-                                    ProfileSetupOnboardingScreen(
-                                        studentName = uiState.myProfile.fullName,
-                                        studentUsername = uiState.myProfile.username,
-                                        onComplete = { uni, dept, level, bio, skills ->
-                                            viewModel.completeProfileOnboarding(uni, dept, level, bio, skills)
+                                    AccountOnboardingScreen(
+                                        profile = uiState.myProfile,
+                                        candidates = (uiState.profiles + uiState.discoverProfiles)
+                                            .distinctBy { it.id },
+                                        onCheckUsername = { username, onResult ->
+                                            viewModel.checkOnboardingUsername(username, onResult)
+                                        },
+                                        onSaveUsername = { username, onResult ->
+                                            viewModel.saveOnboardingUsername(username, onResult)
+                                        },
+                                        onSaveBasics = { university, department, level, gender, birthDate, avatarUrl, onResult ->
+                                            viewModel.saveOnboardingBasics(
+                                                university = university,
+                                                department = department,
+                                                level = level,
+                                                gender = gender,
+                                                birthDate = birthDate,
+                                                avatarUrl = avatarUrl,
+                                                onResult = onResult
+                                            )
+                                        },
+                                        onSaveInterests = { interests, onResult ->
+                                            viewModel.saveOnboardingInterests(interests, onResult)
+                                        },
+                                        onFinish = { onResult ->
+                                            viewModel.finishAccountOnboarding(onResult)
+                                        },
+                                        onRefreshSuggestions = {
+                                            viewModel.refreshOnboardingSuggestions()
                                         }
                                     )
                                 }
