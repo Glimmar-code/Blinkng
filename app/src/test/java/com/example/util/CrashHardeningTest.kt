@@ -20,7 +20,7 @@ class CrashHardeningTest {
 
     @Test
     fun `safe preference readers recover values written with older types`() {
-        val context = RuntimeEnvironment.getApplication<Application>()
+        val context = RuntimeEnvironment.getApplication()
         val prefs = context.getSharedPreferences("crash_hardening_test", 0)
         prefs.edit()
             .clear()
@@ -38,7 +38,7 @@ class CrashHardeningTest {
 
     @Test
     fun `safe activity launcher contains missing activity failures`() {
-        val context = RuntimeEnvironment.getApplication<Application>()
+        val context = RuntimeEnvironment.getApplication()
         val impossible = Intent().setClassName(
             context.packageName,
             "com.example.this.ActivityDoesNotExist"
