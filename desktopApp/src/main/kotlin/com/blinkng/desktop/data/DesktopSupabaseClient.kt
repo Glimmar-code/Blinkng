@@ -215,6 +215,11 @@ class DesktopSupabaseClient(
         parseProfile(row).also { profileCache[userId] = it }
     }
 
+    suspend fun refreshProfile(userId: String = requireSession().userId): DesktopProfile {
+        profileCache.remove(userId)
+        return fetchProfile(userId)
+    }
+
     suspend fun fetchFeed(reelsOnly: Boolean = false, search: String? = null): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
         val filter = buildString {
             append("/rest/v1/feed_posts?select=id,user_id,text,caption,image_url,video_url,images,hashtags,like_count,comment_count,share_count,view_count,is_reel,created_at")
