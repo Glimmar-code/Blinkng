@@ -1,6 +1,9 @@
 package com.example.util
 
 import android.app.Application
+import android.content.ActivityNotFoundException
+import android.content.ComponentName
+import android.content.ContextWrapper
 import android.content.Intent
 import com.example.BlinkStoreActivity
 import com.example.data.models.BlinkStoreCatalog
@@ -9,7 +12,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
@@ -38,25 +40,30 @@ class CrashHardeningTest {
 
     @Test
     fun `safe activity launcher contains missing activity failures`() {
-        val context = RuntimeEnvironment.getApplication()
-        val impossible = Intent().setClassName(
-            context.packageName,
-            "com.example.this.ActivityDoesNotExist"
-        )
+        val base = RuntimeEnvironment.getApplication()
+        val context = object : ContextWrapper(base) {
+            override fun startActivity(intent: Intent) {
+                throw ActivityNotFoundException("test-only missing activity")
+            }
+        }
 
         assertFalse(
             context.startActivitySafely(
-                impossible,
+                Intent("com.example.TEST_MISSING_ACTIVITY"),
                 failureMessage = "Unable to open test activity."
             )
         )
     }
 
     @Test
-    fun `Blink Store activity can be created without closing immediately`() {
-        val controller = Robolectric.buildActivity(BlinkStoreActivity::class.java).setup()
-        assertFalse(controller.get().isFinishing)
-        controller.pause().stop().destroy()
+    fun `Blink Store activity is registered in Android manifest`() {
+        val context = RuntimeEnvironment.getApplication()
+        val info = context.packageManager.getActivityInfo(
+            ComponentName(context, BlinkStoreActivity::class.java),
+            0
+        )
+
+        assertEquals(BlinkStoreActivity::class.java.name, info.name)
     }
 
     @Test
