@@ -3707,7 +3707,9 @@ suspend fun uploadPostMedia(
             val time: String,
             val likes: Int,
             val isLiked: Boolean,
-            val badge: VerificationBadge
+            val badge: VerificationBadge,
+            val premiumStyleId: String?,
+            val premiumStyleSource: String?,
         )
 
         val array = JSONArray(if (raw.isBlank()) "[]" else raw)
@@ -3737,7 +3739,11 @@ suspend fun uploadPostMedia(
                         time = formatTimeAgo(row.optString("created_at", "")),
                         likes = row.optInt("likes_count", 0),
                         isLiked = row.optBoolean("is_liked", false),
-                        badge = commentVerificationBadge(row)
+                        badge = commentVerificationBadge(row),
+                        premiumStyleId = row.optString("premium_style_id", "")
+                            .takeIf { it.isNotBlank() && it != "null" },
+                        premiumStyleSource = row.optString("premium_style_source", "")
+                            .takeIf { it.isNotBlank() && it != "null" },
                     )
                 )
             }
@@ -3760,6 +3766,8 @@ suspend fun uploadPostMedia(
                 likes = row.likes,
                 isLiked = row.isLiked,
                 verificationBadge = row.badge,
+                premiumStyleId = row.premiumStyleId,
+                premiumStyleSource = row.premiumStyleSource,
                 replies = repliesByParent[row.id].orEmpty().map { reply ->
                     CommentReply(
                         id = reply.id,
@@ -3773,7 +3781,9 @@ suspend fun uploadPostMedia(
                         time = reply.time,
                         likes = reply.likes,
                         isLiked = reply.isLiked,
-                        verificationBadge = reply.badge
+                        verificationBadge = reply.badge,
+                        premiumStyleId = reply.premiumStyleId,
+                        premiumStyleSource = reply.premiumStyleSource,
                     )
                 }
             )

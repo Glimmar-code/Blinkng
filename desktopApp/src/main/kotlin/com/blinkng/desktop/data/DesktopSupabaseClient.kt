@@ -274,21 +274,29 @@ class DesktopSupabaseClient(
     }
 
     suspend fun fetchComments(postId: String): List<DesktopComment> = withContext(Dispatchers.IO) {
-        val rows = getArray(
-            "/rest/v1/comments?post_id=eq.${encode(postId)}&parent_comment_id=is.null&select=id,post_id,author_id,content,likes_count,created_at&order=created_at.asc&limit=200",
+        val rows = postArray(
+            "/rest/v1/rpc/get_post_comments",
+            JSONObject().put("p_post_id", postId),
+            prefer = "return=representation",
         )
         (0 until rows.length()).mapNotNull { i ->
             val row = rows.optJSONObject(i) ?: return@mapNotNull null
-            val author = runCatching { fetchProfile(row.optString("author_id")) }.getOrNull()
             DesktopComment(
                 id = row.optString("id"),
                 postId = row.optString("post_id"),
+                parentCommentId = row.optNullableString("parent_comment_id"),
                 authorId = row.optString("author_id"),
-                authorName = author?.fullName ?: author?.username ?: "Blink user",
-                authorVerified = author?.isVerified == true,
+                authorName = row.optString("display_name").ifBlank {
+                    row.optString("username").ifBlank { "Blink user" }
+                },
+                authorVerified = row.optString("verification_badge").let {
+                    it.equals("BLUE", true) || it.equals("GOLD", true)
+                },
                 content = row.optString("content"),
                 likesCount = row.optInt("likes_count"),
                 createdAt = row.optString("created_at"),
+                premiumStyleId = row.optNullableString("premium_style_id"),
+                premiumStyleSource = row.optNullableString("premium_style_source"),
             )
         }
     }

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Storefront
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -72,6 +73,8 @@ fun StoreProScreen(state: DesktopAppState) {
     var message by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var pendingUse by remember { mutableStateOf<DesktopInventoryItem?>(null) }
+    var previewItem by remember { mutableStateOf<DesktopStoreItem?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
     var targetState by remember { mutableStateOf(JSONObject()) }
     var heroShown by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -100,6 +103,22 @@ fun StoreProScreen(state: DesktopAppState) {
         }
     }
 
+    fun purchase(item: DesktopStoreItem) {
+        scope.launch {
+            working = true
+            val multiplier = item.boostMultipliers.firstOrNull()
+            runCatching { actions.purchaseStoreItem(item.id, 1, multiplier) }
+                .onSuccess {
+                    message = "${item.name} purchased. It is now in your Vault."
+                    error = null
+                    previewItem = null
+                    reload()
+                }
+                .onFailure { error = it.message }
+            working = false
+        }
+    }
+
     LaunchedEffect(Unit) {
         reload()
         heroShown = true
@@ -122,6 +141,14 @@ fun StoreProScreen(state: DesktopAppState) {
         .toSet()
     val vip = serverState?.optJSONObject("vip")
     val vipActive = vip?.optBoolean("active", false) == true
+    val filteredCatalog = remember(catalog, searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isBlank()) catalog else catalog.filter {
+            it.name.contains(query, true) ||
+                it.description.contains(query, true) ||
+                it.category.contains(query, true)
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -220,16 +247,31 @@ fun StoreProScreen(state: DesktopAppState) {
         }
 
         item { Text("Store", fontWeight = FontWeight.Black, fontSize = 21.sp) }
+        item {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                leadingIcon = { androidx.compose.material3.Icon(Icons.Rounded.Search, null) },
+                label = { Text("Search effects, themes and boosts") },
+            )
+        }
         if (loading) item { Text("Loading Store…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        items(catalog, key = { "pro-store-${it.id}" }) { item ->
+        if (!loading && filteredCatalog.isEmpty()) item {
+            Text("No Store items match your search.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        items(filteredCatalog, key = { "pro-store-${it.id}" }) { item ->
             val experience = item.premiumExperience()
             val accent = desktopPremiumAccent(experience)
             val ownedPermanent = item.itemType.equals("PERMANENT", true) && inventory.any { it.catalogId == item.id && it.status.equals("PERMANENT", true) }
             val active = inventory.any { it.catalogId == item.id && it.status.equals("ACTIVE", true) }
             val equipped = item.id in equippedIds
             val vipLocked = item.vipOnly && !vipActive
+            val displayPrice = if (vipActive) (item.price * 90) / 100 else item.price
 
             Surface(
+                modifier = Modifier.fillMaxWidth().clickable { previewItem = item },
                 shape = RoundedCornerShape(22.dp),
                 tonalElevation = 1.dp,
                 border = BorderStroke(1.dp, accent.copy(alpha = .34f)),
@@ -258,28 +300,16 @@ fun StoreProScreen(state: DesktopAppState) {
                     }
                     Text("Seen / used on: ${experience.visibleAt}", color = accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     Text(experience.activationHint, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("${item.price} coins", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Black, fontSize = 18.sp)
-                            if (vipActive) Text("VIP Store discount is applied by the server.", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("$displayPrice coins", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Black, fontSize = 18.sp)
+                            if (vipActive) Text("VIP price • 10% off the ${item.price}-coin standard price", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (item.boostMultipliers.isNotEmpty()) Text("Strength: ${item.boostMultipliers.joinToString(" • ") { "${it}×" }}", fontSize = 10.sp, color = accent)
                         }
+                        OutlinedButton(onClick = { previewItem = item }) { Text("Preview") }
                         Button(
-                            onClick = {
-                                scope.launch {
-                                    working = true
-                                    val multiplier = item.boostMultipliers.firstOrNull()
-                                    runCatching { actions.purchaseStoreItem(item.id, 1, multiplier) }
-                                        .onSuccess {
-                                            message = "${item.name} purchased. It is now in your Vault."
-                                            error = null
-                                            reload()
-                                        }
-                                        .onFailure { error = it.message }
-                                    working = false
-                                }
-                            },
-                            enabled = !working && !ownedPermanent && !vipLocked && balance >= item.price,
+                            onClick = { purchase(item) },
+                            enabled = !working && !ownedPermanent && !vipLocked && balance >= displayPrice,
                         ) { Text(if (ownedPermanent) "Owned" else if (vipLocked) "VIP" else "Buy") }
                     }
                 }
@@ -395,6 +425,87 @@ fun StoreProScreen(state: DesktopAppState) {
             )
         }
     }
+
+    previewItem?.let { item ->
+        val ownedPermanent = item.itemType.equals("PERMANENT", true) &&
+            inventory.any { it.catalogId == item.id && it.status.equals("PERMANENT", true) }
+        val vipLocked = item.vipOnly && !vipActive
+        val displayPrice = if (vipActive) (item.price * 90) / 100 else item.price
+        DesktopStorePreviewDialog(
+            item = item,
+            balance = balance,
+            vipActive = vipActive,
+            owned = ownedPermanent,
+            working = working,
+            onDismiss = { previewItem = null },
+            onBuy = { purchase(item) },
+            buyEnabled = !working && !ownedPermanent && !vipLocked && balance >= displayPrice,
+        )
+    }
+}
+
+@Composable
+private fun DesktopStorePreviewDialog(
+    item: DesktopStoreItem,
+    balance: Long,
+    vipActive: Boolean,
+    owned: Boolean,
+    working: Boolean,
+    onDismiss: () -> Unit,
+    onBuy: () -> Unit,
+    buyEnabled: Boolean,
+) {
+    val experience = item.premiumExperience()
+    val accent = desktopPremiumAccent(experience)
+    val displayPrice = if (vipActive) (item.price * 90) / 100 else item.price
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(item.name, fontWeight = FontWeight.Black)
+                Text(experience.label, color = accent, fontSize = 11.sp, fontWeight = FontWeight.Black)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("BEFORE", fontSize = 9.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)) {
+                    Text("Standard Blink surface", Modifier.fillMaxWidth().padding(13.dp), fontSize = 12.sp)
+                }
+                Text("WITH EFFECT", fontSize = 9.sp, fontWeight = FontWeight.Black, color = accent)
+                DesktopStoreLivePreview(item.id, item.name)
+                Text(experience.benefit, fontSize = 12.sp)
+                Text("Visible on: ${experience.visibleAt}", color = accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text(experience.activationHint, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                HorizontalDivider()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("$displayPrice Blink Coins", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                        Text("Balance: $balance", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (vipActive) Text("VIP price • 10% off the ${item.price}-coin standard price", fontSize = 9.sp, color = accent)
+                    }
+                    PremiumStatusPill(
+                        if (experience.publicFacing) "PUBLIC" else "PRIVATE",
+                        accent,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onBuy, enabled = buyEnabled) {
+                Text(
+                    when {
+                        owned -> "Owned"
+                        item.vipOnly && !vipActive -> "VIP required"
+                        balance < displayPrice -> "Not enough coins"
+                        working -> "Working…"
+                        else -> "Buy"
+                    },
+                )
+            }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 @Composable

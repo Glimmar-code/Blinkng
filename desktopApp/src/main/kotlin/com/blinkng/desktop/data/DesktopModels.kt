@@ -65,6 +65,9 @@ data class DesktopComment(
     val content: String,
     val likesCount: Int,
     val createdAt: String,
+    val parentCommentId: String? = null,
+    val premiumStyleId: String? = null,
+    val premiumStyleSource: String? = null,
 )
 
 data class DesktopConversation(

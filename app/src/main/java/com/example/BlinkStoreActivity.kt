@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
@@ -100,6 +101,7 @@ import com.example.data.models.BlinkStoreTarget
 import com.example.data.supabase.BlinkEconomyService
 import com.example.ui.components.invalidateBlinkPublicPremiumIdentityCache
 import com.example.ui.components.BlinkMark
+import com.example.ui.components.BlinkStoreLivePreview
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
 import kotlinx.coroutines.delay
@@ -140,6 +142,7 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
     var working by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(BlinkStoreTab.STORE) }
+    var previewItem by remember { mutableStateOf<BlinkStoreItem?>(null) }
     var purchaseItem by remember { mutableStateOf<BlinkStoreItem?>(null) }
     var activateRow by remember { mutableStateOf<JSONObject?>(null) }
     var targets by remember { mutableStateOf(JSONObject()) }
@@ -258,7 +261,8 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
                             inventory = inventory,
                             vip = vip,
                             equippedIds = equippedIds,
-                            onBuy = { purchaseItem = it }
+                            onPreview = { previewItem = it },
+                            onBuy = { purchaseItem = it },
                         )
                         BlinkStoreTab.VAULT -> VaultTab(
                             inventory = inventory,
@@ -308,7 +312,7 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
                                 }
                             },
                             onGift = { username -> runAction("Blink VIP gift sent to @$username.") { service.giftVip(username) } },
-                            onBuyVip = { purchaseItem = BlinkStoreCatalog.items.first { it.id == "blink_vip_10d" } }
+                            onBuyVip = { previewItem = BlinkStoreCatalog.items.first { it.id == "blink_vip_10d" } }
                         )
                         BlinkStoreTab.HISTORY -> HistoryTab(snapshot.optJSONArray("transactions").objects())
                         BlinkStoreTab.MORE -> MoreTab(onClose)
@@ -335,6 +339,22 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
                 }
             }
         }
+    }
+
+    previewItem?.let { item ->
+        val owned = item.type == BlinkStoreItemType.PERMANENT &&
+            inventory.any { it.optString("catalog_id") == item.id && it.optString("status") == "PERMANENT" }
+        ProductPreviewDialog(
+            item = item,
+            balance = balance,
+            vipActive = vip.optBoolean("active", false),
+            owned = owned,
+            onDismiss = { previewItem = null },
+            onBuy = {
+                previewItem = null
+                purchaseItem = item
+            },
+        )
     }
 
     purchaseItem?.let { item ->
@@ -390,16 +410,33 @@ private fun StoreTab(
     inventory: List<JSONObject>,
     vip: JSONObject,
     equippedIds: Set<String>,
+    onPreview: (BlinkStoreItem) -> Unit,
     onBuy: (BlinkStoreItem) -> Unit
 ) {
     var category by remember { mutableStateOf("All") }
+    var query by remember { mutableStateOf("") }
     val categories = remember { listOf("All") + BlinkStoreCatalog.items.map { it.category }.distinct() }
-    val items = BlinkStoreCatalog.items.filter { category == "All" || it.category == category }
+    val items = BlinkStoreCatalog.items.filter { item ->
+        (category == "All" || item.category == category) &&
+            (query.isBlank() || listOf(item.name, item.description, item.category)
+                .any { it.contains(query.trim(), ignoreCase = true) })
+    }
     val vipActive = vip.optBoolean("active", false)
 
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             PremiumStoreHero(vipActive = vipActive, itemCount = BlinkStoreCatalog.items.size)
+        }
+        item {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it.take(80) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                singleLine = true,
+                shape = RoundedCornerShape(18.dp),
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                placeholder = { Text("Search profile, comments, chat, effects…") },
+            )
         }
         item {
             LazyRow(
@@ -428,8 +465,20 @@ private fun StoreTab(
                 equipped = equipped,
                 vipLocked = vipLocked,
                 vipActive = vipActive,
+                onPreview = onPreview,
                 onBuy = onBuy
             )
+        }
+        if (items.isEmpty()) {
+            item {
+                Column(
+                    Modifier.fillMaxWidth().padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text("No Store items found", fontWeight = FontWeight.Black)
+                    Text("Try another name or category.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
         item { Spacer(Modifier.height(18.dp)) }
     }
@@ -512,6 +561,7 @@ private fun StoreItemCard(
     equipped: Boolean,
     vipLocked: Boolean,
     vipActive: Boolean,
+    onPreview: (BlinkStoreItem) -> Unit,
     onBuy: (BlinkStoreItem) -> Unit
 ) {
     val experience = item.premiumExperience()
@@ -529,6 +579,7 @@ private fun StoreItemCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
+            .clickable { onPreview(item) }
             .graphicsLayer { scaleX = scale; scaleY = scale },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         border = BorderStroke(1.dp, accent.copy(alpha = .32f)),
@@ -599,8 +650,17 @@ private fun StoreItemCard(
                     active -> PremiumPill("LIVE", Color(0xFF16A34A))
                     owned -> PremiumPill("IN VAULT", accent)
                 }
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = { onBuy(item) }, enabled = !owned && !vipLocked) {
+            }
+            Spacer(Modifier.height(9.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { onPreview(item) }, modifier = Modifier.weight(1f)) {
+                    Text("Preview")
+                }
+                Button(
+                    onClick = { onBuy(item) },
+                    enabled = !owned && !vipLocked,
+                    modifier = Modifier.weight(1f),
+                ) {
                     Text(if (owned) "Owned" else if (vipLocked) "VIP" else "Buy")
                 }
             }
@@ -998,6 +1058,132 @@ private fun MoreRoute(title: String, icon: ImageVector, onClick: () -> Unit) {
         Icon(Icons.Filled.MoreHoriz, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+}
+
+@Composable
+private fun ProductPreviewDialog(
+    item: BlinkStoreItem,
+    balance: Long,
+    vipActive: Boolean,
+    owned: Boolean,
+    onDismiss: () -> Unit,
+    onBuy: () -> Unit,
+) {
+    var showEffect by remember(item.id) { mutableStateOf(true) }
+    val experience = item.premiumExperience()
+    val displayPrice = if (vipActive) {
+        max(0, (BlinkStoreCatalog.priceFor(item) * .9).toInt())
+    } else {
+        BlinkStoreCatalog.priceFor(item)
+    }
+    val vipLocked = item.vipOnly && !vipActive
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(item.name, fontWeight = FontWeight.Black)
+                Text(
+                    "Live try-on • what people will actually see",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !showEffect,
+                        onClick = { showEffect = false },
+                        label = { Text("Before") },
+                    )
+                    FilterChip(
+                        selected = showEffect,
+                        onClick = { showEffect = true },
+                        label = { Text("With effect") },
+                    )
+                }
+                AnimatedContent(
+                    targetState = showEffect,
+                    transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+                    label = "storeBeforeAfterPreview",
+                ) { enabled ->
+                    if (enabled) {
+                        BlinkStoreLivePreview(catalogId = item.id, itemName = item.name)
+                    } else {
+                        StandardStorePreview(item)
+                    }
+                }
+                Text(experience.benefit, fontSize = 12.sp)
+                Text(
+                    "Visible on: ${experience.visibleAt}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = premiumAccent(experience),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PremiumPill(itemTypeLabel(item), MaterialTheme.colorScheme.onSurfaceVariant)
+                    PremiumPill(if (experience.publiclyVisible) "PUBLIC EFFECT" else "PERSONAL EFFECT", premiumAccent(experience))
+                }
+                Text(experience.activationHint, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (balance < displayPrice && !owned) {
+                    Text(
+                        "You need ${displayPrice - balance} more Blink Coins.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onBuy,
+                enabled = !owned && !vipLocked && balance >= displayPrice,
+            ) {
+                Text(
+                    when {
+                        owned -> "Owned"
+                        vipLocked -> "VIP required"
+                        else -> "Buy • 🪙 $displayPrice"
+                    }
+                )
+            }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Close") } },
+    )
+}
+
+@Composable
+private fun StandardStorePreview(item: BlinkStoreItem) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().height(188.dp),
+        shape = RoundedCornerShape(26.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
+                Icon(
+                    storeIcon(item),
+                    contentDescription = null,
+                    modifier = Modifier.padding(15.dp).size(28.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text("Standard appearance", fontWeight = FontWeight.Black)
+            Text(
+                "No premium surface, motion or identity accent",
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
 
 @Composable
