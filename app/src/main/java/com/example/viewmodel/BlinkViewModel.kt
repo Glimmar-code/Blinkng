@@ -36,6 +36,7 @@ import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
+import com.blinkng.shared.BlinkOnboardingPolicy
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -1868,32 +1869,14 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    private val reservedOnboardingUsernames = setOf(
-        "admin",
-        "blink",
-        "blinkapp",
-        "official",
-        "support",
-        "help",
-        "moderator",
-        "system",
-        "security"
-    )
-
     fun checkOnboardingUsername(
         username: String,
         onResult: (Boolean, String?) -> Unit
     ) {
-        val clean = username.trim().lowercase().removePrefix("@")
-        when {
-            !clean.matches(Regex("^[a-z0-9][a-z0-9._]{2,24}$")) -> {
-                onResult(false, "Use 3–25 letters, numbers, dots or underscores.")
-                return
-            }
-            clean in reservedOnboardingUsernames || clean.startsWith("blink_") -> {
-                onResult(false, "That username is reserved. Try another one.")
-                return
-            }
+        val clean = BlinkOnboardingPolicy.normalizeUsername(username)
+        BlinkOnboardingPolicy.usernameValidationMessage(clean)?.let { validationMessage ->
+            onResult(false, validationMessage)
+            return
         }
 
         viewModelScope.launch {
@@ -2042,8 +2025,8 @@ private suspend fun restoreSupabaseSession() {
             val following = runCatching { FollowStateStore.refresh() }
                 .getOrDefault(emptySet())
 
-            if (following.size < 5) {
-                onResult(false, "Follow at least 5 people to continue.")
+            if (following.size < BlinkOnboardingPolicy.REQUIRED_FOLLOWS) {
+                onResult(false, "Follow at least ${BlinkOnboardingPolicy.REQUIRED_FOLLOWS} people to continue.")
                 return@launch
             }
 
