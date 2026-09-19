@@ -101,9 +101,12 @@ object BlinkNotificationHelper {
     const val EXTRA_PARTNER_AVATAR = "EXTRA_PARTNER_AVATAR"
     const val EXTRA_POST_ID = "EXTRA_POST_ID"
     const val EXTRA_MARKET_ID = "EXTRA_MARKET_ID"
+    const val EXTRA_PROFILE_IDENTIFIER = "EXTRA_PROFILE_IDENTIFIER"
 
     const val ACTION_OPEN_CHAT = "OPEN_CHAT"
     const val ACTION_OPEN_POST = "OPEN_POST"
+    const val ACTION_OPEN_REEL = "OPEN_REEL"
+    const val ACTION_OPEN_PROFILE = "OPEN_PROFILE"
     const val ACTION_OPEN_MARKET = "OPEN_MARKET"
     const val ACTION_OPEN_SOCIAL = "OPEN_SOCIAL"
 
@@ -538,7 +541,8 @@ object BlinkNotificationHelper {
 
     private fun buildPostPendingIntent(
         context: Context,
-        postId: String?
+        postId: String?,
+        targetType: String = "post"
     ): PendingIntent {
 
         val intent =
@@ -553,7 +557,7 @@ object BlinkNotificationHelper {
 
                 putExtra(
                     EXTRA_ACTION,
-                    ACTION_OPEN_POST
+                    if (targetType.equals("reel", ignoreCase = true)) ACTION_OPEN_REEL else ACTION_OPEN_POST
                 )
 
                 putExtra(
@@ -565,11 +569,46 @@ object BlinkNotificationHelper {
         return PendingIntent.getActivity(
             context,
             positiveHash(
-                "post_${postId ?: "unknown"}"
+                "${targetType.lowercase()}_${postId ?: "unknown"}"
             ),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or
                     PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun buildSocialPendingIntent(context: Context): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_ACTION, ACTION_OPEN_SOCIAL)
+        }
+        return PendingIntent.getActivity(
+            context,
+            positiveHash("blink_social"),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    // ================================================================
+    // PROFILE DEEP LINK
+    // ================================================================
+
+    private fun buildProfilePendingIntent(
+        context: Context,
+        profileIdentifier: String
+    ): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_ACTION, ACTION_OPEN_PROFILE)
+            putExtra(EXTRA_PROFILE_IDENTIFIER, profileIdentifier)
+        }
+
+        return PendingIntent.getActivity(
+            context,
+            positiveHash("profile_$profileIdentifier"),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
 
@@ -782,7 +821,10 @@ object BlinkNotificationHelper {
         context: Context,
         title: String,
         body: String,
-        targetPostId: String? = null
+        targetPostId: String? = null,
+        targetType: String? = null,
+        targetId: String? = null,
+        profileIdentifier: String? = null
     ) {
 
         if (
@@ -829,10 +871,25 @@ object BlinkNotificationHelper {
                     true
                 )
                 .setContentIntent(
-                    buildPostPendingIntent(
-                        context,
-                        targetPostId
-                    )
+                    when {
+                        targetType.equals("profile", ignoreCase = true) &&
+                            !profileIdentifier.isNullOrBlank() ->
+                            buildProfilePendingIntent(context, profileIdentifier)
+                        targetType.equals("profile", ignoreCase = true) &&
+                            !targetId.isNullOrBlank() ->
+                            buildProfilePendingIntent(context, targetId)
+                        targetType.equals("market", ignoreCase = true) ->
+                            buildMarketPendingIntent(context, targetId)
+                        targetType.equals("story", ignoreCase = true) ||
+                            targetType.equals("notification", ignoreCase = true) ->
+                            buildSocialPendingIntent(context)
+                        else ->
+                            buildPostPendingIntent(
+                                context,
+                                targetPostId ?: targetId,
+                                targetType ?: "post"
+                            )
+                    }
                 )
                 .setGroup(
                     GROUP_KEY_SOCIAL
@@ -856,7 +913,8 @@ object BlinkNotificationHelper {
     fun showLikeNotification(
         context: Context,
         username: String,
-        postId: String
+        postId: String,
+        targetType: String = "post"
     ) {
 
         showSocialNotification(
@@ -866,7 +924,8 @@ object BlinkNotificationHelper {
             body =
                 "Someone interacted with your campus post.",
             targetPostId =
-                postId
+                postId,
+            targetType = targetType
         )
     }
 
@@ -878,7 +937,8 @@ object BlinkNotificationHelper {
         context: Context,
         username: String,
         comment: String,
-        postId: String
+        postId: String,
+        targetType: String = "post"
     ) {
 
         if (
@@ -927,7 +987,8 @@ object BlinkNotificationHelper {
                 .setContentIntent(
                     buildPostPendingIntent(
                         context,
-                        postId
+                        postId,
+                        targetType
                     )
                 )
                 .setGroup(
@@ -953,7 +1014,8 @@ object BlinkNotificationHelper {
         context: Context,
         username: String,
         postId: String,
-        body: String
+        body: String,
+        targetType: String = "post"
     ) {
 
         if (
@@ -998,7 +1060,8 @@ object BlinkNotificationHelper {
                 .setContentIntent(
                     buildPostPendingIntent(
                         context,
-                        postId
+                        postId,
+                        targetType
                     )
                 )
                 .setGroup(
@@ -1061,6 +1124,12 @@ object BlinkNotificationHelper {
                 )
                 .setAutoCancel(
                     true
+                )
+                .setContentIntent(
+                    buildProfilePendingIntent(
+                        context,
+                        username
+                    )
                 )
                 .build()
 
