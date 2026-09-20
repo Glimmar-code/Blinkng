@@ -6,6 +6,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose") version "2.4.10"
 }
 
+apply(from = file("../gradle/png-integrity.gradle.kts"))
+
+tasks.matching { it.name == "processResources" }.configureEach {
+    dependsOn("validatePngIntegrity")
+}
+
 kotlin {
     jvmToolchain(17)
     sourceSets {
