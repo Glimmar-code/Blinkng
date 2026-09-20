@@ -10,6 +10,12 @@ plugins {
   alias(libs.plugins.firebase.crashlytics) apply false
 }
 
+apply(from = rootProject.file("gradle/png-integrity.gradle.kts"))
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+  dependsOn("validatePngIntegrity")
+}
+
 if (file("google-services.json").exists()) {
   apply(plugin = "com.google.gms.google-services")
   apply(plugin = "com.google.firebase.crashlytics")
