@@ -61,6 +61,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -156,6 +157,7 @@ import com.example.data.models.MessageStatus
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.BlinkVipMarkForUsername
+import com.example.util.safeString
 import com.example.ui.theme.BlinkMessageTheme
 import com.example.ui.theme.MessagePalette
 import com.example.ui.theme.MessageThemeMode
@@ -227,7 +229,7 @@ fun PremiumMessagesScreen(
         context.applicationContext.getSharedPreferences(MESSAGE_PREFERENCES, Context.MODE_PRIVATE)
     }
     var storedTheme by rememberSaveable {
-        mutableStateOf(preferences.getString(MESSAGE_THEME_KEY, null))
+        mutableStateOf(preferences.safeString(MESSAGE_THEME_KEY, null))
     }
     val messageTheme = MessageThemeMode.fromStorage(storedTheme)
     var showAppearanceSheet by rememberSaveable { mutableStateOf(false) }
@@ -894,7 +896,7 @@ private fun MatchesRail(
         item(key = "add_story") {
             AddMatchItem(palette = palette, onClick = onAddStoryClick)
         }
-        items(matches, key = { it.id }) { person ->
+        itemsIndexed(matches, key = { index, person -> "match:$index:${person.id}" }) { _, person ->
             MatchItem(
                 person = person,
                 palette = palette,
@@ -1086,7 +1088,7 @@ private fun ConversationList(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 112.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(conversations, key = { it.id }) { conversation ->
+        itemsIndexed(conversations, key = { index, conversation -> "conversation:$index:${conversation.id}" }) { _, conversation ->
             ConversationCard(
                 conversation = conversation,
                 palette = palette,

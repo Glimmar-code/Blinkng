@@ -1,5 +1,8 @@
 package com.example.call
 
+import com.example.util.safeBoolean
+import com.example.util.safeString
+
 import android.content.Context
 import android.media.RingtoneManager
 import android.net.Uri
@@ -24,7 +27,7 @@ object CallSoundPreferences {
         if (!ringEnabled(context, type)) return null
         val key = if (type == CallType.VIDEO) KEY_VIDEO_TONE else KEY_VOICE_TONE
         val stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(key, null)
+            .safeString(key, null)
             ?.takeIf { it.isNotBlank() }
         return stored?.let(Uri::parse)
             ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
@@ -47,7 +50,7 @@ object CallSoundPreferences {
 
     fun vibrateEnabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_VIBRATE, true)
+            .safeBoolean(KEY_VIBRATE, true)
 
     fun setVibrateEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -59,7 +62,7 @@ object CallSoundPreferences {
     fun ringEnabled(context: Context, type: CallType): Boolean {
         val key = if (type == CallType.VIDEO) KEY_VIDEO_RING_ENABLED else KEY_VOICE_RING_ENABLED
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(key, true)
+            .safeBoolean(key, true)
     }
 
     fun setRingEnabled(context: Context, type: CallType, enabled: Boolean) {

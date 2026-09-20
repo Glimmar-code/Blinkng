@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import com.example.util.safeBoolean
+import com.example.util.safeString
+
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -177,13 +180,13 @@ internal fun PremiumSearchExperience(
     var query by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable {
         mutableStateOf(
-            runCatching { PremiumSearchCategory.valueOf(prefs.getString(PREMIUM_SEARCH_CATEGORY, PremiumSearchCategory.ALL.name).orEmpty()) }
+            runCatching { PremiumSearchCategory.valueOf(prefs.safeString(PREMIUM_SEARCH_CATEGORY, PremiumSearchCategory.ALL.name).orEmpty()) }
                 .getOrDefault(PremiumSearchCategory.ALL)
         )
     }
     var sort by rememberSaveable {
         mutableStateOf(
-            runCatching { PremiumSearchSort.valueOf(prefs.getString(PREMIUM_SEARCH_SORT, PremiumSearchSort.RELEVANT.name).orEmpty()) }
+            runCatching { PremiumSearchSort.valueOf(prefs.safeString(PREMIUM_SEARCH_SORT, PremiumSearchSort.RELEVANT.name).orEmpty()) }
                 .getOrDefault(PremiumSearchSort.RELEVANT)
         )
     }
@@ -191,7 +194,7 @@ internal fun PremiumSearchExperience(
     var showSort by rememberSaveable { mutableStateOf(false) }
     var showClearHistoryConfirm by rememberSaveable { mutableStateOf(false) }
     var recentsExpanded by rememberSaveable { mutableStateOf(true) }
-    var privateHistory by rememberSaveable { mutableStateOf(prefs.getBoolean(PREMIUM_SEARCH_PRIVATE, false)) }
+    var privateHistory by rememberSaveable { mutableStateOf(prefs.safeBoolean(PREMIUM_SEARCH_PRIVATE, false)) }
     var verifiedOnly by rememberSaveable { mutableStateOf(false) }
     var vipOnly by rememberSaveable { mutableStateOf(false) }
     var selectedUniversity by rememberSaveable { mutableStateOf("") }
@@ -1302,7 +1305,7 @@ private fun levenshtein(a: String, b: String): Int {
 
 private fun loadPremiumRecents(prefs: android.content.SharedPreferences): List<PremiumRecentSearch> {
     val now = System.currentTimeMillis()
-    return prefs.getString(PREMIUM_SEARCH_RECENTS, "").orEmpty()
+    return prefs.safeString(PREMIUM_SEARCH_RECENTS, "").orEmpty()
         .split(PREMIUM_SEARCH_SEPARATOR)
         .mapNotNull { raw ->
             val parts = raw.split(PREMIUM_SEARCH_FIELD_SEPARATOR)

@@ -1,5 +1,7 @@
 package com.example.notification
 
+import com.example.util.safeString
+
 import android.content.Context
 import com.example.data.supabase.SupabaseService
 
@@ -22,7 +24,7 @@ object MessageNotificationLedger {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
         synchronized(lock) {
-            val existing = prefs.getString(key, "")
+            val existing = prefs.safeString(key, "")
                 .orEmpty()
                 .split('|')
                 .filter(String::isNotBlank)

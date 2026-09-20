@@ -34,6 +34,7 @@ import com.example.data.models.VerificationBadge
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.BlinkGold
 import com.example.ui.theme.BlinkPink
+import com.example.util.startActivitySafely
 import com.example.ui.theme.BlinkPurple
 import java.text.NumberFormat
 import java.util.Locale
@@ -101,7 +102,7 @@ fun ProductDetailScreen(
                                     type = "text/plain"
                                 }
                                 val shareIntent = Intent.createChooser(sendIntent, null)
-                                context.startActivity(shareIntent)
+                                context.startActivitySafely(shareIntent, "No compatible app is available to share this listing.")
                             },
                             modifier = Modifier
                                 .size(40.dp)
@@ -345,7 +346,7 @@ fun ProductDetailScreen(
                     onClick = {
                         val whatsappUrl = "https://wa.me/${item.sellerWhatsapp}?text=Hi%20${item.sellerName},%20I%20saw%20your%20listing%20on%20Blink%20Aluta%20Market:%20${item.title}"
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(whatsappUrl))
-                        context.startActivity(intent)
+                        context.startActivitySafely(intent, "Unable to open WhatsApp for this listing.")
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
                     shape = RoundedCornerShape(100.dp),

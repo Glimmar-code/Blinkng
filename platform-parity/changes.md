@@ -137,3 +137,16 @@ Windows equivalent or reason no equivalent is needed: Windows does not request A
 Backend/shared behavior preserved: Blink account, feed/reel ranking, messaging, moderation, wallet balances and the 10-coin reward business rule remain unchanged. The new SSV database fields are additive audit metadata and do not change Windows coin spending or shared wallet semantics.
 Tests/validation: Android unit/lint/instrumentation/debug APK/AAB and release-smoke gates, Windows desktop/parity gate, Web Parity/domain checks, and Supabase migration-safety must pass in Testlab before promotion to main.
 Owner/reviewer note: This exception covers only Android AdMob/UMP presentation and AdMob callback verification. It cannot be used to waive Windows parity for shared product features or wallet rules.
+
+
+---
+
+PARITY-EXCEPTION: android-runtime-crash-hardening-20260920
+Date: 2026-09-20
+Feature: Android runtime crash hardening for navigation, saved state, Compose collections, media/reel paging, notifications, calls and Store entry points
+Android behavior: Hardens existing Android screens against Activity/Intent launch failures, SharedPreferences type drift across APK upgrades, nullable state races, duplicate Compose keys, stale pager/list indices and Android activity lifecycle failures. It adds defensive adapters and regression coverage without adding new BLINK product behavior or changing any server-authoritative business rule.
+Why this is genuinely Android-only: The affected failure modes are Android implementation details: ComponentActivity/Intent navigation, Android SharedPreferences runtime casts, Firebase Messaging delivery state, Android call Activities, Compose Android list/pager rendering and Android application/activity lifecycle. These APIs and crash modes do not exist in the Windows client.
+Windows equivalent or reason no equivalent is needed: Windows keeps its existing equivalent BLINK product surfaces and shared backend behavior. No Windows feature, rule or user capability is missing because of this patch; desktop uses its own navigation, persistence and lifecycle adapters. The Windows build/package gate remains required to ensure no shared contract regression.
+Backend/shared behavior preserved: No ranking, coins, verification, Store pricing/ownership, authentication policy, onboarding rules, posts, reels, messages, calls, notifications semantics, moderation, Supabase schema/RLS or shared data contract is changed. The patch only prevents Android runtime termination and safely degrades failed OS integrations.
+Tests/validation: Android unit tests, lint, instrumentation compile, debug APK/AAB, release-smoke build, domain integration, Supabase safety, Windows build/package and Windows parity gates must pass on the Testlab PR before merge. Added regression tests cover wrong-type legacy preferences, missing activity launch handling, BLINK Store catalog integrity and BlinkStoreActivity creation.
+Owner/reviewer note: This exception is limited to Android runtime reliability adapters and cannot be reused to waive Windows parity for future BLINK features, business rules or backend behavior.

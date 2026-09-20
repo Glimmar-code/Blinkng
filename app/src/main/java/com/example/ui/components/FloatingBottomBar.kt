@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.example.BlinkStoreActivity
 import com.example.R
 import com.example.ui.theme.FeedBlue
+import com.example.util.startActivitySafely
 import com.example.viewmodel.MainTab
 
 private enum class FeedBottomDestination {
@@ -118,11 +119,16 @@ fun FeedBottomBar(
                             FeedBottomDestination.MARKET -> onMarketClick()
                             FeedBottomDestination.MESSAGE -> onMessageClick()
                             FeedBottomDestination.STORE -> {
-                                context.startActivity(Intent(context, BlinkStoreActivity::class.java))
-                                (context as? Activity)?.overridePendingTransition(
-                                    R.anim.blink_slide_in_right,
-                                    R.anim.blink_stay
+                                val opened = context.startActivitySafely(
+                                    Intent(context, BlinkStoreActivity::class.java),
+                                    failureMessage = "Unable to open Blink Store."
                                 )
+                                if (opened) {
+                                    (context as? Activity)?.overridePendingTransition(
+                                        R.anim.blink_slide_in_right,
+                                        R.anim.blink_stay
+                                    )
+                                }
                             }
                         }
                     }
