@@ -39,7 +39,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class WebRtcCallClient(
     context: Context,
     private val type: CallType,
-    private val listener: Listener
+    private val listener: Listener,
+    private val turnCredentials: TurnCredentials? = null
 ) {
     interface Listener {
         fun onLocalDescription(kind: String, description: SessionDescription)
@@ -334,16 +335,31 @@ class WebRtcCallClient(
     private fun buildIceServers(): List<PeerConnection.IceServer> = buildList {
         add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())
         add(PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer())
-        val turnUrl = BuildConfig.BLINK_TURN_URL.trim()
-        if (turnUrl.isNotBlank()) {
-            val builder = PeerConnection.IceServer.builder(turnUrl)
-            if (BuildConfig.BLINK_TURN_USERNAME.isNotBlank()) {
-                builder.setUsername(BuildConfig.BLINK_TURN_USERNAME)
+
+        val temporary = turnCredentials?.takeIf { it.isUsable }
+        if (temporary != null) {
+            temporary.urls.forEach { url ->
+                add(
+                    PeerConnection.IceServer.builder(url)
+                        .setUsername(temporary.username)
+                        .setPassword(temporary.credential)
+                        .createIceServer()
+                )
             }
-            if (BuildConfig.BLINK_TURN_CREDENTIAL.isNotBlank()) {
-                builder.setPassword(BuildConfig.BLINK_TURN_CREDENTIAL)
+        } else {
+            // Transitional fallback only. Production should enable server-issued credentials
+            // after the protected Supabase function has passed Testlab validation.
+            val turnUrl = BuildConfig.BLINK_TURN_URL.trim()
+            if (turnUrl.isNotBlank()) {
+                val builder = PeerConnection.IceServer.builder(turnUrl)
+                if (BuildConfig.BLINK_TURN_USERNAME.isNotBlank()) {
+                    builder.setUsername(BuildConfig.BLINK_TURN_USERNAME)
+                }
+                if (BuildConfig.BLINK_TURN_CREDENTIAL.isNotBlank()) {
+                    builder.setPassword(BuildConfig.BLINK_TURN_CREDENTIAL)
+                }
+                add(builder.createIceServer())
             }
-            add(builder.createIceServer())
         }
     }
 
