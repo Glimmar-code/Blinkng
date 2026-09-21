@@ -227,7 +227,21 @@ class CallActivity : ComponentActivity() {
                     },
                     onSwitchCamera = { rtcClient?.switchCamera() },
                     onToggleSpeaker = {
-                        speakerOn = rtcClient?.toggleSpeaker() ?: speakerOn
+                        val activeCall = call
+                        val desired = !speakerOn
+                        if (activeCall == null) {
+                            speakerOn = rtcClient?.setSpeakerEnabled(desired) ?: speakerOn
+                        } else {
+                            lifecycleScope.launch {
+                                val routedByTelecom =
+                                    BlinkTelecomManager.setSpeakerEnabled(activeCall.id, desired)
+                                speakerOn = if (routedByTelecom) {
+                                    desired
+                                } else {
+                                    rtcClient?.setSpeakerEnabled(desired) ?: speakerOn
+                                }
+                            }
+                        }
                     }
                 )
             }
@@ -441,6 +455,12 @@ class CallActivity : ComponentActivity() {
                 }
             }
         )
+
+        BlinkTelecomManager.bindEndpointLifecycle(active.id) { endpoint ->
+            runOnUiThread {
+                speakerOn = endpoint.type == androidx.core.telecom.CallEndpointCompat.TYPE_SPEAKER
+            }
+        }
 
         val queued = pendingSignals.sortedBy { it.id }.toList()
         pendingSignals.clear()
