@@ -49,6 +49,7 @@ object BlinkTelecomManager {
     ) {
         val controlReady = CompletableDeferred<CallControlScope>()
         val suppressNextSystemDisconnect = AtomicBoolean(false)
+        val locallyAnswered = AtomicBoolean(false)
         @Volatile var control: CallControlScope? = null
         @Volatile var job: Job? = null
         @Volatile var onSystemSetActive: (suspend () -> Unit)? = null
@@ -161,7 +162,10 @@ object BlinkTelecomManager {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
         val control = awaitControl(callId) ?: return true
         return when (runCatching { control.answer(telecomCallType(callType)) }.getOrNull()) {
-            is CallControlResult.Success -> true
+            is CallControlResult.Success -> {
+                sessions[callId]?.locallyAnswered?.set(true)
+                true
+            }
             else -> false
         }
     }
@@ -202,6 +206,17 @@ object BlinkTelecomManager {
         }
     }
 
+    /**
+     * The callee receives the "answered" push on every signed-in device. Keep Telecom alive
+     * on the device that actually answered, but remove the stale ringing session elsewhere.
+     */
+    fun dismissIfAnsweredElsewhere(callId: String) {
+        val session = sessions[callId] ?: return
+        if (!session.locallyAnswered.get()) {
+            disconnect(callId, DisconnectCause.REMOTE)
+        }
+    }
+
     private suspend fun awaitControl(callId: String): CallControlScope? {
         val session = sessions[callId] ?: return null
         session.control?.let { return it }
@@ -218,6 +233,7 @@ object BlinkTelecomManager {
         val session = sessions[callId] ?: return
         if (!session.metadata.incoming) return
 
+        session.locallyAnswered.set(true)
         val repository = CallRepository()
         val answered = repository.answerCall(callId).getOrThrow()
         IncomingCallNotification.cancel(context, callId)
