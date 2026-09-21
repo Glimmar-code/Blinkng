@@ -348,6 +348,9 @@ class CallRepository {
             when {
                 raw.contains("USER_BUSY", true) -> "This person is already on another call."
                 raw.contains("CALL_BLOCKED", true) -> "Calling is unavailable for this conversation."
+                raw.contains("CALL_NOT_ALLOWED", true) -> "This person is not accepting this type of call."
+                raw.contains("CALL_RATE_LIMITED", true) -> "You have started too many calls recently. Try again later."
+                raw.contains("CALL_TARGET_COOLDOWN", true) -> "Please wait before calling this person again."
                 raw.contains("NOT_CONVERSATION_PARTICIPANT", true) -> "You can only call someone in an active conversation."
                 raw.contains("CALL_NOT_RINGING", true) -> "This call is no longer ringing."
                 raw.contains("AUTHENTICATION_REQUIRED", true) -> "Your session has expired. Sign in again."
