@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -171,6 +172,11 @@ class CallActivity : ComponentActivity() {
     private var speakerOn by mutableStateOf(false)
     private var elapsedSeconds by mutableIntStateOf(0)
     private var errorText by mutableStateOf<String?>(null)
+    private var callStartedElapsedRealtimeMs = 0L
+    private var connectedElapsedRealtimeMs = 0L
+    private var reconnectCount = 0
+    private var dataSaverForCall = false
+    private var qualityReported = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -194,6 +200,7 @@ class CallActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SupabaseService.initialize(applicationContext)
+        callStartedElapsedRealtimeMs = SystemClock.elapsedRealtime()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 Toast.makeText(this@CallActivity, "Use End call to leave the call.", Toast.LENGTH_SHORT).show()
@@ -415,6 +422,7 @@ class CallActivity : ComponentActivity() {
 
         val temporaryTurnCredentials = repository.fetchTurnCredentials().getOrNull()
         val dataSaverEnabled = repository.fetchDataSaverEnabled().getOrDefault(false)
+        dataSaverForCall = dataSaverEnabled
         rtcClient = try {
             WebRtcCallClient(
                 context = this,
@@ -615,6 +623,9 @@ class CallActivity : ComponentActivity() {
                 when (state) {
                     PeerConnection.PeerConnectionState.CONNECTED -> {
                         rtcClient?.setLowBandwidthMode(false)
+                        if (connectedElapsedRealtimeMs == 0L) {
+                            connectedElapsedRealtimeMs = SystemClock.elapsedRealtime()
+                        }
                         statusText = "Connected"
                         if (!connectedMarked) {
                             connectedMarked = true
@@ -631,6 +642,7 @@ class CallActivity : ComponentActivity() {
                         }
                     }
                     PeerConnection.PeerConnectionState.DISCONNECTED -> {
+                        if (connectedElapsedRealtimeMs > 0L) reconnectCount += 1
                         rtcClient?.setLowBandwidthMode(true)
                         statusText = "Reconnecting…"
                         if (isCaller) scheduleIceRestart()
@@ -735,6 +747,7 @@ class CallActivity : ComponentActivity() {
         delayMillis: Long = 650L,
         disconnectCause: Int = android.telecom.DisconnectCause.LOCAL
     ) {
+        reportQualityIfNeeded(status)
         statusText = terminalLabel(status)
         incomingRinging = false
         call?.id?.let { callId ->
@@ -745,6 +758,34 @@ class CallActivity : ComponentActivity() {
         stopService(Intent(this, BlinkCallForegroundService::class.java))
         delay(delayMillis)
         finish()
+    }
+
+    private suspend fun reportQualityIfNeeded(status: CallStatus) {
+        if (qualityReported || !status.isTerminal) return
+        qualityReported = true
+        val setupMs = if (
+            callStartedElapsedRealtimeMs > 0L &&
+            connectedElapsedRealtimeMs >= callStartedElapsedRealtimeMs
+        ) {
+            (connectedElapsedRealtimeMs - callStartedElapsedRealtimeMs)
+                .coerceIn(0L, 300_000L)
+                .toInt()
+        } else {
+            0
+        }
+        call?.id?.let { callId ->
+            repository.reportCallQuality(
+                CallQualitySnapshot(
+                    callId = callId,
+                    setupMs = setupMs,
+                    reconnectCount = reconnectCount,
+                    terminalStatus = status,
+                    dataSaverEnabled = dataSaverForCall
+                )
+            ).onFailure { error ->
+                android.util.Log.w("CallActivity", "Unable to upload call diagnostics", error)
+            }
+        }
     }
 
     private fun terminalLabel(status: CallStatus): String = when (status) {
