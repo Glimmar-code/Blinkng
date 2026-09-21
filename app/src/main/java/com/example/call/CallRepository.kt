@@ -193,6 +193,27 @@ class CallRepository {
         }
     }
 
+    suspend fun fetchTurnCredentials(): Result<TurnCredentials?> = withContext(Dispatchers.IO) {
+        if (!com.example.BuildConfig.BLINK_DYNAMIC_TURN_ENABLED) {
+            return@withContext Result.success(null)
+        }
+        runCatching {
+            val response = executeAuthorized {
+                Request.Builder()
+                    .url("$baseUrl/functions/v1/call-turn-credentials")
+                    .post("{}".toRequestBody(jsonMediaType))
+            }
+            response.use {
+                val body = it.body?.string().orEmpty()
+                if (!it.isSuccessful) {
+                    throw CallApiException(parseError(body, "Unable to obtain secure relay credentials."), it.code)
+                }
+                TurnCredentials.fromJson(JSONObject(body)).takeIf { credentials -> credentials.isUsable }
+                    ?: throw CallApiException("TURN relay credentials were incomplete.", 502)
+            }
+        }
+    }
+
     suspend fun fetchRecentCalls(limit: Int = 50): Result<List<BlinkCall>> = withContext(Dispatchers.IO) {
         runCatching {
             val safeLimit = limit.coerceIn(1, 100)
