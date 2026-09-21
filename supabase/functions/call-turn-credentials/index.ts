@@ -31,6 +31,15 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+async function pseudonymousUserKey(userId: string): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", encoder.encode(userId)),
+  );
+  return Array.from(digest.slice(0, 12))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 async function coturnCredential(secret: string, username: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -70,7 +79,9 @@ Deno.serve(async (req) => {
     ? Math.min(3600, Math.max(120, Math.floor(configuredTtl)))
     : 600;
   const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds;
-  const username = `${expiresAt}:${userId}`;
+  // Do not expose the Supabase profile UUID to the TURN service/logs.
+  const relayUserKey = await pseudonymousUserKey(userId);
+  const username = `${expiresAt}:${relayUserKey}`;
   const credential = await coturnCredential(sharedSecret, username);
 
   return json({
