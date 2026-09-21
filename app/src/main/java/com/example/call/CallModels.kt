@@ -98,6 +98,14 @@ data class CallPeer(
     val avatar: String = ""
 )
 
+data class CallQualitySnapshot(
+    val callId: String,
+    val setupMs: Int,
+    val reconnectCount: Int,
+    val terminalStatus: CallStatus,
+    val dataSaverEnabled: Boolean
+)
+
 data class TurnCredentials(
     val urls: List<String>,
     val username: String,
