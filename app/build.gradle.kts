@@ -147,6 +147,8 @@ android {
     buildConfigField("String", "BLINK_TURN_URL", buildConfigString(resolvedTurnUrl))
     buildConfigField("String", "BLINK_TURN_USERNAME", buildConfigString(resolvedTurnUsername))
     buildConfigField("String", "BLINK_TURN_CREDENTIAL", buildConfigString(resolvedTurnCredential))
+    // Keep disabled until call-turn-credentials is validated/deployed from a Supabase dev branch.
+    buildConfigField("boolean", "BLINK_DYNAMIC_TURN_ENABLED", "false")
     buildConfigField("String", "BUILD_COMMIT_SHA", buildConfigString(gitCommitSha))
     buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/4343111201"))
     buildConfigField("String", "ADMOB_FEED_NATIVE_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/9024145134"))
