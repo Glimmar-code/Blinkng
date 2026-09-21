@@ -68,8 +68,11 @@ object IncomingCallNotification {
             return
         }
 
-        // Background/locked-screen calls are registered with Android Telecom before the
-        // CallStyle notification is posted, allowing wearables/system call surfaces to act.
+        createChannels(context)
+        if (!hasNotificationPermission(context)) return
+
+        // Core-Telecom requires a CallStyle notification immediately after registration.
+        // Only register here when Android can actually display that notification.
         BlinkTelecomManager.ensureCallRegistered(
             context = context,
             callId = callId,
@@ -81,9 +84,6 @@ object IncomingCallNotification {
             callType = callType,
             incoming = true
         )
-
-        createChannels(context)
-        if (!hasNotificationPermission(context)) return
 
         val answerIntent = CallActivity.incomingIntent(
             context = context,
