@@ -91,7 +91,11 @@ class WebRtcCallClient(
         initializeFactoryOnce()
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         requestCallAudioFocus()
-        setSpeakerEnabled(speakerEnabled)
+        // Android 8+ call routing is coordinated by Core-Telecom. Keep the direct
+        // AudioManager route only for legacy/fallback devices.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            setSpeakerEnabled(speakerEnabled)
+        }
 
         audioDeviceModule = JavaAudioDeviceModule.builder(appContext)
             .setUseHardwareAcousticEchoCanceler(true)
