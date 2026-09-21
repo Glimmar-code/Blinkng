@@ -399,8 +399,14 @@ class CallActivity : ComponentActivity() {
         statusText = if (isCaller && call?.status == CallStatus.RINGING) "Calling…" else "Connecting…"
         connectingSinceMillis = if (connectingSinceMillis == 0L) System.currentTimeMillis() else connectingSinceMillis
 
+        val temporaryTurnCredentials = repository.fetchTurnCredentials().getOrNull()
         rtcClient = try {
-            WebRtcCallClient(this, callType, rtcListener)
+            WebRtcCallClient(
+                context = this,
+                type = callType,
+                listener = rtcListener,
+                turnCredentials = temporaryTurnCredentials
+            )
         } catch (error: Exception) {
             mediaStarted = false
             errorText = "Unable to initialize call media."
