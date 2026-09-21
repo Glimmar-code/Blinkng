@@ -64,6 +64,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
@@ -159,6 +160,10 @@ class CallActivity : ComponentActivity() {
     private var peerName by mutableStateOf("Blink user")
     private var peerUsername by mutableStateOf("")
     private var peerAvatar by mutableStateOf("")
+    private var peerId: String = ""
+    private var conversationId: String = ""
+    private var microphoneBeforeSystemPause = true
+    private var cameraBeforeSystemPause = false
     private var incomingRinging by mutableStateOf(false)
     private var mediaReady by mutableStateOf(false)
     private var microphoneOn by mutableStateOf(true)
@@ -248,6 +253,7 @@ class CallActivity : ComponentActivity() {
         durationJob?.cancel()
         reconnectJob?.cancel()
         realtime?.close()
+        call?.id?.let { BlinkTelecomManager.clearMediaLifecycle(it) }
         rtcClient?.release()
         rtcClient = null
         mediaReady = false
@@ -292,7 +298,8 @@ class CallActivity : ComponentActivity() {
         }
 
         val suppliedPeerId = sourceIntent.getStringExtra(EXTRA_PEER_ID).orEmpty()
-        val peerId = suppliedPeerId.ifBlank { loaded.otherUserId(repository.currentUserId()) }
+        peerId = suppliedPeerId.ifBlank { loaded.otherUserId(repository.currentUserId()) }
+        conversationId = loaded.conversationId
         peerName = sourceIntent.getStringExtra(EXTRA_PEER_NAME).orEmpty().ifBlank { "Blink user" }
         peerUsername = sourceIntent.getStringExtra(EXTRA_PEER_USERNAME).orEmpty()
         peerAvatar = sourceIntent.getStringExtra(EXTRA_PEER_AVATAR).orEmpty()
@@ -353,9 +360,32 @@ class CallActivity : ComponentActivity() {
         if (mediaStarted || ending.get()) return
         val active = call ?: return
 
+        // Permissions are granted at this point, so it is safe to start the phone-call
+        // foreground service before registering the call with Telecom.
+        startForegroundCall(active.id)
+        BlinkTelecomManager.ensureCallRegistered(
+            context = this,
+            callId = active.id,
+            peerId = peerId,
+            peerUsername = peerUsername,
+            peerName = peerName,
+            peerAvatar = peerAvatar,
+            conversationId = conversationId,
+            callType = callType,
+            incoming = !isCaller
+        )
+
         if (mediaRequestedForIncomingAnswer && !isCaller && active.status == CallStatus.RINGING) {
+            val telecomAccepted = BlinkTelecomManager.answer(active.id, callType)
+            if (!telecomAccepted) {
+                errorText = "Another call is using the device audio."
+                failAndFinish("telecom_conflict")
+                return
+            }
             val answered = repository.answerCall(active.id).getOrElse { error ->
                 errorText = error.message ?: "Unable to answer this call."
+                BlinkTelecomManager.disconnect(active.id, android.telecom.DisconnectCause.LOCAL)
+                stopService(Intent(this, BlinkCallForegroundService::class.java))
                 return
             }
             call = answered
@@ -378,7 +408,30 @@ class CallActivity : ComponentActivity() {
         }
         mediaReady = true
         speakerOn = rtcClient?.setSpeakerEnabled(callType == CallType.VIDEO) ?: speakerOn
-        startForegroundCall(active.id)
+
+        BlinkTelecomManager.bindMediaLifecycle(
+            callId = active.id,
+            onSystemSetActive = {
+                withContext(Dispatchers.Main) {
+                    microphoneOn = rtcClient?.setMicrophoneEnabled(microphoneBeforeSystemPause) ?: microphoneOn
+                    if (callType == CallType.VIDEO) {
+                        cameraOn = rtcClient?.setCameraEnabled(cameraBeforeSystemPause) ?: cameraOn
+                    }
+                    if (call?.status == CallStatus.CONNECTED) statusText = "Connected"
+                }
+            },
+            onSystemSetInactive = {
+                withContext(Dispatchers.Main) {
+                    microphoneBeforeSystemPause = microphoneOn
+                    cameraBeforeSystemPause = cameraOn
+                    microphoneOn = rtcClient?.setMicrophoneEnabled(false) ?: false
+                    if (callType == CallType.VIDEO) {
+                        cameraOn = rtcClient?.setCameraEnabled(false) ?: false
+                    }
+                    statusText = "Call paused"
+                }
+            }
+        )
 
         val queued = pendingSignals.sortedBy { it.id }.toList()
         pendingSignals.clear()
@@ -534,6 +587,11 @@ class CallActivity : ComponentActivity() {
                             connectedMarked = true
                             lifecycleScope.launch {
                                 call?.let { active ->
+                                    if (isCaller && !BlinkTelecomManager.setActive(active.id)) {
+                                        errorText = "Android could not activate this call."
+                                        failAndFinish("telecom_conflict")
+                                        return@launch
+                                    }
                                     repository.markConnected(active.id).getOrNull()?.let { applyCallUpdate(it) }
                                 }
                             }
@@ -585,7 +643,10 @@ class CallActivity : ComponentActivity() {
         lifecycleScope.launch {
             repository.declineCall(active.id)
             repository.dispatchPush(active.id, "declined")
-            finishCallUi(CallStatus.DECLINED)
+            finishCallUi(
+                CallStatus.DECLINED,
+                disconnectCause = android.telecom.DisconnectCause.REJECTED
+            )
         }
     }
 
@@ -596,7 +657,10 @@ class CallActivity : ComponentActivity() {
             val ended = repository.endCall(active.id, "ended").getOrNull()
             val event = ended?.status?.wireValue ?: "ended"
             repository.dispatchPush(active.id, event)
-            finishCallUi(ended?.status ?: CallStatus.ENDED)
+            finishCallUi(
+                ended?.status ?: CallStatus.ENDED,
+                disconnectCause = android.telecom.DisconnectCause.LOCAL
+            )
         }
     }
 
@@ -605,8 +669,16 @@ class CallActivity : ComponentActivity() {
         if (!ending.compareAndSet(false, true)) return
         val ended = repository.endCall(active.id, "failed").getOrNull()
         repository.dispatchPush(active.id, "failed")
-        errorText = if (reason == "connection_timeout") "The call could not connect." else errorText
-        finishCallUi(ended?.status ?: CallStatus.FAILED, delayMillis = 1_200L)
+        errorText = when (reason) {
+            "connection_timeout" -> "The call could not connect."
+            "telecom_conflict" -> errorText ?: "Another call is using the device audio."
+            else -> errorText
+        }
+        finishCallUi(
+            ended?.status ?: CallStatus.FAILED,
+            delayMillis = 1_200L,
+            disconnectCause = android.telecom.DisconnectCause.LOCAL
+        )
     }
 
     private suspend fun refreshAndMaybeFinish() {
@@ -616,13 +688,26 @@ class CallActivity : ComponentActivity() {
 
     private fun finishTerminal(status: CallStatus) {
         if (!ending.compareAndSet(false, true)) return
-        lifecycleScope.launch { finishCallUi(status) }
+        val cause = when (status) {
+            CallStatus.DECLINED -> android.telecom.DisconnectCause.REJECTED
+            CallStatus.MISSED -> android.telecom.DisconnectCause.MISSED
+            else -> android.telecom.DisconnectCause.REMOTE
+        }
+        lifecycleScope.launch { finishCallUi(status, disconnectCause = cause) }
     }
 
-    private suspend fun finishCallUi(status: CallStatus, delayMillis: Long = 650L) {
+    private suspend fun finishCallUi(
+        status: CallStatus,
+        delayMillis: Long = 650L,
+        disconnectCause: Int = android.telecom.DisconnectCause.LOCAL
+    ) {
         statusText = terminalLabel(status)
         incomingRinging = false
-        call?.id?.let { IncomingCallNotification.cancel(this, it) }
+        call?.id?.let { callId ->
+            IncomingCallNotification.cancel(this, callId)
+            BlinkTelecomManager.clearMediaLifecycle(callId)
+            BlinkTelecomManager.disconnect(callId, disconnectCause)
+        }
         stopService(Intent(this, BlinkCallForegroundService::class.java))
         delay(delayMillis)
         finish()
