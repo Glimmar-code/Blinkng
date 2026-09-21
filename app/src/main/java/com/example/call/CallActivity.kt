@@ -400,12 +400,14 @@ class CallActivity : ComponentActivity() {
         connectingSinceMillis = if (connectingSinceMillis == 0L) System.currentTimeMillis() else connectingSinceMillis
 
         val temporaryTurnCredentials = repository.fetchTurnCredentials().getOrNull()
+        val dataSaverEnabled = repository.fetchDataSaverEnabled().getOrDefault(false)
         rtcClient = try {
             WebRtcCallClient(
                 context = this,
                 type = callType,
                 listener = rtcListener,
-                turnCredentials = temporaryTurnCredentials
+                turnCredentials = temporaryTurnCredentials,
+                dataSaverEnabled = dataSaverEnabled
             )
         } catch (error: Exception) {
             mediaStarted = false
@@ -592,6 +594,7 @@ class CallActivity : ComponentActivity() {
             runOnUiThread {
                 when (state) {
                     PeerConnection.PeerConnectionState.CONNECTED -> {
+                        rtcClient?.setLowBandwidthMode(false)
                         statusText = "Connected"
                         if (!connectedMarked) {
                             connectedMarked = true
@@ -608,6 +611,7 @@ class CallActivity : ComponentActivity() {
                         }
                     }
                     PeerConnection.PeerConnectionState.DISCONNECTED -> {
+                        rtcClient?.setLowBandwidthMode(true)
                         statusText = "Reconnecting…"
                         if (isCaller) scheduleIceRestart()
                     }
