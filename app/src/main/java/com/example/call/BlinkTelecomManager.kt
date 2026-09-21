@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.core.telecom.CallAttributesCompat
 import androidx.core.telecom.CallControlResult
 import androidx.core.telecom.CallControlScope
+import androidx.core.telecom.CallEndpointCompat
 import androidx.core.telecom.CallsManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -54,6 +56,8 @@ object BlinkTelecomManager {
         @Volatile var job: Job? = null
         @Volatile var onSystemSetActive: (suspend () -> Unit)? = null
         @Volatile var onSystemSetInactive: (suspend () -> Unit)? = null
+        @Volatile var onEndpointChanged: ((CallEndpointCompat) -> Unit)? = null
+        @Volatile var lastNonSpeakerEndpoint: CallEndpointCompat? = null
     }
 
     fun registerApplication(context: Context) {
@@ -135,6 +139,14 @@ object BlinkTelecomManager {
                     if (!session.controlReady.isCompleted) {
                         session.controlReady.complete(this)
                     }
+                    launch {
+                        currentCallEndpoint.collect { endpoint ->
+                            if (endpoint.type != CallEndpointCompat.TYPE_SPEAKER) {
+                                session.lastNonSpeakerEndpoint = endpoint
+                            }
+                            session.onEndpointChanged?.invoke(endpoint)
+                        }
+                    }
                 }
             } catch (error: Exception) {
                 if (!session.controlReady.isCompleted) {
@@ -155,6 +167,38 @@ object BlinkTelecomManager {
         sessions[callId]?.let { session ->
             session.onSystemSetActive = onSystemSetActive
             session.onSystemSetInactive = onSystemSetInactive
+        }
+    }
+
+    fun bindEndpointLifecycle(
+        callId: String,
+        onEndpointChanged: (CallEndpointCompat) -> Unit
+    ) {
+        sessions[callId]?.onEndpointChanged = onEndpointChanged
+    }
+
+    suspend fun setSpeakerEnabled(callId: String, enabled: Boolean): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        val session = sessions[callId] ?: return false
+        val control = awaitControl(callId) ?: return false
+        val available = withTimeoutOrNull(1_500L) {
+            control.availableEndpoints.first()
+        }.orEmpty()
+        if (available.isEmpty()) return false
+
+        val target = if (enabled) {
+            available.firstOrNull { it.type == CallEndpointCompat.TYPE_SPEAKER }
+        } else {
+            session.lastNonSpeakerEndpoint?.takeIf { previous ->
+                available.any { it.identifier == previous.identifier }
+            } ?: available.firstOrNull { it.type == CallEndpointCompat.TYPE_WIRED_HEADSET }
+                ?: available.firstOrNull { it.type == CallEndpointCompat.TYPE_BLUETOOTH }
+                ?: available.firstOrNull { it.type == CallEndpointCompat.TYPE_EARPIECE }
+        } ?: return false
+
+        return when (runCatching { control.requestEndpointChange(target) }.getOrNull()) {
+            is CallControlResult.Success -> true
+            else -> false
         }
     }
 
@@ -203,6 +247,7 @@ object BlinkTelecomManager {
         sessions[callId]?.let {
             it.onSystemSetActive = null
             it.onSystemSetInactive = null
+            it.onEndpointChanged = null
         }
     }
 
