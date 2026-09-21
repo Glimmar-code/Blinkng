@@ -54,6 +54,9 @@ verify_jwt = true
 [functions.send-call-notification]
 verify_jwt = true
 
+[functions.call-turn-credentials]
+verify_jwt = true
+
 [functions.blink-ai]
 verify_jwt = true
 
