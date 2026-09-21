@@ -193,6 +193,33 @@ class CallRepository {
         }
     }
 
+    suspend fun reportCallQuality(snapshot: CallQualitySnapshot): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            if (!com.example.BuildConfig.BLINK_CALL_QUALITY_REPORTING_ENABLED) {
+                return@withContext Result.success(Unit)
+            }
+            runCatching {
+                if (!snapshot.terminalStatus.isTerminal) return@runCatching Unit
+                val payload = JSONObject()
+                    .put("p_call_id", snapshot.callId)
+                    .put("p_setup_ms", snapshot.setupMs.coerceIn(0, 300_000))
+                    .put("p_reconnect_count", snapshot.reconnectCount.coerceIn(0, 1_000))
+                    .put("p_terminal_status", snapshot.terminalStatus.wireValue)
+                    .put("p_data_saver", snapshot.dataSaverEnabled)
+                val response = executeAuthorized {
+                    Request.Builder()
+                        .url("$baseUrl/rest/v1/rpc/report_call_quality")
+                        .post(payload.toString().toRequestBody(jsonMediaType))
+                }
+                response.use {
+                    val body = it.body?.string().orEmpty()
+                    if (!it.isSuccessful) {
+                        throw CallApiException(parseError(body, "Unable to record call diagnostics."), it.code)
+                    }
+                }
+            }
+        }
+
     suspend fun fetchDataSaverEnabled(): Result<Boolean> = withContext(Dispatchers.IO) {
         runCatching {
             val userId = currentUserId()
