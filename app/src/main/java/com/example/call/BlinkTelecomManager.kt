@@ -279,26 +279,28 @@ object BlinkTelecomManager {
             return
         }
 
-        val result = if (
+        // A Telecom MISSED callback can arrive before BLINK's authoritative ring timeout.
+        // Leave the row ringing in that case; CallTimeoutWorker will transition it to MISSED
+        // at timeout_at instead of incorrectly turning an unanswered call into DECLINED.
+        val result = when {
             session.metadata.incoming &&
-            current.status == CallStatus.RINGING &&
-            cause.code == DisconnectCause.REJECTED
-        ) {
-            repository.declineCall(callId)
-        } else {
-            repository.endCall(
+                current.status == CallStatus.RINGING &&
+                cause.code == DisconnectCause.MISSED -> Result.success(current)
+            session.metadata.incoming &&
+                current.status == CallStatus.RINGING &&
+                cause.code == DisconnectCause.REJECTED -> repository.declineCall(callId)
+            else -> repository.endCall(
                 callId = callId,
                 reason = when (cause.code) {
                     DisconnectCause.REJECTED -> "declined"
-                    DisconnectCause.MISSED -> "missed"
                     DisconnectCause.REMOTE -> "remote"
                     else -> "system"
                 }
             )
         }
-        result.getOrNull()?.let { ended ->
-            repository.dispatchPush(callId, ended.status.wireValue)
-        }
+        result.getOrNull()
+            ?.takeIf { it.status.isTerminal }
+            ?.let { ended -> repository.dispatchPush(callId, ended.status.wireValue) }
         IncomingCallNotification.cancel(context, callId)
         IncomingCallBannerActivity.dismiss(callId)
         context.stopService(Intent(context, BlinkCallForegroundService::class.java))
