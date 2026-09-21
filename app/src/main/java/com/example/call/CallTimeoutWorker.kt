@@ -31,6 +31,7 @@ class CallTimeoutWorker(appContext: Context, params: WorkerParameters) : Corouti
             val call = CallRepository().expireCall(callId).getOrThrow()
             if (call.status == CallStatus.MISSED) {
                 IncomingCallNotification.cancel(applicationContext, callId)
+                BlinkTelecomManager.disconnect(callId, android.telecom.DisconnectCause.MISSED)
                 IncomingCallNotification.showMissed(
                     context = applicationContext,
                     callId = callId,
