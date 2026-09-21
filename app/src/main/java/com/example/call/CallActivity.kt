@@ -520,6 +520,9 @@ class CallActivity : ComponentActivity() {
     private fun applyCallUpdate(updated: BlinkCall) {
         val previous = call
         if (previous != null && previous.id != updated.id) return
+        if (previous != null && !CallLifecyclePolicy.canApply(previous.status, updated.status)) {
+            return
+        }
         call = updated
         when (updated.status) {
             CallStatus.RINGING -> statusText = if (isCaller) "Calling…" else "Incoming call"
