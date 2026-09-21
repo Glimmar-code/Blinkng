@@ -193,6 +193,26 @@ class CallRepository {
         }
     }
 
+    suspend fun fetchDataSaverEnabled(): Result<Boolean> = withContext(Dispatchers.IO) {
+        runCatching {
+            val userId = currentUserId()
+            if (userId.isBlank()) return@runCatching false
+            val response = executeAuthorized {
+                Request.Builder()
+                    .url("$baseUrl/rest/v1/user_settings?user_id=eq.$userId&select=data_saver&limit=1")
+                    .get()
+            }
+            response.use {
+                val body = it.body?.string().orEmpty()
+                if (!it.isSuccessful) {
+                    throw CallApiException(parseError(body, "Unable to load data-saver preference."), it.code)
+                }
+                val rows = JSONArray(body)
+                if (rows.length() == 0) false else rows.getJSONObject(0).optBoolean("data_saver", false)
+            }
+        }
+    }
+
     suspend fun fetchTurnCredentials(): Result<TurnCredentials?> = withContext(Dispatchers.IO) {
         if (!com.example.BuildConfig.BLINK_DYNAMIC_TURN_ENABLED) {
             return@withContext Result.success(null)
