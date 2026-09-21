@@ -264,6 +264,7 @@ class CallActivity : ComponentActivity() {
                 runCatching {
                     val ended = repository.endCall(active.id, "ended").getOrNull()
                     ended?.status?.wireValue?.let { repository.dispatchPush(active.id, it) }
+                    BlinkTelecomManager.disconnect(active.id, android.telecom.DisconnectCause.LOCAL)
                 }
             }
         }
