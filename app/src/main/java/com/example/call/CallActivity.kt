@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.widget.Toast
@@ -465,8 +466,10 @@ class CallActivity : ComponentActivity() {
         )
 
         BlinkTelecomManager.bindEndpointLifecycle(active.id) { endpoint ->
-            runOnUiThread {
-                speakerOn = endpoint.type == androidx.core.telecom.CallEndpointCompat.TYPE_SPEAKER
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                runOnUiThread {
+                    speakerOn = endpoint.type == androidx.core.telecom.CallEndpointCompat.TYPE_SPEAKER
+                }
             }
         }
 
