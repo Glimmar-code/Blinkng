@@ -1,6 +1,7 @@
 package com.blinkng.desktop.ui
 
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,9 +36,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
+import com.blinkng.shared.ai.BlinkAiExperienceCatalog
+import com.blinkng.shared.ai.BlinkAiExperiencePage
 import com.blinkng.desktop.data.DesktopBlinkAiConversation
 import com.blinkng.desktop.data.DesktopBlinkAiService
 import kotlinx.coroutines.launch
@@ -115,6 +120,8 @@ private fun DesktopBlinkAiDialog(
     var historyQuery by remember { mutableStateOf("") }
     var conversations by remember { mutableStateOf<List<DesktopBlinkAiConversation>>(emptyList()) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var experiencePage by remember { mutableStateOf(BlinkAiExperiencePage.WELCOME) }
+    var activeExploreId by remember { mutableStateOf<String?>(null) }
     var nextId by remember { mutableStateOf(2L) }
     var messages by remember {
         mutableStateOf(
@@ -388,13 +395,114 @@ private fun DesktopBlinkAiDialog(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Blink AI", fontWeight = FontWeight.Black)
-                    Text("Your AI assistant inside Blink", style = MaterialTheme.typography.bodySmall)
+                    Text("BLINK AI", fontWeight = FontWeight.Black)
+                    Text(
+                        when (experiencePage) {
+                            BlinkAiExperiencePage.WELCOME -> "Your AI inside BLINK"
+                            BlinkAiExperiencePage.EXPLORE -> "Explore"
+                            BlinkAiExperiencePage.CHAT -> "AI Chat"
+                        },
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
                 TextButton(onClick = onDismiss) { Text("Close") }
             }
         },
         text = {
+            when (experiencePage) {
+                BlinkAiExperiencePage.WELCOME -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Text("Hi there 👋", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Tap to chat", fontSize = 28.sp, fontWeight = FontWeight.Black)
+                        Surface(
+                            shape = RoundedCornerShape(28.dp),
+                            color = Color(0xFF063D34),
+                        ) {
+                            Text(
+                                "≋",
+                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 14.dp),
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF35E1BE),
+                            )
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Text("Welcome to BLINK AI", fontSize = 24.sp, fontWeight = FontWeight.Black)
+                        Text(
+                            "Ask questions, study, write, code, research, analyze media or get help using BLINK.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        OutlinedButton(onClick = { experiencePage = BlinkAiExperiencePage.EXPLORE }) {
+                            Text("Explore AI tools")
+                        }
+                    }
+                }
+
+                BlinkAiExperiencePage.EXPLORE -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 560.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text("Let’s Explore", fontSize = 26.sp, fontWeight = FontWeight.Black)
+                        Text(
+                            "Choose a focused BLINK AI mode.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        BlinkAiExperienceCatalog.categories.chunked(2).forEach { rowItems ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                rowItems.forEach { category ->
+                                    Surface(
+                                        onClick = {
+                                            activeExploreId = category.id
+                                            mode = category.mode
+                                            resetChat()
+                                            input = category.starterPrompt
+                                            experiencePage = BlinkAiExperiencePage.CHAT
+                                        },
+                                        modifier = Modifier.weight(1f).heightIn(min = 116.dp),
+                                        shape = RoundedCornerShape(18.dp),
+                                        color = if (activeExploreId == category.id) {
+                                            Color(0xFF0A3B33)
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceVariant
+                                        },
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(14.dp),
+                                            verticalArrangement = Arrangement.spacedBy(7.dp),
+                                        ) {
+                                            Text(
+                                                category.title,
+                                                fontWeight = FontWeight.Bold,
+                                            )
+                                            Text(
+                                                category.subtitle,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                }
+                                if (rowItems.size == 1) Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+
+                BlinkAiExperiencePage.CHAT -> {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -585,18 +693,48 @@ private fun DesktopBlinkAiDialog(
                     }
                 }
             }
+                }
+            }
         },
         confirmButton = {
-            Button(
-                onClick = { send() },
-                enabled = (input.isNotBlank() || imageFiles.isNotEmpty() || audioFile != null) && !sending,
-            ) {
-                if (sending) CircularProgressIndicator(strokeWidth = 2.dp)
-                else Text("Send")
+            when (experiencePage) {
+                BlinkAiExperiencePage.WELCOME -> {
+                    Button(onClick = { experiencePage = BlinkAiExperiencePage.CHAT }) {
+                        Text("Start chatting")
+                    }
+                }
+                BlinkAiExperiencePage.EXPLORE -> {
+                    Button(onClick = { experiencePage = BlinkAiExperiencePage.CHAT }) {
+                        Text("Open chat")
+                    }
+                }
+                BlinkAiExperiencePage.CHAT -> {
+                    Button(
+                        onClick = { send() },
+                        enabled = (input.isNotBlank() || imageFiles.isNotEmpty() || audioFile != null) && !sending,
+                    ) {
+                        if (sending) CircularProgressIndicator(strokeWidth = 2.dp)
+                        else Text("Send")
+                    }
+                }
             }
         },
         dismissButton = {
-            OutlinedButton(onClick = onDismiss, enabled = !sending) { Text("Close") }
+            when (experiencePage) {
+                BlinkAiExperiencePage.WELCOME -> {
+                    OutlinedButton(onClick = onDismiss, enabled = !sending) { Text("Close") }
+                }
+                BlinkAiExperiencePage.EXPLORE -> {
+                    TextButton(onClick = { experiencePage = BlinkAiExperiencePage.WELCOME }, enabled = !sending) {
+                        Text("Back")
+                    }
+                }
+                BlinkAiExperiencePage.CHAT -> {
+                    TextButton(onClick = { experiencePage = BlinkAiExperiencePage.EXPLORE }, enabled = !sending) {
+                        Text("Explore")
+                    }
+                }
+            }
         },
     )
 }
