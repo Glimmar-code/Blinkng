@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   android-call-quality:
-    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'Testlab-call-professional-v1-20260921'
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'Testlab-call-')
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
