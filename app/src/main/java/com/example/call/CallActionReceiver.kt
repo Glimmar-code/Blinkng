@@ -27,11 +27,13 @@ class CallActionReceiver : BroadcastReceiver() {
                     ACTION_DECLINE -> {
                         repository.declineCall(callId)
                         repository.dispatchPush(callId, "declined")
+                        BlinkTelecomManager.disconnect(callId, android.telecom.DisconnectCause.REJECTED)
                     }
                     ACTION_END -> {
                         val result = repository.endCall(callId, "ended")
                         val event = result.getOrNull()?.status?.wireValue ?: "ended"
                         repository.dispatchPush(callId, event)
+                        BlinkTelecomManager.disconnect(callId, android.telecom.DisconnectCause.LOCAL)
                     }
                 }
                 context.stopService(Intent(context, BlinkCallForegroundService::class.java))

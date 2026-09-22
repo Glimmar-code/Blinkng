@@ -193,6 +193,74 @@ class CallRepository {
         }
     }
 
+    suspend fun reportCallQuality(snapshot: CallQualitySnapshot): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            if (!com.example.BuildConfig.BLINK_CALL_QUALITY_REPORTING_ENABLED) {
+                return@withContext Result.success(Unit)
+            }
+            runCatching {
+                if (!snapshot.terminalStatus.isTerminal) return@runCatching Unit
+                val payload = JSONObject()
+                    .put("p_call_id", snapshot.callId)
+                    .put("p_setup_ms", snapshot.setupMs.coerceIn(0, 300_000))
+                    .put("p_reconnect_count", snapshot.reconnectCount.coerceIn(0, 1_000))
+                    .put("p_terminal_status", snapshot.terminalStatus.wireValue)
+                    .put("p_data_saver", snapshot.dataSaverEnabled)
+                val response = executeAuthorized {
+                    Request.Builder()
+                        .url("$baseUrl/rest/v1/rpc/report_call_quality")
+                        .post(payload.toString().toRequestBody(jsonMediaType))
+                }
+                response.use {
+                    val body = it.body?.string().orEmpty()
+                    if (!it.isSuccessful) {
+                        throw CallApiException(parseError(body, "Unable to record call diagnostics."), it.code)
+                    }
+                }
+            }
+        }
+
+    suspend fun fetchDataSaverEnabled(): Result<Boolean> = withContext(Dispatchers.IO) {
+        runCatching {
+            val userId = currentUserId()
+            if (userId.isBlank()) return@runCatching false
+            val response = executeAuthorized {
+                Request.Builder()
+                    .url("$baseUrl/rest/v1/user_settings?user_id=eq.$userId&select=data_saver&limit=1")
+                    .get()
+            }
+            response.use {
+                val body = it.body?.string().orEmpty()
+                if (!it.isSuccessful) {
+                    throw CallApiException(parseError(body, "Unable to load data-saver preference."), it.code)
+                }
+                val rows = JSONArray(body)
+                if (rows.length() == 0) false else rows.getJSONObject(0).optBoolean("data_saver", false)
+            }
+        }
+    }
+
+    suspend fun fetchTurnCredentials(): Result<TurnCredentials?> = withContext(Dispatchers.IO) {
+        if (!com.example.BuildConfig.BLINK_DYNAMIC_TURN_ENABLED) {
+            return@withContext Result.success(null)
+        }
+        runCatching {
+            val response = executeAuthorized {
+                Request.Builder()
+                    .url("$baseUrl/functions/v1/call-turn-credentials")
+                    .post("{}".toRequestBody(jsonMediaType))
+            }
+            response.use {
+                val body = it.body?.string().orEmpty()
+                if (!it.isSuccessful) {
+                    throw CallApiException(parseError(body, "Unable to obtain secure relay credentials."), it.code)
+                }
+                TurnCredentials.fromJson(JSONObject(body)).takeIf { credentials -> credentials.isUsable }
+                    ?: throw CallApiException("TURN relay credentials were incomplete.", 502)
+            }
+        }
+    }
+
     suspend fun fetchRecentCalls(limit: Int = 50): Result<List<BlinkCall>> = withContext(Dispatchers.IO) {
         runCatching {
             val safeLimit = limit.coerceIn(1, 100)
@@ -307,6 +375,9 @@ class CallRepository {
             when {
                 raw.contains("USER_BUSY", true) -> "This person is already on another call."
                 raw.contains("CALL_BLOCKED", true) -> "Calling is unavailable for this conversation."
+                raw.contains("CALL_NOT_ALLOWED", true) -> "This person is not accepting this type of call."
+                raw.contains("CALL_RATE_LIMITED", true) -> "You have started too many calls recently. Try again later."
+                raw.contains("CALL_TARGET_COOLDOWN", true) -> "Please wait before calling this person again."
                 raw.contains("NOT_CONVERSATION_PARTICIPANT", true) -> "You can only call someone in an active conversation."
                 raw.contains("CALL_NOT_RINGING", true) -> "This call is no longer ringing."
                 raw.contains("AUTHENTICATION_REQUIRED", true) -> "Your session has expired. Sign in again."

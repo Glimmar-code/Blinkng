@@ -1,6 +1,7 @@
 package com.example.call
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
@@ -39,7 +40,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 class WebRtcCallClient(
     context: Context,
     private val type: CallType,
-    private val listener: Listener
+    private val listener: Listener,
+    private val turnCredentials: TurnCredentials? = null,
+    private val dataSaverEnabled: Boolean = false
 ) {
     interface Listener {
         fun onLocalDescription(kind: String, description: SessionDescription)
@@ -57,6 +60,10 @@ class WebRtcCallClient(
     }
 
     private val appContext = context.applicationContext
+    private val connectivityManager =
+        appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private val preferConservativeVideo =
+        dataSaverEnabled || connectivityManager.isActiveNetworkMetered
     private val eglBase: EglBase = EglBase.create()
     private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val audioFocusListener = AudioManager.OnAudioFocusChangeListener { }
@@ -84,7 +91,11 @@ class WebRtcCallClient(
         initializeFactoryOnce()
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         requestCallAudioFocus()
-        setSpeakerEnabled(speakerEnabled)
+        // Android 8+ call routing is coordinated by Core-Telecom. Keep the direct
+        // AudioManager route only for legacy/fallback devices.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            setSpeakerEnabled(speakerEnabled)
+        }
 
         audioDeviceModule = JavaAudioDeviceModule.builder(appContext)
             .setUseHardwareAcousticEchoCanceler(true)
@@ -228,6 +239,16 @@ class WebRtcCallClient(
         }
     }
 
+    fun setLowBandwidthMode(enabled: Boolean) {
+        if (type != CallType.VIDEO || released) return
+        val conservative = enabled || preferConservativeVideo
+        val width = if (conservative) 360 else 720
+        val height = if (conservative) 640 else 1280
+        val fps = if (conservative) 20 else 30
+        runCatching { videoCapturer?.changeCaptureFormat(width, height, fps) }
+            .onFailure { Log.w(TAG, "Unable to change video capture profile", it) }
+    }
+
     fun setSpeakerEnabled(enabled: Boolean): Boolean {
         speakerEnabled = enabled
         try {
@@ -334,16 +355,31 @@ class WebRtcCallClient(
     private fun buildIceServers(): List<PeerConnection.IceServer> = buildList {
         add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())
         add(PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer())
-        val turnUrl = BuildConfig.BLINK_TURN_URL.trim()
-        if (turnUrl.isNotBlank()) {
-            val builder = PeerConnection.IceServer.builder(turnUrl)
-            if (BuildConfig.BLINK_TURN_USERNAME.isNotBlank()) {
-                builder.setUsername(BuildConfig.BLINK_TURN_USERNAME)
+
+        val temporary = turnCredentials?.takeIf { it.isUsable }
+        if (temporary != null) {
+            temporary.urls.forEach { url ->
+                add(
+                    PeerConnection.IceServer.builder(url)
+                        .setUsername(temporary.username)
+                        .setPassword(temporary.credential)
+                        .createIceServer()
+                )
             }
-            if (BuildConfig.BLINK_TURN_CREDENTIAL.isNotBlank()) {
-                builder.setPassword(BuildConfig.BLINK_TURN_CREDENTIAL)
+        } else {
+            // Transitional fallback only. Production should enable server-issued credentials
+            // after the protected Supabase function has passed Testlab validation.
+            val turnUrl = BuildConfig.BLINK_TURN_URL.trim()
+            if (turnUrl.isNotBlank()) {
+                val builder = PeerConnection.IceServer.builder(turnUrl)
+                if (BuildConfig.BLINK_TURN_USERNAME.isNotBlank()) {
+                    builder.setUsername(BuildConfig.BLINK_TURN_USERNAME)
+                }
+                if (BuildConfig.BLINK_TURN_CREDENTIAL.isNotBlank()) {
+                    builder.setPassword(BuildConfig.BLINK_TURN_CREDENTIAL)
+                }
+                add(builder.createIceServer())
             }
-            add(builder.createIceServer())
         }
     }
 
@@ -357,7 +393,10 @@ class WebRtcCallClient(
         videoSource = factory.createVideoSource(false)
         textureHelper = SurfaceTextureHelper.create("BlinkCameraThread", eglBase.eglBaseContext)
         capturer.initialize(textureHelper, appContext, videoSource?.capturerObserver)
-        runCatching { capturer.startCapture(720, 1280, 30) }
+        val width = if (preferConservativeVideo) 540 else 720
+        val height = if (preferConservativeVideo) 960 else 1280
+        val fps = if (preferConservativeVideo) 24 else 30
+        runCatching { capturer.startCapture(width, height, fps) }
             .onFailure {
                 cameraEnabled = false
                 listener.onError("Unable to start the camera.")

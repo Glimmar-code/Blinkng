@@ -71,6 +71,20 @@ object IncomingCallNotification {
         createChannels(context)
         if (!hasNotificationPermission(context)) return
 
+        // Core-Telecom requires a CallStyle notification immediately after registration.
+        // Only register here when Android can actually display that notification.
+        BlinkTelecomManager.ensureCallRegistered(
+            context = context,
+            callId = callId,
+            peerId = peerId,
+            peerUsername = peerUsername,
+            peerName = peerName,
+            peerAvatar = peerAvatar,
+            conversationId = conversationId,
+            callType = callType,
+            incoming = true
+        )
+
         val answerIntent = CallActivity.incomingIntent(
             context = context,
             callId = callId,
@@ -216,11 +230,18 @@ object IncomingCallNotification {
         if (normalized == "answered") {
             cancel(context, callId)
             IncomingCallBannerActivity.dismiss(callId)
+            BlinkTelecomManager.dismissIfAnsweredElsewhere(callId)
             return
         }
         if (normalized in setOf("cancelled", "declined", "ended", "missed", "failed")) {
             cancel(context, callId)
             IncomingCallBannerActivity.dismiss(callId)
+            val cause = when (normalized) {
+                "declined" -> android.telecom.DisconnectCause.REJECTED
+                "missed" -> android.telecom.DisconnectCause.MISSED
+                else -> android.telecom.DisconnectCause.REMOTE
+            }
+            BlinkTelecomManager.disconnect(callId, cause)
             if (BlinkCallForegroundService.activeCallId == callId) {
                 context.stopService(Intent(context, BlinkCallForegroundService::class.java))
             }
@@ -253,16 +274,22 @@ object IncomingCallNotification {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val kind = if (callType == CallType.VIDEO) "Video call" else "Voice call"
+        val peer = Person.Builder()
+            .setName(peerName.ifBlank { "Blink user" })
+            .setKey(callId)
+            .setImportant(true)
+            .build()
         return NotificationCompat.Builder(context, CHANNEL_ONGOING_CALLS)
             .setSmallIcon(com.example.R.drawable.ic_stat_blink)
             .setContentTitle(peerName.ifBlank { "Blink call" })
             .setContentText("$kind • $status")
+            .setStyle(NotificationCompat.CallStyle.forOngoingCall(peer, endPendingIntent))
+            .addPerson(peer)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(openPendingIntent)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "End", endPendingIntent)
             .build()
     }
 

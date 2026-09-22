@@ -98,6 +98,45 @@ data class CallPeer(
     val avatar: String = ""
 )
 
+data class CallQualitySnapshot(
+    val callId: String,
+    val setupMs: Int,
+    val reconnectCount: Int,
+    val terminalStatus: CallStatus,
+    val dataSaverEnabled: Boolean
+)
+
+data class TurnCredentials(
+    val urls: List<String>,
+    val username: String,
+    val credential: String,
+    val expiresAtEpochSeconds: Long
+) {
+    companion object {
+        fun fromJson(json: JSONObject): TurnCredentials {
+            val urlsJson = json.optJSONArray("urls")
+            val urls = buildList {
+                if (urlsJson != null) {
+                    for (index in 0 until urlsJson.length()) {
+                        urlsJson.optString(index)
+                            .takeIf { it.startsWith("turn:") || it.startsWith("turns:") }
+                            ?.let(::add)
+                    }
+                }
+            }
+            return TurnCredentials(
+                urls = urls,
+                username = json.optString("username"),
+                credential = json.optString("credential"),
+                expiresAtEpochSeconds = json.optLong("expires_at", 0L)
+            )
+        }
+    }
+
+    val isUsable: Boolean
+        get() = urls.isNotEmpty() && username.isNotBlank() && credential.isNotBlank()
+}
+
 private fun JSONObject.optNullableString(key: String): String? {
     if (isNull(key)) return null
     return optString(key).takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }

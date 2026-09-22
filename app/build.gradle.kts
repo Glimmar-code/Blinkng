@@ -147,6 +147,10 @@ android {
     buildConfigField("String", "BLINK_TURN_URL", buildConfigString(resolvedTurnUrl))
     buildConfigField("String", "BLINK_TURN_USERNAME", buildConfigString(resolvedTurnUsername))
     buildConfigField("String", "BLINK_TURN_CREDENTIAL", buildConfigString(resolvedTurnCredential))
+    // Keep disabled until call-turn-credentials is validated/deployed from a Supabase dev branch.
+    buildConfigField("boolean", "BLINK_DYNAMIC_TURN_ENABLED", "false")
+    // Enable only after call_quality_reporting.sql is validated/deployed through a real migration.
+    buildConfigField("boolean", "BLINK_CALL_QUALITY_REPORTING_ENABLED", "false")
     buildConfigField("String", "BUILD_COMMIT_SHA", buildConfigString(gitCommitSha))
     buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/4343111201"))
     buildConfigField("String", "ADMOB_FEED_NATIVE_AD_UNIT_ID", buildConfigString("ca-app-pub-9152580730716304/9024145134"))
@@ -229,6 +233,7 @@ dependencies {
   implementation(libs.androidx.room.runtime)
   implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.work.runtime.ktx)
+  implementation("androidx.core:core-telecom:1.1.0-beta01")
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   implementation(libs.kotlinx.coroutines.android)

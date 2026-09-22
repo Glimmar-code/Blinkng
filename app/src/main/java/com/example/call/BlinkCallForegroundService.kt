@@ -58,7 +58,14 @@ class BlinkCallForegroundService : Service() {
         // Android 14+ validates the runtime foreground-service types and their
         // corresponding while-in-use permissions. Audio calls must not request the
         // camera service type, while video calls need both microphone and camera.
-        val foregroundServiceTypes = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+        val phoneCallType =
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+            } else {
+                0
+            }
+        val foregroundServiceTypes = phoneCallType or
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
             if (callType == CallType.VIDEO) ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA else 0
         ServiceCompat.startForeground(
             this,
