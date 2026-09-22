@@ -151,3 +151,16 @@ Windows equivalent or reason no equivalent is needed: Windows keeps its existing
 Backend/shared behavior preserved: No ranking, coins, verification, Store pricing/ownership, authentication policy, onboarding rules, posts, reels, messages, calls, notifications semantics, moderation, Supabase schema/RLS or shared data contract is changed. The patch only prevents Android runtime termination and safely degrades failed OS integrations.
 Tests/validation: Android unit tests, lint, instrumentation compile, debug APK/AAB, release-smoke build, domain integration, Supabase safety, Windows build/package and Windows parity gates must pass on the Testlab PR before merge. Added regression tests cover wrong-type legacy preferences, missing activity launch handling, BLINK Store catalog integrity and BlinkStoreActivity creation.
 Owner/reviewer note: This exception is limited to Android runtime reliability adapters and cannot be reused to waive Windows parity for future BLINK features, business rules or backend behavior.
+
+
+---
+
+PARITY-EXCEPTION: android-core-telecom-postmerge-routing-fix
+Date: 2026-09-22
+Feature: Android Core-Telecom call-control and audio-route reliability fix
+Android behavior: Makes BLINK fail closed when Android Telecom does not provide a CallControlScope within the registration window, extends the control-ready timeout for slower devices, and prevents Android 8+ speaker changes from bypassing Telecom with a direct AudioManager fallback after a Telecom route change fails.
+Why this is genuinely Android-only: Core-Telecom, CallControlScope, CallEndpointCompat and Android audio endpoint arbitration are Android operating-system call integration APIs. These APIs and failure modes do not exist on Windows.
+Windows equivalent or reason no equivalent is needed: Windows keeps its existing desktop call/media routing implementation and does not use Android Telecom or AudioManager. No Windows user capability changes in this patch.
+Backend/shared behavior preserved: Supabase call state, signaling, WebRTC media semantics, call permissions, history, notifications semantics and shared user-facing call rules are unchanged. This patch only corrects the Android OS adapter and the Testlab call CI invocation.
+Tests/validation: Testlab Call Quality, Android quality, Android release smoke, Supabase safety, Windows build and Windows parity gates must pass on PR #133 before merge.
+Owner/reviewer note: This exception is limited to Android Core-Telecom/audio-routing reliability and cannot be reused to waive Windows parity for call features, shared business rules or backend behavior.
