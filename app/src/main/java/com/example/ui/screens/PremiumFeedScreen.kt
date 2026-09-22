@@ -1070,6 +1070,7 @@ private fun PremiumHomeFeed(
                                             PremiumPostEntrance(index = row.sourceIndex) {
                                                 PostCard(
                                                     post = post,
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                                     isDark = true,
                                                     onLike = { onLikePost(post.id) },
                                                     onComment = { onCommentPost(post.id) },
