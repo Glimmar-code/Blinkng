@@ -4,6 +4,7 @@
 - Android preserves the existing production chat contracts for realtime delivery, replies, reactions, edits/deletes, receipts, retries, pagination, offline outbox behavior, verification/VIP identity, and native call launching. No Supabase schema or production backend change is introduced by this UI redesign.
 - Windows: added the same Messages / Important / All messages hierarchy, conversation search, centered chat header, floating-style composer, in-chat search, and a desktop-native right-side contact profile panel with matching Audio, Video, Mute, and Search affordances.
 - Windows exceptions: the current desktop voice/video media adapter, conversation-mute sync, and direct full-profile routing are not yet connected in the desktop client. The UI fails closed with explicit status text rather than simulating those actions. Android keeps the fully wired existing implementations.
+- Android-only platform fix: guarded the Android Telecom endpoint-type read to API 26+ because Android Telecom is not a Windows API. This fixes a pre-existing min-SDK lint blocker without changing call behavior on supported Android versions.
 - Production safety: implemented on `Testlab-message-reference-redesign-20260922` for Testlab validation. Do not promote to `main` until Android and Windows quality gates pass and the messaging flow is verified.
 
 # Blinkng Android ↔ Windows parity ledger
