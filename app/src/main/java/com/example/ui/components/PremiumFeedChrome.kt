@@ -366,7 +366,7 @@ fun FeedTabs(
             .background(FeedBackground)
             .height(48.dp)
     ) {
-        val tabWidth = maxWidth / 2
+        val tabWidth = maxWidth / 2f
         val indicatorWidth = (tabWidth - 72.dp).coerceAtLeast(56.dp)
         val labelSelection = selectedIndex.coerceIn(0, 1)
         val indicatorOffset by animateDpAsState(
