@@ -463,9 +463,11 @@ class CallActivity : ComponentActivity() {
             }
         )
 
-        BlinkTelecomManager.bindEndpointLifecycle(active.id) { endpoint ->
-            runOnUiThread {
-                speakerOn = endpoint.type == androidx.core.telecom.CallEndpointCompat.TYPE_SPEAKER
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            BlinkTelecomManager.bindEndpointLifecycle(active.id) { endpoint ->
+                runOnUiThread {
+                    speakerOn = endpoint.type == androidx.core.telecom.CallEndpointCompat.TYPE_SPEAKER
+                }
             }
         }
 
