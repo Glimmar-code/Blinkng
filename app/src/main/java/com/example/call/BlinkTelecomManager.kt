@@ -103,6 +103,18 @@ object BlinkTelecomManager {
 
         val appContext = context.applicationContext
         session.job = scope.launch {
+            val callsManager = CallsManager(appContext)
+            val startingEndpoints = withTimeoutOrNull(1_500L) {
+                callsManager.getAvailableStartingCallEndpoints().first()
+            }.orEmpty()
+            val preferredStartingEndpoint = if (callType == CallType.VIDEO) {
+                startingEndpoints.firstOrNull { it.type == CallEndpointCompat.TYPE_SPEAKER }
+            } else {
+                startingEndpoints.firstOrNull { it.type == CallEndpointCompat.TYPE_BLUETOOTH }
+                    ?: startingEndpoints.firstOrNull { it.type == CallEndpointCompat.TYPE_WIRED_HEADSET }
+                    ?: startingEndpoints.firstOrNull { it.type == CallEndpointCompat.TYPE_EARPIECE }
+            }
+
             val attributes = CallAttributesCompat(
                 displayName = peerName.ifBlank { "Blink user" },
                 address = telecomAddress(peerUsername, peerId, callId),
@@ -112,15 +124,14 @@ object BlinkTelecomManager {
                     CallAttributesCompat.DIRECTION_OUTGOING
                 },
                 callType = telecomCallType(callType),
-                // We do not advertise hold yet. Telecom may disconnect BLINK if a higher-priority
-                // call needs the mic; that is safer than pretending BLINK can hold media.
-                callCapabilities = 0,
-                preferredStartingCallEndpoint = null,
+                // BLINK can temporarily pause media when Telecom gives another call priority.
+                callCapabilities = CallAttributesCompat.SUPPORTS_SET_INACTIVE,
+                preferredStartingCallEndpoint = preferredStartingEndpoint,
                 isLogExcluded = true
             )
 
             try {
-                CallsManager(appContext).addCall(
+                callsManager.addCall(
                     callAttributes = attributes,
                     onAnswer = { requestedType ->
                         handleSystemAnswer(appContext, callId, requestedType)
