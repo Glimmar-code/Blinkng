@@ -1,3 +1,11 @@
+## 2026-09-22 — Reference-style messaging experience promoted to main
+
+- Android: Messages now uses the validated reference-style information architecture with Important contacts, All messages, improved search, centered chat header, floating rounded composer, and immersive chat contact profile actions.
+- Windows: matching Messages / Important / All messages structure, search, centered chat header, rounded composer, and desktop contact profile panel.
+- Existing BLINK messaging contracts remain in place: realtime delivery, replies, reactions, edit/delete, receipts, retries, pagination, offline outbox behavior, verification/VIP identity, and native Android call launching.
+- Android Telecom compatibility remains guarded for API 26+ on the current main call implementation.
+- No Supabase schema, migration, RLS, RPC, storage, or ranking/feed algorithm change is part of this promotion.
+
 # Blinkng Android ↔ Windows parity ledger
 
 Every pull request that changes a user-facing Android feature must update Windows in the same pull request, either through shared code or an explicit desktop implementation.

@@ -81,6 +81,7 @@ import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.MoreVert
@@ -219,6 +220,7 @@ fun PremiumMessagesScreen(
     onStoryClick: (Story) -> Unit,
     onAddStoryClick: () -> Unit,
     onOpenActivity: () -> Unit,
+    onComposeMessage: () -> Unit = {},
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
     isConnected: Boolean = true,
     isLoading: Boolean = false,
@@ -300,6 +302,7 @@ fun PremiumMessagesScreen(
                             onStoryClick = onStoryClick,
                             onAddStoryClick = onAddStoryClick,
                             onOpenAppearance = { showAppearanceSheet = true },
+                            onComposeMessage = onComposeMessage,
                             isConnected = isConnected,
                             isLoading = isLoading
                         )
@@ -340,6 +343,7 @@ fun PremiumMessagesScreen(
                     onStoryClick = onStoryClick,
                     onAddStoryClick = onAddStoryClick,
                     onOpenAppearance = { showAppearanceSheet = true },
+                    onComposeMessage = onComposeMessage,
                     isConnected = isConnected,
                     isLoading = isLoading
                 )
@@ -595,6 +599,7 @@ private fun PremiumMessagesHome(
     onStoryClick: (Story) -> Unit,
     onAddStoryClick: () -> Unit,
     onOpenAppearance: () -> Unit,
+    onComposeMessage: () -> Unit,
     isConnected: Boolean,
     isLoading: Boolean
 ) {
@@ -624,10 +629,9 @@ private fun PremiumMessagesHome(
                 .statusBarsPadding()
         ) {
             MessagesHeader(
-                myAvatar = myAvatar,
-                myName = myName,
                 palette = palette,
-                onMore = onOpenAppearance
+                onMenu = onOpenAppearance,
+                onCompose = onComposeMessage
             )
 
             AnimatedVisibility(
@@ -656,22 +660,19 @@ private fun PremiumMessagesHome(
                     )
                 )
             ) {
-                MatchesRail(
+                ImportantContactsRail(
                     conversations = conversations,
-                    stories = stories,
                     palette = palette,
-                    onAddStoryClick = onAddStoryClick,
-                    onOpenConversation = onOpenConversation,
-                    onStoryClick = onStoryClick
+                    onOpenConversation = onOpenConversation
                 )
             }
 
             Text(
-                text = "Chats",
+                text = "All messages",
                 color = palette.textPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 18.dp, top = 12.dp, bottom = 8.dp)
+                modifier = Modifier.padding(start = 18.dp, top = 8.dp, bottom = 8.dp)
             )
 
             if (!isConnected) {
@@ -750,10 +751,9 @@ private fun MessageBackground(
 
 @Composable
 private fun MessagesHeader(
-    myAvatar: String,
-    myName: String,
     palette: MessagePalette,
-    onMore: () -> Unit
+    onMenu: () -> Unit,
+    onCompose: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -761,26 +761,27 @@ private fun MessagesHeader(
             .height(64.dp)
             .padding(horizontal = 18.dp)
     ) {
-        RingAvatar(
-            url = myAvatar,
-            name = myName,
+        GlassIconButton(
+            icon = Icons.Default.Menu,
+            contentDescription = "Messages menu",
             palette = palette,
-            size = 38.dp,
+            size = 42.dp,
+            onClick = onMenu,
             modifier = Modifier.align(Alignment.CenterStart)
         )
         Text(
-            text = "Chats",
+            text = "Messages",
             color = palette.textPrimary,
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.align(Alignment.Center)
         )
         GlassIconButton(
-            icon = Icons.Default.MoreVert,
-            contentDescription = "Message appearance and activity",
+            icon = Icons.Default.Edit,
+            contentDescription = "New message",
             palette = palette,
             size = 42.dp,
-            onClick = onMore,
+            onClick = onCompose,
             modifier = Modifier.align(Alignment.CenterEnd)
         )
     }
@@ -797,7 +798,7 @@ private fun SearchMatchesField(
         value = value,
         onValueChange = onValueChange,
         placeholder = {
-            Text("Search Matches", color = palette.textSecondary, fontSize = 12.sp)
+            Text("Search by name, text etc", color = palette.textSecondary, fontSize = 12.sp)
         },
         leadingIcon = {
             Icon(
@@ -843,68 +844,75 @@ private fun SearchMatchesField(
 }
 
 @Composable
-private fun MatchesRail(
+private fun ImportantContactsRail(
     conversations: List<ChatConversation>,
-    stories: List<Story>,
     palette: MessagePalette,
-    onAddStoryClick: () -> Unit,
-    onOpenConversation: (String) -> Unit,
-    onStoryClick: (Story) -> Unit
+    onOpenConversation: (String) -> Unit
 ) {
-    val matches = remember(conversations, stories) {
-        val people = mutableListOf<MatchPerson>()
-        conversations.forEach { conversation ->
-            people += MatchPerson(
-                id = "conversation_${conversation.id}",
-                name = conversation.partnerName,
-                username = conversation.partnerUsername,
-                avatar = conversation.partnerAvatar,
-                isOnline = conversation.isOnline,
-                hasUnseenStory = false,
-                verificationBadge = when {
-                    conversation.verificationBadge != VerificationBadge.NONE -> conversation.verificationBadge
-                    conversation.isVerified -> VerificationBadge.BLUE
-                    else -> VerificationBadge.NONE
-                },
-                conversation = conversation
+    val important = remember(conversations) {
+        conversations
+            .sortedWith(
+                compareByDescending<ChatConversation> { it.unreadCount > 0 }
+                    .thenByDescending { it.isOnline }
+                    .thenByDescending { it.lastMessageRawTime }
             )
-        }
-        val existingUsers = people.map { it.username.lowercase(Locale.ROOT) }.toMutableSet()
-        stories.filterNot { it.isUser }.forEach { story ->
-            val normalized = story.username.removePrefix("@").lowercase(Locale.ROOT)
-            if (normalized !in existingUsers) {
-                existingUsers += normalized
-                people += MatchPerson(
-                    id = "story_${story.id}",
-                    name = story.displayLabel,
-                    username = normalized,
-                    avatar = story.avatar,
-                    isOnline = false,
-                    hasUnseenStory = story.hasUnseen,
-                    verificationBadge = story.verificationBadge,
-                    story = story
+            .take(10)
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Important",
+                color = palette.textPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            if (important.isNotEmpty()) {
+                Text(
+                    "Quick access",
+                    color = palette.textMuted,
+                    fontSize = 9.sp
                 )
             }
         }
-        people.take(12)
-    }
 
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item(key = "add_story") {
-            AddMatchItem(palette = palette, onClick = onAddStoryClick)
-        }
-        itemsIndexed(matches, key = { index, person -> "match:$index:${person.id}" }) { _, person ->
-            MatchItem(
-                person = person,
-                palette = palette,
-                onClick = {
-                    person.conversation?.let { onOpenConversation(it.partnerUsername) }
-                        ?: person.story?.let(onStoryClick)
-                }
+        if (important.isEmpty()) {
+            Text(
+                "Your recent and active conversations will appear here.",
+                color = palette.textMuted,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)
             )
+        } else {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(important, key = { "important_${it.id}" }) { conversation ->
+                    MatchItem(
+                        person = MatchPerson(
+                            id = "important_${conversation.id}",
+                            name = conversation.partnerName,
+                            username = conversation.partnerUsername,
+                            avatar = conversation.partnerAvatar,
+                            isOnline = conversation.isOnline,
+                            hasUnseenStory = false,
+                            verificationBadge = when {
+                                conversation.verificationBadge != VerificationBadge.NONE -> conversation.verificationBadge
+                                conversation.isVerified -> VerificationBadge.BLUE
+                                else -> VerificationBadge.NONE
+                            },
+                            conversation = conversation
+                        ),
+                        palette = palette,
+                        onClick = { onOpenConversation(conversation.partnerUsername) }
+                    )
+                }
+            }
         }
     }
 }
@@ -1209,12 +1217,14 @@ private fun PremiumChatDetail(
     var replyingTo by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var editingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var showOverflow by remember(conversation.partnerUsername) { mutableStateOf(false) }
+    var showContactProfile by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var confirmClearChat by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var searchVisible by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var searchQuery by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:searchQuery:3")
     var pinnedOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    BackHandler(enabled = showContactProfile) { showContactProfile = false }
     // MESSAGING_RELIABILITY_AUDIT_V3: older pages load only after a real user scroll reaches the top.
     var userHasScrolled by remember(conversation.id) { mutableStateOf(false) }
     LaunchedEffect(listState.isScrollInProgress) {
@@ -1269,7 +1279,7 @@ private fun PremiumChatDetail(
                 conversation = conversation,
                 palette = palette,
                 onBack = onBack,
-                onProfileClick = onProfileClick,
+                onProfileClick = { showContactProfile = true },
                 onAudioCall = onAudioCall,
                 onVideoCall = onVideoCall,
                 onMore = { showOverflow = true },
@@ -1561,6 +1571,33 @@ private fun PremiumChatDetail(
             onDismiss = { showAttachmentSheet = false }
         )
     }
+
+    if (showContactProfile) {
+        ChatContactProfileOverlay(
+            conversation = conversation,
+            palette = palette,
+            onDismiss = { showContactProfile = false },
+            onViewFullProfile = {
+                showContactProfile = false
+                onProfileClick()
+            },
+            onAudioCall = {
+                showContactProfile = false
+                onAudioCall()
+            },
+            onVideoCall = {
+                showContactProfile = false
+                onVideoCall()
+            },
+            onMute = {
+                interactionActions.onMuteConversation(conversation, !conversation.isMuted)
+            },
+            onSearch = {
+                showContactProfile = false
+                searchVisible = true
+            }
+        )
+    }
 }
 
 @Composable
@@ -1576,58 +1613,295 @@ private fun ChatHeader(
     onToggleFullScreen: () -> Unit
 ) {
     Box(
-        modifier = Modifier.fillMaxWidth().background(palette.headerBrush()).border(1.dp, palette.border)
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(palette.headerBrush())
+            .border(1.dp, palette.border)
+            .padding(horizontal = 8.dp, vertical = 9.dp)
     ) {
+        GlassIconButton(
+            Icons.Default.ArrowBack,
+            "Back",
+            palette,
+            40.dp,
+            onClick = onBack,
+            modifier = Modifier.align(Alignment.CenterStart)
+        )
+
+        Column(
+            modifier = Modifier.align(Alignment.Center).widthIn(max = 190.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    conversation.partnerName,
+                    color = palette.textPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                VerificationDot(conversation.verificationBadge, conversation.isVerified)
+                BlinkVipMarkForUsername(
+                    username = conversation.partnerUsername,
+                    knownVip = if (conversation.partnerIsVip) true else null,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }
+            Text(
+                if (conversation.isOnline) "Active now" else conversation.lastSeen,
+                color = if (conversation.isOnline) palette.online else palette.textSecondary,
+                fontSize = 9.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 9.dp),
+            modifier = Modifier.align(Alignment.CenterEnd),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            GlassIconButton(Icons.Default.ArrowBack, "Back", palette, 40.dp, onClick = onBack)
-            Spacer(Modifier.width(7.dp))
-            Row(
-                modifier = Modifier.weight(1f).clickable(onClick = onProfileClick),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RingAvatar(
-                    url = conversation.partnerAvatar,
-                    name = conversation.partnerName,
-                    palette = palette,
-                    size = 40.dp,
-                    online = conversation.isOnline
-                )
-                Spacer(Modifier.width(9.dp))
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            conversation.partnerName,
-                            color = palette.textPrimary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
+            RingAvatar(
+                url = conversation.partnerAvatar,
+                name = conversation.partnerName,
+                palette = palette,
+                size = 38.dp,
+                online = conversation.isOnline,
+                modifier = Modifier.clickable(onClick = onProfileClick)
+            )
+            Spacer(Modifier.width(4.dp))
+            GlassIconButton(
+                Icons.Default.MoreVert,
+                "More chat options",
+                palette,
+                34.dp,
+                onClick = onMore
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChatContactProfileOverlay(
+    conversation: ChatConversation,
+    palette: MessagePalette,
+    onDismiss: () -> Unit,
+    onViewFullProfile: () -> Unit,
+    onAudioCall: () -> Unit,
+    onVideoCall: () -> Unit,
+    onMute: () -> Unit,
+    onSearch: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .semantics { contentDescription = "Chat profile for ${conversation.partnerName}" }
+    ) {
+        if (conversation.partnerAvatar.isNotBlank()) {
+            AsyncImage(
+                model = conversation.partnerAvatar,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = .72f }
+                    .blur(2.dp)
+            )
+        } else {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                palette.accent.copy(alpha = .42f),
+                                palette.backgroundBottom,
+                                Color.Black
+                            )
                         )
-                        VerificationDot(conversation.verificationBadge, conversation.isVerified)
-                    BlinkVipMarkForUsername(
-                        username = conversation.partnerUsername,
-                        knownVip = if (conversation.partnerIsVip) true else null,
-                        modifier = Modifier.padding(start = 4.dp)
                     )
+            )
+        }
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Black.copy(alpha = .12f),
+                            Color.Black.copy(alpha = .28f),
+                            Color.Black.copy(alpha = .82f)
+                        )
+                    )
+                )
+        )
+
+        GlassIconButton(
+            icon = Icons.Default.ArrowBack,
+            contentDescription = "Back to chat",
+            palette = palette,
+            size = 42.dp,
+            onClick = onDismiss,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(start = 16.dp, top = 12.dp)
+        )
+
+        Surface(
+            color = palette.glass.copy(alpha = if (palette.isLight) .94f else .84f),
+            contentColor = palette.textPrimary,
+            shape = RoundedCornerShape(30.dp),
+            border = BorderStroke(1.dp, palette.border.copy(alpha = .85f)),
+            shadowElevation = 18.dp,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 18.dp)
+                .navigationBarsPadding()
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                conversation.partnerName,
+                                fontSize = 23.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = palette.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            VerificationDot(conversation.verificationBadge, conversation.isVerified)
+                            BlinkVipMarkForUsername(
+                                username = conversation.partnerUsername,
+                                knownVip = if (conversation.partnerIsVip) true else null,
+                                modifier = Modifier.padding(start = 5.dp)
+                            )
+                        }
+                        Text(
+                            "@${conversation.partnerUsername.removePrefix("@")}",
+                            color = palette.textSecondary,
+                            fontSize = 12.sp
+                        )
+                        if (conversation.faculty.isNotBlank()) {
+                            Text(
+                                conversation.faculty,
+                                color = palette.textMuted,
+                                fontSize = 10.sp,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
                     }
-                    Text(
-                        if (conversation.isOnline) "Active now" else conversation.lastSeen,
-                        color = if (conversation.isOnline) palette.online else palette.textSecondary,
-                        fontSize = 9.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                    RingAvatar(
+                        url = conversation.partnerAvatar,
+                        name = conversation.partnerName,
+                        palette = palette,
+                        size = 58.dp,
+                        online = conversation.isOnline
                     )
                 }
+
+                Spacer(Modifier.height(18.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChatContactAction(
+                        label = "Audio",
+                        icon = Icons.Default.Call,
+                        palette = palette,
+                        onClick = onAudioCall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ChatContactAction(
+                        label = "Video",
+                        icon = Icons.Default.Videocam,
+                        palette = palette,
+                        onClick = onVideoCall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ChatContactAction(
+                        label = if (conversation.isMuted) "Unmute" else "Mute",
+                        icon = Icons.Default.VolumeOff,
+                        palette = palette,
+                        onClick = onMute,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ChatContactAction(
+                        label = "Search",
+                        icon = Icons.Default.Search,
+                        palette = palette,
+                        onClick = onSearch,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(color = palette.border.copy(alpha = .65f))
+                Spacer(Modifier.height(12.dp))
+
+                Surface(
+                    color = palette.glassElevated.copy(alpha = .72f),
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, palette.border),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onViewFullProfile)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 15.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "View full BLINK profile",
+                                color = palette.textPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                if (conversation.isOnline) "Active now" else conversation.lastSeen,
+                                color = palette.textSecondary,
+                                fontSize = 10.sp
+                            )
+                        }
+                        Text("›", color = palette.accent, fontSize = 28.sp)
+                    }
+                }
             }
-            GlassIconButton(Icons.Default.Call, "Audio call", palette, 36.dp, onClick = onAudioCall)
-            Spacer(Modifier.width(4.dp))
-            GlassIconButton(Icons.Default.Videocam, "Video call", palette, 36.dp, onClick = onVideoCall)
-            Spacer(Modifier.width(4.dp))
-            GlassIconButton(Icons.Default.MoreVert, "More chat options", palette, 36.dp, onClick = onMore)
+        }
+    }
+}
+
+@Composable
+private fun ChatContactAction(
+    label: String,
+    icon: ImageVector,
+    palette: MessagePalette,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = palette.glassElevated.copy(alpha = .78f),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, palette.border),
+        modifier = modifier.clickable(onClick = onClick)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp)
+        ) {
+            Icon(icon, contentDescription = label, tint = palette.accent, modifier = Modifier.size(21.dp))
+            Spacer(Modifier.height(6.dp))
+            Text(
+                label,
+                color = palette.textSecondary,
+                fontSize = 9.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -2136,80 +2410,86 @@ private fun MessageComposer(
     onSubmit: () -> Unit,
     onQuickLike: () -> Unit
 ) {
-    Surface(
-        color = palette.glass.copy(alpha = if (palette.isLight) .96f else .90f),
-        contentColor = palette.textPrimary,
-        border = BorderStroke(1.dp, palette.border),
-        shadowElevation = 8.dp,
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
+            .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Surface(
+            color = palette.glass.copy(alpha = if (palette.isLight) .97f else .94f),
+            contentColor = palette.textPrimary,
+            shape = RoundedCornerShape(30.dp),
+            border = BorderStroke(1.dp, palette.border),
+            shadowElevation = 10.dp,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            GlassIconButton(
-                icon = Icons.Default.Add,
-                contentDescription = "Add attachment",
-                palette = palette,
-                size = 40.dp,
-                onClick = onAttachment
-            )
-            Spacer(Modifier.width(6.dp))
-            GlassIconButton(
-                icon = Icons.Default.Mic,
-                contentDescription = "Dictate message",
-                palette = palette,
-                size = 40.dp,
-                onClick = onDictation
-            )
-            Spacer(Modifier.width(7.dp))
-            TextField(
-                value = value,
-                onValueChange = onValueChange,
-                placeholder = { Text("Message", color = palette.textMuted, fontSize = 12.sp) },
-                trailingIcon = {
-                    IconButton(onClick = onEmoji) {
-                        Icon(
-                            Icons.Default.EmojiEmotions,
-                            contentDescription = "Choose emoji",
-                            tint = palette.textSecondary,
-                            modifier = Modifier.size(20.dp)
-                        )
+            Row(
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                GlassIconButton(
+                    icon = Icons.Default.Add,
+                    contentDescription = "Add attachment",
+                    palette = palette,
+                    size = 40.dp,
+                    onClick = onAttachment
+                )
+                Spacer(Modifier.width(5.dp))
+
+                TextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    placeholder = { Text("Message", color = palette.textMuted, fontSize = 12.sp) },
+                    trailingIcon = {
+                        IconButton(onClick = onEmoji) {
+                            Icon(
+                                Icons.Default.EmojiEmotions,
+                                contentDescription = "Choose emoji",
+                                tint = palette.textSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    },
+                    maxLines = 4,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { if (value.isNotBlank()) onSubmit() }),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedTextColor = palette.textPrimary,
+                        unfocusedTextColor = palette.textPrimary,
+                        cursorColor = palette.accent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp, max = 112.dp)
+                )
+
+                Spacer(Modifier.width(4.dp))
+                Surface(
+                    shape = CircleShape,
+                    color = palette.accent,
+                    contentColor = Color.White,
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    IconButton(onClick = if (value.isBlank()) onDictation else onSubmit) {
+                        AnimatedContent(
+                            targetState = value.isNotBlank(),
+                            transitionSpec = { fadeIn(tween(120)) togetherWith fadeOut(tween(90)) },
+                            label = "composer_action"
+                        ) { hasText ->
+                            Icon(
+                                if (hasText) Icons.Default.Send else Icons.Default.Mic,
+                                contentDescription = if (hasText) "Send message" else "Voice input",
+                                tint = Color.White,
+                                modifier = Modifier.size(21.dp)
+                            )
+                        }
                     }
-                },
-                maxLines = 4,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onSubmit() }),
-                shape = RoundedCornerShape(24.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = palette.backgroundBottom.copy(alpha = if (palette.isLight) .08f else .36f),
-                    unfocusedContainerColor = palette.backgroundBottom.copy(alpha = if (palette.isLight) .08f else .36f),
-                    focusedTextColor = palette.textPrimary,
-                    unfocusedTextColor = palette.textPrimary,
-                    cursorColor = palette.accent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent
-                ),
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 44.dp, max = 112.dp)
-                    .border(1.dp, palette.border, RoundedCornerShape(24.dp))
-            )
-            Spacer(Modifier.width(4.dp))
-            IconButton(onClick = if (value.isBlank()) onQuickLike else onSubmit) {
-                AnimatedContent(
-                    targetState = value.isNotBlank(),
-                    transitionSpec = { fadeIn(tween(120)) togetherWith fadeOut(tween(90)) },
-                    label = "composer_action"
-                ) { hasText ->
-                    Icon(
-                        if (hasText) Icons.Default.Send else Icons.Default.ThumbUp,
-                        contentDescription = if (hasText) "Send message" else "Send like",
-                        tint = palette.accent,
-                        modifier = Modifier.size(if (hasText) 25.dp else 28.dp)
-                    )
                 }
             }
         }
