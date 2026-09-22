@@ -501,6 +501,21 @@ private fun AuthenticatedShell(state: DesktopAppState) {
 private fun DesktopTopBar(state: DesktopAppState) {
     var search by remember(state.globalSearch) { mutableStateOf(state.globalSearch) }
     val profile = state.profile
+    var liveWorldRank by remember(profile?.id) { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(profile?.id) {
+        val userId = profile?.id.orEmpty()
+        liveWorldRank = if (userId.isBlank()) {
+            null
+        } else {
+            runCatching {
+                state.client.fetchLeaderboard()
+                    .firstOrNull { it.userId == userId }
+                    ?.worldRank
+            }.getOrNull()
+        }
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -525,7 +540,7 @@ private fun DesktopTopBar(state: DesktopAppState) {
         ) {
             Icon(Icons.Rounded.Leaderboard, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
             Text(
-                if ((profile?.worldRank ?: 0) > 0) "#${profile?.worldRank}" else "#—",
+                if ((liveWorldRank ?: 0) > 0) "#${liveWorldRank}" else "#—",
                 fontWeight = FontWeight.Bold,
                 fontSize = 12.sp,
             )
