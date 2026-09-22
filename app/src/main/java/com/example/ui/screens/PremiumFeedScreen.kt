@@ -210,6 +210,8 @@ fun PremiumFeedScreen(
     isConnectHubLoading: Boolean = false,
     currentUsername: String,
     userAvatar: String,
+    currentWorldRank: Int = 0,
+    coinBalance: Long = 0L,
     currentSubTab: Int,
     onSubTabChanged: (Int) -> Unit,
     isDark: Boolean,
@@ -238,6 +240,7 @@ fun PremiumFeedScreen(
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit = { _, _, _ -> },
     onSearchClick: () -> Unit = {},
     onLeaderboardClick: () -> Unit = {},
+    onOpenStore: () -> Unit = {},
     onMarketClick: () -> Unit = {},
     onMessageClick: () -> Unit = {},
     hasMorePosts: Boolean = false,
@@ -305,6 +308,8 @@ fun PremiumFeedScreen(
             profiles = profiles,
             currentUsername = currentUsername,
             userAvatar = userAvatar,
+            worldRank = currentWorldRank,
+            coinBalance = coinBalance,
             resumeUserKey = resumeUserKey,
             laneIndex = feedLane,
             followedAuthorKeys = followedAuthorKeys,
@@ -331,6 +336,8 @@ fun PremiumFeedScreen(
             onOpenActivity = onOpenActivity,
             onOpenMenu = onOpenMenu,
             onSearchClick = onSearchClick,
+            onLeaderboardClick = onLeaderboardClick,
+            onOpenStore = onOpenStore,
             onRefresh = onRefresh,
             onRetry = onRetry,
             onViewedPost = onViewedPost,
@@ -339,7 +346,6 @@ fun PremiumFeedScreen(
             onLoadMoreReels = onLoadMoreReels,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
             onGameClick = { onSubTabChanged(3) },
-            onReelClick = { openReelsAt() },
             onOpenInlineReel = { reelId, positionMs -> openReelsAt(reelId, positionMs) }
         )
 
@@ -451,6 +457,8 @@ private fun PremiumHomeFeed(
     profiles: List<UserProfile>,
     currentUsername: String,
     userAvatar: String,
+    worldRank: Int,
+    coinBalance: Long,
     resumeUserKey: String,
     laneIndex: Int,
     followedAuthorKeys: Set<String>,
@@ -477,6 +485,8 @@ private fun PremiumHomeFeed(
     onOpenActivity: () -> Unit,
     onOpenMenu: () -> Unit,
     onSearchClick: () -> Unit,
+    onLeaderboardClick: () -> Unit,
+    onOpenStore: () -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
     onViewedPost: (String) -> Unit,
@@ -485,7 +495,6 @@ private fun PremiumHomeFeed(
     onLoadMoreReels: () -> Unit,
     onBottomBarVisibilityChange: (Boolean) -> Unit,
     onGameClick: () -> Unit,
-    onReelClick: () -> Unit,
     onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
 ) {
     val context = LocalContext.current
@@ -510,24 +519,7 @@ private fun PremiumHomeFeed(
     val density = LocalDensity.current
     val latestViewed by rememberUpdatedState(onViewedPost)
     val impressionTracker = remember { PostImpressionTracker() }
-    var filter by remember(laneResumeKey) {
-        mutableStateOf(
-            runCatching {
-                PremiumFeedFilter.valueOf(
-                    resumePrefs.safeString(
-                        "home_filter:$laneResumeKey",
-                        PremiumFeedFilter.ALL.name
-                    ) ?: PremiumFeedFilter.ALL.name
-                )
-            }.getOrDefault(PremiumFeedFilter.ALL)
-        )
-    }
-    LaunchedEffect(filter, laneResumeKey) {
-        resumePrefs.edit()
-            .putString("home_filter:$laneResumeKey", filter.name)
-            .apply()
-    }
-    var filterMenuVisible by remember { mutableStateOf(false) }
+    var filter by remember(laneResumeKey) { mutableStateOf(PremiumFeedFilter.ALL) }
     var screenVisible by remember { mutableStateOf(false) }
     var horizontalDrag by remember { mutableStateOf(0f) }
     val swipeThreshold = with(density) { 64.dp.toPx() }
@@ -948,7 +940,6 @@ private fun PremiumHomeFeed(
                         onDragEnd = {
                             when {
                                 horizontalDrag <= -swipeThreshold && laneIndex == 0 -> onLaneChanged(1)
-                                horizontalDrag <= -swipeThreshold && laneIndex == 1 -> onGameClick()
                                 horizontalDrag >= swipeThreshold && laneIndex == 1 -> onLaneChanged(0)
                             }
                             horizontalDrag = 0f
@@ -958,20 +949,19 @@ private fun PremiumHomeFeed(
                 }
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                AnimatedVisibility(
-                    visible = primaryHeaderVisible,
-                    enter = fadeIn(tween(120)) + slideInVertically(tween(140)) { -it / 2 },
-                    exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it / 2 }
-                ) {
-                    FeedTopBar(
-                        userAvatar = userAvatar,
-                        hasUnreadNotifications = hasUnreadNotifications,
-                        onSearchClick = onSearchClick,
-                        onNotificationClick = onOpenActivity,
-                        onMenuClick = onOpenMenu,
-                        onProfileClick = { onProfileClick(currentUsername) }
-                    )
-                }
+                FeedTopBar(
+                    userAvatar = userAvatar,
+                    worldRank = worldRank,
+                    coinBalance = coinBalance,
+                    hasUnreadNotifications = hasUnreadNotifications,
+                    onSearchClick = onSearchClick,
+                    onGameClick = onGameClick,
+                    onNotificationClick = onOpenActivity,
+                    onMenuClick = onOpenMenu,
+                    onLeaderboardClick = onLeaderboardClick,
+                    onStoreClick = onOpenStore,
+                    onProfileClick = { onProfileClick(currentUsername) }
+                )
 
                 AnimatedVisibility(
                     visible = secondaryChromeVisible,
@@ -979,34 +969,11 @@ private fun PremiumHomeFeed(
                     exit = fadeOut(tween(90)) + slideOutVertically(tween(110)) { -it / 3 }
                 ) {
                     Column {
-                        Box {
-                            FeedTabs(
-                                selectedIndex = laneIndex,
-                                onForYouClick = { onLaneChanged(0) },
-                                onFollowingClick = { onLaneChanged(1) },
-                                onGameClick = onGameClick,
-                                onReelClick = onReelClick,
-                                onFilterClick = { filterMenuVisible = true }
-                            )
-                            DropdownMenu(
-                                expanded = filterMenuVisible,
-                                onDismissRequest = { filterMenuVisible = false },
-                                modifier = Modifier.background(FeedElevatedSurface)
-                            ) {
-                                PremiumFilterItem("All posts", Icons.Default.Tune, filter == PremiumFeedFilter.ALL) {
-                                    filter = PremiumFeedFilter.ALL
-                                    filterMenuVisible = false
-                                }
-                                PremiumFilterItem("Photos", Icons.Default.Image, filter == PremiumFeedFilter.PHOTOS) {
-                                    filter = PremiumFeedFilter.PHOTOS
-                                    filterMenuVisible = false
-                                }
-                                PremiumFilterItem("Polls", Icons.Default.Poll, filter == PremiumFeedFilter.POLLS) {
-                                    filter = PremiumFeedFilter.POLLS
-                                    filterMenuVisible = false
-                                }
-                            }
-                        }
+                        FeedTabs(
+                            selectedIndex = laneIndex,
+                            onForYouClick = { onLaneChanged(0) },
+                            onFollowingClick = { onLaneChanged(1) }
+                        )
                         HorizontalDivider(color = FeedBorder.copy(alpha = 0.72f))
                     }
                 }
