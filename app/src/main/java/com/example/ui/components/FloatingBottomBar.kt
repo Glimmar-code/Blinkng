@@ -1,7 +1,5 @@
 package com.example.ui.components
 
-import android.app.Activity
-import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,14 +13,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.ChatBubble
-import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Storefront
@@ -34,18 +30,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.example.BlinkStoreActivity
-import com.example.R
 import com.example.ui.theme.FeedBlue
-import com.example.util.startActivitySafely
 import com.example.viewmodel.MainTab
 
 private enum class FeedBottomDestination {
-    HOME, CONNECT, LEADERBOARD, MARKET, MESSAGE, STORE
+    HOME, REELS, MARKET, CONNECT, MESSAGE
 }
 
 private data class FeedBottomItem(
@@ -57,11 +49,10 @@ private data class FeedBottomItem(
 
 private val feedBottomItems = listOf(
     FeedBottomItem(FeedBottomDestination.HOME, Icons.Filled.Home, Icons.Outlined.Home, "Home"),
-    FeedBottomItem(FeedBottomDestination.CONNECT, Icons.Filled.People, Icons.Outlined.People, "Connect"),
-    FeedBottomItem(FeedBottomDestination.LEADERBOARD, Icons.Filled.EmojiEvents, Icons.Outlined.EmojiEvents, "Leaderboard"),
+    FeedBottomItem(FeedBottomDestination.REELS, Icons.Filled.PlayArrow, Icons.Filled.PlayArrow, "Reels"),
     FeedBottomItem(FeedBottomDestination.MARKET, Icons.Filled.Storefront, Icons.Outlined.Storefront, "Market"),
-    FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message"),
-    FeedBottomItem(FeedBottomDestination.STORE, Icons.Filled.Apps, Icons.Filled.Apps, "Blink Store")
+    FeedBottomItem(FeedBottomDestination.CONNECT, Icons.Filled.People, Icons.Outlined.People, "Connect"),
+    FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message")
 )
 
 @Composable
@@ -69,20 +60,17 @@ fun FeedBottomBar(
     currentTab: MainTab,
     feedSubTab: Int,
     onHomeClick: () -> Unit,
-    onConnectClick: () -> Unit,
-    onLeaderboardClick: () -> Unit,
+    onReelsClick: () -> Unit,
     onMarketClick: () -> Unit,
+    onConnectClick: () -> Unit,
     onMessageClick: () -> Unit,
     isDark: Boolean,
-    onMenuClick: () -> Unit = {},
-    isMenuOpen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val selectedDestination = when {
+        currentTab == MainTab.HOME && feedSubTab == 1 -> FeedBottomDestination.REELS
         currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT
-        currentTab == MainTab.HOME -> FeedBottomDestination.HOME
-        currentTab == MainTab.LEADERBOARD -> FeedBottomDestination.LEADERBOARD
+        currentTab == MainTab.HOME && feedSubTab == 0 -> FeedBottomDestination.HOME
         currentTab == MainTab.MARKET -> FeedBottomDestination.MARKET
         currentTab == MainTab.MESSAGES -> FeedBottomDestination.MESSAGE
         else -> null
@@ -114,22 +102,10 @@ fun FeedBottomBar(
                     onClick = {
                         when (item.destination) {
                             FeedBottomDestination.HOME -> onHomeClick()
-                            FeedBottomDestination.CONNECT -> onConnectClick()
-                            FeedBottomDestination.LEADERBOARD -> onLeaderboardClick()
+                            FeedBottomDestination.REELS -> onReelsClick()
                             FeedBottomDestination.MARKET -> onMarketClick()
+                            FeedBottomDestination.CONNECT -> onConnectClick()
                             FeedBottomDestination.MESSAGE -> onMessageClick()
-                            FeedBottomDestination.STORE -> {
-                                val opened = context.startActivitySafely(
-                                    Intent(context, BlinkStoreActivity::class.java),
-                                    failureMessage = "Unable to open Blink Store."
-                                )
-                                if (opened) {
-                                    (context as? Activity)?.overridePendingTransition(
-                                        R.anim.blink_slide_in_right,
-                                        R.anim.blink_stay
-                                    )
-                                }
-                            }
                         }
                     }
                 )
@@ -189,12 +165,11 @@ fun FloatingBottomBar(
         currentTab = currentTab,
         feedSubTab = 0,
         onHomeClick = { onTabSelected(MainTab.HOME) },
-        onConnectClick = { onTabSelected(MainTab.SEARCH) },
-        onLeaderboardClick = { onTabSelected(MainTab.LEADERBOARD) },
+        onReelsClick = { onTabSelected(MainTab.HOME) },
         onMarketClick = { onTabSelected(MainTab.MARKET) },
+        onConnectClick = { onTabSelected(MainTab.SEARCH) },
         onMessageClick = { onTabSelected(MainTab.MESSAGES) },
         isDark = isDark,
-        onMenuClick = onMenuClick,
         modifier = modifier
     )
 }
