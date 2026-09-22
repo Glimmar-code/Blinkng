@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 object BlinkTelecomManager {
     private const val TAG = "BlinkTelecom"
-    private const val CONTROL_READY_TIMEOUT_MS = 3_000L
+    private const val CONTROL_READY_TIMEOUT_MS = 6_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val sessions = ConcurrentHashMap<String, Session>()
@@ -215,7 +215,7 @@ object BlinkTelecomManager {
 
     suspend fun answer(callId: String, callType: CallType): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
-        val control = awaitControl(callId) ?: return true
+        val control = awaitControl(callId) ?: return false
         return when (runCatching { control.answer(telecomCallType(callType)) }.getOrNull()) {
             is CallControlResult.Success -> {
                 sessions[callId]?.locallyAnswered?.set(true)
@@ -227,7 +227,7 @@ object BlinkTelecomManager {
 
     suspend fun setActive(callId: String): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
-        val control = awaitControl(callId) ?: return true
+        val control = awaitControl(callId) ?: return false
         return when (runCatching { control.setActive() }.getOrNull()) {
             is CallControlResult.Success -> true
             else -> false
