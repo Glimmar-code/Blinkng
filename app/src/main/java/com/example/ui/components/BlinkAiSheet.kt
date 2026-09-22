@@ -7,10 +7,13 @@ import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -21,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -46,16 +50,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.data.supabase.BlinkAiAction
 import com.example.data.supabase.BlinkAiConversation
 import com.example.data.supabase.BlinkAiService
+import com.blinkng.shared.ai.BlinkAiExperienceCatalog
+import com.blinkng.shared.ai.BlinkAiExperiencePage
 import com.example.util.startActivitySafely
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -87,7 +97,6 @@ fun BlinkAiSheet(
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val service = remember { BlinkAiService() }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -118,6 +127,8 @@ fun BlinkAiSheet(
     var renameTarget by remember { mutableStateOf<BlinkAiConversation?>(null) }
     var renameText by remember { mutableStateOf("") }
     var ttsReady by remember { mutableStateOf(false) }
+    var experiencePage by remember { mutableStateOf(BlinkAiExperiencePage.WELCOME) }
+    var activeExploreId by remember { mutableStateOf<String?>(null) }
 
     val textToSpeech = remember {
         TextToSpeech(context) { status ->
@@ -603,174 +614,533 @@ fun BlinkAiSheet(
         )
     }
 
-    ModalBottomSheet(
+    Dialog(
         onDismissRequest = {
             if (isSending) service.cancelActiveRequest()
             onDismiss()
         },
-        sheetState = sheetState,
-        modifier = Modifier.imePadding()
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
-        Column(
+        Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
+                .fillMaxSize()
+                .imePadding(),
+            color = Color(0xFF020807),
+            contentColor = Color.White
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Blink AI",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        "Your AI assistant inside Blink",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                TextButton(onClick = onDismiss) { Text("Close") }
-            }
-
-            Row(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
             ) {
-                TextButton(onClick = { startNewChat() }, enabled = !isSending) {
-                    Text("New chat")
-                }
-                TextButton(
-                    onClick = {
-                        historyOpen = true
-                        refreshHistory()
-                    },
-                    enabled = !isSending && !temporaryChat
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("History")
-                }
-                TextButton(onClick = { settingsOpen = true }, enabled = !isSending) {
-                    Text("Settings")
-                }
-            }
-
-            Spacer(Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                listOf("fast", "deep", "code", "research", "write", "study").forEach { item ->
-                    FilterChip(
-                        selected = mode == item,
-                        onClick = { if (!isSending) mode = item },
-                        label = { Text(item.replaceFirstChar { it.uppercase() }) },
-                        enabled = !isSending
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(6.dp))
-
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-            ) {
-                val status = buildList {
-                    add(mode.replaceFirstChar { it.uppercase() })
-                    if (useWebSearch) add("Web")
-                    if (usePersonalContext && !temporaryChat) add("Blink context")
-                    if (temporaryChat) add("Temporary")
-                }.joinToString(" • ")
-                Text(
-                    status,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 220.dp, max = 430.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(messages, key = { it.id }) { message ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start
+                    BlinkMark(size = 34.dp, showText = false)
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 10.dp)
                     ) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(0.9f),
-                            shape = RoundedCornerShape(18.dp),
-                            color = if (message.fromUser) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant
-                            }
-                        ) {
-                            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                                Text(
-                                    message.text,
-                                    color = if (message.fromUser) {
-                                        MaterialTheme.colorScheme.onPrimary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
+                        Text(
+                            "BLINK AI",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 18.sp,
+                            color = Color.White
+                        )
+                        Text(
+                            when (experiencePage) {
+                                BlinkAiExperiencePage.WELCOME -> "Your AI inside BLINK"
+                                BlinkAiExperiencePage.EXPLORE -> "Explore"
+                                BlinkAiExperiencePage.CHAT -> "AI Chat"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White.copy(alpha = 0.62f)
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            settingsOpen = true
+                        },
+                        enabled = !isSending
+                    ) {
+                        Text("•••", color = Color.White, fontWeight = FontWeight.Black)
+                    }
+                    TextButton(
+                        onClick = {
+                            if (isSending) service.cancelActiveRequest()
+                            onDismiss()
+                        }
+                    ) {
+                        Text("Close", color = Color.White.copy(alpha = 0.78f))
+                    }
+                }
 
-                                if (message.metadata.isNotBlank()) {
-                                    Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(8.dp))
+
+                when (experiencePage) {
+                    BlinkAiExperiencePage.WELCOME -> {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Spacer(Modifier.height(38.dp))
+                            Text(
+                                "Hi there 👋",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.68f)
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Tap to chat",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White
+                            )
+                            Spacer(Modifier.height(22.dp))
+                            Surface(
+                                modifier = Modifier.size(74.dp),
+                                shape = CircleShape,
+                                color = Color(0xFF063D34)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
                                     Text(
-                                        message.metadata,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (message.fromUser) {
-                                            MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f)
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                        }
+                                        "≋",
+                                        fontSize = 34.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFF35E1BE)
                                     )
                                 }
+                            }
+                            Spacer(Modifier.height(54.dp))
+                            Text(
+                                "Welcome to BLINK AI",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Ask questions, study, write, code, research, analyze media or get help using BLINK.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.66f)
+                            )
+                            Spacer(Modifier.height(24.dp))
+                            Button(
+                                onClick = {
+                                    experiencePage = BlinkAiExperiencePage.CHAT
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Start chatting", fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    experiencePage = BlinkAiExperiencePage.EXPLORE
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Explore AI tools")
+                            }
+                            Spacer(Modifier.height(24.dp))
+                        }
+                    }
 
-                                if (!message.fromUser) {
-                                    Row(
-                                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                                    ) {
-                                        TextButton(onClick = {
-                                            clipboard.setText(AnnotatedString(message.text))
-                                        }) {
-                                            Text("Copy")
-                                        }
-                                        TextButton(onClick = { shareText(message.text) }) {
-                                            Text("Share")
-                                        }
-                                        TextButton(
+                    BlinkAiExperiencePage.EXPLORE -> {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Text(
+                                "Let’s Explore",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White
+                            )
+                            Text(
+                                "Choose a focused BLINK AI mode.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.62f)
+                            )
+                            Spacer(Modifier.height(16.dp))
+
+                            BlinkAiExperienceCatalog.categories.chunked(2).forEach { rowItems ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    rowItems.forEach { category ->
+                                        Surface(
                                             onClick = {
-                                                if (ttsReady) {
-                                                    textToSpeech.speak(
-                                                        message.text,
-                                                        TextToSpeech.QUEUE_FLUSH,
-                                                        null,
-                                                        "blink-ai-${message.id}"
+                                                activeExploreId = category.id
+                                                mode = category.mode
+                                                startNewChat()
+                                                input = category.starterPrompt
+                                                experiencePage = BlinkAiExperiencePage.CHAT
+                                            },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 126.dp),
+                                            shape = RoundedCornerShape(20.dp),
+                                            color = if (activeExploreId == category.id) {
+                                                Color(0xFF0A3B33)
+                                            } else {
+                                                Color(0xFF061714)
+                                            }
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(14.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = Color(0xFF0B2E28)
+                                                ) {
+                                                    Text(
+                                                        category.title.take(1),
+                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                        fontWeight = FontWeight.Black,
+                                                        color = Color(0xFF35E1BE)
                                                     )
                                                 }
-                                            },
-                                            enabled = ttsReady
+                                                Text(
+                                                    category.title,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White
+                                                )
+                                                Text(
+                                                    category.subtitle,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Color.White.copy(alpha = 0.6f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (rowItems.size == 1) {
+                                        Spacer(Modifier.weight(1f))
+                                    }
+                                }
+                                Spacer(Modifier.height(10.dp))
+                            }
+                            Spacer(Modifier.height(18.dp))
+                        }
+                    }
+
+                    BlinkAiExperiencePage.CHAT -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            TextButton(onClick = { startNewChat() }, enabled = !isSending) {
+                                Text("New chat", color = Color.White)
+                            }
+                            TextButton(
+                                onClick = {
+                                    historyOpen = true
+                                    refreshHistory()
+                                },
+                                enabled = !isSending && !temporaryChat
+                            ) {
+                                Text("History", color = Color.White)
+                            }
+                            TextButton(onClick = { settingsOpen = true }, enabled = !isSending) {
+                                Text("Settings", color = Color.White)
+                            }
+                            TextButton(
+                                onClick = { experiencePage = BlinkAiExperiencePage.EXPLORE },
+                                enabled = !isSending
+                            ) {
+                                Text("Explore", color = Color(0xFF35E1BE))
+                            }
+                        }
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFF061714)
+                        ) {
+                            val status = buildList {
+                                add(mode.replaceFirstChar { it.uppercase() })
+                                if (useWebSearch) add("Web")
+                                if (usePersonalContext && !temporaryChat) add("BLINK context")
+                                if (temporaryChat) add("Temporary")
+                            }.joinToString(" • ")
+                            Text(
+                                status,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color.White.copy(alpha = 0.58f)
+                            )
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(9.dp)
+                        ) {
+                            items(messages, key = { it.id }) { message ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start
+                                ) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(0.9f),
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = if (message.fromUser) {
+                                            Color(0xFF0B8E78)
+                                        } else {
+                                            Color(0xFF071815)
+                                        }
+                                    ) {
+                                        Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
+                                            Text(
+                                                message.text,
+                                                color = Color.White,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+
+                                            if (message.metadata.isNotBlank()) {
+                                                Spacer(Modifier.height(4.dp))
+                                                Text(
+                                                    message.metadata,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color.White.copy(alpha = 0.52f)
+                                                )
+                                            }
+
+                                            if (!message.fromUser) {
+                                                Row(
+                                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                                ) {
+                                                    TextButton(onClick = {
+                                                        clipboard.setText(AnnotatedString(message.text))
+                                                    }) {
+                                                        Text("Copy", color = Color(0xFF35E1BE))
+                                                    }
+                                                    TextButton(onClick = { shareText(message.text) }) {
+                                                        Text("Share", color = Color(0xFF35E1BE))
+                                                    }
+                                                    TextButton(
+                                                        onClick = {
+                                                            if (ttsReady) {
+                                                                textToSpeech.speak(
+                                                                    message.text,
+                                                                    TextToSpeech.QUEUE_FLUSH,
+                                                                    null,
+                                                                    "blink-ai-${message.id}"
+                                                                )
+                                                            }
+                                                        },
+                                                        enabled = ttsReady
+                                                    ) {
+                                                        Text("Read", color = Color(0xFF35E1BE))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (isSending && pendingAction == null) {
+                                item(key = "blink_ai_loading") {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = Color(0xFF061714)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text("Read")
+                                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                            Text(
+                                                "  BLINK AI is answering…",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.White.copy(alpha = 0.72f)
+                                            )
+                                            Spacer(Modifier.weight(1f))
+                                            TextButton(onClick = {
+                                                service.cancelActiveRequest()
+                                                isSending = false
+                                                error = "Generation stopped."
+                                            }) {
+                                                Text("Stop")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        error?.let { message ->
+                            Spacer(Modifier.height(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        message,
+                                        modifier = Modifier.weight(1f),
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    if (lastRequest != null && !isSending) {
+                                        TextButton(onClick = { retryLast() }) { Text("Retry") }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (imageUris.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                imageUris.forEach { uri ->
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFF071815)
+                                    ) {
+                                        Column(
+                                            Modifier.padding(6.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            AsyncImage(
+                                                model = uri,
+                                                contentDescription = "Image attached to BLINK AI",
+                                                modifier = Modifier.size(58.dp),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                            TextButton(
+                                                onClick = { imageUris = imageUris - uri },
+                                                enabled = !isSending
+                                            ) {
+                                                Text("Remove")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (audioUri != null) {
+                            Spacer(Modifier.height(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFF071815),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "Voice note attached",
+                                        modifier = Modifier.weight(1f),
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.White
+                                    )
+                                    TextButton(onClick = { audioUri = null }, enabled = !isSending) {
+                                        Text("Remove")
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(22.dp),
+                            color = Color(0xFF061411)
+                        ) {
+                            Column(Modifier.padding(10.dp)) {
+                                OutlinedTextField(
+                                    value = input,
+                                    onValueChange = { if (it.length <= 8_000) input = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    placeholder = { Text("Message BLINK AI…") },
+                                    minLines = 1,
+                                    maxLines = 5,
+                                    enabled = !isSending && pendingAction == null
+                                )
+
+                                Spacer(Modifier.height(6.dp))
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { imagePicker.launch("image/*") },
+                                        enabled = !isSending && pendingAction == null
+                                    ) {
+                                        Text("Image${if (imageUris.isNotEmpty()) " (${imageUris.size})" else ""}")
+                                    }
+                                    OutlinedButton(
+                                        onClick = { audioPicker.launch("audio/*") },
+                                        enabled = !isSending && pendingAction == null
+                                    ) {
+                                        Text("Audio")
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            runCatching {
+                                                speechLauncher.launch(
+                                                    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                                                        .putExtra(
+                                                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                                            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                                                        )
+                                                        .putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to BLINK AI")
+                                                )
+                                            }.onFailure {
+                                                error = "Speech recognition isn’t available on this device."
+                                            }
+                                        },
+                                        enabled = !isSending && pendingAction == null
+                                    ) {
+                                        Text("Voice")
+                                    }
+                                    Button(
+                                        onClick = { sendMessage() },
+                                        enabled = (input.isNotBlank() || imageUris.isNotEmpty() || audioUri != null) &&
+                                            !isSending && pendingAction == null
+                                    ) {
+                                        if (isSending) {
+                                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                        } else {
+                                            Text("Send")
                                         }
                                     }
                                 }
@@ -779,185 +1149,58 @@ fun BlinkAiSheet(
                     }
                 }
 
-                if (isSending && pendingAction == null) {
-                    item(key = "blink_ai_loading") {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                                Text("  Blink AI is answering…", style = MaterialTheme.typography.bodySmall)
-                                Spacer(Modifier.weight(1f))
-                                TextButton(onClick = {
-                                    service.cancelActiveRequest()
-                                    isSending = false
-                                    error = "Generation stopped."
-                                }) {
-                                    Text("Stop")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+                Spacer(Modifier.height(10.dp))
 
-            error?.let { message ->
-                Spacer(Modifier.height(6.dp))
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color(0xFF04110F)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            message,
-                            modifier = Modifier.weight(1f),
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        if (lastRequest != null && !isSending) {
-                            TextButton(onClick = { retryLast() }) { Text("Retry") }
-                        }
-                    }
-                }
-            }
-
-            if (imageUris.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    imageUris.forEach { uri ->
-                        Surface(shape = RoundedCornerShape(12.dp)) {
-                            Column(
-                                Modifier.padding(6.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                AsyncImage(
-                                    model = uri,
-                                    contentDescription = "Image attached to Blink AI",
-                                    modifier = Modifier.size(58.dp),
-                                    contentScale = ContentScale.Crop
-                                )
-                                TextButton(
-                                    onClick = { imageUris = imageUris - uri },
-                                    enabled = !isSending
-                                ) {
-                                    Text("Remove")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (audioUri != null) {
-                Spacer(Modifier.height(6.dp))
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Voice note attached",
-                            modifier = Modifier.weight(1f),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        TextButton(onClick = { audioUri = null }, enabled = !isSending) {
-                            Text("Remove")
-                        }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(8.dp))
-
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-            ) {
-                Column(Modifier.padding(10.dp)) {
-                    OutlinedTextField(
-                        value = input,
-                        onValueChange = { if (it.length <= 8_000) input = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Ask Blink AI anything…") },
-                        minLines = 1,
-                        maxLines = 5,
-                        enabled = !isSending && pendingAction == null
-                    )
-
-                    Spacer(Modifier.height(6.dp))
-
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        OutlinedButton(
-                            onClick = { imagePicker.launch("image/*") },
-                            enabled = !isSending && pendingAction == null
+                        TextButton(
+                            onClick = { experiencePage = BlinkAiExperiencePage.EXPLORE },
+                            enabled = !isSending
                         ) {
-                            Text("Images${if (imageUris.isNotEmpty()) " (${imageUris.size})" else ""}")
-                        }
-                        OutlinedButton(
-                            onClick = { audioPicker.launch("audio/*") },
-                            enabled = !isSending && pendingAction == null
-                        ) {
-                            Text("Voice note")
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                runCatching {
-                                    speechLauncher.launch(
-                                        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                                            .putExtra(
-                                                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                                                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                                            )
-                                            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Blink AI")
-                                    )
-                                }.onFailure {
-                                    error = "Speech recognition isn’t available on this device."
+                            Text(
+                                "Explore",
+                                color = if (experiencePage == BlinkAiExperiencePage.EXPLORE) {
+                                    Color(0xFF35E1BE)
+                                } else {
+                                    Color.White.copy(alpha = 0.58f)
                                 }
-                            },
-                            enabled = !isSending && pendingAction == null
-                        ) {
-                            Text("Dictate")
+                            )
                         }
-                        Button(
-                            onClick = { sendMessage() },
-                            enabled = (input.isNotBlank() || imageUris.isNotEmpty() || audioUri != null) &&
-                                !isSending && pendingAction == null
+                        TextButton(
+                            onClick = {
+                                historyOpen = true
+                                refreshHistory()
+                            },
+                            enabled = !isSending && !temporaryChat
                         ) {
-                            if (isSending) {
-                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                            } else {
-                                Text("Send")
-                            }
+                            Text("History", color = Color.White.copy(alpha = 0.58f))
+                        }
+                        TextButton(
+                            onClick = { experiencePage = BlinkAiExperiencePage.CHAT },
+                            enabled = !isSending
+                        ) {
+                            Text(
+                                "Chat",
+                                color = if (experiencePage == BlinkAiExperiencePage.CHAT) {
+                                    Color(0xFF35E1BE)
+                                } else {
+                                    Color.White.copy(alpha = 0.58f)
+                                }
+                            )
                         }
                     }
                 }
             }
-
-            Spacer(Modifier.height(16.dp))
         }
     }
 }
