@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.widget.Toast
@@ -236,16 +237,14 @@ class CallActivity : ComponentActivity() {
                     onToggleSpeaker = {
                         val activeCall = call
                         val desired = !speakerOn
-                        if (activeCall == null) {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
                             speakerOn = rtcClient?.setSpeakerEnabled(desired) ?: speakerOn
-                        } else {
+                        } else if (activeCall != null) {
                             lifecycleScope.launch {
                                 val routedByTelecom =
                                     BlinkTelecomManager.setSpeakerEnabled(activeCall.id, desired)
-                                speakerOn = if (routedByTelecom) {
-                                    desired
-                                } else {
-                                    rtcClient?.setSpeakerEnabled(desired) ?: speakerOn
+                                if (!routedByTelecom) {
+                                    errorText = "Unable to change audio output right now."
                                 }
                             }
                         }
