@@ -31,13 +31,13 @@ object BlinkDesignTokens {
     }
 
     object Dark {
-        const val Background: Long = 0xFF000000L
-        const val Surface: Long = 0xFF070707L
-        const val SurfaceElevated: Long = 0xFF0D0D0DL
-        const val Input: Long = 0xFF0A0A0AL
-        const val SurfaceHighest: Long = 0xFF121212L
-        const val Border: Long = 0xFF262626L
-        const val BorderSoft: Long = 0xFF1A1A1AL
+        const val Background: Long = 0xFF090A0FL
+        const val Surface: Long = 0xFF11131AL
+        const val SurfaceElevated: Long = 0xFF171A22L
+        const val Input: Long = 0xFF151820L
+        const val SurfaceHighest: Long = 0xFF1D2029L
+        const val Border: Long = 0xFF272B36L
+        const val BorderSoft: Long = 0xFF20232DL
         const val TextPrimary: Long = 0xFFF7F7FAL
         const val TextSecondary: Long = 0xFFA7ABB8L
         const val TextMuted: Long = 0xFF707583L
