@@ -190,13 +190,17 @@ fun PostCard(
         animationSpec = tween(150),
         label = "simplePostRepostTint"
     )
+    val savedTint by animateColorAsState(
+        targetValue = if (post.isBookmarked) socialBlue else secondaryText,
+        animationSpec = tween(150),
+        label = "simplePostSavedTint"
+    )
+
     Surface(
         modifier = modifier
             .trackContentExposure(post.id, displayedViewsCount)
             .fillMaxWidth(),
         color = surfaceColor,
-        shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, dividerColor.copy(alpha = 0.72f)),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
@@ -302,9 +306,8 @@ fun PostCard(
                         Text(
                             text = resolvedAuthorName,
                             color = primaryText,
-                            fontSize = 15.sp,
-                            lineHeight = 19.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.clickable { onProfileClick(profileTarget) }
@@ -323,7 +326,7 @@ fun PostCard(
                                     VerificationBadge.BLUE -> socialBlue
                                     VerificationBadge.NONE -> socialBlue
                                 },
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                         BlinkVipMarkForUsername(
@@ -358,19 +361,14 @@ fun PostCard(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
-                        if (post.timeAgo.isNotBlank()) {
-                            Text(
-                                text = " · ${post.timeAgo}",
-                                color = secondaryText,
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1
-                            )
-                        }
                     }
 
-                    post.facultyTag.takeIf(String::isNotBlank)?.let { meta ->
+                    val meta = listOf(post.timeAgo, post.facultyTag)
+                        .filter(String::isNotBlank)
+                        .joinToString("  ·  ")
+                    if (meta.isNotBlank()) {
                         Text(
-                            text = meta,
+                            text = "$meta  ·  Public",
                             color = secondaryText,
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 1,
@@ -379,6 +377,17 @@ fun PostCard(
                     }
                 }
 
+                IconButton(
+                    onClick = onBookmark,
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        imageVector = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        contentDescription = if (post.isBookmarked) "Remove saved post" else "Save post",
+                        tint = savedTint,
+                        modifier = Modifier.size(21.dp)
+                    )
+                }
                 IconButton(
                     onClick = onOptionsClick,
                     modifier = Modifier.size(38.dp)
@@ -510,11 +519,19 @@ fun PostCard(
                     .padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (!post.hideLikes) {
+                    Text(
+                        text = "${formatNumber(post.likes)} likes",
+                        color = secondaryText,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Spacer(Modifier.weight(1f))
                 Text(
                     text = listOf(
-                        "${formatNumber(displayedViewsCount)} views",
                         "${formatNumber(post.commentsCount)} comments",
-                        "${formatNumber(post.sharesCount)} shares"
+                        "${formatNumber(post.sharesCount)} shares",
+                        "${formatNumber(displayedViewsCount)} views"
                     ).joinToString("  ·  "),
                     color = secondaryText,
                     style = MaterialTheme.typography.bodySmall,
