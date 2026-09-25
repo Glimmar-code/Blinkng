@@ -51,6 +51,8 @@ import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Poll
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Share
@@ -199,10 +201,13 @@ fun PostCard(
     Surface(
         modifier = modifier
             .trackContentExposure(post.id, displayedViewsCount)
-            .fillMaxWidth(),
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(16.dp),
         color = surfaceColor,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+        shadowElevation = 0.dp,
+        border = BorderStroke(1.dp, dividerColor.copy(alpha = 0.72f))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             if (post.isSponsored) {
@@ -302,7 +307,10 @@ fun PostCard(
 
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             text = resolvedAuthorName,
                             color = primaryText,
@@ -310,7 +318,9 @@ fun PostCard(
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable { onProfileClick(profileTarget) }
+                            modifier = Modifier
+                                .weight(1.2f)
+                                .clickable { onProfileClick(profileTarget) }
                         )
                         if (authorVerificationBadge != VerificationBadge.NONE) {
                             Spacer(Modifier.width(4.dp))
@@ -334,23 +344,6 @@ fun PostCard(
                             knownVip = if (post.authorIsVip) true else null,
                             modifier = Modifier.padding(start = 4.dp)
                         )
-                        if (!isAuthor && authorProfileId.isNotBlank()) {
-                            Spacer(Modifier.width(6.dp))
-                            ProfileFollowInteractButton(
-                                isFollowing = isFollowingAuthor,
-                                onFollow = { onFollowAuthor(authorProfileId) },
-                                onUnfollow = { onUnfollowAuthor(authorProfileId) },
-                                onMessage = onMessageAuthor,
-                                onGiftCoins = { onGiftCoinsAuthor(authorProfileId) },
-                                onGameChallenge = { onChallengeAuthor(authorProfileId) },
-                                onMentorRequest = { onMentorRequestAuthor(authorProfileId) },
-                                onFriendRequest = { onFriendRequestAuthor(authorProfileId) },
-                                onRoommateRequest = { onRoommateRequestAuthor(authorProfileId) },
-                                onStudyMateRequest = { onStudyMateRequestAuthor(authorProfileId) },
-                                onViewProfile = { onProfileClick(profileTarget) },
-                                onOpenConnectHub = onConnectHubAuthor
-                            )
-                        }
                         if (resolvedAuthorUsername.isNotBlank()) {
                             Spacer(Modifier.width(5.dp))
                             Text(
@@ -358,21 +351,69 @@ fun PostCard(
                                 color = secondaryText,
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(0.8f)
                             )
                         }
                     }
 
-                    val meta = listOf(post.timeAgo, post.facultyTag)
+                    val meta = listOf(post.timeAgo, post.category)
                         .filter(String::isNotBlank)
                         .joinToString("  ·  ")
-                    if (meta.isNotBlank()) {
-                        Text(
-                            text = "$meta  ·  Public",
-                            color = secondaryText,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                    if (meta.isNotBlank() || post.audience.isNotBlank()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (meta.isNotBlank()) {
+                                Text(
+                                    text = meta,
+                                    color = secondaryText,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            if (post.audience.isNotBlank()) {
+                                if (meta.isNotBlank()) Spacer(Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = if (post.audience.equals("Everyone", true)) {
+                                        Icons.Default.Public
+                                    } else {
+                                        Icons.Default.Groups
+                                    },
+                                    contentDescription = "Audience: ${post.audience}",
+                                    tint = secondaryText,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(Modifier.width(3.dp))
+                                Text(
+                                    text = post.audience,
+                                    color = secondaryText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    if (!isAuthor && authorProfileId.isNotBlank()) {
+                        Spacer(Modifier.size(6.dp))
+                        ProfileFollowInteractButton(
+                            isFollowing = isFollowingAuthor,
+                            onFollow = { onFollowAuthor(authorProfileId) },
+                            onUnfollow = { onUnfollowAuthor(authorProfileId) },
+                            onMessage = onMessageAuthor,
+                            onGiftCoins = { onGiftCoinsAuthor(authorProfileId) },
+                            onGameChallenge = { onChallengeAuthor(authorProfileId) },
+                            onMentorRequest = { onMentorRequestAuthor(authorProfileId) },
+                            onFriendRequest = { onFriendRequestAuthor(authorProfileId) },
+                            onRoommateRequest = { onRoommateRequestAuthor(authorProfileId) },
+                            onStudyMateRequest = { onStudyMateRequestAuthor(authorProfileId) },
+                            onViewProfile = { onProfileClick(profileTarget) },
+                            onOpenConnectHub = onConnectHubAuthor
                         )
                     }
                 }
@@ -407,16 +448,22 @@ fun PostCard(
                 if (hasSavedTextStyle) {
                     val textStyle = resolveTextPostStyle(post.textStyle, post.id)
                     val textSize = when {
-                        post.text.length > 320 -> 22.sp
-                        post.text.length > 170 -> 26.sp
-                        else -> 31.sp
+                        post.text.length > 320 -> 21.sp
+                        post.text.length > 170 -> 24.sp
+                        post.text.length > 80 -> 27.sp
+                        else -> 29.sp
+                    }
+                    val textCardMinHeight = when {
+                        post.text.length <= 80 -> 180.dp
+                        post.text.length <= 180 -> 220.dp
+                        else -> 250.dp
                     }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 280.dp)
+                            .heightIn(min = textCardMinHeight)
                             .background(textStyle.brush())
-                            .padding(horizontal = 26.dp, vertical = 34.dp),
+                            .padding(horizontal = 24.dp, vertical = 28.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         SelectionContainer {
@@ -519,19 +566,20 @@ fun PostCard(
                     .padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (!post.hideLikes) {
-                    Text(
-                        text = "${formatNumber(post.likes)} likes",
-                        color = secondaryText,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
+                Text(
+                    text = buildList {
+                        add("${formatNumber(displayedViewsCount)} views")
+                        if (!post.hideLikes) add("${formatNumber(post.likes)} likes")
+                    }.joinToString("  ·  "),
+                    color = secondaryText,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1
+                )
                 Spacer(Modifier.weight(1f))
                 Text(
                     text = listOf(
                         "${formatNumber(post.commentsCount)} comments",
-                        "${formatNumber(post.sharesCount)} shares",
-                        "${formatNumber(displayedViewsCount)} views"
+                        "${formatNumber(post.sharesCount)} shares"
                     ).joinToString("  ·  "),
                     color = secondaryText,
                     style = MaterialTheme.typography.bodySmall,
