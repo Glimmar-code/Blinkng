@@ -18,11 +18,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -940,7 +940,11 @@ private fun PremiumHomeFeed(
                     )
                 }
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 64.dp)
+            ) {
                 AnimatedVisibility(
                     visible = primaryHeaderVisible,
                     enter = fadeIn(tween(120)) + slideInVertically(tween(140)) { -it / 2 },
@@ -1005,7 +1009,7 @@ private fun PremiumHomeFeed(
                     isRefreshing = isRefreshing,
                     onRefresh = onRefresh,
                     state = pullState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.weight(1f),
                     indicator = {
                         PremiumPullRefreshIndicator(
                             state = pullState,
@@ -1019,7 +1023,7 @@ private fun PremiumHomeFeed(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(top = 6.dp, bottom = 148.dp)
+                        contentPadding = PaddingValues(top = 6.dp, bottom = 16.dp)
                     ) {
                         if (!errorMessage.isNullOrBlank() && stableRankedPosts.isNotEmpty()) {
                             item(key = "refresh_error") {
@@ -1185,21 +1189,26 @@ private fun PremiumHomeFeed(
                         }
                     }
                 }
-            }
 
-            AnimatedVisibility(
-                visible = secondaryChromeVisible,
-                enter = fadeIn(tween(110)) + slideInVertically(tween(130)) { it / 2 },
-                exit = fadeOut(tween(90)) + slideOutVertically(tween(110)) { it / 2 },
-                modifier = Modifier.align(Alignment.BottomEnd)
-            ) {
-                CreatePostFab(
-                    expanded = fabExpanded,
-                    onClick = onOpenCreatePost,
-                    modifier = Modifier
-                        .navigationBarsPadding()
-                        .padding(end = 18.dp, bottom = 72.dp)
-                )
+                AnimatedVisibility(
+                    visible = secondaryChromeVisible,
+                    enter = fadeIn(tween(110)),
+                    exit = fadeOut(tween(90))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(66.dp)
+                            .background(FeedBackground)
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        CreatePostFab(
+                            expanded = fabExpanded,
+                            onClick = onOpenCreatePost
+                        )
+                    }
+                }
             }
         }
     }
