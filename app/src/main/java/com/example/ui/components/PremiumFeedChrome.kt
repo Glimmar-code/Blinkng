@@ -440,8 +440,9 @@ private fun FeedTabLabel(
 }
 
 /**
- * One stable create speed-dial. The collapsed state occupies a single FAB; expanding it
- * reveals the two creation destinations above the button without covering feed metrics.
+ * One stable create speed-dial for the dedicated action rail. The collapsed state is one
+ * button; expanding reveals Blink AI and New post horizontally so the control never grows
+ * upward over post engagement content.
  */
 @Composable
 fun CreatePostFab(
@@ -464,19 +465,19 @@ fun CreatePostFab(
         BlinkAiSheet(onDismiss = { showBlinkAi = false })
     }
 
-    Column(
+    Row(
         modifier = modifier,
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(9.dp)
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         AnimatedVisibility(
             visible = actionsExpanded,
-            enter = fadeIn(tween(130)),
-            exit = fadeOut(tween(100))
+            enter = fadeIn(tween(130)) + expandHorizontally(tween(160)),
+            exit = fadeOut(tween(100)) + shrinkHorizontally(tween(140))
         ) {
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FeedCreateAction(
                     label = "Blink AI",
