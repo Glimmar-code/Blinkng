@@ -76,8 +76,8 @@ fun FeedBottomBar(
         else -> null
     }
 
-    val navigationSurface = if (isDark) Color(0xFF0E0F10) else Color.White
-    val navigationBorder = if (isDark) Color(0xFF2D3035) else Color(0xFFE1E4E8)
+    val navigationSurface = if (isDark) Color.Black else Color.White
+    val navigationBorder = if (isDark) Color(0xFF242424) else Color(0xFFE1E4E8)
 
     Surface(
         modifier = modifier.fillMaxWidth(),
