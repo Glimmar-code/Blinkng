@@ -75,18 +75,18 @@ private val PinkMessagePalette = MessagePalette(
 
 private val DarkMessagePalette = MessagePalette(
     mode = MessageThemeMode.DARK,
-    backgroundTop = Color(0xFF050505),
-    backgroundMiddle = Color(0xFF000000),
+    backgroundTop = Color(0xFF08090F),
+    backgroundMiddle = Color(0xFF030408),
     backgroundBottom = Color(0xFF000000),
-    glass = Color(0xFF080808),
-    glassElevated = Color(0xFF0F0F0F),
-    border = Color(0xFF242424),
+    glass = Color(0xFF0A0D13),
+    glassElevated = Color(0xFF111620),
+    border = Color(0xFF252B38),
     accent = Color(0xFF9B6CFF),
     accentSecondary = Color(0xFF3B82F6),
     textPrimary = Color(0xFFF8F7FF),
     textSecondary = Color(0xFFB7B5C8),
     textMuted = Color(0xFF777B8E),
-    incomingBubble = Color(0xFF121212),
+    incomingBubble = Color(0xFF171B24),
     outgoingBubble = Color(0xFF6D3FEF),
     outgoingText = Color.White
 )
