@@ -31,7 +31,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -130,7 +129,7 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     Column(
         modifier = Modifier
             .weight(1f)
-            .height(58.dp)
+            .height(64.dp)
             .clickable(role = Role.Tab, onClick = onClick)
             .testTag("feed_nav_${item.destination.name.lowercase()}"),
         horizontalAlignment = Alignment.CenterHorizontally,
