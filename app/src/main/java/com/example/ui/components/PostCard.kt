@@ -163,10 +163,10 @@ fun PostCard(
     }
     val profileTarget = resolvedAuthorUsername.ifBlank { post.author }
     val displayedViewsCount = rememberDelayedContentViewCount(post.id, post.viewsCount)
-    val surfaceColor = if (isDark) Color(0xFF080808) else Color.White
+    val surfaceColor = if (isDark) Color(0xFF101112) else Color.White
     val primaryText = if (isDark) Color(0xFFF2F3F5) else Color(0xFF111111)
     val secondaryText = if (isDark) Color(0xFFB0B3B8) else Color(0xFF65676B)
-    val dividerColor = if (isDark) Color(0xFF242424) else Color(0xFFE4E6EB)
+    val dividerColor = if (isDark) Color(0xFF2D3035) else Color(0xFFE4E6EB)
     val socialBlue = Color(0xFF1877F2)
 
     val displayImages = remember(post.images) {
