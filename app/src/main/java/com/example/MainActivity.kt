@@ -634,8 +634,6 @@ fun MainAppContent(
                         ),
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
-                        currentWorldRank = uiState.myProfile.worldRank,
-                        coinBalance = uiState.blinkCoinBalance,
                         currentSubTab = uiState.feedSubTab,
                         routedReelId = uiState.routedReelId,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
@@ -667,13 +665,6 @@ fun MainAppContent(
                         },
                         onSearchClick = { viewModel.setTab(MainTab.SEARCH) },
                         onLeaderboardClick = { viewModel.setTab(MainTab.LEADERBOARD) },
-                        onOpenStore = {
-                            runCatching {
-                                context.startActivity(Intent(context, BlinkStoreActivity::class.java))
-                            }.onFailure {
-                                viewModel.showToast("Unable to open Blink Store.")
-                            }
-                        },
                         onMarketClick = { viewModel.setTab(MainTab.MARKET) },
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
@@ -802,8 +793,8 @@ fun MainAppContent(
                 .zIndex(30f)
         )
 
-        // Primary navigation stays stable while browsing. It only disappears when a
-        // focused overlay (chat, composer, comments, product detail, etc.) owns the screen.
+        // Floating bottom navigation follows the feed chrome state. Its transition is
+        // deliberately non-bouncy so a restored bar glides in instead of springing back.
         val shouldShowBottomBar = uiState.viewingProduct == null &&
                 uiState.viewingProfile == null &&
                 !uiState.isPostItemOpen &&
@@ -819,7 +810,9 @@ fun MainAppContent(
                 uiState.activePostOptionsPost == null &&
                 uiState.activeCommentsPostId == null &&
                 uiState.deepLinkedPost == null &&
-                !uiState.isMenuOpen
+                !uiState.isMenuOpen &&
+                !(uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1) &&
+                isBottomBarVisibleByScroll
 
         androidx.compose.animation.AnimatedVisibility(
             visible = shouldShowBottomBar,
@@ -899,25 +892,29 @@ fun MainAppContent(
                         viewModel.setFeedSubTab(0)
                     }
                 },
-                onReelsClick = {
-                    isBottomBarVisibleByScroll = true
-                    viewModel.setTab(MainTab.HOME)
-                    viewModel.setFeedSubTab(1)
-                },
-                onMarketClick = {
-                    isBottomBarVisibleByScroll = true
-                    viewModel.setTab(MainTab.MARKET)
-                },
                 onConnectClick = {
                     isBottomBarVisibleByScroll = true
                     viewModel.setTab(MainTab.HOME)
                     viewModel.setFeedSubTab(2)
                 },
+                onLeaderboardClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.setTab(MainTab.LEADERBOARD)
+                },
+                onMarketClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.setTab(MainTab.MARKET)
+                },
                 onMessageClick = {
                     isBottomBarVisibleByScroll = true
                     viewModel.setTab(MainTab.MESSAGES)
                 },
-                isDark = uiState.isDarkMode
+                isDark = uiState.isDarkMode,
+                onMenuClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.openMenu(true)
+                },
+                isMenuOpen = uiState.isMenuOpen
             )
         }
 
