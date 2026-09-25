@@ -83,6 +83,7 @@ import com.example.ui.components.BlinkNativeAdPlacement
 import com.example.ui.components.BlinkSponsoredNativeAd
 import com.example.ui.components.CreatePostFab
 import com.example.ui.components.FeedTabs
+import com.example.ui.components.FeedUtilityRow
 import com.example.ui.components.FeedTopBar
 import com.example.ui.components.PostCard
 import com.example.ui.components.PremiumPullRefreshIndicator
@@ -107,8 +108,7 @@ private enum class PremiumFeedFilter { ALL, PHOTOS, POLLS }
 
 private enum class PremiumFeedChromeState {
     EXPANDED,
-    COMPACT,
-    IMMERSIVE
+    COMPACT
 }
 
 private const val FEED_SPONSORED_INTERVAL = 8
@@ -193,9 +193,8 @@ private fun mergeStablePremiumFeed(
 /**
  * Premium feed shell.
  *
- * For You -> Following -> Game is one horizontal gesture family. Reels remains
- * an explicit independent action, while Connect keeps its own destination and
- * no longer shows the old four-way top navigation.
+ * For You and Following stay inside Home. Reels and Connect use the persistent
+ * bottom navigation, while Rank, Game and Store remain visible Home shortcuts.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -238,6 +237,7 @@ fun PremiumFeedScreen(
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit = { _, _, _ -> },
     onSearchClick: () -> Unit = {},
     onLeaderboardClick: () -> Unit = {},
+    onStoreClick: () -> Unit = {},
     onMarketClick: () -> Unit = {},
     onMessageClick: () -> Unit = {},
     hasMorePosts: Boolean = false,
@@ -331,6 +331,8 @@ fun PremiumFeedScreen(
             onOpenActivity = onOpenActivity,
             onOpenMenu = onOpenMenu,
             onSearchClick = onSearchClick,
+            onLeaderboardClick = onLeaderboardClick,
+            onStoreClick = onStoreClick,
             onRefresh = onRefresh,
             onRetry = onRetry,
             onViewedPost = onViewedPost,
@@ -477,6 +479,8 @@ private fun PremiumHomeFeed(
     onOpenActivity: () -> Unit,
     onOpenMenu: () -> Unit,
     onSearchClick: () -> Unit,
+    onLeaderboardClick: () -> Unit,
+    onStoreClick: () -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
     onViewedPost: (String) -> Unit,
@@ -536,7 +540,6 @@ private fun PremiumHomeFeed(
     // to be intentional, so fling settling and tiny finger jitter cannot make controls
     // disappear and immediately bounce back.
     val primaryCollapseThreshold = with(density) { 52.dp.toPx() }
-    val immersiveCollapseThreshold = with(density) { 104.dp.toPx() }
     val restoreChromeThreshold = with(density) { 40.dp.toPx() }
     val downwardScrollAccumulator = remember { floatArrayOf(0f) }
     val upwardScrollAccumulator = remember { floatArrayOf(0f) }
@@ -544,7 +547,7 @@ private fun PremiumHomeFeed(
         mutableStateOf(PremiumFeedChromeState.EXPANDED)
     }
     val primaryHeaderVisible = chromeState == PremiumFeedChromeState.EXPANDED
-    val secondaryChromeVisible = chromeState != PremiumFeedChromeState.IMMERSIVE
+    val secondaryChromeVisible = true
     val fabExpanded = chromeState == PremiumFeedChromeState.EXPANDED
 
     val networkMonitor = remember(context) { NetworkMonitor(context) }
@@ -702,7 +705,6 @@ private fun PremiumHomeFeed(
     val scrollConnection = remember(
         onBottomBarVisibilityChange,
         primaryCollapseThreshold,
-        immersiveCollapseThreshold,
         restoreChromeThreshold
     ) {
         object : NestedScrollConnection {
@@ -714,39 +716,21 @@ private fun PremiumHomeFeed(
                     available.y < -0.5f -> {
                         upwardScrollAccumulator[0] = 0f
                         downwardScrollAccumulator[0] += -available.y
-
-                        when {
+                        if (
                             chromeState == PremiumFeedChromeState.EXPANDED &&
-                                downwardScrollAccumulator[0] >= primaryCollapseThreshold -> {
-                                chromeState = PremiumFeedChromeState.COMPACT
-                                downwardScrollAccumulator[0] = 0f
-                                onBottomBarVisibilityChange(true)
-                            }
-
-                            chromeState == PremiumFeedChromeState.COMPACT &&
-                                downwardScrollAccumulator[0] >= immersiveCollapseThreshold -> {
-                                chromeState = PremiumFeedChromeState.IMMERSIVE
-                                downwardScrollAccumulator[0] = 0f
-                                onBottomBarVisibilityChange(false)
-                            }
+                            downwardScrollAccumulator[0] >= primaryCollapseThreshold
+                        ) {
+                            chromeState = PremiumFeedChromeState.COMPACT
+                            downwardScrollAccumulator[0] = 0f
+                            onBottomBarVisibilityChange(true)
                         }
                     }
 
                     available.y > 0.5f -> {
                         downwardScrollAccumulator[0] = 0f
-
-                        // Only a deliberate upward travel restores immersive chrome.
-                        // A tiny reverse delta from fling physics is intentionally ignored.
-                        if (chromeState == PremiumFeedChromeState.IMMERSIVE) {
-                            upwardScrollAccumulator[0] += available.y
-                            if (upwardScrollAccumulator[0] >= restoreChromeThreshold) {
-                                chromeState = PremiumFeedChromeState.COMPACT
-                                upwardScrollAccumulator[0] = 0f
-                                onBottomBarVisibilityChange(true)
-                            }
-                        } else {
-                            upwardScrollAccumulator[0] = 0f
-                        }
+                        upwardScrollAccumulator[0] =
+                            (upwardScrollAccumulator[0] + available.y)
+                                .coerceAtMost(restoreChromeThreshold)
                     }
                 }
                 return androidx.compose.ui.geometry.Offset.Zero
@@ -948,7 +932,6 @@ private fun PremiumHomeFeed(
                         onDragEnd = {
                             when {
                                 horizontalDrag <= -swipeThreshold && laneIndex == 0 -> onLaneChanged(1)
-                                horizontalDrag <= -swipeThreshold && laneIndex == 1 -> onGameClick()
                                 horizontalDrag >= swipeThreshold && laneIndex == 1 -> onLaneChanged(0)
                             }
                             horizontalDrag = 0f
@@ -963,14 +946,21 @@ private fun PremiumHomeFeed(
                     enter = fadeIn(tween(120)) + slideInVertically(tween(140)) { -it / 2 },
                     exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it / 2 }
                 ) {
-                    FeedTopBar(
-                        userAvatar = userAvatar,
-                        hasUnreadNotifications = hasUnreadNotifications,
-                        onSearchClick = onSearchClick,
-                        onNotificationClick = onOpenActivity,
-                        onMenuClick = onOpenMenu,
-                        onProfileClick = { onProfileClick(currentUsername) }
-                    )
+                    Column {
+                        FeedTopBar(
+                            userAvatar = userAvatar,
+                            hasUnreadNotifications = hasUnreadNotifications,
+                            onSearchClick = onSearchClick,
+                            onNotificationClick = onOpenActivity,
+                            onMenuClick = onOpenMenu,
+                            onProfileClick = { onProfileClick(currentUsername) }
+                        )
+                        FeedUtilityRow(
+                            onLeaderboardClick = onLeaderboardClick,
+                            onGameClick = onGameClick,
+                            onStoreClick = onStoreClick
+                        )
+                    }
                 }
 
                 AnimatedVisibility(
@@ -984,15 +974,14 @@ private fun PremiumHomeFeed(
                                 selectedIndex = laneIndex,
                                 onForYouClick = { onLaneChanged(0) },
                                 onFollowingClick = { onLaneChanged(1) },
-                                onGameClick = onGameClick,
-                                onReelClick = onReelClick,
                                 onFilterClick = { filterMenuVisible = true }
                             )
-                            DropdownMenu(
-                                expanded = filterMenuVisible,
-                                onDismissRequest = { filterMenuVisible = false },
-                                modifier = Modifier.background(FeedElevatedSurface)
-                            ) {
+                            Box(modifier = Modifier.align(Alignment.TopEnd)) {
+                                DropdownMenu(
+                                    expanded = filterMenuVisible,
+                                    onDismissRequest = { filterMenuVisible = false },
+                                    modifier = Modifier.background(FeedElevatedSurface)
+                                ) {
                                 PremiumFilterItem("All posts", Icons.Default.Tune, filter == PremiumFeedFilter.ALL) {
                                     filter = PremiumFeedFilter.ALL
                                     filterMenuVisible = false
@@ -1004,6 +993,7 @@ private fun PremiumHomeFeed(
                                 PremiumFilterItem("Polls", Icons.Default.Poll, filter == PremiumFeedFilter.POLLS) {
                                     filter = PremiumFeedFilter.POLLS
                                     filterMenuVisible = false
+                                }
                                 }
                             }
                         }
@@ -1029,7 +1019,7 @@ private fun PremiumHomeFeed(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(top = 6.dp, bottom = 170.dp)
+                        contentPadding = PaddingValues(top = 6.dp, bottom = 148.dp)
                     ) {
                         if (!errorMessage.isNullOrBlank() && stableRankedPosts.isNotEmpty()) {
                             item(key = "refresh_error") {
