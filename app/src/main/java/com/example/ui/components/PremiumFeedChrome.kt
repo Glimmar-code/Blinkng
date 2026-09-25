@@ -37,12 +37,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -153,25 +156,13 @@ private fun FeedBrandBlock(
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         FeedProfileAvatar(userAvatar = userAvatar, onProfileClick = onProfileClick)
-        BlinkMark(
-            size = 28.dp,
-            showText = false
+        Text(
+            text = "Home",
+            style = MaterialTheme.typography.headlineSmall,
+            color = FeedTextPrimary,
+            maxLines = 1,
+            modifier = Modifier.weight(1f)
         )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Home",
-                style = MaterialTheme.typography.headlineSmall,
-                color = FeedTextPrimary,
-                maxLines = 1
-            )
-            Text(
-                text = "Your campus, in real time",
-                style = MaterialTheme.typography.bodyMedium,
-                color = FeedTextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
     }
 }
 
@@ -291,12 +282,82 @@ private fun FeedRadialHeaderAction(
 }
 
 @Composable
+fun FeedUtilityRow(
+    onLeaderboardClick: () -> Unit,
+    onGameClick: () -> Unit,
+    onStoreClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(FeedBackground)
+            .height(52.dp)
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        FeedUtilityAction(
+            icon = Icons.Default.EmojiEvents,
+            label = "Rank",
+            contentDescription = "Open Leaderboard",
+            onClick = onLeaderboardClick,
+            modifier = Modifier.weight(1f).testTag("feed_rank_action")
+        )
+        FeedUtilityAction(
+            icon = Icons.Default.SportsEsports,
+            label = "Game",
+            contentDescription = "Open Game",
+            onClick = onGameClick,
+            modifier = Modifier.weight(1f).testTag("feed_game_action")
+        )
+        FeedUtilityAction(
+            icon = Icons.Default.Storefront,
+            label = "Store",
+            contentDescription = "Open Blink Store",
+            onClick = onStoreClick,
+            modifier = Modifier.weight(1f).testTag("feed_store_action")
+        )
+    }
+}
+
+@Composable
+private fun FeedUtilityAction(
+    icon: ImageVector,
+    label: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .height(48.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { this.contentDescription = contentDescription },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = FeedTextPrimary,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = label,
+            color = FeedTextSecondary,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
 fun FeedTabs(
     selectedIndex: Int,
     onForYouClick: () -> Unit,
     onFollowingClick: () -> Unit,
-    onGameClick: () -> Unit,
-    onReelClick: () -> Unit,
     onFilterClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -304,10 +365,9 @@ fun FeedTabs(
         modifier = modifier.fillMaxWidth().background(FeedBackground).height(54.dp)
     ) {
         val availableWidth = maxWidth
-        val iconWidth = if (availableWidth < 360.dp) 42.dp else 48.dp
-        val filterWidth = if (availableWidth < 360.dp) 40.dp else 44.dp
-        val tabWidth = ((availableWidth - iconWidth * 2 - filterWidth) / 2).coerceAtLeast(72.dp)
-        val indicatorWidth = (tabWidth - 18.dp).coerceAtLeast(22.dp)
+        val filterWidth = if (availableWidth < 360.dp) 42.dp else 48.dp
+        val tabWidth = ((availableWidth - filterWidth) / 2).coerceAtLeast(96.dp)
+        val indicatorWidth = (tabWidth - 28.dp).coerceAtLeast(34.dp)
         val labelSelection = selectedIndex.coerceIn(0, 1)
         val indicatorOffset by animateDpAsState(
             targetValue = tabWidth * labelSelection + (tabWidth - indicatorWidth) / 2,
@@ -321,26 +381,13 @@ fun FeedTabs(
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             FeedTabLabel("For You", selectedIndex == 0, Modifier.width(tabWidth), onForYouClick)
             FeedTabLabel("Following", selectedIndex == 1, Modifier.width(tabWidth), onFollowingClick)
-            FeedIconDestination(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = "Open Reels",
-                selected = false,
-                width = iconWidth,
-                onClick = onReelClick
-            )
-            FeedIconDestination(
-                imageVector = Icons.Default.SportsEsports,
-                contentDescription = "Open Game",
-                selected = selectedIndex == 2,
-                width = iconWidth,
-                onClick = onGameClick
-            )
             Box(
                 modifier = Modifier
                     .width(filterWidth)
                     .height(52.dp)
                     .clickable(role = Role.Button, onClick = onFilterClick)
-                    .semantics { contentDescription = "Filter feed" },
+                    .semantics { contentDescription = "Filter feed" }
+                    .testTag("feed_filter_action"),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -359,38 +406,6 @@ fun FeedTabs(
                     .width(indicatorWidth)
                     .height(3.dp)
                     .background(feedAccentBrush(), RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
-            )
-        }
-    }
-}
-
-@Composable
-private fun FeedIconDestination(
-    imageVector: ImageVector,
-    contentDescription: String,
-    selected: Boolean,
-    width: androidx.compose.ui.unit.Dp,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .width(width)
-            .height(38.dp)
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics { this.contentDescription = contentDescription },
-        shape = RoundedCornerShape(19.dp),
-        color = if (selected) FeedPurple.copy(alpha = 0.28f) else FeedPurple.copy(alpha = 0.12f),
-        border = BorderStroke(
-            1.dp,
-            if (selected) FeedPurple.copy(alpha = 0.78f) else FeedPurple.copy(alpha = 0.34f)
-        )
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = imageVector,
-                contentDescription = null,
-                tint = FeedTextPrimary,
-                modifier = Modifier.size(20.dp)
             )
         }
     }
@@ -425,9 +440,8 @@ private fun FeedTabLabel(
 }
 
 /**
- * Premium floating action stack. Blink AI is deliberately positioned above Create Post
- * so the AI entry point stays visible on the current premium feed instead of living in the
- * retired legacy FeedScreen.
+ * One stable create speed-dial. The collapsed state occupies a single FAB; expanding it
+ * reveals the two creation destinations above the button without covering feed metrics.
  */
 @Composable
 fun CreatePostFab(
@@ -436,24 +450,13 @@ fun CreatePostFab(
     modifier: Modifier = Modifier
 ) {
     var showBlinkAi by remember { mutableStateOf(false) }
-    val createInteractionSource = remember { MutableInteractionSource() }
-    val createPressed by createInteractionSource.collectIsPressedAsState()
-    val createScale by animateFloatAsState(
-        targetValue = if (createPressed) 0.97f else 1f,
-        animationSpec = tween(100),
-        label = "createPostPressScale"
-    )
-    val aiInteractionSource = remember { MutableInteractionSource() }
-    val aiPressed by aiInteractionSource.collectIsPressedAsState()
-    val aiScale by animateFloatAsState(
-        targetValue = if (aiPressed) 0.96f else 1f,
-        animationSpec = tween(100),
-        label = "blinkAiPressScale"
-    )
-    val horizontalPadding by animateDpAsState(
-        targetValue = if (expanded) 18.dp else 15.dp,
-        animationSpec = tween(durationMillis = 180),
-        label = "createPostPadding"
+    var actionsExpanded by remember { mutableStateOf(false) }
+    val mainInteractionSource = remember { MutableInteractionSource() }
+    val mainPressed by mainInteractionSource.collectIsPressedAsState()
+    val mainScale by animateFloatAsState(
+        targetValue = if (mainPressed) 0.94f else 1f,
+        animationSpec = tween(90),
+        label = "createMenuPressScale"
     )
     val pill = RoundedCornerShape(28.dp)
 
@@ -464,106 +467,98 @@ fun CreatePostFab(
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .shadow(8.dp, pill, clip = false)
-                .graphicsLayer { scaleX = aiScale; scaleY = aiScale }
-                .background(FeedElevatedSurface, pill)
-                .border(1.dp, FeedPurple.copy(alpha = 0.72f), pill)
-                .clickable(
-                    interactionSource = aiInteractionSource,
-                    indication = null,
-                    role = Role.Button,
-                    onClick = { showBlinkAi = true }
-                )
-                .semantics {
-                    role = Role.Button
-                    contentDescription = "Open Blink AI"
-                }
-                .testTag("blink_ai_fab")
-                .heightIn(min = 50.dp)
-                .padding(horizontal = if (expanded) 16.dp else 14.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+        AnimatedVisibility(
+            visible = actionsExpanded,
+            enter = fadeIn(tween(130)),
+            exit = fadeOut(tween(100))
         ) {
-            Box(
-                modifier = Modifier
-                    .size(27.dp)
-                    .background(feedAccentBrush(), CircleShape),
-                contentAlignment = Alignment.Center
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = "AI",
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.ExtraBold
+                FeedCreateAction(
+                    label = "Blink AI",
+                    contentDescription = "Open Blink AI",
+                    onClick = {
+                        actionsExpanded = false
+                        showBlinkAi = true
+                    },
+                    leading = {
+                        Box(
+                            modifier = Modifier
+                                .size(27.dp)
+                                .background(feedAccentBrush(), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "AI",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    },
+                    modifier = Modifier.testTag("blink_ai_fab")
                 )
-            }
-            AnimatedVisibility(
-                visible = expanded,
-                enter = fadeIn(tween(140)) + expandHorizontally(tween(180)),
-                exit = fadeOut(tween(100)) + shrinkHorizontally(tween(160))
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(Modifier.width(9.dp))
-                    Text(
-                        text = "Blink AI",
-                        color = FeedTextPrimary,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1
-                    )
-                }
+                FeedCreateAction(
+                    label = "New post",
+                    contentDescription = "Create Post",
+                    onClick = {
+                        actionsExpanded = false
+                        onClick()
+                    },
+                    leading = {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(21.dp)
+                        )
+                    },
+                    modifier = Modifier.testTag("create_post_action")
+                )
             }
         }
 
         Row(
             modifier = Modifier
                 .shadow(10.dp, pill, clip = false)
-                .graphicsLayer { scaleX = createScale; scaleY = createScale }
+                .graphicsLayer { scaleX = mainScale; scaleY = mainScale }
                 .background(feedAccentBrush(), pill)
                 .border(1.dp, Color.White.copy(alpha = 0.14f), pill)
                 .clickable(
-                    interactionSource = createInteractionSource,
+                    interactionSource = mainInteractionSource,
                     indication = null,
                     role = Role.Button,
-                    onClick = onClick
+                    onClick = { actionsExpanded = !actionsExpanded }
                 )
                 .semantics {
                     role = Role.Button
-                    contentDescription = "Create Post"
+                    contentDescription = if (actionsExpanded) "Close create menu" else "Open create menu"
                 }
                 .testTag("create_post_fab")
                 .heightIn(min = 54.dp)
-                .padding(horizontal = horizontalPadding, vertical = 12.dp),
+                .padding(horizontal = if (expanded) 17.dp else 15.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(21.dp)
-                )
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(12.dp).align(Alignment.BottomEnd)
-                )
-            }
+            Icon(
+                imageVector = if (actionsExpanded) Icons.Default.Close else Icons.Default.Add,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(23.dp)
+            )
             AnimatedVisibility(
-                visible = expanded,
-                enter = fadeIn(tween(140)) + expandHorizontally(tween(180)),
-                exit = fadeOut(tween(100)) + shrinkHorizontally(tween(160))
+                visible = expanded && !actionsExpanded,
+                enter = fadeIn(tween(120)),
+                exit = fadeOut(tween(90))
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(Modifier.width(9.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "Create Post",
+                        text = "Create",
                         color = Color.White,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
@@ -574,3 +569,39 @@ fun CreatePostFab(
         }
     }
 }
+
+@Composable
+private fun FeedCreateAction(
+    label: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+    leading: @Composable () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(24.dp)
+    Row(
+        modifier = modifier
+            .shadow(7.dp, shape, clip = false)
+            .background(FeedElevatedSurface, shape)
+            .border(1.dp, FeedPurple.copy(alpha = 0.52f), shape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics {
+                role = Role.Button
+                this.contentDescription = contentDescription
+            }
+            .heightIn(min = 48.dp)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        leading()
+        Spacer(Modifier.width(9.dp))
+        Text(
+            text = label,
+            color = FeedTextPrimary,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
+    }
+}
+
