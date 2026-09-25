@@ -131,13 +131,13 @@ private data class DesktopDestination(
 private val desktopDestinations = listOf(
     DesktopDestination("home", "Home", Icons.Rounded.Home),
     DesktopDestination("reels", "Reels", Icons.Rounded.VideoLibrary),
+    DesktopDestination("marketplace", "Aluta Market", Icons.Rounded.Storefront),
     DesktopDestination("connect", "Connect", Icons.Rounded.Groups),
     DesktopDestination("messages", "Messages", Icons.Rounded.Chat),
-    DesktopDestination("marketplace", "Marketplace", Icons.Rounded.Storefront),
     DesktopDestination("games", "Games", Icons.Rounded.SportsEsports),
-    DesktopDestination("notifications", "Notifications", Icons.Rounded.Notifications),
-    DesktopDestination("store", "Blink Store", Icons.Rounded.ShoppingBag),
     DesktopDestination("leaderboard", "Leaderboard", Icons.Rounded.Leaderboard),
+    DesktopDestination("store", "Blink Store", Icons.Rounded.ShoppingBag),
+    DesktopDestination("notifications", "Notifications", Icons.Rounded.Notifications),
     DesktopDestination("profile", "Profile", Icons.Rounded.Person),
     DesktopDestination("admin", "Admin", Icons.Rounded.AdminPanelSettings, adminOnly = true),
     DesktopDestination("settings", "Settings", Icons.Rounded.Settings),
@@ -501,6 +501,21 @@ private fun AuthenticatedShell(state: DesktopAppState) {
 private fun DesktopTopBar(state: DesktopAppState) {
     var search by remember(state.globalSearch) { mutableStateOf(state.globalSearch) }
     val profile = state.profile
+    var liveWorldRank by remember(profile?.id) { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(profile?.id) {
+        val userId = profile?.id.orEmpty()
+        liveWorldRank = if (userId.isBlank()) {
+            null
+        } else {
+            runCatching {
+                state.client.fetchLeaderboard()
+                    .firstOrNull { it.userId == userId }
+                    ?.worldRank
+            }.getOrNull()
+        }
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -512,6 +527,36 @@ private fun DesktopTopBar(state: DesktopAppState) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             BlinkDesktopLogo(size = 36.dp, showText = true)
+        }
+
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(18.dp))
+                .clickable { state.selectedRoute = "leaderboard" }
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 11.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(Icons.Rounded.Leaderboard, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            Text(
+                if ((liveWorldRank ?: 0) > 0) "#$liveWorldRank" else "#—",
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(18.dp))
+                .clickable { state.selectedRoute = "store" }
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 11.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(Icons.Rounded.ShoppingBag, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            Text("${profile?.coinBalance ?: 0}", fontWeight = FontWeight.Bold, fontSize = 12.sp)
         }
 
         OutlinedTextField(
@@ -527,6 +572,9 @@ private fun DesktopTopBar(state: DesktopAppState) {
             state.globalSearch = search.trim()
             state.selectedRoute = "search"
         }) { Icon(Icons.Rounded.Search, contentDescription = "Search") }
+        IconButton(onClick = { state.selectedRoute = "games" }) {
+            Icon(Icons.Rounded.SportsEsports, contentDescription = "Game")
+        }
         IconButton(onClick = { state.selectedRoute = "notifications" }) {
             Icon(Icons.Rounded.Notifications, contentDescription = "Notifications")
         }
