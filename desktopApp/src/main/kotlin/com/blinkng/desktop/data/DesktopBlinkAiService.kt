@@ -68,7 +68,7 @@ class DesktopBlinkAiService(
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(90, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
@@ -117,7 +117,8 @@ class DesktopBlinkAiService(
                     ?.let { put("previous_interaction_id", it) }
             }
 
-        val endpoints = listOf("blink-ai-v2", "blink-ai")
+        // Testlab mirrors Android through the isolated authenticated AI function.
+        val endpoints = listOf("blink-ai-testlab")
         var lastFailure: IllegalStateException? = null
         endpoints.forEachIndexed { index, endpoint ->
             val active = client.restoreSession()
