@@ -878,18 +878,22 @@ private fun PremiumHomeFeed(
     // preview card itself uses the same qualified exposure tracker as full reels, so genuine
     // feed encounters follow the existing repeat-view and delayed-reflection algorithm.
     LaunchedEffect(listState, homeRows) {
-        snapshotFlow { listState.layoutInfo }
-            .collectLatest { layout ->
-                activeInlineReelKey = layout.visibleItemsInfo.firstOrNull { item ->
-                    val key = item.key as? String ?: return@firstOrNull false
-                    key.startsWith("reel_preview:") && qualifiesForPostImpression(
-                        itemOffset = item.offset,
-                        itemSize = item.size,
-                        viewportStart = layout.viewportStartOffset,
-                        viewportEnd = layout.viewportEndOffset
-                    )
-                }?.key as? String
-            }
+        snapshotFlow {
+            val layout = listState.layoutInfo
+            layout.visibleItemsInfo.firstOrNull { item ->
+                val key = item.key as? String ?: return@firstOrNull false
+                key.startsWith("reel_preview:") && qualifiesForPostImpression(
+                    itemOffset = item.offset,
+                    itemSize = item.size,
+                    viewportStart = layout.viewportStartOffset,
+                    viewportEnd = layout.viewportEndOffset
+                )
+            }?.key as? String
+        }.collectLatest { previewKey ->
+            // snapshotFlow suppresses equal values, so normal pixel-by-pixel scrolling
+            // no longer writes Compose state unless the active preview actually changes.
+            activeInlineReelKey = previewKey
+        }
     }
 
     AnimatedVisibility(
@@ -1058,7 +1062,7 @@ private fun PremiumHomeFeed(
                                     count = homeRows.size,
                                     key = { index ->
                                         when (val row = homeRows[index]) {
-                                            is PremiumHomeRow.PostRow -> "post:$index:${row.post.id}"
+                                            is PremiumHomeRow.PostRow -> "post:${row.post.id}"
                                             is PremiumHomeRow.ReelPreviewRow -> "reel_preview:${row.slot}:${row.reel.id}"
                                             is PremiumHomeRow.SponsoredRow -> "sponsored:${row.slot}"
                                         }
