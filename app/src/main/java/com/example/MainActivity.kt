@@ -493,6 +493,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 // MESSAGING_RELIABILITY_AUDIT_V3
 fun MainAppContent(
@@ -505,11 +506,44 @@ fun MainAppContent(
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
+    var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val connectHubActions = remember(viewModel) {
+        ConnectHubActions(
+            refresh = { viewModel.refreshConnectHub() },
+            publishRoommate = { title, description, location, minBudget, maxBudget ->
+                viewModel.publishRoommateProfile(title, description, location, minBudget, maxBudget)
+            },
+            applyRoommate = { viewModel.applyForRoommate(it) },
+            publishMentor = { subjects, headline, description, mode ->
+                viewModel.publishMentorProfile(subjects, headline, description, mode)
+            },
+            requestMentor = { viewModel.requestMentor(it) },
+            publishReadingMate = { courses, style, times, location, description ->
+                viewModel.publishReadingMateProfile(courses, style, times, location, description)
+            },
+            requestReadingMate = { viewModel.requestReadingMate(it) },
+            applyHousingAgent = { businessName, serviceAreas, bio ->
+                viewModel.applyAsHousingAgent(businessName, serviceAreas, bio)
+            },
+            publishHousingRequest = { title, location, minBudget, maxBudget, description ->
+                viewModel.publishHousingRequest(title, location, minBudget, maxBudget, description)
+            },
+            applyToHousingRequest = { requestId, message ->
+                viewModel.applyToHousingRequest(requestId, message)
+            },
+            challengeUser = { userId, gameType -> viewModel.challengeUser(userId, gameType) },
+            respondChallenge = { challengeId, accept -> viewModel.respondToGameChallenge(challengeId, accept) },
+            respondRequest = { kind, requestId, accept -> viewModel.respondToConnectRequest(kind, requestId, accept) },
+            submitChallengeScore = { challengeId, score -> viewModel.submitChallengeScore(challengeId, score) },
+            recordGameResult = { gameType, score -> viewModel.recordGameResult(gameType, score) }
+        )
+    }
 
     fun sharePostOrReel(postId: String) {
         val post = (
             uiState.posts +
+                uiState.followingPosts +
                 uiState.reels +
                 uiState.discoverPosts +
                 listOfNotNull(uiState.deepLinkedPost, uiState.activePostOptionsPost)
@@ -589,51 +623,14 @@ fun MainAppContent(
                 MainTab.HOME -> {
                     PremiumFeedScreen(
                         posts = uiState.posts,
+                        followingPosts = uiState.followingPosts,
                         reels = uiState.reels,
                         stories = uiState.stories,
                         profiles = uiState.profiles,
                         leaderboardUsers = uiState.gameLeaderboardUsers,
                         connectHub = uiState.connectHub,
                         isConnectHubLoading = uiState.isConnectHubLoading,
-                        connectHubActions = ConnectHubActions(
-                            refresh = { viewModel.refreshConnectHub() },
-                            publishRoommate = { title, description, location, minBudget, maxBudget ->
-                                viewModel.publishRoommateProfile(title, description, location, minBudget, maxBudget)
-                            },
-                            applyRoommate = { viewModel.applyForRoommate(it) },
-                            publishMentor = { subjects, headline, description, mode ->
-                                viewModel.publishMentorProfile(subjects, headline, description, mode)
-                            },
-                            requestMentor = { viewModel.requestMentor(it) },
-                            publishReadingMate = { courses, style, times, location, description ->
-                                viewModel.publishReadingMateProfile(courses, style, times, location, description)
-                            },
-                            requestReadingMate = { viewModel.requestReadingMate(it) },
-                            applyHousingAgent = { businessName, serviceAreas, bio ->
-                                viewModel.applyAsHousingAgent(businessName, serviceAreas, bio)
-                            },
-                            publishHousingRequest = { title, location, minBudget, maxBudget, description ->
-                                viewModel.publishHousingRequest(title, location, minBudget, maxBudget, description)
-                            },
-                            applyToHousingRequest = { requestId, message ->
-                                viewModel.applyToHousingRequest(requestId, message)
-                            },
-                            challengeUser = { userId, gameType ->
-                                viewModel.challengeUser(userId, gameType)
-                            },
-                            respondChallenge = { challengeId, accept ->
-                                viewModel.respondToGameChallenge(challengeId, accept)
-                            },
-                            respondRequest = { kind, requestId, accept ->
-                                viewModel.respondToConnectRequest(kind, requestId, accept)
-                            },
-                            submitChallengeScore = { challengeId, score ->
-                                viewModel.submitChallengeScore(challengeId, score)
-                            },
-                            recordGameResult = { gameType, score ->
-                                viewModel.recordGameResult(gameType, score)
-                            }
-                        ),
+                        connectHubActions = connectHubActions,
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
                         currentSubTab = uiState.feedSubTab,
@@ -666,27 +663,20 @@ fun MainAppContent(
                             viewModel.openChatWithUser(partner, partnerName, partnerAvatar)
                         },
                         onSearchClick = { viewModel.setTab(MainTab.SEARCH) },
-                        onLeaderboardClick = { viewModel.setTab(MainTab.LEADERBOARD) },
-                        onStoreClick = {
-                            val opened = context.startActivitySafely(
-                                Intent(context, BlinkStoreActivity::class.java),
-                                failureMessage = "Unable to open Blink Store."
-                            )
-                            if (opened) {
-                                (context as? Activity)?.overridePendingTransition(
-                                    R.anim.blink_slide_in_right,
-                                    R.anim.blink_stay
-                                )
-                            }
-                        },
+                        onLeaderboardClick = { feedUtilitySheet = "leaderboard" },
+                        onStoreClick = { feedUtilitySheet = "store" },
+                        onGameClick = { feedUtilitySheet = "game" },
                         onMarketClick = { viewModel.setTab(MainTab.MARKET) },
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
                         hasMorePosts = uiState.hasMorePosts,
+                        hasMoreFollowingPosts = uiState.hasMoreFollowingPosts,
                         hasMoreReels = uiState.hasMoreReels,
                         isLoadingMorePosts = uiState.isLoadingMorePosts,
+                        isLoadingMoreFollowingPosts = uiState.isLoadingMoreFollowingPosts,
                         isLoadingMoreReels = uiState.isLoadingMoreReels,
                         onLoadMorePosts = { viewModel.loadMoreFeed(false) },
+                        onLoadMoreFollowingPosts = { viewModel.loadMoreFollowingFeed() },
                         onLoadMoreReels = { viewModel.loadMoreFeed(true) },
                         homeReselectSignal = homeReselectSignal,
                         onBottomBarVisibilityChange = { isVisible ->
@@ -800,6 +790,80 @@ fun MainAppContent(
             }
         }
 
+        feedUtilitySheet?.let { utility ->
+            val utilitySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            val utilityScope = rememberCoroutineScope()
+
+            fun dismissUtility(afterDismiss: () -> Unit = {}) {
+                utilityScope.launch {
+                    runCatching { utilitySheetState.hide() }
+                    feedUtilitySheet = null
+                    afterDismiss()
+                }
+            }
+
+            ModalBottomSheet(
+                onDismissRequest = { feedUtilitySheet = null },
+                sheetState = utilitySheetState,
+                dragHandle = { BottomSheetDefaults.DragHandle() },
+                modifier = Modifier.testTag("feedUtilitySheet")
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.96f)
+                ) {
+                    when (utility) {
+                        "leaderboard" -> LeaderboardScreen(
+                            users = uiState.leaderboardUsers,
+                            userProfile = uiState.myProfile,
+                            onProfileClick = { username ->
+                                dismissUtility { viewModel.openProfile(username) }
+                            },
+                            isDark = uiState.isDarkMode,
+                            onRefresh = { viewModel.refreshLeaderboard() }
+                        )
+
+                        "game" -> GameSection(
+                            userAvatar = uiState.myProfile.avatarUrl,
+                            leaderboardUsers = uiState.gameLeaderboardUsers,
+                            connectHub = uiState.connectHub,
+                            connectHubActions = connectHubActions,
+                            isDark = uiState.isDarkMode,
+                            onOpenMenu = { viewModel.openMenu(true) },
+                            onOpenActivity = { viewModel.openActivity(true) },
+                            onProfileClick = { username ->
+                                dismissUtility { viewModel.openProfile(username) }
+                            },
+                            selectedTopTab = 3,
+                            onHomeClick = {
+                                dismissUtility {
+                                    viewModel.setTab(MainTab.HOME)
+                                    viewModel.setFeedSubTab(0)
+                                }
+                            },
+                            onReelClick = {
+                                dismissUtility {
+                                    viewModel.setTab(MainTab.HOME)
+                                    viewModel.setFeedSubTab(1)
+                                }
+                            },
+                            onConnectClick = {
+                                dismissUtility {
+                                    viewModel.setTab(MainTab.HOME)
+                                    viewModel.setFeedSubTab(2)
+                                }
+                            },
+                            onGameClick = {},
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        "store" -> BlinkStoreRoute(onClose = { dismissUtility() })
+                    }
+                }
+            }
+        }
+
         OfflineConnectionBanner(
             visible = !uiState.isOnline,
             modifier = Modifier
@@ -809,7 +873,8 @@ fun MainAppContent(
 
         // Floating bottom navigation follows the feed chrome state. Its transition is
         // deliberately non-bouncy so a restored bar glides in instead of springing back.
-        val shouldShowBottomBar = uiState.viewingProduct == null &&
+        val shouldShowBottomBar = feedUtilitySheet == null &&
+                uiState.viewingProduct == null &&
                 uiState.viewingProfile == null &&
                 !uiState.isPostItemOpen &&
                 !uiState.isBecomeSellerOpen &&
@@ -985,8 +1050,20 @@ fun MainAppContent(
         // Sub-screen Overlays: User Profile with dynamic tabs (Posts, Liked, Saved, Skills, About) & messaging
         AnimatedVisibility(
             visible = uiState.viewingProfile != null,
-            enter = slideInHorizontally(initialOffsetX = { -it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()
+            enter = slideInHorizontally(
+                initialOffsetX = { -it },
+                animationSpec = androidx.compose.animation.core.tween(
+                    durationMillis = 280,
+                    easing = androidx.compose.animation.core.FastOutSlowInEasing
+                )
+            ) + fadeIn(androidx.compose.animation.core.tween(180)),
+            exit = slideOutHorizontally(
+                targetOffsetX = { -it },
+                animationSpec = androidx.compose.animation.core.tween(
+                    durationMillis = 230,
+                    easing = androidx.compose.animation.core.FastOutSlowInEasing
+                )
+            ) + fadeOut(androidx.compose.animation.core.tween(160))
         ) {
             uiState.viewingProfile?.let { profile ->
                 val isMyProfile = viewModel.isMe(profile.username)

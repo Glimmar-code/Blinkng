@@ -94,7 +94,7 @@ fun FeedBottomBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp),
+                .height(56.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -129,7 +129,7 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     Column(
         modifier = Modifier
             .weight(1f)
-            .height(64.dp)
+            .height(56.dp)
             .clickable(role = Role.Tab, onClick = onClick)
             .testTag("feed_nav_${item.destination.name.lowercase()}"),
         horizontalAlignment = Alignment.CenterHorizontally,

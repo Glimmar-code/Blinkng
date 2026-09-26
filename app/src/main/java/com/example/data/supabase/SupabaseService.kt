@@ -1864,7 +1864,7 @@ fun getCurrentUserId(): String? {
         val normalizedFeedType = feedType
             .removePrefix("ranked_")
             .lowercase(Locale.US)
-            .takeIf { it == "posts" || it == "reels" || it == "all" }
+            .takeIf { it == "posts" || it == "reels" || it == "following" || it == "all" }
             ?: "posts"
         val useRankedDiscovery = searchQuery.isNullOrBlank() && feedType.startsWith("ranked_")
 

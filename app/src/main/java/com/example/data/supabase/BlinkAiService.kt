@@ -75,7 +75,7 @@ class BlinkAiService {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(90, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
@@ -321,7 +321,8 @@ class BlinkAiService {
 
     private suspend fun executeAi(payload: JSONObject): BlinkAiReply {
         val session = ensureSession()
-        val endpoints = listOf("blink-ai-v2", "blink-ai")
+        // Testlab uses an isolated Edge Function so AI changes can be verified before promotion.
+        val endpoints = listOf("blink-ai-testlab")
         var lastFailure: IllegalStateException? = null
 
         for ((index, endpoint) in endpoints.withIndex()) {

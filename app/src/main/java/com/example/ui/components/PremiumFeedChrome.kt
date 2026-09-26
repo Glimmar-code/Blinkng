@@ -124,8 +124,8 @@ fun FeedTopBar(
                 .padding(
                     start = horizontalPadding,
                     end = horizontalPadding,
-                    top = 8.dp,
-                    bottom = 8.dp
+                    top = 4.dp,
+                    bottom = 4.dp
                 ),
             verticalAlignment = Alignment.CenterVertically
         ) {

@@ -136,7 +136,7 @@ private enum class BlinkStoreTab(val label: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BlinkStoreRoute(onClose: () -> Unit) {
+internal fun BlinkStoreRoute(onClose: () -> Unit) {
     val service = remember { BlinkEconomyService() }
     val scope = rememberCoroutineScope()
     var snapshot by remember { mutableStateOf(JSONObject()) }

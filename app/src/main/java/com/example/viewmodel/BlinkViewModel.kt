@@ -90,6 +90,7 @@ data class BlinkUiState(
     val isConversationFullScreen: Boolean = false,
     val stories: List<Story> = listOf(Story(id = "story_me", username = "Your Story", avatar = "", hasUnseen = false, isUser = true)),
     val posts: List<FeedPost> = emptyList(),
+    val followingPosts: List<FeedPost> = emptyList(),
     val reels: List<FeedPost> = emptyList(),
     val savedDrafts: List<PostDraft> = emptyList(),
     val scheduledPosts: List<ScheduledPost> = emptyList(),
@@ -129,8 +130,10 @@ data class BlinkUiState(
     val discoverPosts: List<FeedPost> = emptyList(),
     val isDiscoverSearching: Boolean = false,
     val hasMorePosts: Boolean = true,
+    val hasMoreFollowingPosts: Boolean = true,
     val hasMoreReels: Boolean = true,
     val isLoadingMorePosts: Boolean = false,
+    val isLoadingMoreFollowingPosts: Boolean = false,
     val isLoadingMoreReels: Boolean = false,
     val messageHistoryHasMore: Map<String, Boolean> = emptyMap(),
     val loadingOlderConversationId: String? = null,
@@ -287,7 +290,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
         when {
             AccountSessionStore.isSignInRequired(appContext) -> {
-                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
             }
             hasLocalAuthenticatedProfile() -> {
                 restoreLocalSession()
@@ -298,9 +301,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
             }
             !SupabaseService.accessToken().isNullOrBlank() ||
                 !SupabaseService.refreshToken().isNullOrBlank() -> {
-                // A remote session restore is already running. Show a usable auth surface
-                // instead of blocking startup on network latency.
-                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                // A recoverable cloud session is already restoring. Keep the short splash
+                // instead of flashing SIGN_IN and making a valid session look logged out.
+                Unit
             }
             else -> _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
         }
@@ -502,7 +505,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                                 _uiState.value.destination == AppDestination.PROFILE_SETUP) &&
                             !recoverable
                         ) {
-                            _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                            _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
                         }
                     }
                     else -> Unit
@@ -519,7 +522,7 @@ private suspend fun restoreSupabaseSession() {
             }
             if (AccountSessionStore.isSignInRequired(appContext)) {
                 SupabaseService.clearSession()
-                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
                 return
             }
             // Never make an offline cold start wait on Supabase. The last signed-in account
@@ -587,7 +590,7 @@ private suspend fun restoreSupabaseSession() {
                 _uiState.value = _uiState.value.copy(destination = authenticatedDestination())
                 fetchSupabaseData()
             } else {
-                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
             }
         } catch (e: Exception) {
             Log.w(TAG, "restoreSupabaseSession notice: ${e.message}")
@@ -604,7 +607,7 @@ private suspend fun restoreSupabaseSession() {
                 // A temporary network/Supabase failure must not erase the offline app.
                 // Reconnect handling will retry the cloud sync automatically.
             } else {
-                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
             }
         }
     }
@@ -1415,6 +1418,16 @@ private suspend fun restoreSupabaseSession() {
         if (!isFresh) fetchSupabaseData()
     }
 
+    private fun reconcileRefreshedFeed(
+        previous: List<FeedPost>,
+        refreshed: List<FeedPost>
+    ): List<FeedPost> {
+        if (refreshed.isEmpty()) return previous
+        val fresh = refreshed.distinctBy { it.id }
+        val freshIds = fresh.asSequence().map { it.id }.toHashSet()
+        return fresh + previous.filter { it.id !in freshIds }
+    }
+
     fun fetchSupabaseData(showRefreshIndicator: Boolean = false) {
         // Auth restore, onResume, reconnect and realtime can all request a refresh at once.
         // Coalesce those requests instead of queueing several full Supabase syncs back-to-back.
@@ -1457,18 +1470,32 @@ private suspend fun restoreSupabaseSession() {
                         runCatching { postRepository.fetchFeed(isReel = true) }
                             .onFailure { Log.e(TAG, "Reel page fetch failed", it) }
                     }
+                    val followingRequest = async {
+                        runCatching { postRepository.fetchFollowingFeed(limit = 30) }
+                            .onFailure { Log.e(TAG, "Following feed fetch failed", it) }
+                    }
                     val postsResult = postsRequest.await()
                     val reelsResult = reelsRequest.await()
+                    val followingResult = followingRequest.await()
 
-                    val normalPosts = postsResult.getOrDefault(before.posts).distinctBy { it.id }
-                    val fetchedReels = reelsResult.getOrDefault(before.reels).distinctBy { it.id }
+                    val normalPosts = postsResult.getOrNull()
+                        ?.let { reconcileRefreshedFeed(before.posts, it) }
+                        ?: before.posts
+                    val fetchedReels = reelsResult.getOrNull()
+                        ?.let { reconcileRefreshedFeed(before.reels, it) }
+                        ?: before.reels
+                    val fetchedFollowing = followingResult.getOrNull()
+                        ?.let { reconcileRefreshedFeed(before.followingPosts, it) }
+                        ?: before.followingPosts
                     val feedSucceeded = postsResult.isSuccess || reelsResult.isSuccess
                     if (feedSucceeded) lastSuccessfulSyncAt = SystemClock.elapsedRealtime()
 
                     _uiState.value = _uiState.value.copy(
                         posts = normalPosts,
+                        followingPosts = fetchedFollowing,
                         reels = fetchedReels,
                         hasMorePosts = postsResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMorePosts,
+                        hasMoreFollowingPosts = followingResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMoreFollowingPosts,
                         hasMoreReels = reelsResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMoreReels,
                         isLiveSupabaseConnected = feedSucceeded,
                         isFeedLoading = false,
@@ -1757,6 +1784,34 @@ private suspend fun restoreSupabaseSession() {
                 } else {
                     _uiState.value.copy(isLoadingMorePosts = false)
                 }
+            }
+        }
+    }
+
+    fun loadMoreFollowingFeed() {
+        val state = _uiState.value
+        if (!state.isOnline || state.isLoadingMoreFollowingPosts || !state.hasMoreFollowingPosts) return
+        val last = state.followingPosts.lastOrNull() ?: return
+        if (last.createdAt.isBlank()) return
+
+        _uiState.value = state.copy(isLoadingMoreFollowingPosts = true)
+        viewModelScope.launch {
+            runCatching {
+                postRepository.fetchFollowingFeedPage(
+                    beforeCreatedAt = last.createdAt,
+                    beforeId = last.id,
+                    limit = 30
+                )
+            }.onSuccess { page ->
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    followingPosts = (latest.followingPosts + page).distinctBy { it.id },
+                    isLoadingMoreFollowingPosts = false,
+                    hasMoreFollowingPosts = page.size >= 30
+                )
+            }.onFailure {
+                Log.w(TAG, "Load more following feed failed", it)
+                _uiState.value = _uiState.value.copy(isLoadingMoreFollowingPosts = false)
             }
         }
     }
@@ -2729,24 +2784,49 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun togglePostLike(postId: String) {
-        var nextLiked = false; var nextCount = 0
-        val updatedPosts = _uiState.value.posts.map { if (it.id == postId) { nextLiked = !it.isLiked; nextCount = (it.likes + if (nextLiked) 1 else -1).coerceAtLeast(0); it.copy(isLiked = nextLiked, likes = nextCount) } else it }
-        val updatedReels = _uiState.value.reels.map { if (it.id == postId) { nextLiked = !it.isLiked; nextCount = (it.likes + if (nextLiked) 1 else -1).coerceAtLeast(0); it.copy(isLiked = nextLiked, likes = nextCount) } else it }
-        _uiState.value = _uiState.value.copy(posts = updatedPosts, reels = updatedReels)
+        val state = _uiState.value
+        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts)
+            .firstOrNull { it.id == postId } ?: return
+        val nextLiked = !target.isLiked
+        val nextCount = (target.likes + if (nextLiked) 1 else -1).coerceAtLeast(0)
+        fun update(items: List<FeedPost>, liked: Boolean, count: Int): List<FeedPost> =
+            items.map { if (it.id == postId) it.copy(isLiked = liked, likes = count) else it }
+
+        _uiState.value = state.copy(
+            posts = update(state.posts, nextLiked, nextCount),
+            followingPosts = update(state.followingPosts, nextLiked, nextCount),
+            reels = update(state.reels, nextLiked, nextCount),
+            discoverPosts = update(state.discoverPosts, nextLiked, nextCount)
+        )
         persistCurrentFeed()
+
         viewModelScope.launch {
-            val success = runCatching { postRepository.togglePostLike(postId, nextLiked, nextCount) }.getOrDefault(false)
+            val success = runCatching {
+                postRepository.togglePostLike(postId, nextLiked, nextCount)
+            }.getOrDefault(false)
             if (success && nextLiked) {
-                val target = (_uiState.value.posts + _uiState.value.reels).find { it.id == postId }
-                if (target != null && target.author.isNotBlank()) supabaseService.recordActivity(target.author, "liked your post", NotificationFilter.LIKES, postId, targetType = "POST")
+                if (target.author.isNotBlank()) {
+                    supabaseService.recordActivity(
+                        target.author,
+                        "liked your post",
+                        NotificationFilter.LIKES,
+                        postId,
+                        targetType = "POST"
+                    )
+                }
             } else if (!success) {
-                _uiState.value = _uiState.value.copy(posts = _uiState.value.posts.map { if (it.id == postId) it.copy(isLiked = !nextLiked, likes = (it.likes + if (!nextLiked) 1 else -1).coerceAtLeast(0)) else it }, reels = _uiState.value.reels.map { if (it.id == postId) it.copy(isLiked = !nextLiked, likes = (it.likes + if (!nextLiked) 1 else -1).coerceAtLeast(0)) else it })
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    posts = update(latest.posts, target.isLiked, target.likes),
+                    followingPosts = update(latest.followingPosts, target.isLiked, target.likes),
+                    reels = update(latest.reels, target.isLiked, target.likes),
+                    discoverPosts = update(latest.discoverPosts, target.isLiked, target.likes)
+                )
                 persistCurrentFeed()
                 showToast("Failed to update like.")
             }
         }
     }
-
     fun toggleRepost(postId: String) {
         viewModelScope.launch {
             val result = postRepository.togglePostRepost(postId)
@@ -2761,6 +2841,7 @@ private suspend fun restoreSupabaseSession() {
             val state = _uiState.value
             _uiState.value = state.copy(
                 posts = update(state.posts),
+                followingPosts = update(state.followingPosts),
                 reels = update(state.reels),
                 discoverPosts = update(state.discoverPosts)
             )
@@ -2768,23 +2849,48 @@ private suspend fun restoreSupabaseSession() {
             showToast(if (reposted) "Reposted to your people." else "Repost removed.")
         }
     }
-
     fun toggleBookmark(postId: String) {
-        var next = false
-        _uiState.value = _uiState.value.copy(posts = _uiState.value.posts.map { if (it.id == postId) { next = !it.isBookmarked; it.copy(isBookmarked = next) } else it }, reels = _uiState.value.reels.map { if (it.id == postId) { next = !it.isBookmarked; it.copy(isBookmarked = next) } else it })
+        val state = _uiState.value
+        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts)
+            .firstOrNull { it.id == postId } ?: return
+        val next = !target.isBookmarked
+        fun update(items: List<FeedPost>, value: Boolean): List<FeedPost> =
+            items.map { if (it.id == postId) it.copy(isBookmarked = value) else it }
+
+        _uiState.value = state.copy(
+            posts = update(state.posts, next),
+            followingPosts = update(state.followingPosts, next),
+            reels = update(state.reels, next),
+            discoverPosts = update(state.discoverPosts, next)
+        )
         persistCurrentFeed()
-        viewModelScope.launch { if (!runCatching { postRepository.togglePostBookmark(postId, next) }.getOrDefault(false)) { _uiState.value = _uiState.value.copy(posts = _uiState.value.posts.map { if (it.id == postId) it.copy(isBookmarked = !next) else it }, reels = _uiState.value.reels.map { if (it.id == postId) it.copy(isBookmarked = !next) else it }); persistCurrentFeed(); showToast("Failed to update bookmark.") } }
+
+        viewModelScope.launch {
+            if (!runCatching { postRepository.togglePostBookmark(postId, next) }.getOrDefault(false)) {
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    posts = update(latest.posts, target.isBookmarked),
+                    followingPosts = update(latest.followingPosts, target.isBookmarked),
+                    reels = update(latest.reels, target.isBookmarked),
+                    discoverPosts = update(latest.discoverPosts, target.isBookmarked)
+                )
+                persistCurrentFeed()
+                showToast("Failed to update bookmark.")
+            }
+        }
     }
     fun sharePost(postId: String) {
         viewModelScope.launch {
             if (supabaseService.sharePost(postId, "share")) {
-                _uiState.value = _uiState.value.copy(
-                    posts = _uiState.value.posts.map {
-                        if (it.id == postId) it.copy(sharesCount = it.sharesCount + 1) else it
-                    },
-                    reels = _uiState.value.reels.map {
-                        if (it.id == postId) it.copy(sharesCount = it.sharesCount + 1) else it
-                    }
+                fun update(items: List<FeedPost>): List<FeedPost> = items.map {
+                    if (it.id == postId) it.copy(sharesCount = it.sharesCount + 1) else it
+                }
+                val state = _uiState.value
+                _uiState.value = state.copy(
+                    posts = update(state.posts),
+                    followingPosts = update(state.followingPosts),
+                    reels = update(state.reels),
+                    discoverPosts = update(state.discoverPosts)
                 )
                 persistCurrentFeed()
                 showToast("🔗 Post shared.")
@@ -2795,7 +2901,8 @@ private suspend fun restoreSupabaseSession() {
     }
     fun deletePost(postId: String) {
         val state = _uiState.value
-        val target = (state.posts + state.reels).firstOrNull { it.id == postId } ?: return
+        val target = (state.posts + state.followingPosts + state.reels)
+            .firstOrNull { it.id == postId } ?: return
         val me = state.myProfile.username.trim()
         if (me.isBlank() || !target.author.equals(me, ignoreCase = true)) {
             _uiState.value = state.copy(activePostOptionsPost = null)
@@ -2804,9 +2911,11 @@ private suspend fun restoreSupabaseSession() {
         }
 
         val postsBefore = state.posts
+        val followingBefore = state.followingPosts
         val reelsBefore = state.reels
         _uiState.value = state.copy(
             posts = postsBefore.filterNot { it.id == postId },
+            followingPosts = followingBefore.filterNot { it.id == postId },
             reels = reelsBefore.filterNot { it.id == postId },
             activePostOptionsPost = null
         )
@@ -2817,7 +2926,11 @@ private suspend fun restoreSupabaseSession() {
             if (deleted) {
                 showToast(if (target.videoUrl.isNullOrBlank()) "Post deleted." else "Reel deleted.")
             } else {
-                _uiState.value = _uiState.value.copy(posts = postsBefore, reels = reelsBefore)
+                _uiState.value = _uiState.value.copy(
+                    posts = postsBefore,
+                    followingPosts = followingBefore,
+                    reels = reelsBefore
+                )
                 persistCurrentFeed()
                 showToast("Delete failed. Only the owner can delete this content.")
             }
@@ -2840,11 +2953,14 @@ private suspend fun restoreSupabaseSession() {
         viewModelScope.launch {
             if (supabaseService.muteUser(clean)) {
                 val normalized = clean.lowercase()
-                _uiState.value = _uiState.value.copy(
-                    mutedUsers = _uiState.value.mutedUsers + normalized,
-                    posts = _uiState.value.posts.filterNot { it.author.equals(clean, true) },
-                    reels = _uiState.value.reels.filterNot { it.author.equals(clean, true) },
-                    stories = _uiState.value.stories.filterNot {
+                val state = _uiState.value
+                _uiState.value = state.copy(
+                    mutedUsers = state.mutedUsers + normalized,
+                    posts = state.posts.filterNot { it.author.equals(clean, true) },
+                    followingPosts = state.followingPosts.filterNot { it.author.equals(clean, true) },
+                    reels = state.reels.filterNot { it.author.equals(clean, true) },
+                    discoverPosts = state.discoverPosts.filterNot { it.author.equals(clean, true) },
+                    stories = state.stories.filterNot {
                         !it.isUser && it.username.equals(clean, true)
                     }
                 )
@@ -2855,17 +2971,17 @@ private suspend fun restoreSupabaseSession() {
             }
         }
     }
-
     fun votePoll(postId: String, optionId: String) {
-        val post = _uiState.value.posts.find { it.id == postId } ?: return
-        val poll = post.poll ?: return
+        val state = _uiState.value
+        val target = (state.posts + state.followingPosts + state.reels)
+            .firstOrNull { it.id == postId } ?: return
+        val poll = target.poll ?: return
         if (poll.hasVoted || poll.options.any { it.isVotedByMe }) {
             showToast("You already voted in this poll.")
             return
         }
 
-        val before = _uiState.value.posts
-        val updated = before.map { item ->
+        fun update(items: List<FeedPost>): List<FeedPost> = items.map { item ->
             if (item.id != postId || item.poll == null) item
             else {
                 val options = item.poll.options.map { option ->
@@ -2882,10 +2998,19 @@ private suspend fun restoreSupabaseSession() {
                 )
             }
         }
-        _uiState.value = _uiState.value.copy(posts = updated)
+
+        val updatedPosts = update(state.posts)
+        val updatedFollowing = update(state.followingPosts)
+        val updatedReels = update(state.reels)
+        _uiState.value = state.copy(
+            posts = updatedPosts,
+            followingPosts = updatedFollowing,
+            reels = updatedReels
+        )
         persistCurrentFeed()
 
-        val pollState = updated.find { it.id == postId }?.poll ?: return
+        val pollState = (updatedPosts + updatedFollowing + updatedReels)
+            .firstOrNull { it.id == postId }?.poll ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val success = runCatching {
                 postRepository.votePoll(postId, optionId, pollState)
@@ -2894,14 +3019,17 @@ private suspend fun restoreSupabaseSession() {
                 if (success) {
                     showToast("🗳️ Vote recorded.")
                 } else {
-                    _uiState.value = _uiState.value.copy(posts = before)
+                    _uiState.value = _uiState.value.copy(
+                        posts = state.posts,
+                        followingPosts = state.followingPosts,
+                        reels = state.reels
+                    )
                     persistCurrentFeed()
                     showToast("Vote wasn't saved. Please try again.")
                 }
             }
         }
     }
-
     fun addComment(postId: String, text: String, parentCommentId: String? = null) {
         val cleanText = text.trim()
         if (cleanText.isBlank() || _uiState.value.isPostingComment) return
@@ -2927,6 +3055,9 @@ private suspend fun restoreSupabaseSession() {
                     state.comments
                 },
                 posts = state.posts.map {
+                    if (it.id == postId) it.copy(commentsCount = it.commentsCount + 1) else it
+                },
+                followingPosts = state.followingPosts.map {
                     if (it.id == postId) it.copy(commentsCount = it.commentsCount + 1) else it
                 },
                 reels = state.reels.map {
@@ -3658,19 +3789,38 @@ private suspend fun restoreSupabaseSession() {
             }
             is RealtimeEvent.ConnectHubEvent -> refreshConnectHub()
             is RealtimeEvent.FeedPostEvent -> viewModelScope.launch {
-                val fresh = postRepository.fetchFeed()
-                if (fresh.isNotEmpty()) {
-                    val muted = _uiState.value.mutedUsers
-                    _uiState.value = _uiState.value.copy(
-                        posts = fresh.filter {
-                            it.videoUrl.isNullOrBlank() &&
-                                !it.isReel &&
-                                it.author.lowercase() !in muted
-                        },
-                        reels = fresh.filter {
-                            !it.videoUrl.isNullOrBlank() &&
-                                it.author.lowercase() !in muted
-                        }
+                val current = _uiState.value
+                if (event.eventType.equals("DELETE", ignoreCase = true)) {
+                    _uiState.value = current.copy(
+                        posts = current.posts.filterNot { it.id == event.postId },
+                        followingPosts = current.followingPosts.filterNot { it.id == event.postId },
+                        reels = current.reels.filterNot { it.id == event.postId }
+                    )
+                    persistCurrentFeed()
+                    return@launch
+                }
+
+                val freshRequest = async { postRepository.fetchFeed() }
+                val followingRequest = async { postRepository.fetchFollowingFeed(limit = 30) }
+                val fresh = freshRequest.await()
+                val following = followingRequest.await()
+                val latest = _uiState.value
+                val muted = latest.mutedUsers
+
+                if (fresh.isNotEmpty() || following.isNotEmpty()) {
+                    val freshPosts = fresh.filter {
+                        it.videoUrl.isNullOrBlank() &&
+                            !it.isReel &&
+                            it.author.lowercase() !in muted
+                    }
+                    val freshReels = fresh.filter {
+                        !it.videoUrl.isNullOrBlank() &&
+                            it.author.lowercase() !in muted
+                    }
+                    _uiState.value = latest.copy(
+                        posts = if (freshPosts.isNotEmpty()) reconcileRefreshedFeed(latest.posts, freshPosts) else latest.posts,
+                        followingPosts = if (following.isNotEmpty()) reconcileRefreshedFeed(latest.followingPosts, following) else latest.followingPosts,
+                        reels = if (freshReels.isNotEmpty()) reconcileRefreshedFeed(latest.reels, freshReels) else latest.reels
                     )
                     persistCurrentFeed()
                 }
@@ -4329,7 +4479,11 @@ private suspend fun restoreSupabaseSession() {
         viewModelScope.launch {
             val views = supabaseService.recordPostView(postId, _uiState.value.myProfile.username)
             if (views <= 0) return@launch
-            _uiState.value = _uiState.value.copy(posts = _uiState.value.posts.map { if (it.id == postId) it.copy(viewsCount = maxOf(it.viewsCount, views)) else it }, reels = _uiState.value.reels.map { if (it.id == postId) it.copy(viewsCount = maxOf(it.viewsCount, views)) else it })
+            _uiState.value = _uiState.value.copy(
+                posts = _uiState.value.posts.map { if (it.id == postId) it.copy(viewsCount = maxOf(it.viewsCount, views)) else it },
+                followingPosts = _uiState.value.followingPosts.map { if (it.id == postId) it.copy(viewsCount = maxOf(it.viewsCount, views)) else it },
+                reels = _uiState.value.reels.map { if (it.id == postId) it.copy(viewsCount = maxOf(it.viewsCount, views)) else it }
+            )
             persistCurrentFeed()
         }
     }
@@ -4386,7 +4540,7 @@ private suspend fun restoreSupabaseSession() {
         }
 
         activity.targetPostId?.let { postId ->
-            val target = (_uiState.value.posts + _uiState.value.reels).find { it.id == postId }
+            val target = (_uiState.value.posts + _uiState.value.followingPosts + _uiState.value.reels).find { it.id == postId }
             val isReel = activity.targetType.equals("reel", ignoreCase = true) || target?.isReel == true
             _uiState.value = _uiState.value.copy(
                 selectedTab = MainTab.HOME,
@@ -4442,7 +4596,7 @@ private suspend fun restoreSupabaseSession() {
             runCatching { supabaseService.setMyPresence(false) }
             runCatching { authRepository.signOut() }
             SupabaseService.clearSession(); prefs.edit().clear().apply()
-            _uiState.value = BlinkUiState(destination = AppDestination.SIGN_IN, isDarkMode = _uiState.value.isDarkMode)
+            _uiState.value = BlinkUiState(destination = AppDestination.ONBOARDING, isDarkMode = _uiState.value.isDarkMode)
             showToast("Logged out successfully.")
         }
     }
