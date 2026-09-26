@@ -589,6 +589,7 @@ fun MainAppContent(
                 MainTab.HOME -> {
                     PremiumFeedScreen(
                         posts = uiState.posts,
+                        followingPosts = uiState.followingPosts,
                         reels = uiState.reels,
                         stories = uiState.stories,
                         profiles = uiState.profiles,
@@ -683,10 +684,13 @@ fun MainAppContent(
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
                         hasMorePosts = uiState.hasMorePosts,
+                        hasMoreFollowingPosts = uiState.hasMoreFollowingPosts,
                         hasMoreReels = uiState.hasMoreReels,
                         isLoadingMorePosts = uiState.isLoadingMorePosts,
+                        isLoadingMoreFollowingPosts = uiState.isLoadingMoreFollowingPosts,
                         isLoadingMoreReels = uiState.isLoadingMoreReels,
                         onLoadMorePosts = { viewModel.loadMoreFeed(false) },
+                        onLoadMoreFollowingPosts = { viewModel.loadMoreFollowingFeed() },
                         onLoadMoreReels = { viewModel.loadMoreFeed(true) },
                         homeReselectSignal = homeReselectSignal,
                         onBottomBarVisibilityChange = { isVisible ->
