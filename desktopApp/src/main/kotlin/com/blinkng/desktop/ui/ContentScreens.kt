@@ -1232,7 +1232,7 @@ private fun PostCard(
     Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
         Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                PresenceAvatar(post.authorName, post.authorOnline)
+                PresenceAvatar(post.authorName, post.authorOnline, showStatus = false)
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     VerifiedName(post.authorName, post.authorVerified)
