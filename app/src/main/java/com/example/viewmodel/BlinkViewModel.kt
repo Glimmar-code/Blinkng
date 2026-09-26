@@ -290,7 +290,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
         when {
             AccountSessionStore.isSignInRequired(appContext) -> {
-                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
             }
             hasLocalAuthenticatedProfile() -> {
                 restoreLocalSession()
@@ -301,9 +301,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
             }
             !SupabaseService.accessToken().isNullOrBlank() ||
                 !SupabaseService.refreshToken().isNullOrBlank() -> {
-                // A remote session restore is already running. Show a usable auth surface
-                // instead of blocking startup on network latency.
-                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                // A recoverable cloud session is already restoring. Keep the short splash
+                // instead of flashing SIGN_IN and making a valid session look logged out.
+                Unit
             }
             else -> _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
         }
@@ -505,7 +505,7 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                                 _uiState.value.destination == AppDestination.PROFILE_SETUP) &&
                             !recoverable
                         ) {
-                            _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                            _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
                         }
                     }
                     else -> Unit
@@ -522,7 +522,7 @@ private suspend fun restoreSupabaseSession() {
             }
             if (AccountSessionStore.isSignInRequired(appContext)) {
                 SupabaseService.clearSession()
-                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
                 return
             }
             // Never make an offline cold start wait on Supabase. The last signed-in account
@@ -590,7 +590,7 @@ private suspend fun restoreSupabaseSession() {
                 _uiState.value = _uiState.value.copy(destination = authenticatedDestination())
                 fetchSupabaseData()
             } else {
-                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
             }
         } catch (e: Exception) {
             Log.w(TAG, "restoreSupabaseSession notice: ${e.message}")
@@ -607,7 +607,7 @@ private suspend fun restoreSupabaseSession() {
                 // A temporary network/Supabase failure must not erase the offline app.
                 // Reconnect handling will retry the cloud sync automatically.
             } else {
-                _uiState.value = _uiState.value.copy(destination = AppDestination.SIGN_IN)
+                _uiState.value = _uiState.value.copy(destination = AppDestination.ONBOARDING)
             }
         }
     }
@@ -4516,7 +4516,7 @@ private suspend fun restoreSupabaseSession() {
             runCatching { supabaseService.setMyPresence(false) }
             runCatching { authRepository.signOut() }
             SupabaseService.clearSession(); prefs.edit().clear().apply()
-            _uiState.value = BlinkUiState(destination = AppDestination.SIGN_IN, isDarkMode = _uiState.value.isDarkMode)
+            _uiState.value = BlinkUiState(destination = AppDestination.ONBOARDING, isDarkMode = _uiState.value.isDarkMode)
             showToast("Logged out successfully.")
         }
     }
