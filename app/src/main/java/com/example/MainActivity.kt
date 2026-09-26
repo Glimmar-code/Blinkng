@@ -1,5 +1,6 @@
 package com.example
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -37,6 +38,7 @@ import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
 import com.example.update.PlayInAppUpdateCoordinator
+import com.example.util.startActivitySafely
 import com.example.viewmodel.AppDestination
 import com.example.viewmodel.BlinkViewModel
 import com.example.viewmodel.MainTab
@@ -665,6 +667,18 @@ fun MainAppContent(
                         },
                         onSearchClick = { viewModel.setTab(MainTab.SEARCH) },
                         onLeaderboardClick = { viewModel.setTab(MainTab.LEADERBOARD) },
+                        onStoreClick = {
+                            val opened = context.startActivitySafely(
+                                Intent(context, BlinkStoreActivity::class.java),
+                                failureMessage = "Unable to open Blink Store."
+                            )
+                            if (opened) {
+                                (context as? Activity)?.overridePendingTransition(
+                                    R.anim.blink_slide_in_right,
+                                    R.anim.blink_stay
+                                )
+                            }
+                        },
                         onMarketClick = { viewModel.setTab(MainTab.MARKET) },
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
@@ -810,9 +824,7 @@ fun MainAppContent(
                 uiState.activePostOptionsPost == null &&
                 uiState.activeCommentsPostId == null &&
                 uiState.deepLinkedPost == null &&
-                !uiState.isMenuOpen &&
-                !(uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1) &&
-                isBottomBarVisibleByScroll
+                !uiState.isMenuOpen
 
         androidx.compose.animation.AnimatedVisibility(
             visible = shouldShowBottomBar,
@@ -892,18 +904,19 @@ fun MainAppContent(
                         viewModel.setFeedSubTab(0)
                     }
                 },
-                onConnectClick = {
+                onReelsClick = {
                     isBottomBarVisibleByScroll = true
                     viewModel.setTab(MainTab.HOME)
-                    viewModel.setFeedSubTab(2)
-                },
-                onLeaderboardClick = {
-                    isBottomBarVisibleByScroll = true
-                    viewModel.setTab(MainTab.LEADERBOARD)
+                    viewModel.setFeedSubTab(1)
                 },
                 onMarketClick = {
                     isBottomBarVisibleByScroll = true
                     viewModel.setTab(MainTab.MARKET)
+                },
+                onConnectClick = {
+                    isBottomBarVisibleByScroll = true
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(2)
                 },
                 onMessageClick = {
                     isBottomBarVisibleByScroll = true
