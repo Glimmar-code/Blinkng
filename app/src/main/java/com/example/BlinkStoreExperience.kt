@@ -117,9 +117,13 @@ fun BlinkStoreItem.premiumExperience(): BlinkStoreExperience {
         "vip_theme" -> "Your Blink app/profile theme where supported; ownership is public in Blink Collection"
         "digital_gift" -> "Recipient gift experience and public collection history"
         "gift_crown", "gift_rose", "gift_trophy", "gift_galaxy" -> "Your public Blink Collection and collectible showcase"
-        "creator_promo_bundle" -> "Vault credits, then creator promotion surfaces"
-        "market_promo_bundle" -> "Vault credits, then Marketplace promotion surfaces"
+        "creator_promo_bundle" -> "Collection credits, then creator promotion surfaces"
+        "market_promo_bundle" -> "Collection credits, then Marketplace promotion surfaces"
         "blink_vip_10d" -> "Profile, comments, Reels, search, notifications, leaderboard, Marketplace and chat surfaces that consume VIP status"
+        "campus_signature_theme", "christmas_2026_profile_theme", "level_50_legend_aura" -> "Your public profile and supported identity surfaces"
+        "campus_signature_frame", "level_10_neon_frame" -> "Profile plus supported avatar and identity surfaces"
+        "campus_signature_nameplate", "level_25_signature_nameplate", "christmas_2026_nameplate" -> "Profile, feed, comments, Reels and supported name surfaces"
+        "campus_signature_chat" -> "Supported direct and group conversations"
         else -> when (target) {
             BlinkStoreTarget.NONE -> "Blink Collection"
             else -> target.name.lowercase().replaceFirstChar(Char::uppercase)
@@ -128,12 +132,12 @@ fun BlinkStoreItem.premiumExperience(): BlinkStoreExperience {
 
     val activationHint = when {
         id == "digital_gift" -> "Press Use, choose the recipient, and optionally add a message."
-        type == BlinkStoreItemType.PERMANENT -> "Apply it from Vault; the unlock stays in your collection permanently."
+        type == BlinkStoreItemType.PERMANENT -> "Apply it from Collection; the unlock stays in your collection permanently."
         type == BlinkStoreItemType.CONTENT_SPECIFIC -> "Press Use and choose exactly where to apply it."
-        type == BlinkStoreItemType.PASS -> "Buy it into Vault, then activate when you want the pass timer to begin."
-        type == BlinkStoreItemType.TIMED -> "Activate it from Vault only when you want the timer to begin."
-        type == BlinkStoreItemType.CONSUMABLE -> "Keep it in Vault until you are ready to use it."
-        else -> "Use it from Vault when you are ready."
+        type == BlinkStoreItemType.PASS -> "Buy it into Collection, then activate when you want the pass timer to begin."
+        type == BlinkStoreItemType.TIMED -> "Activate it from Collection only when you want the timer to begin."
+        type == BlinkStoreItemType.CONSUMABLE -> "Keep it in Collection until you are ready to use it."
+        else -> "Use it from Collection when you are ready."
     }
 
     val publicLabel = when (id) {
@@ -164,6 +168,11 @@ fun BlinkStoreItem.premiumExperience(): BlinkStoreExperience {
         "post_boost_plus", "reel_boost_plus" -> "2X BOOST"
         "super_reaction" -> "SUPER FX"
         "digital_gift" -> "GIFT"
+        "campus_signature_theme", "campus_signature_frame", "campus_signature_nameplate", "campus_signature_chat" -> "CAMPUS"
+        "level_10_neon_frame" -> "LEVEL 10"
+        "level_25_signature_nameplate" -> "LEVEL 25"
+        "level_50_legend_aura" -> "LEGEND"
+        "christmas_2026_profile_theme", "christmas_2026_nameplate" -> "LIMITED"
         else -> category.uppercase().take(12)
     }
 
