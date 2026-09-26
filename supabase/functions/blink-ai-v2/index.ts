@@ -53,7 +53,37 @@ function modeInstruction(mode:string){switch(mode){case"deep":return"Reason care
 function lengthInstruction(length:string){return length==="long"?"Give a thorough answer with useful detail.":length==="short"?"Keep the answer concise and focused.":"Use a balanced amount of detail."}
 function toneInstruction(tone:string){return tone==="friendly"?"Use a warm, natural tone.":tone==="professional"?"Use a polished professional tone.":tone==="concise"?"Be especially direct and compact.":"Use a clear neutral tone."}
 function buildModelList(mode:string){const configured=(Deno.env.get("GEMINI_MODEL")||"").trim(); const fallback=(Deno.env.get("GEMINI_FALLBACK_MODEL")||"").trim(); const list=[configured||"gemini-3.8-flash",fallback,"gemini-3.7-flash","gemini-3.6-flash"].filter(Boolean); return [...new Set(list)];}
-async function callGemini(apiKey:string,requestBody:Record<string,unknown>,models:string[]){let lastStatus=502,lastMessage="Blink AI is temporarily unavailable.",retryAfter:string|null=null; for(const model of models){for(let attempt=0;attempt<2;attempt++){const body={...requestBody,model}; const r=await fetch("https://generativelanguage.googleapis.com/v1beta/interactions",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":apiKey,"Api-Revision":"2026-05-20"},body:JSON.stringify(body)}); const raw=await r.text(); let payload:any={}; try{payload=raw?JSON.parse(raw):{}}catch{} if(r.ok)return{ok:true as const,payload,model,status:r.status}; lastStatus=r.status; lastMessage=payload?.error?.message||payload?.message||lastMessage; retryAfter=r.headers.get("retry-after"); if(!(r.status===429||r.status>=500))break; if(attempt===0)await new Promise(res=>setTimeout(res,250)); } } return{ok:false as const,status:lastStatus,message:lastMessage,retryAfter};}
+async function fetchGeminiWithTimeout(url:string,init:RequestInit,timeoutMs:number){const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),timeoutMs); try{return await fetch(url,{...init,signal:controller.signal});}finally{clearTimeout(timer)}}
+async function callGemini(apiKey:string,requestBody:Record<string,unknown>,models:string[]){
+  let lastStatus=502,lastMessage="Blink AI is temporarily unavailable.",retryAfter:string|null=null;
+  const deadline=Date.now()+45_000;
+  for(const model of models){
+    for(let attempt=0;attempt<2;attempt++){
+      const remaining=deadline-Date.now();
+      if(remaining<=0)return{ok:false as const,status:504,message:"Blink AI took too long to respond. Please try again.",retryAfter:null};
+      const body={...requestBody,model};
+      let r:Response;
+      try{
+        r=await fetchGeminiWithTimeout("https://generativelanguage.googleapis.com/v1beta/interactions",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":apiKey,"Api-Revision":"2026-05-20"},body:JSON.stringify(body)},Math.min(18_000,remaining));
+      }catch(error){
+        if(error instanceof DOMException && error.name==="AbortError"){
+          lastStatus=504; lastMessage="Blink AI took too long to respond. Please try again.";
+          if(Date.now()>=deadline)return{ok:false as const,status:lastStatus,message:lastMessage,retryAfter:null};
+          if(attempt===0)continue;
+          break;
+        }
+        throw error;
+      }
+      const raw=await r.text(); let payload:any={}; try{payload=raw?JSON.parse(raw):{}}catch{}
+      if(r.ok)return{ok:true as const,payload,model,status:r.status};
+      lastStatus=r.status; lastMessage=payload?.error?.message||payload?.message||lastMessage; retryAfter=r.headers.get("retry-after");
+      if(r.status===401||r.status===403)return{ok:false as const,status:lastStatus,message:lastMessage,retryAfter};
+      if(!(r.status===429||r.status>=500))break;
+      if(attempt===0)await new Promise(res=>setTimeout(res,250));
+    }
+  }
+  return{ok:false as const,status:lastStatus,message:lastMessage,retryAfter};
+}
 
 Deno.serve(async(req:Request)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:corsHeaders});
