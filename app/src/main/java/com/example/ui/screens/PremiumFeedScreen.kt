@@ -199,6 +199,7 @@ private fun mergeStablePremiumFeed(
 @Composable
 fun PremiumFeedScreen(
     posts: List<FeedPost>,
+    followingPosts: List<FeedPost> = emptyList(),
     reels: List<FeedPost>,
     stories: List<Story>,
     profiles: List<UserProfile>,
@@ -240,10 +241,13 @@ fun PremiumFeedScreen(
     onMarketClick: () -> Unit = {},
     onMessageClick: () -> Unit = {},
     hasMorePosts: Boolean = false,
+    hasMoreFollowingPosts: Boolean = false,
     hasMoreReels: Boolean = false,
     isLoadingMorePosts: Boolean = false,
+    isLoadingMoreFollowingPosts: Boolean = false,
     isLoadingMoreReels: Boolean = false,
     onLoadMorePosts: () -> Unit = {},
+    onLoadMoreFollowingPosts: () -> Unit = {},
     onLoadMoreReels: () -> Unit = {},
     homeReselectSignal: Int = 0,
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
@@ -299,7 +303,7 @@ fun PremiumFeedScreen(
 
     when (currentSubTab) {
         0 -> PremiumHomeFeed(
-            posts = posts,
+            posts = if (feedLane == 1) followingPosts else posts,
             reels = reels,
             profiles = profiles,
             currentUsername = currentUsername,
@@ -311,9 +315,9 @@ fun PremiumFeedScreen(
             isRefreshing = isRefreshing,
             isServerConnected = isServerConnected,
             errorMessage = errorMessage,
-            hasMorePosts = hasMorePosts,
+            hasMorePosts = if (feedLane == 1) hasMoreFollowingPosts else hasMorePosts,
             hasMoreReels = hasMoreReels,
-            isLoadingMorePosts = isLoadingMorePosts,
+            isLoadingMorePosts = if (feedLane == 1) isLoadingMoreFollowingPosts else isLoadingMorePosts,
             isLoadingMoreReels = isLoadingMoreReels,
             homeReselectSignal = homeReselectSignal,
             hasUnreadNotifications = hasUnreadNotifications,
@@ -336,7 +340,7 @@ fun PremiumFeedScreen(
             onRetry = onRetry,
             onViewedPost = onViewedPost,
             onVotePoll = onVotePoll,
-            onLoadMorePosts = onLoadMorePosts,
+            onLoadMorePosts = if (feedLane == 1) onLoadMoreFollowingPosts else onLoadMorePosts,
             onLoadMoreReels = onLoadMoreReels,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
             onGameClick = { onSubTabChanged(3) },
@@ -595,15 +599,10 @@ private fun PremiumHomeFeed(
 
     val filteredPosts = remember(stableRankedPosts, filter, laneIndex, followedAuthorKeys) {
         val rankedNormalPosts = stableRankedPosts.filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
-        val lanePosts = if (laneIndex == 1) {
-            // Preserve the exact ranking/order delivered by the normal feed algorithm;
-            // Following is only an author-membership filter over that ranked list.
-            rankedNormalPosts.filter { post ->
-                post.author.trim().removePrefix("@").lowercase() in followedAuthorKeys
-            }
-        } else {
-            rankedNormalPosts
-        }
+        // The parent supplies an independent server-backed list for Following.
+        // Do not filter the For You page locally; that was the old behavior that made
+        // Following look like the same feed with a few rows removed.
+        val lanePosts = rankedNormalPosts
         lanePosts.filter { post ->
             when (filter) {
                 PremiumFeedFilter.ALL -> true
@@ -644,17 +643,6 @@ private fun PremiumHomeFeed(
             val stableIds = stableRankedPosts.asSequence().map { it.id }.toHashSet()
             posts.asSequence()
                 .filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
-                .filter { post ->
-                    if (laneIndex == 0) {
-                        true
-                    } else {
-                        post.authorUsername
-                            .ifBlank { post.author }
-                            .trim()
-                            .removePrefix("@")
-                            .lowercase() in followedAuthorKeys
-                    }
-                }
                 .filter { post ->
                     when (filter) {
                         PremiumFeedFilter.ALL -> true
