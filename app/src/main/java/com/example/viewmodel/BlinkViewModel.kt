@@ -90,6 +90,7 @@ data class BlinkUiState(
     val isConversationFullScreen: Boolean = false,
     val stories: List<Story> = listOf(Story(id = "story_me", username = "Your Story", avatar = "", hasUnseen = false, isUser = true)),
     val posts: List<FeedPost> = emptyList(),
+    val followingPosts: List<FeedPost> = emptyList(),
     val reels: List<FeedPost> = emptyList(),
     val savedDrafts: List<PostDraft> = emptyList(),
     val scheduledPosts: List<ScheduledPost> = emptyList(),
@@ -129,8 +130,10 @@ data class BlinkUiState(
     val discoverPosts: List<FeedPost> = emptyList(),
     val isDiscoverSearching: Boolean = false,
     val hasMorePosts: Boolean = true,
+    val hasMoreFollowingPosts: Boolean = true,
     val hasMoreReels: Boolean = true,
     val isLoadingMorePosts: Boolean = false,
+    val isLoadingMoreFollowingPosts: Boolean = false,
     val isLoadingMoreReels: Boolean = false,
     val messageHistoryHasMore: Map<String, Boolean> = emptyMap(),
     val loadingOlderConversationId: String? = null,
@@ -1415,6 +1418,16 @@ private suspend fun restoreSupabaseSession() {
         if (!isFresh) fetchSupabaseData()
     }
 
+    private fun reconcileRefreshedFeed(
+        previous: List<FeedPost>,
+        refreshed: List<FeedPost>
+    ): List<FeedPost> {
+        if (refreshed.isEmpty()) return previous
+        val fresh = refreshed.distinctBy { it.id }
+        val freshIds = fresh.asSequence().map { it.id }.toHashSet()
+        return fresh + previous.filter { it.id !in freshIds }
+    }
+
     fun fetchSupabaseData(showRefreshIndicator: Boolean = false) {
         // Auth restore, onResume, reconnect and realtime can all request a refresh at once.
         // Coalesce those requests instead of queueing several full Supabase syncs back-to-back.
@@ -1457,18 +1470,32 @@ private suspend fun restoreSupabaseSession() {
                         runCatching { postRepository.fetchFeed(isReel = true) }
                             .onFailure { Log.e(TAG, "Reel page fetch failed", it) }
                     }
+                    val followingRequest = async {
+                        runCatching { postRepository.fetchFollowingFeed(limit = 30) }
+                            .onFailure { Log.e(TAG, "Following feed fetch failed", it) }
+                    }
                     val postsResult = postsRequest.await()
                     val reelsResult = reelsRequest.await()
+                    val followingResult = followingRequest.await()
 
-                    val normalPosts = postsResult.getOrDefault(before.posts).distinctBy { it.id }
-                    val fetchedReels = reelsResult.getOrDefault(before.reels).distinctBy { it.id }
+                    val normalPosts = postsResult.getOrNull()
+                        ?.let { reconcileRefreshedFeed(before.posts, it) }
+                        ?: before.posts
+                    val fetchedReels = reelsResult.getOrNull()
+                        ?.let { reconcileRefreshedFeed(before.reels, it) }
+                        ?: before.reels
+                    val fetchedFollowing = followingResult.getOrNull()
+                        ?.let { reconcileRefreshedFeed(before.followingPosts, it) }
+                        ?: before.followingPosts
                     val feedSucceeded = postsResult.isSuccess || reelsResult.isSuccess
                     if (feedSucceeded) lastSuccessfulSyncAt = SystemClock.elapsedRealtime()
 
                     _uiState.value = _uiState.value.copy(
                         posts = normalPosts,
+                        followingPosts = fetchedFollowing,
                         reels = fetchedReels,
                         hasMorePosts = postsResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMorePosts,
+                        hasMoreFollowingPosts = followingResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMoreFollowingPosts,
                         hasMoreReels = reelsResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMoreReels,
                         isLiveSupabaseConnected = feedSucceeded,
                         isFeedLoading = false,
@@ -1757,6 +1784,34 @@ private suspend fun restoreSupabaseSession() {
                 } else {
                     _uiState.value.copy(isLoadingMorePosts = false)
                 }
+            }
+        }
+    }
+
+    fun loadMoreFollowingFeed() {
+        val state = _uiState.value
+        if (!state.isOnline || state.isLoadingMoreFollowingPosts || !state.hasMoreFollowingPosts) return
+        val last = state.followingPosts.lastOrNull() ?: return
+        if (last.createdAt.isBlank()) return
+
+        _uiState.value = state.copy(isLoadingMoreFollowingPosts = true)
+        viewModelScope.launch {
+            runCatching {
+                postRepository.fetchFollowingFeedPage(
+                    beforeCreatedAt = last.createdAt,
+                    beforeId = last.id,
+                    limit = 30
+                )
+            }.onSuccess { page ->
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    followingPosts = (latest.followingPosts + page).distinctBy { it.id },
+                    isLoadingMoreFollowingPosts = false,
+                    hasMoreFollowingPosts = page.size >= 30
+                )
+            }.onFailure {
+                Log.w(TAG, "Load more following feed failed", it)
+                _uiState.value = _uiState.value.copy(isLoadingMoreFollowingPosts = false)
             }
         }
     }
@@ -3658,19 +3713,38 @@ private suspend fun restoreSupabaseSession() {
             }
             is RealtimeEvent.ConnectHubEvent -> refreshConnectHub()
             is RealtimeEvent.FeedPostEvent -> viewModelScope.launch {
-                val fresh = postRepository.fetchFeed()
-                if (fresh.isNotEmpty()) {
-                    val muted = _uiState.value.mutedUsers
-                    _uiState.value = _uiState.value.copy(
-                        posts = fresh.filter {
-                            it.videoUrl.isNullOrBlank() &&
-                                !it.isReel &&
-                                it.author.lowercase() !in muted
-                        },
-                        reels = fresh.filter {
-                            !it.videoUrl.isNullOrBlank() &&
-                                it.author.lowercase() !in muted
-                        }
+                val current = _uiState.value
+                if (event.eventType.equals("DELETE", ignoreCase = true)) {
+                    _uiState.value = current.copy(
+                        posts = current.posts.filterNot { it.id == event.postId },
+                        followingPosts = current.followingPosts.filterNot { it.id == event.postId },
+                        reels = current.reels.filterNot { it.id == event.postId }
+                    )
+                    persistCurrentFeed()
+                    return@launch
+                }
+
+                val freshRequest = async { postRepository.fetchFeed() }
+                val followingRequest = async { postRepository.fetchFollowingFeed(limit = 30) }
+                val fresh = freshRequest.await()
+                val following = followingRequest.await()
+                val latest = _uiState.value
+                val muted = latest.mutedUsers
+
+                if (fresh.isNotEmpty() || following.isNotEmpty()) {
+                    val freshPosts = fresh.filter {
+                        it.videoUrl.isNullOrBlank() &&
+                            !it.isReel &&
+                            it.author.lowercase() !in muted
+                    }
+                    val freshReels = fresh.filter {
+                        !it.videoUrl.isNullOrBlank() &&
+                            it.author.lowercase() !in muted
+                    }
+                    _uiState.value = latest.copy(
+                        posts = if (freshPosts.isNotEmpty()) reconcileRefreshedFeed(latest.posts, freshPosts) else latest.posts,
+                        followingPosts = if (following.isNotEmpty()) reconcileRefreshedFeed(latest.followingPosts, following) else latest.followingPosts,
+                        reels = if (freshReels.isNotEmpty()) reconcileRefreshedFeed(latest.reels, freshReels) else latest.reels
                     )
                     persistCurrentFeed()
                 }
