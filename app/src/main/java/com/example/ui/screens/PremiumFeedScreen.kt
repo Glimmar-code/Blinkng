@@ -494,14 +494,6 @@ private fun PremiumHomeFeed(
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val uiScope = rememberCoroutineScope()
-    val authorPresenceByKey = remember(profiles) {
-        buildMap<String, Boolean> {
-            profiles.forEach { profile ->
-                profile.username.trim().removePrefix("@").lowercase().takeIf(String::isNotBlank)?.let { put(it, profile.onlineNow) }
-                profile.fullName.trim().lowercase().takeIf(String::isNotBlank)?.let { put(it, profile.onlineNow) }
-            }
-        }
-    }
     val resumePrefs = remember(context) {
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
@@ -942,7 +934,7 @@ private fun PremiumHomeFeed(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 64.dp)
+                    .padding(bottom = 56.dp)
             ) {
                 AnimatedVisibility(
                     visible = primaryHeaderVisible,
@@ -1105,9 +1097,6 @@ private fun PremiumHomeFeed(
                                                     onOptionsClick = { onOptionsClick(post) },
                                                     onProfileClick = onProfileClick,
                                                     onVotePoll = onVotePoll,
-                                                    authorOnline = authorPresenceByKey[
-                                                        post.authorUsername.trim().removePrefix("@").lowercase()
-                                                    ] ?: authorPresenceByKey[post.author.trim().removePrefix("@").lowercase()],
                                                     isAuthor = post.author.equals(currentUsername.removePrefix("@"), ignoreCase = true) ||
                                                             post.authorUsername.removePrefix("@").equals(currentUsername.removePrefix("@"), ignoreCase = true),
                                                     onDelete = { onDeletePost(post.id) }
@@ -1197,9 +1186,9 @@ private fun PremiumHomeFeed(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(66.dp)
+                            .height(56.dp)
                             .background(FeedBackground)
-                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                            .padding(horizontal = 14.dp, vertical = 4.dp),
                         contentAlignment = Alignment.CenterEnd
                     ) {
                         CreatePostFab(
