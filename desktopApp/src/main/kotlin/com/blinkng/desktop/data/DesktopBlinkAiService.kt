@@ -118,7 +118,7 @@ class DesktopBlinkAiService(
             }
 
         // Testlab mirrors Android through the isolated authenticated AI function.
-        val endpoints = listOf("blink-ai-testlab")
+        val endpoints = listOf("blink-ai")
         var lastFailure: IllegalStateException? = null
         endpoints.forEachIndexed { index, endpoint ->
             val active = client.restoreSession()
