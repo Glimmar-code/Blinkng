@@ -471,10 +471,6 @@ fun NotificationsScreen(state: DesktopAppState) {
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(item.text, fontWeight = if (item.isRead) FontWeight.Normal else FontWeight.Bold)
-                            if (item.actorIsVip || item.vipPriority) {
-                                Spacer(Modifier.width(6.dp))
-                                Text("VIP", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
                         }
                         item.subText?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         Text(formatTime(item.createdAt), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
