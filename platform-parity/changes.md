@@ -1,3 +1,10 @@
+## 2026-09-26 — Feed/session stability and unified search Testlab
+
+- Android: preserves recoverable sessions without Sign In flashes, keeps paginated feed rows across first-page refreshes, gives Following its own existing server-backed feed/pagination, hides presence on feed cards, exposes one canonical Search surface, compacts mobile chrome, and validates Blink AI through the isolated authenticated Testlab function.
+- Windows: existing durable session restore remains unchanged; Windows feed cards now also hide presence, and Blink AI uses the same isolated Testlab function/time bound while this branch is under validation. Desktop Search already presents one search surface rather than the Android-only Universal/Advanced/Explore dock.
+- Shared backend: the existing `get_feed_page(..., p_feed_type='following')` contract is reused; no ranking formula, production schema, wallet, notification, payment, or production AI function is changed.
+- PARITY-EXCEPTION: mobile-chrome-motion-20260926 — Android status/navigation safe-area sizing, profile slide motion, and planned swipe-dismiss utility sheets are touch/mobile-window concerns. Windows keeps desktop-native window navigation and spacing rather than imitating phone insets or swipe gestures.
+
 ## 2026-09-22 — Reference-style messaging experience promoted to main
 
 - Android: Messages now uses the validated reference-style information architecture with Important contacts, All messages, improved search, centered chat header, floating rounded composer, and immersive chat contact profile actions.

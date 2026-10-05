@@ -199,6 +199,7 @@ private fun mergeStablePremiumFeed(
 @Composable
 fun PremiumFeedScreen(
     posts: List<FeedPost>,
+    followingPosts: List<FeedPost> = emptyList(),
     reels: List<FeedPost>,
     stories: List<Story>,
     profiles: List<UserProfile>,
@@ -237,13 +238,17 @@ fun PremiumFeedScreen(
     onSearchClick: () -> Unit = {},
     onLeaderboardClick: () -> Unit = {},
     onStoreClick: () -> Unit = {},
+    onGameClick: () -> Unit = {},
     onMarketClick: () -> Unit = {},
     onMessageClick: () -> Unit = {},
     hasMorePosts: Boolean = false,
+    hasMoreFollowingPosts: Boolean = false,
     hasMoreReels: Boolean = false,
     isLoadingMorePosts: Boolean = false,
+    isLoadingMoreFollowingPosts: Boolean = false,
     isLoadingMoreReels: Boolean = false,
     onLoadMorePosts: () -> Unit = {},
+    onLoadMoreFollowingPosts: () -> Unit = {},
     onLoadMoreReels: () -> Unit = {},
     homeReselectSignal: Int = 0,
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
@@ -299,7 +304,7 @@ fun PremiumFeedScreen(
 
     when (currentSubTab) {
         0 -> PremiumHomeFeed(
-            posts = posts,
+            posts = if (feedLane == 1) followingPosts else posts,
             reels = reels,
             profiles = profiles,
             currentUsername = currentUsername,
@@ -311,9 +316,9 @@ fun PremiumFeedScreen(
             isRefreshing = isRefreshing,
             isServerConnected = isServerConnected,
             errorMessage = errorMessage,
-            hasMorePosts = hasMorePosts,
+            hasMorePosts = if (feedLane == 1) hasMoreFollowingPosts else hasMorePosts,
             hasMoreReels = hasMoreReels,
-            isLoadingMorePosts = isLoadingMorePosts,
+            isLoadingMorePosts = if (feedLane == 1) isLoadingMoreFollowingPosts else isLoadingMorePosts,
             isLoadingMoreReels = isLoadingMoreReels,
             homeReselectSignal = homeReselectSignal,
             hasUnreadNotifications = hasUnreadNotifications,
@@ -336,10 +341,10 @@ fun PremiumFeedScreen(
             onRetry = onRetry,
             onViewedPost = onViewedPost,
             onVotePoll = onVotePoll,
-            onLoadMorePosts = onLoadMorePosts,
+            onLoadMorePosts = if (feedLane == 1) onLoadMoreFollowingPosts else onLoadMorePosts,
             onLoadMoreReels = onLoadMoreReels,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
-            onGameClick = { onSubTabChanged(3) },
+            onGameClick = onGameClick,
             onReelClick = { openReelsAt() },
             onOpenInlineReel = { reelId, positionMs -> openReelsAt(reelId, positionMs) }
         )
@@ -494,14 +499,6 @@ private fun PremiumHomeFeed(
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val uiScope = rememberCoroutineScope()
-    val authorPresenceByKey = remember(profiles) {
-        buildMap<String, Boolean> {
-            profiles.forEach { profile ->
-                profile.username.trim().removePrefix("@").lowercase().takeIf(String::isNotBlank)?.let { put(it, profile.onlineNow) }
-                profile.fullName.trim().lowercase().takeIf(String::isNotBlank)?.let { put(it, profile.onlineNow) }
-            }
-        }
-    }
     val resumePrefs = remember(context) {
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
@@ -603,15 +600,10 @@ private fun PremiumHomeFeed(
 
     val filteredPosts = remember(stableRankedPosts, filter, laneIndex, followedAuthorKeys) {
         val rankedNormalPosts = stableRankedPosts.filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
-        val lanePosts = if (laneIndex == 1) {
-            // Preserve the exact ranking/order delivered by the normal feed algorithm;
-            // Following is only an author-membership filter over that ranked list.
-            rankedNormalPosts.filter { post ->
-                post.author.trim().removePrefix("@").lowercase() in followedAuthorKeys
-            }
-        } else {
-            rankedNormalPosts
-        }
+        // The parent supplies an independent server-backed list for Following.
+        // Do not filter the For You page locally; that was the old behavior that made
+        // Following look like the same feed with a few rows removed.
+        val lanePosts = rankedNormalPosts
         lanePosts.filter { post ->
             when (filter) {
                 PremiumFeedFilter.ALL -> true
@@ -652,17 +644,6 @@ private fun PremiumHomeFeed(
             val stableIds = stableRankedPosts.asSequence().map { it.id }.toHashSet()
             posts.asSequence()
                 .filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
-                .filter { post ->
-                    if (laneIndex == 0) {
-                        true
-                    } else {
-                        post.authorUsername
-                            .ifBlank { post.author }
-                            .trim()
-                            .removePrefix("@")
-                            .lowercase() in followedAuthorKeys
-                    }
-                }
                 .filter { post ->
                     when (filter) {
                         PremiumFeedFilter.ALL -> true
@@ -897,18 +878,22 @@ private fun PremiumHomeFeed(
     // preview card itself uses the same qualified exposure tracker as full reels, so genuine
     // feed encounters follow the existing repeat-view and delayed-reflection algorithm.
     LaunchedEffect(listState, homeRows) {
-        snapshotFlow { listState.layoutInfo }
-            .collectLatest { layout ->
-                activeInlineReelKey = layout.visibleItemsInfo.firstOrNull { item ->
-                    val key = item.key as? String ?: return@firstOrNull false
-                    key.startsWith("reel_preview:") && qualifiesForPostImpression(
-                        itemOffset = item.offset,
-                        itemSize = item.size,
-                        viewportStart = layout.viewportStartOffset,
-                        viewportEnd = layout.viewportEndOffset
-                    )
-                }?.key as? String
-            }
+        snapshotFlow {
+            val layout = listState.layoutInfo
+            layout.visibleItemsInfo.firstOrNull { item ->
+                val key = item.key as? String ?: return@firstOrNull false
+                key.startsWith("reel_preview:") && qualifiesForPostImpression(
+                    itemOffset = item.offset,
+                    itemSize = item.size,
+                    viewportStart = layout.viewportStartOffset,
+                    viewportEnd = layout.viewportEndOffset
+                )
+            }?.key as? String
+        }.collectLatest { previewKey ->
+            // snapshotFlow suppresses equal values, so normal pixel-by-pixel scrolling
+            // no longer writes Compose state unless the active preview actually changes.
+            activeInlineReelKey = previewKey
+        }
     }
 
     AnimatedVisibility(
@@ -942,7 +927,7 @@ private fun PremiumHomeFeed(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 64.dp)
+                    .padding(bottom = 56.dp)
             ) {
                 AnimatedVisibility(
                     visible = primaryHeaderVisible,
@@ -1077,7 +1062,7 @@ private fun PremiumHomeFeed(
                                     count = homeRows.size,
                                     key = { index ->
                                         when (val row = homeRows[index]) {
-                                            is PremiumHomeRow.PostRow -> "post:$index:${row.post.id}"
+                                            is PremiumHomeRow.PostRow -> "post:${row.post.id}"
                                             is PremiumHomeRow.ReelPreviewRow -> "reel_preview:${row.slot}:${row.reel.id}"
                                             is PremiumHomeRow.SponsoredRow -> "sponsored:${row.slot}"
                                         }
@@ -1105,9 +1090,6 @@ private fun PremiumHomeFeed(
                                                     onOptionsClick = { onOptionsClick(post) },
                                                     onProfileClick = onProfileClick,
                                                     onVotePoll = onVotePoll,
-                                                    authorOnline = authorPresenceByKey[
-                                                        post.authorUsername.trim().removePrefix("@").lowercase()
-                                                    ] ?: authorPresenceByKey[post.author.trim().removePrefix("@").lowercase()],
                                                     isAuthor = post.author.equals(currentUsername.removePrefix("@"), ignoreCase = true) ||
                                                             post.authorUsername.removePrefix("@").equals(currentUsername.removePrefix("@"), ignoreCase = true),
                                                     onDelete = { onDeletePost(post.id) }
@@ -1197,9 +1179,9 @@ private fun PremiumHomeFeed(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(66.dp)
+                            .height(56.dp)
                             .background(FeedBackground)
-                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                            .padding(horizontal = 14.dp, vertical = 4.dp),
                         contentAlignment = Alignment.CenterEnd
                     ) {
                         CreatePostFab(

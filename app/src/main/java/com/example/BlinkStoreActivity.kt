@@ -106,7 +106,6 @@ import com.example.ui.components.BlinkStoreLivePreview
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
 import com.example.util.startActivitySafely
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -131,12 +130,12 @@ class BlinkStoreActivity : ComponentActivity() {
 }
 
 private enum class BlinkStoreTab(val label: String) {
-    STORE("Store"), VAULT("Vault"), VIP("VIP"), HISTORY("History"), MORE("More")
+    STORE("Store"), VAULT("Collection"), HISTORY("History"), MORE("More")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BlinkStoreRoute(onClose: () -> Unit) {
+internal fun BlinkStoreRoute(onClose: () -> Unit) {
     val service = remember { BlinkEconomyService() }
     val scope = rememberCoroutineScope()
     var snapshot by remember { mutableStateOf(JSONObject()) }
@@ -172,16 +171,9 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
     }
 
     LaunchedEffect(Unit) { refresh() }
-    LaunchedEffect(snapshot.optJSONObject("vip")?.optBoolean("active") == true) {
-        while (true) {
-            delay(60_000)
-            if (!working) service.state().onSuccess { snapshot = it }
-        }
-    }
 
     val balance = snapshot.optLong("balance", 0L)
     val inventory = snapshot.optJSONArray("inventory").objects()
-    val vip = snapshot.optJSONObject("vip") ?: JSONObject()
     val equippedIds = snapshot.optJSONArray("equipped").objects().map { it.optString("catalog_id") }.toSet()
 
     Scaffold(
@@ -261,7 +253,6 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
                     when (selectedTab) {
                         BlinkStoreTab.STORE -> StoreTab(
                             inventory = inventory,
-                            vip = vip,
                             equippedIds = equippedIds,
                             onPreview = { previewItem = it },
                             onBuy = { purchaseItem = it },
@@ -302,24 +293,6 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
                                 }
                             }
                         )
-                        BlinkStoreTab.VIP -> VipTab(
-                            vip = vip,
-                            balance = balance,
-                            working = working,
-                            onClaim = { benefit -> runAction("VIP benefit added to your Vault.") { service.claimVip(benefit) } },
-                            onRenew = { runAction("Blink VIP extended by 10 days.") { service.renewVip() } },
-                            onAutoRenew = { enabled ->
-                                runAction(if (enabled) "VIP auto-renew enabled." else "VIP auto-renew disabled.") {
-                                    service.setAutoRenew(enabled)
-                                }
-                            },
-                            onGift = { username -> runAction("Blink VIP gift sent to @$username.") { service.giftVip(username) } },
-                            onBuyVip = {
-                                BlinkStoreCatalog.items.firstOrNull { it.id == "blink_vip_10d" }
-                                    ?.let { previewItem = it }
-                                    ?: run { message = "Blink VIP is temporarily unavailable." }
-                            }
-                        )
                         BlinkStoreTab.HISTORY -> HistoryTab(snapshot.optJSONArray("transactions").objects())
                         BlinkStoreTab.MORE -> MoreTab(onClose)
                     }
@@ -353,7 +326,7 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
         ProductPreviewDialog(
             item = item,
             balance = balance,
-            vipActive = vip.optBoolean("active", false),
+            vipActive = false,
             owned = owned,
             onDismiss = { previewItem = null },
             onBuy = {
@@ -367,7 +340,7 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
         PurchaseDialog(
             item = item,
             balance = balance,
-            vipActive = vip.optBoolean("active", false),
+            vipActive = false,
             onDismiss = { purchaseItem = null },
             onConfirm = { quantity, multiplier ->
                 purchaseItem = null
@@ -414,24 +387,26 @@ private fun BlinkStoreRoute(onClose: () -> Unit) {
 @Composable
 private fun StoreTab(
     inventory: List<JSONObject>,
-    vip: JSONObject,
     equippedIds: Set<String>,
     onPreview: (BlinkStoreItem) -> Unit,
     onBuy: (BlinkStoreItem) -> Unit
 ) {
     var category by remember { mutableStateOf("All") }
     var query by remember { mutableStateOf("") }
-    val categories = remember { listOf("All") + BlinkStoreCatalog.items.map { it.category }.distinct() }
-    val items = BlinkStoreCatalog.items.filter { item ->
+    val visibleCatalog = remember {
+        BlinkStoreCatalog.items.filterNot { it.vipOnly || it.id == "blink_vip_10d" || it.category.equals("VIP", true) }
+    }
+    val categories = remember(visibleCatalog) { listOf("All") + visibleCatalog.map { it.category }.distinct() }
+    val items = visibleCatalog.filter { item ->
         (category == "All" || item.category == category) &&
             (query.isBlank() || listOf(item.name, item.description, item.category)
                 .any { it.contains(query.trim(), ignoreCase = true) })
     }
-    val vipActive = vip.optBoolean("active", false)
+    val vipActive = false
 
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            PremiumStoreHero(vipActive = vipActive, itemCount = BlinkStoreCatalog.items.size)
+            PremiumStoreHero(vipActive = false, itemCount = visibleCatalog.size)
         }
         item {
             OutlinedTextField(
@@ -1391,7 +1366,6 @@ private fun premiumAccent(experience: BlinkStoreExperience): Color = when (exper
 private fun tabIcon(tab: BlinkStoreTab): ImageVector = when (tab) {
     BlinkStoreTab.STORE -> Icons.Filled.Storefront
     BlinkStoreTab.VAULT -> Icons.Outlined.Inventory2
-    BlinkStoreTab.VIP -> Icons.Outlined.Verified
     BlinkStoreTab.HISTORY -> Icons.Outlined.AccountBalanceWallet
     BlinkStoreTab.MORE -> Icons.Filled.MoreHoriz
 }

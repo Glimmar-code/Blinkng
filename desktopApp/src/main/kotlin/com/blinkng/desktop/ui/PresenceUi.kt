@@ -59,6 +59,7 @@ internal fun PresenceAvatar(
     name: String,
     isOnline: Boolean?,
     size: Dp = 38.dp,
+    showStatus: Boolean = true,
 ) {
     // Reserve a tiny amount of space outside the avatar so the status badge is
     // never visually swallowed by the circular crop.
@@ -77,7 +78,7 @@ internal fun PresenceAvatar(
                 color = MaterialTheme.colorScheme.primary,
             )
         }
-        isOnline?.let { active ->
+        if (showStatus) isOnline?.let { active ->
             Box(
                 modifier = Modifier
                     .size((size.value * .28f).dp)

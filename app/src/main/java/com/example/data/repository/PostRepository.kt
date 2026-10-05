@@ -38,6 +38,28 @@ class PostRepository(
         supabaseService.fetchFeedPostById(postId)
     }
 
+    suspend fun fetchFollowingFeed(limit: Int = 30): List<FeedPost> = withContext(Dispatchers.IO) {
+        try {
+            supabaseService.fetchFeedPage(limit = limit, feedType = "following")
+        } catch (e: Exception) {
+            Log.e("PostRepository", "fetchFollowingFeed error: ${e.message}")
+            emptyList()
+        }
+    }
+
+    suspend fun fetchFollowingFeedPage(
+        beforeCreatedAt: String? = null,
+        beforeId: String? = null,
+        limit: Int = 30
+    ): List<FeedPost> = withContext(Dispatchers.IO) {
+        supabaseService.fetchFeedPage(
+            limit = limit,
+            beforeCreatedAt = beforeCreatedAt,
+            beforeId = beforeId,
+            feedType = "following"
+        )
+    }
+
     suspend fun fetchFeedPage(
         isReel: Boolean,
         beforeCreatedAt: String? = null,

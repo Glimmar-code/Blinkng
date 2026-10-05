@@ -31,19 +31,38 @@ class NotificationSyncWorker(appContext: Context, params: WorkerParameters) : Co
 
     override suspend fun doWork(): Result {
         SupabaseService.initialize(applicationContext)
-        val token = SupabaseService.accessToken() ?: return Result.success()
-        val uid = SupabaseService().getCurrentUserId() ?: return Result.success()
+        val service = SupabaseService()
+
+        // WorkManager can wake up long after the access JWT was issued. Refresh before
+        // sending protected recovery requests instead of repeatedly replaying a stale token.
+        if (!service.restoreSession()) return retryOrStop()
+
+        val uid = service.getCurrentUserId() ?: return Result.success()
+        var token = SupabaseService.accessToken() ?: return retryOrStop()
 
         return try {
             recoverUnreadMessages(token, uid)
             recoverSocialNotifications(token, uid)
             Result.success()
         } catch (_: UnauthorizedException) {
-            Result.retry()
+            // A token can be revoked between restoreSession() and the request. Refresh once
+            // and replay the idempotent recovery pass with the rotated token.
+            if (!service.refreshSession()) return retryOrStop()
+            token = SupabaseService.accessToken() ?: return retryOrStop()
+            try {
+                recoverUnreadMessages(token, uid)
+                recoverSocialNotifications(token, uid)
+                Result.success()
+            } catch (_: Exception) {
+                retryOrStop()
+            }
         } catch (_: Exception) {
-            Result.retry()
+            retryOrStop()
         }
     }
+
+    private fun retryOrStop(): Result =
+        if (runAttemptCount < 3) Result.retry() else Result.success()
 
     private fun recoverUnreadMessages(token: String, uid: String) {
         if (!NotificationPreferenceStore.isAllowed(applicationContext, BlinkNotificationType.MESSAGE)) return
