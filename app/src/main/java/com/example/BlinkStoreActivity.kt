@@ -106,7 +106,6 @@ import com.example.ui.components.BlinkStoreLivePreview
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
 import com.example.util.startActivitySafely
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -327,7 +326,7 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
         ProductPreviewDialog(
             item = item,
             balance = balance,
-            vipActive = vip.optBoolean("active", false),
+            vipActive = false,
             owned = owned,
             onDismiss = { previewItem = null },
             onBuy = {
@@ -341,7 +340,7 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
         PurchaseDialog(
             item = item,
             balance = balance,
-            vipActive = vip.optBoolean("active", false),
+            vipActive = false,
             onDismiss = { purchaseItem = null },
             onConfirm = { quantity, multiplier ->
                 purchaseItem = null
@@ -1367,7 +1366,6 @@ private fun premiumAccent(experience: BlinkStoreExperience): Color = when (exper
 private fun tabIcon(tab: BlinkStoreTab): ImageVector = when (tab) {
     BlinkStoreTab.STORE -> Icons.Filled.Storefront
     BlinkStoreTab.VAULT -> Icons.Outlined.Inventory2
-    BlinkStoreTab.VIP -> Icons.Outlined.Verified
     BlinkStoreTab.HISTORY -> Icons.Outlined.AccountBalanceWallet
     BlinkStoreTab.MORE -> Icons.Filled.MoreHoriz
 }
