@@ -81,27 +81,39 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
 
             return@withContext try {
                 SupabaseService.initialize(appContext)
-                val accessToken = SupabaseService.accessToken() ?: return@withContext false
+                val service = SupabaseService()
+                if (!service.restoreSession()) return@withContext false
+                var accessToken = SupabaseService.accessToken() ?: return@withContext false
                 val body = JSONObject()
                     .put("p_token", token)
                     .toString()
                     .toRequestBody("application/json".toMediaType())
-                val request = Request.Builder()
-                    .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/unregister_my_fcm_token")
-                    .addHeader("apikey", SupabaseConfig.anonKey)
-                    .addHeader("Authorization", "Bearer $accessToken")
-                    .addHeader("Content-Type", "application/json")
-                    .post(body)
-                    .build()
                 val client = OkHttpClient.Builder()
                     .connectTimeout(10, TimeUnit.SECONDS)
                     .readTimeout(10, TimeUnit.SECONDS)
                     .build()
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        Log.w(TAG, "FCM token unregister failed: ${response.code}")
+
+                fun buildRequest(jwt: String): Request =
+                    Request.Builder()
+                        .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/unregister_my_fcm_token")
+                        .addHeader("apikey", SupabaseConfig.anonKey)
+                        .addHeader("Authorization", "Bearer $jwt")
+                        .addHeader("Content-Type", "application/json")
+                        .post(body)
+                        .build()
+
+                var response = client.newCall(buildRequest(accessToken)).execute()
+                if (response.code == 401) {
+                    response.close()
+                    if (!service.refreshSession()) return@withContext false
+                    accessToken = SupabaseService.accessToken() ?: return@withContext false
+                    response = client.newCall(buildRequest(accessToken)).execute()
+                }
+                response.use {
+                    if (!it.isSuccessful) {
+                        Log.w(TAG, "FCM token unregister failed: ${it.code}")
                     }
-                    response.isSuccessful
+                    it.isSuccessful
                 }
             } catch (error: Exception) {
                 Log.w(TAG, "FCM token unregister error", error)
