@@ -24,16 +24,64 @@ type WebSource = { title:string; url:string };
 
 function jsonResponse(body: unknown, status=200, extra: Record<string,string> = {}) { return new Response(JSON.stringify(body), { status, headers:{...jsonHeaders,...extra} }); }
 function bearerToken(req: Request) { return req.headers.get("authorization")?.replace(/^Bearer\s+/i,"").trim() || ""; }
-function userIdFromJwt(jwt:string) { try { const part=jwt.split(".")[1]; if(!part)return""; const n=part.replace(/-/g,"+").replace(/_/g,"/"); const p=n+"=".repeat((4-n.length%4)%4); const j=JSON.parse(atob(p)); return typeof j?.sub==="string"?j.sub:""; } catch { return ""; } }
+function runtimePublicKey(){
+  const modern=Deno.env.get("SUPABASE_PUBLISHABLE_KEYS")?.trim();
+  if(modern){
+    try{
+      const parsed=JSON.parse(modern);
+      const preferred=typeof parsed?.default==="string"?parsed.default.trim():"";
+      if(preferred)return preferred;
+      const first=Object.values(parsed||{}).find((value)=>typeof value==="string"&&value.trim().length>0);
+      if(typeof first==="string")return first.trim();
+    }catch{}
+  }
+  return Deno.env.get("SUPABASE_ANON_KEY")?.trim()||"";
+}
+async function validateUserJwt(jwt:string){
+  const url=Deno.env.get("SUPABASE_URL")?.trim()?.replace(/\/$/,"");
+  const key=runtimePublicKey();
+  if(!jwt||!url||!key)return "";
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),10_000);
+  try{
+    const response=await fetch(`${url}/auth/v1/user`,{
+      headers:{apikey:key,Authorization:`Bearer ${jwt}`,Accept:"application/json"},
+      signal:controller.signal,
+    });
+    if(!response.ok)return "";
+    const user=await response.json().catch(()=>null);
+    return typeof user?.id==="string"?user.id:"";
+  }catch{
+    return "";
+  }finally{
+    clearTimeout(timer);
+  }
+}
 function clampText(v:unknown,max:number){return String(v??"").replace(/[\u0000-\u001f]+/g," ").trim().slice(0,max)}
-function readTextOutput(payload:any){ const steps=Array.isArray(payload?.steps)?payload.steps:[]; for(let i=steps.length-1;i>=0;i--){const s=steps[i]; if(s?.type!=="model_output"||!Array.isArray(s?.content))continue; const t=s.content.filter((x:any)=>x?.type==="text"&&typeof x?.text==="string").map((x:any)=>x.text.trim()).filter(Boolean).join("\n"); if(t)return t;} return ""; }
-function readFunctionCall(payload:any){ const steps=Array.isArray(payload?.steps)?payload.steps:[]; for(const s of steps){ if(s?.type==="function_call"&&typeof s?.name==="string") return {name:s.name, arguments:s.arguments&&typeof s.arguments==="object"?s.arguments:{}};} return null; }
+function readTextOutput(payload:any){
+  const direct=typeof payload?.output_text==="string"?payload.output_text.trim():typeof payload?.outputText==="string"?payload.outputText.trim():"";
+  if(direct)return direct;
+  const steps=Array.isArray(payload?.steps)?payload.steps:[];
+  for(let i=steps.length-1;i>=0;i--){const s=steps[i]; if(s?.type!=="model_output"||!Array.isArray(s?.content))continue; const t=s.content.filter((x:any)=>x?.type==="text"&&typeof x?.text==="string").map((x:any)=>x.text.trim()).filter(Boolean).join("\n"); if(t)return t;}
+  return "";
+}
+function readFunctionCall(payload:any){
+  const steps=Array.isArray(payload?.steps)?payload.steps:[];
+  for(const s of steps){
+    if(s?.type!=="function_call"||typeof s?.name!=="string")continue;
+    let args:Record<string,unknown>={};
+    if(s.arguments&&typeof s.arguments==="object")args=s.arguments;
+    else if(typeof s.arguments==="string"){try{const parsed=JSON.parse(s.arguments); if(parsed&&typeof parsed==="object")args=parsed;}catch{}}
+    return {name:s.name,arguments:args};
+  }
+  return null;
+}
 function safeSourceUrl(value:unknown){ const raw=typeof value==="string"?value.trim():""; if(!raw)return null; try{const u=new URL(raw); return u.protocol==="https:"||u.protocol==="http:"?u.toString():null}catch{return null} }
 function readWebSources(payload:any):WebSource[]{ const out:WebSource[]=[]; const seen=new Set<string>(); for(const s of Array.isArray(payload?.steps)?payload.steps:[]){ if(s?.type!=="model_output"||!Array.isArray(s?.content))continue; for(const item of s.content){for(const a of Array.isArray(item?.annotations)?item.annotations:[]){if(a?.type!=="url_citation")continue; const url=safeSourceUrl(a?.url); if(!url||seen.has(url))continue; let fallback="Web source"; try{fallback=new URL(url).hostname.replace(/^www\./,"")}catch{} const title=clampText(a?.title||fallback,180)||fallback; seen.add(url); out.push({title,url}); if(out.length>=8)return out;}}} return out; }
 function usedWebSearch(payload:any){ return (Array.isArray(payload?.steps)?payload.steps:[]).some((s:any)=>s?.type==="google_search_call"||s?.type==="google_search_result"); }
 function appendSourceList(text:string,sources:WebSource[]){ if(!sources.length)return text; return `${text}\n\nSources:\n${sources.slice(0,5).map((s,i)=>`${i+1}. ${s.title} — ${s.url}`).join("\n")}`; }
 function normalizeAttachments(value:unknown):Attachment[]{ if(!Array.isArray(value))return[]; const result:Attachment[]=[]; let images=0,audio=0; for(const raw of value.slice(0,7)){if(!raw||typeof raw!=="object")continue; const type=(raw as any).type; const mime=String((raw as any).mime_type||"").toLowerCase().trim(); const data=String((raw as any).data||"").trim(); if(!data||data.length>16_500_000)continue; if(type==="image"&&IMAGE_MIME_TYPES.has(mime)&&images<6){result.push({type,mime_type:mime,data});images++;} if(type==="audio"&&AUDIO_MIME_TYPES.has(mime)&&audio<1){result.push({type,mime_type:mime,data});audio++;}} return result; }
-async function supabaseFetch(path:string,jwt:string,init:RequestInit={}){ const url=Deno.env.get("SUPABASE_URL")?.trim(); const key=Deno.env.get("SUPABASE_ANON_KEY")?.trim(); if(!url||!key)throw new Error("Supabase runtime configuration is unavailable."); return await fetch(`${url.replace(/\/$/,"")}${path}`,{...init,headers:{apikey:key,Authorization:`Bearer ${jwt}`,Accept:"application/json",...(init.headers||{})}}); }
+async function supabaseFetch(path:string,jwt:string,init:RequestInit={}){ const url=Deno.env.get("SUPABASE_URL")?.trim(); const key=runtimePublicKey(); if(!url||!key)throw new Error("Supabase runtime configuration is unavailable."); return await fetch(`${url.replace(/\/$/,"")}${path}`,{...init,headers:{apikey:key,Authorization:`Bearer ${jwt}`,Accept:"application/json",...(init.headers||{})}}); }
 async function safeJson(path:string,jwt:string){try{const r=await supabaseFetch(path,jwt); if(!r.ok)return[]; return await r.json()}catch{return[]}}
 async function loadBlinkUserContext(userId:string,jwt:string){ const e=encodeURIComponent(userId); const select=["id","username","full_name","avatar_url","cover_photo_url","university","faculty","department","course_of_study","academic_level","graduation_year","professional_headline","current_job_title","country_of_origin","bio","favorite_quote","availability","website","linkedin","twitter","instagram","featured_link","featured_link_label","core_skills","hobbies","languages","is_seller_active","seller_store_name","verification_badge","is_verified","current_wallet_balance","posts_count","follower_count","following_count","profile_views_this_week","world_rank","campus_rank","daily_streak","points","blink_vip_until","created_at"].join(","); const [profile,posts,comments,stories,notifications,activities]=await Promise.all([safeJson(`/rest/v1/profiles?id=eq.${e}&select=${select}&limit=1`,jwt),safeJson(`/rest/v1/posts?author_id=eq.${e}&select=content,hashtags,likes_count,comments_count,reposts_count,views_count,created_at&order=created_at.desc&limit=12`,jwt),safeJson(`/rest/v1/comments?author_id=eq.${e}&select=content,likes_count,created_at&order=created_at.desc&limit=12`,jwt),safeJson(`/rest/v1/stories?user_id=eq.${e}&select=caption,text,media_type,views_count,likes_count,created_at&order=created_at.desc&limit=8`,jwt),safeJson(`/rest/v1/notifications?user_id=eq.${e}&select=type,text,sub_text,is_read,created_at&order=created_at.desc&limit=10`,jwt),safeJson(`/rest/v1/activities?recipient_id=eq.${e}&select=activity_type,entity_type,message,is_read,created_at&order=created_at.desc&limit=10`,jwt)]); return {profile:Array.isArray(profile)?profile[0]??null:profile,recent_posts:posts,recent_comments:comments,recent_stories:stories,recent_notifications:notifications,recent_activity:activities,privacy_note:"Private direct messages, contact details and precise location are excluded from automatic AI context."}; }
 async function loadAiLearningContext(userId:string,jwt:string){const e=encodeURIComponent(userId); const rows=await safeJson(`/rest/v1/blink_ai_messages?user_id=eq.${e}&select=role,content,created_at&order=created_at.desc&limit=20`,jwt); if(!Array.isArray(rows))return{recent_ai_history:[]}; return {recent_ai_history:rows.slice().reverse().map((r:any)=>({role:r?.role==="assistant"?"assistant":"user",content:String(r?.content||"").slice(0,1600),created_at:r?.created_at??null})).filter((r:any)=>r.content.trim())}; }
@@ -91,7 +139,8 @@ Deno.serve(async(req:Request)=>{
   const started=Date.now();
   try{
     const apiKey=Deno.env.get("GEMINI_API_KEY")?.trim(); if(!apiKey)return jsonResponse({error:"Blink AI is not configured yet.",code:"missing_gemini_key"},503);
-    const jwt=bearerToken(req), userId=userIdFromJwt(jwt); if(!jwt||!userId)return jsonResponse({error:"A signed-in Blink account is required."},401);
+    const jwt=bearerToken(req); if(!jwt)return jsonResponse({error:"A signed-in Blink account is required."},401);
+    const userId=await validateUserJwt(jwt); if(!userId)return jsonResponse({error:"Your Blink session is invalid or expired. Please sign in again."},401);
     const body=await req.json().catch(()=>({})); const attachments=normalizeAttachments(body?.attachments);
     if(body?.confirm_action&&typeof body.confirm_action==="object"){const text=await executeConfirmedAction(body.confirm_action,attachments,userId,jwt); return jsonResponse({text,action_completed:true,latency_ms:Date.now()-started});}
     const message=typeof body?.message==="string"?body.message.trim():""; const previousInteractionId=typeof body?.previous_interaction_id==="string"?body.previous_interaction_id.trim():"";
