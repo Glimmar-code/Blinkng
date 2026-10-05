@@ -125,11 +125,13 @@ object NotificationPreferenceStore {
         CoroutineScope(Dispatchers.IO).launch { syncToServer(context.applicationContext) }
     }
 
-    private fun refreshFromServer(context: Context) {
+    private suspend fun refreshFromServer(context: Context) {
         runCatching {
             SupabaseService.initialize(context)
+            val service = SupabaseService()
+            if (!service.restoreSession()) return
             val token = SupabaseService.accessToken() ?: return
-            val uid = SupabaseService().getCurrentUserId() ?: return
+            val uid = service.getCurrentUserId() ?: return
             val request = Request.Builder()
                 .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/notification_preferences?select=*&user_id=eq.$uid&limit=1")
                 .addHeader("apikey", SupabaseConfig.anonKey)
@@ -170,11 +172,13 @@ object NotificationPreferenceStore {
         }.onFailure { Log.w(TAG, "Unable to refresh notification preferences", it) }
     }
 
-    private fun syncToServer(context: Context) {
+    private suspend fun syncToServer(context: Context) {
         runCatching {
             SupabaseService.initialize(context)
+            val service = SupabaseService()
+            if (!service.restoreSession()) return
             val token = SupabaseService.accessToken() ?: return
-            val uid = SupabaseService().getCurrentUserId() ?: return
+            val uid = service.getCurrentUserId() ?: return
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val payload = JSONObject()
                 .put("user_id", uid)
