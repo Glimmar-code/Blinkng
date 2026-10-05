@@ -322,7 +322,7 @@ class BlinkAiService {
     private suspend fun executeAi(payload: JSONObject): BlinkAiReply {
         val session = ensureSession()
         // Testlab uses an isolated Edge Function so AI changes can be verified before promotion.
-        val endpoints = listOf("blink-ai-testlab")
+        val endpoints = listOf("blink-ai")
         var lastFailure: IllegalStateException? = null
 
         for ((index, endpoint) in endpoints.withIndex()) {
