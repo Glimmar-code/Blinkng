@@ -58,10 +58,10 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.blink-ai]
-verify_jwt = true
+verify_jwt = false
 
 [functions.blink-ai-v2]
-verify_jwt = true
+verify_jwt = false
 
 [functions.username-login]
 verify_jwt = false
