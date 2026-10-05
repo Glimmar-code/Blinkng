@@ -138,7 +138,17 @@ Deno.serve(async(req:Request)=>{
   if(req.method!=="POST")return jsonResponse({error:"Method not allowed."},405);
   const started=Date.now();
   try{
-    const apiKey=Deno.env.get("GEMINI_API_KEY")?.trim(); if(!apiKey)return jsonResponse({error:"Blink AI is not configured yet.",code:"missing_gemini_key"},503);
+    const apiKey=[
+      Deno.env.get("GEMINI_API_KEY"),
+      Deno.env.get("GOOGLE_GENAI_API_KEY"),
+      Deno.env.get("GOOGLE_API_KEY"),
+      Deno.env.get("AI_STUDIO_API_KEY"),
+      Deno.env.get("BLINK_AI_API_KEY"),
+    ].map((value)=>value?.trim()||"").find(Boolean)||"";
+    if(!apiKey){
+      console.error("blink-ai provider key missing");
+      return jsonResponse({error:"Blink AI is not configured yet.",code:"missing_ai_provider_key"},503);
+    }
     const jwt=bearerToken(req); if(!jwt)return jsonResponse({error:"A signed-in Blink account is required."},401);
     const userId=await validateUserJwt(jwt); if(!userId)return jsonResponse({error:"Your Blink session is invalid or expired. Please sign in again."},401);
     const body=await req.json().catch(()=>({})); const attachments=normalizeAttachments(body?.attachments);
