@@ -139,11 +139,13 @@ fun StoreProScreen(state: DesktopAppState) {
         .map { it.optString("catalog_id") }
         .filter(String::isNotBlank)
         .toSet()
-    val vip = serverState?.optJSONObject("vip")
-    val vipActive = vip?.optBoolean("active", false) == true
-    val filteredCatalog = remember(catalog, searchQuery) {
+    val visibleCatalog = remember(catalog) {
+        catalog.filterNot { it.vipOnly || it.id == "blink_vip_10d" || it.category.equals("VIP", true) }
+    }
+    val vipActive = false
+    val filteredCatalog = remember(visibleCatalog, searchQuery) {
         val query = searchQuery.trim()
-        if (query.isBlank()) catalog else catalog.filter {
+        if (query.isBlank()) visibleCatalog else visibleCatalog.filter {
             it.name.contains(query, true) ||
                 it.description.contains(query, true) ||
                 it.category.contains(query, true)
@@ -193,8 +195,7 @@ fun StoreProScreen(state: DesktopAppState) {
                         fontSize = 13.sp,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PremiumStatusPill(if (vipActive) "VIP ACTIVE" else "VIP READY", Color.White)
-                        PremiumStatusPill("${catalog.size} STORE ITEMS", Color.White)
+                        PremiumStatusPill("${visibleCatalog.size} STORE ITEMS", Color.White)
                         if (equippedIds.isNotEmpty()) PremiumStatusPill("${equippedIds.size} APPLIED", Color.White)
                     }
                 }
@@ -214,18 +215,15 @@ fun StoreProScreen(state: DesktopAppState) {
         }
         error?.let { item { Text(it, color = MaterialTheme.colorScheme.error) } }
 
-        serverState?.let { stateJson ->
+        serverState?.let {
             item {
                 Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("VIP & premium identity", fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                            Text("Premium identity", fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.weight(1f))
                             OutlinedButton(onClick = { scope.launch { reload() } }, enabled = !working) { Text("Refresh") }
                         }
-                        stateJson.optJSONObject("vip")?.let { vipJson ->
-                            Text(if (vipJson.optBoolean("active")) "VIP is live on your public identity." else "VIP is inactive. Buy it into Vault and activate when ready.")
-                            vipJson.optString("expires_at").takeIf(String::isNotBlank)?.let { Text("VIP expires: ${shortDesktopDate(it)}", fontSize = 12.sp) }
-                        }
+                        Text("Owned cosmetics stay in your Collection and can be previewed before they are applied.")
                         if (equippedIds.isNotEmpty()) {
                             Text("Applied public/premium cosmetics", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -235,11 +233,6 @@ fun StoreProScreen(state: DesktopAppState) {
                                     PremiumStatusPill(exp?.label ?: id.replace('_', ' ').uppercase().take(12), exp?.let(::desktopPremiumAccent) ?: MaterialTheme.colorScheme.primary)
                                 }
                             }
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { runAction("VIP extended by 10 days.") { actions.renewVip() } }, enabled = !working) { Text("Renew VIP") }
-                            OutlinedButton(onClick = { runAction("VIP auto-renew enabled.") { actions.setVipAutoRenew(true) } }, enabled = !working) { Text("Auto-renew on") }
-                            OutlinedButton(onClick = { runAction("VIP auto-renew disabled.") { actions.setVipAutoRenew(false) } }, enabled = !working) { Text("Auto-renew off") }
                         }
                     }
                 }
