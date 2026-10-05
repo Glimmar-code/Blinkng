@@ -138,6 +138,8 @@ Deno.serve(async(req:Request)=>{
   if(req.method!=="POST")return jsonResponse({error:"Method not allowed."},405);
   const started=Date.now();
   try{
+    const jwt=bearerToken(req); if(!jwt)return jsonResponse({error:"A signed-in Blink account is required."},401);
+    const userId=await validateUserJwt(jwt); if(!userId)return jsonResponse({error:"Your Blink session is invalid or expired. Please sign in again."},401);
     const apiKey=[
       Deno.env.get("GEMINI_API_KEY"),
       Deno.env.get("GOOGLE_GENAI_API_KEY"),
@@ -149,8 +151,6 @@ Deno.serve(async(req:Request)=>{
       console.error("blink-ai provider key missing");
       return jsonResponse({error:"Blink AI is not configured yet.",code:"missing_ai_provider_key"},503);
     }
-    const jwt=bearerToken(req); if(!jwt)return jsonResponse({error:"A signed-in Blink account is required."},401);
-    const userId=await validateUserJwt(jwt); if(!userId)return jsonResponse({error:"Your Blink session is invalid or expired. Please sign in again."},401);
     const body=await req.json().catch(()=>({})); const attachments=normalizeAttachments(body?.attachments);
     if(body?.confirm_action&&typeof body.confirm_action==="object"){const text=await executeConfirmedAction(body.confirm_action,attachments,userId,jwt); return jsonResponse({text,action_completed:true,latency_ms:Date.now()-started});}
     const message=typeof body?.message==="string"?body.message.trim():""; const previousInteractionId=typeof body?.previous_interaction_id==="string"?body.previous_interaction_id.trim():"";
