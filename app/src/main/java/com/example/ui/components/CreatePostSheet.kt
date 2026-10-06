@@ -1,9 +1,13 @@
 package com.example.ui.components
 
+import com.example.data.local.PersistentTextDraftStore
 import com.example.data.local.rememberPersistentStringListState
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -42,6 +46,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Poll
@@ -73,6 +81,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -108,9 +117,11 @@ import com.example.data.models.PostPoll
 import com.example.data.models.ScheduledPost
 import com.example.data.models.UserProfile
 import org.json.JSONArray
+import org.json.JSONObject
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Calendar
 import java.util.UUID
 
 @OptIn(
@@ -142,32 +153,36 @@ fun CreatePostSheet(
         Boolean,
         String?,
         String?,
-        String?
+        String?,
+        String
     ) -> Unit,
     onSaveDraft: (PostDraft) -> Unit = {},
     onDeleteDraft: (String) -> Unit = {},
     onSchedulePost: (FeedPost, Long, String) -> Unit = { _, _, _ -> },
+    onPublishScheduledPostNow: (String) -> Unit = {},
+    onCancelScheduledPost: (String) -> Unit = {},
     isDark: Boolean,
     isSubmitting: Boolean = false
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val composerScope = profile.id.ifBlank { profile.username }
 
     var text by rememberPersistentTextState(
         key = "create_post_text",
-        scope = profile.id.ifBlank { profile.username }
+        scope = composerScope
     )
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
     var mode by rememberSaveable { mutableStateOf("post") }
     var pollQuestion by rememberPersistentTextState(
         key = "create_post_poll_question",
-        scope = profile.id.ifBlank { profile.username }
+        scope = composerScope
     )
     var pollOptions by rememberPersistentStringListState(
         key = "create_post_poll_options",
         initialValue = listOf("", ""),
-        scope = profile.id.ifBlank { profile.username }
+        scope = composerScope
     )
     var audience by rememberSaveable { mutableStateOf("Everyone") }
     var category by rememberSaveable { mutableStateOf("Campus Life") }
@@ -179,6 +194,16 @@ fun CreatePostSheet(
     var showScheduleDialog by rememberSaveable { mutableStateOf(false) }
     var selectedTextStyle by rememberSaveable { mutableStateOf("aurora") }
     var textPresentation by rememberSaveable { mutableStateOf("plain") }
+    var location by rememberSaveable { mutableStateOf("") }
+    var linkUrl by rememberSaveable { mutableStateOf("") }
+    var altText by rememberSaveable { mutableStateOf("") }
+    var hideLikes by rememberSaveable { mutableStateOf(false) }
+    var isDisappearing by rememberSaveable { mutableStateOf(false) }
+    var audioTitle by rememberSaveable { mutableStateOf("") }
+    var showAdvancedSettings by rememberSaveable { mutableStateOf(false) }
+    var showPreviewDialog by rememberSaveable { mutableStateOf(false) }
+    var autosaveRestored by rememberSaveable { mutableStateOf(false) }
+    var clientRequestId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = listOf(
@@ -194,7 +219,17 @@ fun CreatePostSheet(
         ActivityResultContracts.PickMultipleVisualMedia(10)
     ) { uris ->
         if (uris.isNotEmpty()) {
-            selectedImages = uris.map(Uri::toString)
+            uris.forEach { uri ->
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+            }
+            selectedImages = (selectedImages + uris.map(Uri::toString))
+                .distinct()
+                .take(10)
             selectedVideo = null
             mode = "post"
         }
@@ -204,6 +239,12 @@ fun CreatePostSheet(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
             selectedVideo = uri.toString()
             selectedImages = emptyList()
             mode = "reel"
@@ -235,14 +276,158 @@ fun CreatePostSheet(
         }.getOrDefault(emptyList())
     }
 
+    fun clearComposerPersistence() {
+        text = ""
+        pollQuestion = ""
+        pollOptions = listOf("", "")
+        PersistentTextDraftStore.clearValue(context, "create_post_text", composerScope)
+        PersistentTextDraftStore.clearValue(context, "create_post_poll_question", composerScope)
+        PersistentTextDraftStore.clearValue(context, "create_post_poll_options", composerScope)
+        PersistentTextDraftStore.clearValue(context, "create_post_autosave_v2", composerScope)
+    }
+
+    fun normalizedLink(raw: String): String? {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) return null
+        val candidate = if (
+            trimmed.startsWith("https://", true) ||
+            trimmed.startsWith("http://", true)
+        ) trimmed else "https://$trimmed"
+        val parsed = runCatching { Uri.parse(candidate) }.getOrNull() ?: return null
+        return candidate.takeIf { !parsed.host.isNullOrBlank() }
+    }
+
+    fun extractedTags(value: String): List<String> =
+        Regex("""(?<![A-Za-z0-9_])#([A-Za-z0-9_]{1,50})""")
+            .findAll(value)
+            .map { it.groupValues[1].lowercase() }
+            .distinct()
+            .take(20)
+            .toList()
+
+    fun extractedMentions(value: String): List<String> =
+        Regex("""(?<![A-Za-z0-9._])@([A-Za-z0-9._]{2,32})""")
+            .findAll(value)
+            .map { it.groupValues[1] }
+            .distinctBy { it.lowercase() }
+            .take(20)
+            .toList()
+
+    LaunchedEffect(composerScope) {
+        val raw = PersistentTextDraftStore.readValue(
+            context,
+            "create_post_autosave_v2",
+            composerScope
+        )
+        if (!raw.isNullOrBlank()) {
+            runCatching { JSONObject(raw) }.getOrNull()?.let { value ->
+                selectedImages = parseDraftImages(value.optString("image_uri"))
+                selectedVideo = value.optString("video_uri")
+                    .takeIf { it.isNotBlank() && it != "null" }
+                mode = value.optString(
+                    "mode",
+                    if (selectedVideo == null) "post" else "reel"
+                )
+                audience = value.optString("audience", "Everyone")
+                category = value.optString("category", "Campus Life")
+                allowComments = value.optBoolean("allow_comments", true)
+                showPoll = value.optBoolean("show_poll", false)
+                selectedTextStyle = value.optString("text_style", "aurora")
+                textPresentation = value.optString("text_presentation", "plain")
+                location = value.optString("location")
+                linkUrl = value.optString("link_url")
+                altText = value.optString("alt_text")
+                hideLikes = value.optBoolean("hide_likes", false)
+                isDisappearing = value.optBoolean("is_disappearing", false)
+                audioTitle = value.optString("audio_title")
+                clientRequestId = value.optString("client_request_id")
+                    .takeIf { runCatching { UUID.fromString(it) }.isSuccess }
+                    ?: clientRequestId
+            }
+        }
+        autosaveRestored = true
+    }
+
+    LaunchedEffect(
+        autosaveRestored,
+        text,
+        selectedImages,
+        selectedVideo,
+        mode,
+        pollQuestion,
+        pollOptions,
+        audience,
+        category,
+        allowComments,
+        showPoll,
+        selectedTextStyle,
+        textPresentation,
+        location,
+        linkUrl,
+        altText,
+        hideLikes,
+        isDisappearing,
+        audioTitle,
+        clientRequestId
+    ) {
+        if (!autosaveRestored) return@LaunchedEffect
+        val hasAnything = text.isNotBlank() ||
+            selectedImages.isNotEmpty() ||
+            selectedVideo != null ||
+            pollQuestion.isNotBlank() ||
+            pollOptions.any { it.isNotBlank() } ||
+            location.isNotBlank() ||
+            linkUrl.isNotBlank() ||
+            altText.isNotBlank() ||
+            audioTitle.isNotBlank()
+
+        if (!hasAnything) {
+            PersistentTextDraftStore.clearValue(
+                context,
+                "create_post_autosave_v2",
+                composerScope
+            )
+        } else {
+            val snapshot = JSONObject().apply {
+                put("image_uri", imagePayload(selectedImages) ?: JSONObject.NULL)
+                put("video_uri", selectedVideo ?: JSONObject.NULL)
+                put("mode", mode)
+                put("audience", audience)
+                put("category", category)
+                put("allow_comments", allowComments)
+                put("show_poll", showPoll)
+                put("text_style", selectedTextStyle)
+                put("text_presentation", textPresentation)
+                put("location", location)
+                put("link_url", linkUrl)
+                put("alt_text", altText)
+                put("hide_likes", hideLikes)
+                put("is_disappearing", isDisappearing)
+                put("audio_title", audioTitle)
+                put("client_request_id", clientRequestId)
+            }
+            PersistentTextDraftStore.writeValue(
+                context,
+                "create_post_autosave_v2",
+                composerScope,
+                snapshot.toString()
+            )
+        }
+    }
+
     val cleanText = text.trim()
     val validPollOptions = pollOptions.map(String::trim).filter(String::isNotBlank)
-    val pollValid = showPoll && pollQuestion.isNotBlank() && validPollOptions.size >= 2
+    val pollValid = showPoll &&
+        pollQuestion.isNotBlank() &&
+        validPollOptions.size >= 2 &&
+        validPollOptions.map { it.lowercase() }.distinct().size == validPollOptions.size
+    val normalizedLinkUrl = normalizedLink(linkUrl)
+    val linkValid = linkUrl.isBlank() || normalizedLinkUrl != null
     val hasContent = cleanText.isNotBlank() ||
         selectedImages.isNotEmpty() ||
         selectedVideo != null ||
         pollValid
-    val canSubmit = hasContent && !isSubmitting
+    val canSubmit = hasContent && linkValid && !isSubmitting
 
     fun scheduledPreviewPost(): FeedPost {
         val poll = if (pollValid) {
@@ -274,19 +459,64 @@ fun CreatePostSheet(
             poll = poll,
             audience = audience,
             category = category,
+            location = location.trim().takeIf { it.isNotBlank() },
+            linkUrl = normalizedLinkUrl,
             allowComments = allowComments,
+            hideLikes = hideLikes,
+            isDisappearing = isDisappearing,
+            audioTitle = audioTitle.trim().takeIf { it.isNotBlank() },
+            altText = altText.trim().takeIf { it.isNotBlank() },
             textStyle = style
         )
     }
 
-    fun scheduleAfter(delayMillis: Long) {
+    fun scheduleAt(timeMillis: Long) {
         if (!canSubmit) return
-        val timeMillis = System.currentTimeMillis() + delayMillis
+        if (timeMillis < System.currentTimeMillis() + 60_000L) {
+            Toast.makeText(context, "Choose a time at least one minute from now.", Toast.LENGTH_SHORT).show()
+            return
+        }
         val formatted = Instant.ofEpochMilli(timeMillis)
             .atZone(ZoneId.systemDefault())
             .format(DateTimeFormatter.ofPattern("EEE, MMM d • h:mm a"))
         showScheduleDialog = false
         onSchedulePost(scheduledPreviewPost(), timeMillis, formatted)
+    }
+
+    fun scheduleAfter(delayMillis: Long) {
+        scheduleAt(System.currentTimeMillis() + delayMillis)
+    }
+
+    fun chooseCustomSchedule() {
+        val now = Calendar.getInstance()
+        DatePickerDialog(
+            context,
+            { _, year, month, day ->
+                TimePickerDialog(
+                    context,
+                    { _, hour, minute ->
+                        val selected = Calendar.getInstance().apply {
+                            set(Calendar.YEAR, year)
+                            set(Calendar.MONTH, month)
+                            set(Calendar.DAY_OF_MONTH, day)
+                            set(Calendar.HOUR_OF_DAY, hour)
+                            set(Calendar.MINUTE, minute)
+                            set(Calendar.SECOND, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }
+                        scheduleAt(selected.timeInMillis)
+                    },
+                    now.get(Calendar.HOUR_OF_DAY),
+                    now.get(Calendar.MINUTE),
+                    false
+                ).show()
+            },
+            now.get(Calendar.YEAR),
+            now.get(Calendar.MONTH),
+            now.get(Calendar.DAY_OF_MONTH)
+        ).apply {
+            datePicker.minDate = System.currentTimeMillis()
+        }.show()
     }
 
     fun submit() {
@@ -315,27 +545,28 @@ fun CreatePostSheet(
             profile.faculty,
             imagePayload(selectedImages),
             selectedVideo,
-            emptyList(),
-            emptyList(),
+            extractedTags(cleanText),
+            extractedMentions(cleanText),
             poll,
             selectedVideo != null,
             audience,
             category,
-            null,
-            null,
+            location.trim().takeIf { it.isNotBlank() },
+            normalizedLinkUrl,
             allowComments,
+            hideLikes,
             false,
-            false,
-            false,
-            null,
-            null,
+            isDisappearing,
+            audioTitle.trim().takeIf { it.isNotBlank() },
+            altText.trim().takeIf { it.isNotBlank() },
             selectedTextStyle.takeIf {
                 textPresentation == "color" &&
                     cleanText.isNotBlank() &&
                     selectedImages.isEmpty() &&
                     selectedVideo == null &&
                     !pollValid
-            }
+            },
+            clientRequestId
         )
     }
 
@@ -352,8 +583,19 @@ fun CreatePostSheet(
                 imageUri = imagePayload(selectedImages),
                 videoUri = selectedVideo,
                 isReel = selectedVideo != null,
+                tags = extractedTags(text),
+                mentions = extractedMentions(text),
                 category = category,
                 audience = audience,
+                location = location.trim().takeIf { it.isNotBlank() },
+                linkUrl = normalizedLink(linkUrl),
+                allowComments = allowComments,
+                hideLikes = hideLikes,
+                isDisappearing = isDisappearing,
+                pollQuestion = if (showPoll) pollQuestion else "",
+                pollOptions = if (showPoll) pollOptions else emptyList(),
+                audioTrack = audioTitle.trim().takeIf { it.isNotBlank() },
+                altText = altText.trim().takeIf { it.isNotBlank() },
                 textStyle = selectedTextStyle.takeIf {
                     textPresentation == "color" &&
                         text.isNotBlank() &&
