@@ -188,7 +188,6 @@ private fun BlinkItemsHome(
     onLocation: () -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var stepsEnabled by remember { mutableStateOf(BlinkItemPreferences.stepsEnabled(context)) }
     var weatherEnabled by remember { mutableStateOf(BlinkItemPreferences.weatherEnabled(context)) }
     var steps by remember { mutableLongStateOf(BlinkItemPreferences.lastStepCount(context)) }
@@ -201,7 +200,11 @@ private fun BlinkItemsHome(
             if (repo.isAvailable() && repo.hasReadPermission()) {
                 repo.readTodaySteps().getOrNull()?.let {
                     steps = it
-                    BlinkItemPreferences.saveStepSnapshot(context, java.time.LocalDate.now().toString(), it)
+                    BlinkItemPreferences.saveStepSnapshot(
+                        context,
+                        java.time.LocalDate.now().toString(),
+                        it
+                    )
                 }
             }
         }
@@ -216,76 +219,81 @@ private fun BlinkItemsHome(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            BlinkItemsGroupLabel("HEALTH")
-            BlinkItemTile(
-                icon = Icons.Default.DirectionsWalk,
-                title = "Steps",
-                subtitle = if (stepsEnabled) "${steps.coerceAtLeast(0)} today" else "Off",
-                enabled = stepsEnabled,
-                showSwitch = true,
-                onToggle = {
-                    if (!it) {
-                        BlinkItemPreferences.setStepsEnabled(context, false)
-                        stepsEnabled = false
-                    } else {
-                        onSteps()
-                    }
-                },
-                onClick = onSteps
-            )
+            BlinkItemsGroupLabel("TODAY (2)")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                BlinkCompactItemTile(
+                    icon = Icons.Default.DirectionsWalk,
+                    title = "Steps",
+                    subtitle = if (stepsEnabled) "%,d today".format(steps.coerceAtLeast(0)) else "Off",
+                    enabled = stepsEnabled,
+                    showSwitch = true,
+                    onToggle = {
+                        if (!it) {
+                            BlinkItemPreferences.setStepsEnabled(context, false)
+                            stepsEnabled = false
+                        } else {
+                            onSteps()
+                        }
+                    },
+                    onClick = onSteps,
+                    modifier = Modifier.weight(1f)
+                )
+                BlinkCompactItemTile(
+                    icon = Icons.Default.WbSunny,
+                    title = "Weather",
+                    subtitle = when {
+                        !weatherEnabled -> "Off"
+                        weather != null -> "${weather!!.temperatureC.roundToInt()}°C • ${weather!!.condition}"
+                        else -> "Ready"
+                    },
+                    enabled = weatherEnabled,
+                    showSwitch = true,
+                    onToggle = {
+                        if (!it) {
+                            BlinkItemPreferences.setWeatherEnabled(context, false)
+                            weatherEnabled = false
+                        } else {
+                            onWeather()
+                        }
+                    },
+                    onClick = onWeather,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
 
         item {
-            Spacer(Modifier.height(4.dp))
-            BlinkItemsGroupLabel("DAILY")
-            BlinkItemTile(
-                icon = Icons.Default.WbSunny,
-                title = "Weather",
-                subtitle = when {
-                    !weatherEnabled -> "Off"
-                    weather != null -> "${weather!!.temperatureC.roundToInt()}°C • ${weather!!.condition}"
-                    else -> "Ready to refresh"
-                },
-                enabled = weatherEnabled,
-                showSwitch = true,
-                onToggle = {
-                    if (!it) {
-                        BlinkItemPreferences.setWeatherEnabled(context, false)
-                        weatherEnabled = false
-                    } else {
-                        onWeather()
-                    }
-                },
-                onClick = onWeather
-            )
+            BlinkItemsGroupLabel("CONNECT (1)")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                BlinkCompactItemTile(
+                    icon = Icons.Default.LocationOn,
+                    title = "Live Location",
+                    subtitle = session?.let { "Sharing with ${it.recipientCount}" } ?: "Not sharing",
+                    enabled = session != null,
+                    showSwitch = false,
+                    onToggle = {},
+                    onClick = onLocation,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.weight(1f))
+            }
         }
 
         item {
-            Spacer(Modifier.height(4.dp))
-            BlinkItemsGroupLabel("CONNECT")
-            BlinkItemTile(
-                icon = Icons.Default.LocationOn,
-                title = "Live Location",
-                subtitle = session?.let {
-                    "Sharing with ${it.recipientCount}"
-                } ?: "Not sharing",
-                enabled = session != null,
-                showSwitch = false,
-                onToggle = {},
-                onClick = onLocation
-            )
-        }
-
-        item {
-            Spacer(Modifier.height(8.dp))
             Text(
-                text = "Items only request access when you turn a feature on. Live Location is shared only with people you choose and automatically expires.",
+                text = "Items request access only when you turn a feature on. Live Location is private, temporary, and shared only with people you choose.",
                 style = MaterialTheme.typography.bodySmall,
                 color = FeedTextSecondary,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
             )
         }
     }
@@ -300,6 +308,88 @@ private fun BlinkItemsGroupLabel(label: String) {
         color = FeedTextSecondary,
         modifier = Modifier.padding(start = 4.dp, bottom = 7.dp)
     )
+}
+
+@Composable
+private fun BlinkCompactItemTile(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    enabled: Boolean,
+    showSwitch: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = FeedElevatedSurface,
+        shape = RoundedCornerShape(18.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (enabled) FeedPurple.copy(alpha = 0.42f) else FeedBorder
+        ),
+        modifier = modifier
+            .heightIn(min = 132.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Column(
+            modifier = Modifier.padding(13.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(
+                            if (enabled) FeedPurple.copy(alpha = 0.16f) else FeedBackground,
+                            RoundedCornerShape(12.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = FeedTextPrimary,
+                        modifier = Modifier.size(21.dp)
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                if (showSwitch) {
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = onToggle,
+                        modifier = Modifier.size(width = 46.dp, height = 28.dp)
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = FeedTextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = title,
+                color = FeedTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = subtitle,
+                color = FeedTextSecondary,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
 }
 
 @Composable
