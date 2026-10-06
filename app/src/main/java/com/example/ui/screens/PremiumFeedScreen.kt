@@ -1133,6 +1133,31 @@ private fun PremiumHomeFeed(
                                             }
                                         }
 
+                                        is PremiumHomeRow.BoostedPostRow -> {
+                                            val placement = row.placement
+                                            val post = placement.post
+                                            LaunchedEffect(placement.campaignId) {
+                                                boostGrowthService.recordBoostDelivery(
+                                                    placement.campaignId,
+                                                    "IMPRESSION",
+                                                    "HOME"
+                                                )
+                                            }
+                                            PostCard(
+                                                post = post,
+                                                isDark = true,
+                                                onLike = { onLikePost(post.id) },
+                                                onComment = { onCommentPost(post.id) },
+                                                onBookmark = { onBookmarkPost(post.id) },
+                                                onRepost = { onRepostPost(post.id) },
+                                                onShare = { onSharePost(post.id) },
+                                                onOptionsClick = { onOptionsClick(post) },
+                                                onProfileClick = onProfileClick,
+                                                isAuthor = false,
+                                                trackExposure = false
+                                            )
+                                        }
+
                                         is PremiumHomeRow.ReelPreviewRow -> {
                                             val previewKey = "reel_preview:${row.slot}:${row.reel.id}"
                                             InlineReelPreviewCard(
