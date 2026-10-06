@@ -407,7 +407,22 @@ fun CreatePostSheet(
         selectedImages.isNotEmpty() ||
         selectedVideo != null ||
         pollValid
-    val canSubmit = hasContent && linkValid && !isSubmitting
+    val hasComposerInput = cleanText.isNotBlank() ||
+        selectedImages.isNotEmpty() ||
+        selectedVideo != null ||
+        pollQuestion.isNotBlank() ||
+        pollOptions.any { it.isNotBlank() } ||
+        location.isNotBlank() ||
+        linkUrl.isNotBlank() ||
+        altText.isNotBlank() ||
+        audioTitle.isNotBlank() ||
+        hideLikes ||
+        isDisappearing ||
+        !allowComments
+    val canSubmit = hasContent &&
+        linkValid &&
+        (!showPoll || pollValid) &&
+        !isSubmitting
 
     fun scheduledPreviewPost(): FeedPost {
         val poll = if (pollValid) {
@@ -561,7 +576,7 @@ fun CreatePostSheet(
     }
 
     fun saveDraft() {
-        if (!hasContent) {
+        if (!hasComposerInput) {
             Toast.makeText(context, "Add something before saving a draft.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -598,7 +613,7 @@ fun CreatePostSheet(
         Toast.makeText(context, "Draft saved.", Toast.LENGTH_SHORT).show()
     }
 
-    val currentHasContent by rememberUpdatedState(hasContent)
+    val currentHasContent by rememberUpdatedState(hasComposerInput)
     val currentIsSubmitting by rememberUpdatedState(isSubmitting)
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -617,7 +632,7 @@ fun CreatePostSheet(
 
     fun requestDismiss() {
         if (isSubmitting) return
-        if (hasContent) {
+        if (hasComposerInput) {
             showDiscardDialog = true
         } else {
             onDismiss()
@@ -1167,7 +1182,7 @@ fun CreatePostSheet(
                 ) {
                     OutlinedButton(
                         onClick = ::saveDraft,
-                        enabled = hasContent && !isSubmitting,
+                        enabled = hasComposerInput && !isSubmitting,
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(
@@ -1181,7 +1196,7 @@ fun CreatePostSheet(
 
                     OutlinedButton(
                         onClick = { showPreviewDialog = true },
-                        enabled = hasContent && !isSubmitting,
+                        enabled = hasComposerInput && !isSubmitting,
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Preview")
