@@ -70,7 +70,7 @@ class BlinkDropsService {
         }
 
     suspend fun state(limit: Int = 20) = runCatching {
-        rpc("get_blink_drops_state", JSONObject().put("p_limit", limit.coerceIn(1, 50)))
+        rpc("get_blink_drops_state_v2", JSONObject().put("p_limit", limit.coerceIn(1, 50)))
     }
 
     suspend fun discovery(limit: Int = 3): Result<List<BlinkDropDiscovery>> = runCatching {
@@ -102,7 +102,7 @@ class BlinkDropsService {
         }
     }
 
-    suspend fun createDrop(
+    suspend fun quoteDrop(
         targetType: String,
         targetId: String,
         action: String,
@@ -112,7 +112,7 @@ class BlinkDropsService {
         durationHours: Int,
     ) = runCatching {
         rpc(
-            "create_blink_drop",
+            "quote_blink_drop",
             JSONObject()
                 .put("p_target_type", targetType.trim().uppercase())
                 .put("p_target_id", targetId.trim())
@@ -121,6 +121,31 @@ class BlinkDropsService {
                 .put("p_winner_count", winnerCount)
                 .put("p_audience_scope", audienceScope.trim().uppercase())
                 .put("p_duration_hours", durationHours)
+        )
+    }
+
+    suspend fun createDrop(
+        targetType: String,
+        targetId: String,
+        action: String,
+        rewardPerUser: Int,
+        winnerCount: Int,
+        audienceScope: String,
+        durationHours: Int,
+        requestId: String,
+    ) = runCatching {
+        require(requestId.isNotBlank()) { "Drop request is missing." }
+        rpc(
+            "create_blink_drop_v2",
+            JSONObject()
+                .put("p_target_type", targetType.trim().uppercase())
+                .put("p_target_id", targetId.trim())
+                .put("p_action", action.trim().uppercase())
+                .put("p_reward_per_user", rewardPerUser)
+                .put("p_winner_count", winnerCount)
+                .put("p_audience_scope", audienceScope.trim().uppercase())
+                .put("p_duration_hours", durationHours)
+                .put("p_request_id", requestId.trim())
         )
     }
 
@@ -164,6 +189,7 @@ class BlinkDropsService {
             message.contains("DROP_COMMENT_TOO_LONG") -> "Your comment is too long."
             message.contains("UNIVERSITY_REQUIRED_FOR_DROP") -> "Add your university before creating a campus-only Drop."
             message.contains("INVALID_CREATOR") -> "That creator cannot be followed."
+            message.contains("REQUEST_ID_REQUIRED") -> "That Drop request could not be secured. Please try again."
             message.contains("schema cache", ignoreCase = true) ||
                 message.contains("Could not find the function", ignoreCase = true) ->
                 "BLINK Drops is updating. Please try again shortly."
