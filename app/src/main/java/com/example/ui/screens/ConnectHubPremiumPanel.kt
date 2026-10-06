@@ -94,6 +94,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -469,8 +470,14 @@ fun ConnectHubPremiumPanel(
         var panelVisible by remember(targetIndex) { mutableStateOf(false) }
 
         LaunchedEffect(targetIndex) {
-            pagerState.scrollToPage(targetIndex)
+            // Make the category surface part of composition before asking the nested pager
+            // to move. Scrolling first can suspend while the pager is still hidden, leaving
+            // only the dialog scrim visible.
             panelVisible = true
+            withFrameNanos { _ -> }
+            if (pagerState.currentPage != targetIndex) {
+                pagerState.scrollToPage(targetIndex)
+            }
         }
 
         fun closeCategoryPanel() {

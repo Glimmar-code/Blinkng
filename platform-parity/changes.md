@@ -259,3 +259,16 @@ Windows equivalent or reason no equivalent is needed: The Windows client does no
 Backend/shared behavior preserved: Feed ranking, Following/For You ordering, qualified views, XP, coins, verification, ads, posts, reels, messages, calls, authentication and existing profile data are unchanged. The live-location migration is additive and locked behind authenticated owner-scoped RPCs; exact coordinates are never exposed through Feed/Profile/Search and are deleted when sharing stops.
 Tests/validation: Android unit/lint/instrumentation/debug/release checks, Supabase migration-safety, domain integration and the Windows build/parity gate must pass on Testlab before promotion. Real MAPS_API_KEY and server-side OPENWEATHER_API_KEY configuration must also be validated before production rollout.
 Owner/reviewer note: This exception is limited to phone-sensor collection, Android location publishing, and their Android permission/foreground-service UI. It cannot be reused to waive Windows parity for ordinary cross-platform BLINK product features.
+
+
+---
+
+PARITY-EXCEPTION: android-connect-category-dialog-lifecycle-20261006
+Date: 2026-10-06
+Feature: Android Connect category panel visibility repair
+Android behavior: Fixes Roommates, Mentors, Reading Mates, Housing Agents, Housing and Challenges opening into only a dark scrim by composing the Android side panel before moving its nested pager.
+Why this is genuinely Android-specific presentation: The failure is caused by the Android Compose Dialog + AnimatedVisibility + HorizontalPager lifecycle. No Connect data model, matching rule, request action, backend contract, ranking rule, or shared business behavior changes.
+Windows equivalent or reason no equivalent is needed: Windows does not use the Android Compose modal/pager lifecycle that can deadlock in this state, so no Windows behavior change is required.
+Backend/shared behavior preserved: Existing Connect Hub repository calls, roommate/mentor/reading/housing/challenge actions, follow state and Supabase behavior remain unchanged.
+Tests/validation: Android quality/release-smoke, Windows build/parity and Supabase safety gates must pass on Testlab before merge.
+Owner/reviewer note: This exception is limited to the Android category-panel rendering lifecycle and cannot waive parity for future Connect capabilities or business logic.
