@@ -200,6 +200,8 @@ fun runBlinkDesktopApplication() = application {
     LaunchedEffect(appState.session?.userId) {
         foregroundNotification = null
         foregroundNotificationQueue.clear()
+        recentNotificationBursts.clear()
+        unreadNotificationCount = 0
         val activeUserId = appState.session?.userId ?: return@LaunchedEffect
         var baselineReady = false
         var seenIds = emptySet<String>()
