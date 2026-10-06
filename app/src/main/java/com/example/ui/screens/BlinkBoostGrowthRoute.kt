@@ -297,6 +297,7 @@ private fun BoostCampaignColumn(
     var confirmStart by remember { mutableStateOf(false) }
     var refreshNonce by remember { mutableIntStateOf(0) }
     var pendingRequestId by remember { mutableStateOf<String?>(null) }
+    var pendingRequestFingerprint by remember { mutableStateOf<String?>(null) }
     var historyFilter by remember { mutableStateOf("ALL") }
     var historyQuery by remember { mutableStateOf("") }
 
@@ -665,7 +666,7 @@ private fun BoostCampaignColumn(
         item {
             Button(
                 onClick = { confirmStart = true },
-                enabled = !working && !quoteLoading && quote != null && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
+                enabled = !working && !quoteLoading && isOnline && quote != null && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (working) {
@@ -674,12 +675,24 @@ private fun BoostCampaignColumn(
                 }
                 Text(
                     when {
+                        !isOnline -> "Connect to start Boost"
                         quote == null -> "Choose a boost target"
                         balance == null -> "Balance unavailable"
                         balance < quoteCost -> "Not enough Blink Coins"
                         else -> "Start Boost • " + formatter.format(quoteCost) + " coins"
                     },
                 )
+            }
+        }
+
+        if (quote != null && balance != null && balance < quoteCost) {
+            item {
+                OutlinedButton(
+                    onClick = onGetCoins,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Get Blink Coins")
+                }
             }
         }
 
@@ -729,6 +742,9 @@ private fun BoostCampaignColumn(
                     Text(durationDays.toString() + " day" + if (durationDays == 1) "" else "s")
                     Text("Estimated reach: " + formatter.format(low) + "–" + formatter.format(high))
                     Text("Reserved budget: " + formatter.format(quoteCost) + " Blink Coins", fontWeight = FontWeight.Black)
+                    balance?.let {
+                        Text("Balance after reserve: " + formatter.format(it - quoteCost) + " Blink Coins")
+                    }
                     Text(
                         "Reach and engagement are estimates, not guaranteed results.",
                         style = MaterialTheme.typography.bodySmall,
@@ -738,10 +754,18 @@ private fun BoostCampaignColumn(
             },
             confirmButton = {
                 Button(
-                    enabled = !working && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
+                    enabled = !working && isOnline && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
                     onClick = {
                         scope.launch {
                             working = true
+                            val fingerprint = listOf(
+                                targetType.name,targetId,boostPower.toString(),objective.name,
+                                audience.name,durationDays.toString(),targetUniversity.orEmpty()
+                            ).joinToString("|")
+                            if (pendingRequestId == null || pendingRequestFingerprint != fingerprint) {
+                                pendingRequestId = UUID.randomUUID().toString()
+                                pendingRequestFingerprint = fingerprint
+                            }
                             service.createBoostCampaign(
                                 targetType = targetType.name,
                                 targetId = targetId,
@@ -750,10 +774,14 @@ private fun BoostCampaignColumn(
                                 audienceScope = audience.name,
                                 durationDays = durationDays,
                                 targetUniversity = targetUniversity,
+                                requestId = pendingRequestId.orEmpty(),
                             ).onSuccess {
                                 confirmStart = false
+                                pendingRequestId = null
+                                pendingRequestFingerprint = null
                                 val charged = it.optLong("charged", quoteCost)
-                                message = "Boost started. " + formatter.format(charged) + " coins were charged for campaign delivery."
+                                it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
+                                message = "Boost started. " + formatter.format(charged) + " coins were reserved for campaign delivery."
                                 reloadState()
                             }.onFailure {
                                 error = boostUserMessage(it, "Unable to start this boost right now. Please try again.")
