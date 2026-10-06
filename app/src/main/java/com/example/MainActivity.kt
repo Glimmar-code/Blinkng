@@ -867,6 +867,27 @@ fun MainAppContent(
                             marketItems = uiState.marketItems,
                             myProfile = uiState.myProfile,
                             isDark = uiState.isDarkMode,
+                            onLikePost = { viewModel.togglePostLike(it) },
+                            onCommentPost = { viewModel.openCommentsForPost(it) },
+                            onBookmarkPost = { viewModel.toggleBookmark(it) },
+                            onProfileClick = { username ->
+                                dismissUtility { viewModel.openProfile(username) }
+                            },
+                            onListingClick = { listing ->
+                                dismissUtility {
+                                    viewModel.setTab(MainTab.MARKET)
+                                    viewModel.openProductDetail(listing)
+                                }
+                            },
+                            onClose = { dismissUtility() },
+                        )
+
+                        "boost" -> BlinkBoostGrowthRoute(
+                            posts = uiState.posts,
+                            reels = uiState.reels,
+                            marketItems = uiState.marketItems,
+                            myProfile = uiState.myProfile,
+                            isDark = uiState.isDarkMode,
                             onLikePost = { postId -> viewModel.togglePostLike(postId) },
                             onCommentPost = { postId ->
                                 dismissUtility { viewModel.openCommentsForPost(postId) }
