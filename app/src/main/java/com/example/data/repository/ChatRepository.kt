@@ -335,6 +335,13 @@ class ChatRepository(
         val isMuted: Boolean = false
     )
 
+    private data class InboxState(
+        val isArchived: Boolean = false,
+        val isPinned: Boolean = false,
+        val markedUnread: Boolean = false,
+        val requestStatus: String = "accepted"
+    )
+
     private fun isServerUuid(value: String?): Boolean =
         !value.isNullOrBlank() && runCatching { java.util.UUID.fromString(value) }.isSuccess
 
@@ -449,6 +456,65 @@ class ChatRepository(
         )
     }
 
+    private suspend fun setConversationInboxState(
+        conversationId: String,
+        archived: Boolean? = null,
+        pinned: Boolean? = null,
+        markedUnread: Boolean? = null
+    ): Boolean {
+        if (!isServerUuid(conversationId)) return false
+        val body = JSONObject().put("p_conversation_id", conversationId)
+        archived?.let { body.put("p_archived", it) }
+        pinned?.let { body.put("p_pinned", it) }
+        markedUnread?.let { body.put("p_marked_unread", it) }
+        return booleanRpc("set_chat_inbox_state", body)
+    }
+
+    suspend fun setConversationArchived(conversationId: String, archived: Boolean): Boolean =
+        setConversationInboxState(conversationId, archived = archived)
+
+    suspend fun setConversationPinned(conversationId: String, pinned: Boolean): Boolean =
+        setConversationInboxState(conversationId, pinned = pinned)
+
+    suspend fun setConversationMarkedUnread(conversationId: String, unread: Boolean): Boolean =
+        setConversationInboxState(conversationId, markedUnread = unread)
+
+    suspend fun respondMessageRequest(conversationId: String, accept: Boolean): Boolean {
+        if (!isServerUuid(conversationId)) return false
+        return booleanRpc(
+            "respond_direct_message_request",
+            JSONObject()
+                .put("p_conversation_id", conversationId)
+                .put("p_accept", accept)
+        )
+    }
+
+    suspend fun blockChatUser(username: String, blocked: Boolean = true): Boolean {
+        val clean = username.trim().removePrefix("@")
+        if (clean.isBlank()) return false
+        return booleanRpc(
+            "block_chat_user",
+            JSONObject()
+                .put("p_username", clean)
+                .put("p_blocked", blocked)
+        )
+    }
+
+    suspend fun forwardMessage(messageId: String, targetUsername: String): String? {
+        if (!isServerUuid(messageId)) return null
+        val cleanTarget = targetUsername.trim().removePrefix("@")
+        if (cleanTarget.isBlank()) return null
+        val raw = runCatching {
+            postAuthenticatedRpc(
+                "forward_chat_message",
+                JSONObject()
+                    .put("p_message_id", messageId)
+                    .put("p_target_username", cleanTarget)
+            )
+        }.getOrNull() ?: return null
+        return raw.trim().trim('"').takeIf(::isServerUuid)
+    }
+
     private suspend fun enrichMessageActions(messages: List<ChatMessage>): List<ChatMessage> {
         val serverIds = messages.map { it.id }.filter(::isServerUuid)
         if (serverIds.isEmpty()) return messages
@@ -526,17 +592,59 @@ class ChatRepository(
         }
     }
 
+    private suspend fun fetchInboxStates(conversationIds: List<String>): Map<String, InboxState> {
+        val ids = conversationIds.filter(::isServerUuid)
+        if (ids.isEmpty()) return emptyMap()
+        val raw = runCatching {
+            postAuthenticatedRpc(
+                "get_chat_inbox_state",
+                JSONObject().put("p_conversation_ids", org.json.JSONArray(ids))
+            )
+        }.getOrNull() ?: return emptyMap()
+        val array = runCatching { org.json.JSONArray(if (raw.isBlank()) "[]" else raw) }.getOrNull()
+            ?: return emptyMap()
+        return buildMap {
+            for (i in 0 until array.length()) {
+                val o = array.optJSONObject(i) ?: continue
+                val id = o.optString("conversation_id")
+                if (id.isBlank()) continue
+                put(
+                    id,
+                    InboxState(
+                        isArchived = o.optBoolean("is_archived", false),
+                        isPinned = o.optBoolean("is_pinned", false),
+                        markedUnread = o.optBoolean("marked_unread", false),
+                        requestStatus = o.optString("request_status").ifBlank { "accepted" }
+                    )
+                )
+            }
+        }
+    }
+
     private suspend fun applyConversationState(conversations: List<ChatConversation>): List<ChatConversation> {
-        val states = fetchConversationStates(conversations.map { it.id })
-        if (states.isEmpty()) return conversations
+        val conversationIds = conversations.map { it.id }
+        val states = fetchConversationStates(conversationIds)
+        val inboxStates = fetchInboxStates(conversationIds)
+        if (states.isEmpty() && inboxStates.isEmpty()) return conversations
+
         return conversations.mapNotNull { conversation ->
-            val state = states[conversation.id] ?: return@mapNotNull conversation
+            val state = states[conversation.id] ?: ConversationUserState()
+            val inbox = inboxStates[conversation.id] ?: InboxState()
             val cleared = state.clearedAt
             val lastAt = conversation.lastMessageRawTime.takeIf { it.isNotBlank() }?.let { raw ->
                 runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }.getOrNull()
             }
-            if (cleared != null && (lastAt == null || !lastAt.isAfter(cleared))) null
-            else conversation.copy(isMuted = state.isMuted)
+            if (cleared != null && (lastAt == null || !lastAt.isAfter(cleared))) {
+                null
+            } else {
+                conversation.copy(
+                    isMuted = state.isMuted,
+                    isArchived = inbox.isArchived,
+                    isConversationPinned = inbox.isPinned,
+                    isMarkedUnread = inbox.markedUnread,
+                    inboxCategory = if (inbox.requestStatus == "pending") "requests" else "primary"
+                )
+            }
         }
     }
 
