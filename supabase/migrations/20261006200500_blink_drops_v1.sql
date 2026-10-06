@@ -96,88 +96,60 @@ grant all on public.blink_drop_incentivized_interactions to service_role;
 -- Giveaway-paid engagement must never award social Rank Points/XP.
 -- XP is downstream of point_transactions, so suppressing the point transaction
 -- also prevents incentivized XP without changing normal organic actions.
-create or replace function public.award_points(
-    p_user_id uuid,
-    p_action_type text,
-    p_reference_id uuid default null
-) returns integer
-language plpgsql
-security definer
-set search_path=''
-as $$
+CREATE OR REPLACE FUNCTION public.award_points(p_user_id uuid, p_action_type text, p_reference_id uuid DEFAULT NULL::uuid)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
 declare
-    v_delta integer := case p_action_type
-        when 'view_post' then 1
-        when 'view_listing' then 1
-        when 'like_post' then 1
-        when 'comment' then 2
-        when 'save_post' then 2
-        when 'share_post' then 2
-        when 'like_comment' then 2
-        when 'reply_comment' then 2
-        when 'like_status' then 3
-        when 'create_status' then 5
-        when 'message_user' then 5
-        when 'reply_status' then 5
-        when 'create_post' then 15
-        when 'follow_user' then 3
-        else 0
-    end;
-    v_new_points bigint;
-    v_tx_id uuid;
+  v_delta integer := case p_action_type
+    when 'view_post' then 1
+    when 'like_post' then 1
+    when 'comment' then 2
+    when 'save_post' then 2
+    when 'share_post' then 2
+    when 'like_comment' then 2
+    when 'reply_comment' then 2
+    when 'like_status' then 3
+    when 'create_status' then 5
+    when 'message_user' then 5
+    when 'reply_status' then 5
+    when 'create_post' then 15
+    when 'follow_user' then 3
+    else 0 end;
+  v_new_points bigint;
 begin
-    if current_setting('blink.incentivized_action', true) = 'on' then
-        select coalesce(p.points,0) into v_new_points
-        from public.profiles p where p.id=p_user_id;
-        return coalesce(v_new_points,0)::integer;
-    end if;
 
-    if v_delta=0 then raise exception 'Unknown action_type: %',p_action_type; end if;
+  if current_setting('blink.incentivized_action', true) = 'on' then
+    return coalesce(
+      (select p.points::integer from public.profiles p where p.id=p_user_id),
+      0
+    );
+  end if;
 
-    if p_reference_id is not null then
-        insert into public.point_transactions(user_id,action_type,points_delta,reference_id)
-        values(p_user_id,p_action_type,v_delta,p_reference_id)
-        on conflict (user_id,action_type,reference_id)
-        where reference_id is not null
-        do nothing
-        returning id into v_tx_id;
-
-        if v_tx_id is null then
-            select coalesce(p.points,0) into v_new_points
-            from public.profiles p where p.id=p_user_id;
-            return coalesce(v_new_points,0)::integer;
-        end if;
-    else
-        insert into public.point_transactions(user_id,action_type,points_delta,reference_id)
-        values(p_user_id,p_action_type,v_delta,null)
-        returning id into v_tx_id;
-    end if;
-
-    update public.profiles
-       set points=coalesce(points,0)+v_delta,
-           updated_at=now()
-     where id=p_user_id
-    returning points into v_new_points;
-
-    if v_new_points is null then raise exception 'USER_NOT_FOUND'; end if;
-    return v_new_points::integer;
+  if v_delta = 0 then raise exception 'Unknown action_type: %', p_action_type; end if;
+  if p_reference_id is not null and exists(select 1 from public.point_transactions where user_id=p_user_id and action_type=p_action_type and reference_id=p_reference_id) then
+    select points into v_new_points from public.profiles where id=p_user_id;
+    return coalesce(v_new_points,0)::integer;
+  end if;
+  update public.profiles set points=coalesce(points,0)+v_delta, updated_at=now() where id=p_user_id returning points into v_new_points;
+  if v_new_points is null then raise exception 'USER_NOT_FOUND'; end if;
+  insert into public.point_transactions(user_id, action_type, points_delta, reference_id) values(p_user_id,p_action_type,v_delta,p_reference_id) on conflict do nothing;
+  return v_new_points::integer;
 end;
-$$;
+$function$
 
 revoke all on function public.award_points(uuid,text,uuid) from public, anon;
 grant execute on function public.award_points(uuid,text,uuid) to authenticated;
 
 -- Repost distribution credits are a second Rank Point path and need the same guard.
-create or replace function public.award_repost_distribution_points(
-  p_post_id uuid,
-  p_actor_id uuid,
-  p_action_type text
-)
-returns void
-language plpgsql
-security definer
-set search_path = ''
-as $$
+CREATE OR REPLACE FUNCTION public.award_repost_distribution_points(p_post_id uuid, p_actor_id uuid, p_action_type text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
 declare
   v_author_id uuid;
   v_reposter_id uuid;
@@ -185,34 +157,55 @@ declare
   v_credit_id uuid;
   v_action text := lower(trim(coalesce(p_action_type, '')));
 begin
-  if current_setting('blink.incentivized_action', true) = 'on' then return; end if;
-  if p_post_id is null or p_actor_id is null then return; end if;
-  if v_action not in ('repost','view','like','comment','save','share') then return; end if;
 
-  select fp.user_id into v_author_id
+  if current_setting('blink.incentivized_action', true) = 'on' then
+    return;
+  end if;
+
+  if p_post_id is null or p_actor_id is null then
+    return;
+  end if;
+
+  if v_action not in ('repost','view','like','comment','save','share') then
+    return;
+  end if;
+
+  select fp.user_id
+  into v_author_id
   from public.feed_posts fp
   where fp.id = p_post_id and fp.is_active = true;
 
-  if v_author_id is null then return; end if;
+  if v_author_id is null then
+    return;
+  end if;
 
   if v_action = 'repost' then
     v_reposter_id := p_actor_id;
     if not exists (
       select 1 from public.post_reposts r
       where r.post_id = p_post_id and r.user_id = p_actor_id
-    ) then return; end if;
+    ) then
+      return;
+    end if;
   else
-    if p_actor_id = v_author_id then return; end if;
-    select r.user_id into v_reposter_id
+    if p_actor_id = v_author_id then
+      return;
+    end if;
+
+    select r.user_id
+    into v_reposter_id
     from public.post_reposts r
     where r.post_id = p_post_id
       and r.user_id <> p_actor_id
       and exists (
-        select 1 from public.follows f
-        where f.follower_id = p_actor_id and f.following_id = r.user_id
+        select 1
+        from public.follows f
+        where f.follower_id = p_actor_id
+          and f.following_id = r.user_id
       )
       and not exists (
-        select 1 from public.blocks b
+        select 1
+        from public.blocks b
         where (b.blocker_id = p_actor_id and b.blocked_id = r.user_id)
            or (b.blocker_id = r.user_id and b.blocked_id = p_actor_id)
       )
@@ -220,7 +213,9 @@ begin
     limit 1;
   end if;
 
-  if v_reposter_id is null or v_reposter_id = v_author_id then return; end if;
+  if v_reposter_id is null or v_reposter_id = v_author_id then
+    return;
+  end if;
 
   v_points := case v_action
     when 'comment' then 2
@@ -237,10 +232,13 @@ begin
   on conflict (post_id, reposter_id, actor_id, action_type) do nothing
   returning id into v_credit_id;
 
-  if v_credit_id is null then return; end if;
+  if v_credit_id is null then
+    return;
+  end if;
 
   update public.profiles
-  set points = coalesce(points, 0) + v_points, updated_at = now()
+  set points = coalesce(points, 0) + v_points,
+      updated_at = now()
   where id in (v_author_id, v_reposter_id);
 
   insert into public.point_transactions(user_id, action_type, points_delta, reference_id)
@@ -248,18 +246,19 @@ begin
     (v_author_id, 'repost_origin_' || v_action, v_points, p_post_id),
     (v_reposter_id, 'repost_distribution_' || v_action, v_points, p_post_id);
 end;
-$$;
+$function$
+
 revoke all on function public.award_repost_distribution_points(uuid,uuid,text)
 from public, anon, authenticated;
 
 -- Personal recommendation learning is also kept organic. Counts remain visible publicly,
 -- but a Drop-paid like/comment/save cannot train the viewer's feed/reels interests.
-create or replace function private_ranking.capture_native_signal()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
+CREATE OR REPLACE FUNCTION private_ranking.capture_native_signal()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
 declare
   v_user uuid;
   v_target text;
@@ -269,59 +268,65 @@ declare
   v_game_type text;
   v_score integer;
 begin
+
   if current_setting('blink.incentivized_action', true) = 'on' then
-    if tg_op='DELETE' then return old; else return new; end if;
+    if tg_op='DELETE' then return old; end if;
+    return new;
   end if;
 
-  if tg_table_name='post_likes' then
-    if tg_op='DELETE' then v_user:=old.user_id; v_post_id:=old.post_id;
-    else v_user:=new.user_id; v_post_id:=new.post_id; end if;
-    v_delta:=case when tg_op='DELETE' then -3 else 3 end;
-  elsif tg_table_name='comments' then
-    if tg_op='DELETE' then v_user:=old.author_id; v_post_id:=old.post_id;
-    else v_user:=new.author_id; v_post_id:=new.post_id; end if;
-    v_delta:=case when tg_op='DELETE' then -4 else 4 end;
-  elsif tg_table_name='post_bookmarks' then
-    if tg_op='DELETE' then v_user:=old.user_id; v_post_id:=old.post_id;
-    else v_user:=new.user_id; v_post_id:=new.post_id; end if;
-    v_delta:=case when tg_op='DELETE' then -4 else 4 end;
-  elsif tg_table_name='post_shares' then
-    if tg_op='DELETE' then v_user:=old.user_id; v_post_id:=old.post_id;
-    else v_user:=new.user_id; v_post_id:=new.post_id; end if;
-    v_delta:=case when tg_op='DELETE' then -5 else 5 end;
-  elsif tg_table_name='marketplace_wishlist' then
-    if tg_op='DELETE' then v_user:=old.user_id; v_target:=old.item_id::text;
-    else v_user:=new.user_id; v_target:=new.item_id::text; end if;
-    v_delta:=case when tg_op='DELETE' then -4 else 4 end;
+  if tg_table_name = 'post_likes' then
+    if tg_op = 'DELETE' then v_user := old.user_id; v_post_id := old.post_id;
+    else v_user := new.user_id; v_post_id := new.post_id; end if;
+    v_delta := case when tg_op = 'DELETE' then -3 else 3 end;
+  elsif tg_table_name = 'comments' then
+    if tg_op = 'DELETE' then v_user := old.author_id; v_post_id := old.post_id;
+    else v_user := new.author_id; v_post_id := new.post_id; end if;
+    v_delta := case when tg_op = 'DELETE' then -4 else 4 end;
+  elsif tg_table_name = 'post_bookmarks' then
+    if tg_op = 'DELETE' then v_user := old.user_id; v_post_id := old.post_id;
+    else v_user := new.user_id; v_post_id := new.post_id; end if;
+    v_delta := case when tg_op = 'DELETE' then -4 else 4 end;
+  elsif tg_table_name = 'post_shares' then
+    if tg_op = 'DELETE' then v_user := old.user_id; v_post_id := old.post_id;
+    else v_user := new.user_id; v_post_id := new.post_id; end if;
+    v_delta := case when tg_op = 'DELETE' then -5 else 5 end;
+  elsif tg_table_name = 'marketplace_wishlist' then
+    if tg_op = 'DELETE' then v_user := old.user_id; v_target := old.item_id::text;
+    else v_user := new.user_id; v_target := new.item_id::text; end if;
+    v_delta := case when tg_op = 'DELETE' then -4 else 4 end;
     perform private_ranking.apply_target_signal(v_user,'market','market_item',v_target,v_delta);
-    if tg_op='DELETE' then return old; else return new; end if;
-  elsif tg_table_name='game_sessions' then
-    if tg_op='DELETE' then v_user:=old.user_id; v_game_type:=old.game_type; v_score:=old.score;
-    else v_user:=new.user_id; v_game_type:=new.game_type; v_score:=new.score; end if;
-    v_delta:=least(4::numeric,1::numeric+greatest(0,coalesce(v_score,0))::numeric/200::numeric);
-    if tg_op='DELETE' then v_delta:=-v_delta; end if;
+    if tg_op = 'DELETE' then return old; else return new; end if;
+  elsif tg_table_name = 'game_sessions' then
+    if tg_op = 'DELETE' then
+      v_user := old.user_id; v_game_type := old.game_type; v_score := old.score;
+    else
+      v_user := new.user_id; v_game_type := new.game_type; v_score := new.score;
+    end if;
+    v_delta := least(4::numeric,1::numeric + greatest(0,coalesce(v_score,0))::numeric / 200::numeric);
+    if tg_op = 'DELETE' then v_delta := -v_delta; end if;
     perform private_ranking.apply_target_signal(v_user,'game','game',v_game_type,v_delta);
-    if tg_op='DELETE' then return old; else return new; end if;
+    if tg_op = 'DELETE' then return old; else return new; end if;
   else
-    if tg_op='DELETE' then return old; else return new; end if;
+    if tg_op = 'DELETE' then return old; else return new; end if;
   end if;
 
   select case
-      when fp.is_reel or nullif(fp.video_url,'') is not null then 'reels'
-      else 'feed'
-    end
-    into v_surface
+    when fp.is_reel or nullif(fp.video_url,'') is not null then 'reels'
+    else 'feed'
+  end
+  into v_surface
   from public.feed_posts fp
-  where fp.id=v_post_id;
+  where fp.id = v_post_id;
 
   if v_surface is not null then
     perform private_ranking.apply_target_signal(v_user,v_surface,'post',v_post_id::text,v_delta);
     perform private_ranking.refresh_discovery_interest_cache(v_user);
   end if;
 
-  if tg_op='DELETE' then return old; else return new; end if;
+  if tg_op = 'DELETE' then return old; else return new; end if;
 end;
-$$;
+$function$
+
 revoke all on function private_ranking.capture_native_signal()
 from public, anon, authenticated;
 
