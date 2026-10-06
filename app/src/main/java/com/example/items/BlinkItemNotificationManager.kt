@@ -19,7 +19,6 @@ import com.example.notification.BlinkInAppNotificationCenter
 import com.example.notification.BlinkInAppNotificationDestination
 import com.example.notification.BlinkNotificationHelper
 import java.time.LocalDate
-import kotlin.math.absoluteValue
 
 object BlinkItemNotificationManager {
     private const val GROUP_ITEMS = "blink_items_group"
@@ -149,7 +148,7 @@ object BlinkItemNotificationManager {
                     notifySystem(
                         context = context,
                         channel = CHANNEL_WEATHER,
-                        notificationId = WEATHER_ID_BASE + newest.id.hashCode().absoluteValue % 800,
+                        notificationId = WEATHER_ID_BASE + (newest.id.hashCode() and 0x7fffffff) % 800,
                         title = title,
                         body = body
                     )
