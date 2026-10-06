@@ -76,6 +76,7 @@ data class DesktopFeedPost(
     val shareCount: Int,
     val viewCount: Int,
     val isReel: Boolean,
+    val isPinned: Boolean = false,
     val createdAt: String,
     val isLiked: Boolean,
 )
