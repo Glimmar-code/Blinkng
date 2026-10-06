@@ -2890,6 +2890,31 @@ suspend fun uploadPostMedia(
         }
     }
 
+    suspend fun fetchMarketItemById(itemId: String): MarketItem? = withContext(Dispatchers.IO) {
+        if (!isValidUuid(itemId)) return@withContext null
+        try {
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/market_items?select=*&id=eq.${encodeValue(itemId)}&limit=1",
+                    authenticated = true
+                ).get().build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "This Market listing could not be loaded."))
+                }
+                val array = JSONArray(if (raw.isBlank()) "[]" else raw)
+                if (array.length() == 0) return@use null
+                val item = parseMarketItem(array.getJSONObject(0))
+                val saved = fetchMyMarketWishlistIds()
+                item.copy(isSaved = item.id in saved)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "MARKET_FETCH_BY_ID exception", e)
+            null
+        }
+    }
+
     suspend fun fetchMyMarketItems(limit: Int = 100): List<MarketItem> = withContext(Dispatchers.IO) {
         val uid = getCurrentUserId() ?: return@withContext emptyList()
         try {
