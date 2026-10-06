@@ -820,6 +820,24 @@ fun CreatePostSheet(
                             SelectedImagePreview(
                                 uri = uri,
                                 index = index,
+                                canMoveLeft = index > 0,
+                                canMoveRight = index < selectedImages.lastIndex,
+                                onMoveLeft = {
+                                    if (index > 0) {
+                                        selectedImages = selectedImages.toMutableList().also { items ->
+                                            val value = items.removeAt(index)
+                                            items.add(index - 1, value)
+                                        }
+                                    }
+                                },
+                                onMoveRight = {
+                                    if (index < selectedImages.lastIndex) {
+                                        selectedImages = selectedImages.toMutableList().also { items ->
+                                            val value = items.removeAt(index)
+                                            items.add(index + 1, value)
+                                        }
+                                    }
+                                },
                                 onRemove = {
                                     selectedImages = selectedImages.toMutableList().also {
                                         it.removeAt(index)
@@ -968,6 +986,122 @@ fun CreatePostSheet(
                                 enabled = !isSubmitting
                             )
                         }
+
+                        TextButton(
+                            onClick = { showAdvancedSettings = !showAdvancedSettings },
+                            enabled = !isSubmitting,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (showAdvancedSettings) "Hide extra settings" else "More post settings")
+                        }
+
+                        if (showAdvancedSettings) {
+                            OutlinedTextField(
+                                value = location,
+                                onValueChange = { location = it.take(120) },
+                                enabled = !isSubmitting,
+                                modifier = Modifier.fillMaxWidth(),
+                                leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
+                                label = { Text("Location or campus tag") },
+                                placeholder = { Text("e.g. FUTA South Gate") },
+                                singleLine = true
+                            )
+
+                            Spacer(Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = linkUrl,
+                                onValueChange = { linkUrl = it.take(500) },
+                                enabled = !isSubmitting,
+                                modifier = Modifier.fillMaxWidth(),
+                                leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
+                                label = { Text("Link") },
+                                placeholder = { Text("https://example.com") },
+                                singleLine = true,
+                                isError = linkUrl.isNotBlank() && !linkValid,
+                                supportingText = {
+                                    if (linkUrl.isNotBlank() && !linkValid) {
+                                        Text("Enter a valid web address.")
+                                    } else if (normalizedLinkUrl != null) {
+                                        Text(Uri.parse(normalizedLinkUrl).host.orEmpty())
+                                    }
+                                }
+                            )
+
+                            if (selectedImages.isNotEmpty() || selectedVideo != null) {
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = altText,
+                                    onValueChange = { altText = it.take(500) },
+                                    enabled = !isSubmitting,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Media description") },
+                                    placeholder = { Text("Describe the media for accessibility") },
+                                    minLines = 2,
+                                    maxLines = 4
+                                )
+                            }
+
+                            if (selectedVideo != null) {
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = audioTitle,
+                                    onValueChange = { audioTitle = it.take(120) },
+                                    enabled = !isSubmitting,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Audio title") },
+                                    placeholder = { Text("Original audio") },
+                                    singleLine = true
+                                )
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Hide like count", fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "People can still like the post.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = hideLikes,
+                                    onCheckedChange = { hideLikes = it },
+                                    enabled = !isSubmitting
+                                )
+                            }
+
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Temporary post", fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "Use BLINK's existing disappearing-post policy.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = isDisappearing,
+                                    onCheckedChange = { isDisappearing = it },
+                                    enabled = !isSubmitting
+                                )
+                            }
+
+                            Text(
+                                "Tip: @username mentions and #topics are detected automatically from your text.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
                     }
                 }
 
@@ -993,9 +1127,22 @@ fun CreatePostSheet(
                                     mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
                                     audience = draft.audience
                                     category = draft.category
+                                    location = draft.location.orEmpty()
+                                    linkUrl = draft.linkUrl.orEmpty()
+                                    allowComments = draft.allowComments
+                                    hideLikes = draft.hideLikes
+                                    isDisappearing = draft.isDisappearing
+                                    altText = draft.altText.orEmpty()
+                                    audioTitle = draft.audioTrack.orEmpty()
+                                    pollQuestion = draft.pollQuestion
+                                    pollOptions = draft.pollOptions
+                                        .takeIf { it.size >= 2 }
+                                        ?: listOf("", "")
+                                    showPoll = draft.pollQuestion.isNotBlank() &&
+                                        draft.pollOptions.count { it.isNotBlank() } >= 2
                                     textPresentation = if (draft.textStyle.isNullOrBlank()) "plain" else "color"
                                     selectedTextStyle = draft.textStyle ?: "aurora"
-                                    showPoll = false
+                                    clientRequestId = UUID.randomUUID().toString()
                                 },
                                 onDelete = { onDeleteDraft(draft.id) }
                             )
@@ -1035,34 +1182,70 @@ fun CreatePostSheet(
                         Text("Save draft")
                     }
 
-                    Button(
-                        onClick = ::submit,
-                        enabled = canSubmit,
+                    OutlinedButton(
+                        onClick = { showPreviewDialog = true },
+                        enabled = hasContent && !isSubmitting,
                         modifier = Modifier.weight(1f)
                     ) {
-                        if (isSubmitting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text("Publishing")
-                        } else {
-                            Text(if (selectedVideo != null) "Post reel" else "Publish")
-                        }
+                        Text("Preview")
                     }
                 }
 
                 if (scheduledPosts.isNotEmpty()) {
                     Text(
-                        "${scheduledPosts.size} scheduled post${if (scheduledPosts.size == 1) "" else "s"}",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        "Scheduled posts",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleSmall
                     )
+                    scheduledPosts.take(3).forEach { scheduled ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f)
+                            )
+                        ) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(
+                                    scheduled.post.text.ifBlank {
+                                        if (scheduled.post.isReel) "Scheduled reel" else "Scheduled post"
+                                    },
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    scheduled.scheduledTimeFormatted,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    TextButton(
+                                        onClick = { onCancelScheduledPost(scheduled.id) },
+                                        enabled = !isSubmitting
+                                    ) { Text("Cancel") }
+                                    TextButton(
+                                        onClick = { onPublishScheduledPostNow(scheduled.id) },
+                                        enabled = !isSubmitting
+                                    ) { Text("Publish now") }
+                                }
+                            }
+                        }
+                    }
+                    if (scheduledPosts.size > 3) {
+                        Text(
+                            "+${scheduledPosts.size - 3} more scheduled",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -1091,6 +1274,13 @@ fun CreatePostSheet(
                             modifier = Modifier.fillMaxWidth()
                         ) { Text(label) }
                     }
+                    Button(
+                        onClick = ::chooseCustomSchedule,
+                        enabled = !isSubmitting,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Choose date & time")
+                    }
                 }
             },
             confirmButton = {
@@ -1115,6 +1305,7 @@ fun CreatePostSheet(
                 TextButton(
                     onClick = {
                         showDiscardDialog = false
+                        clearComposerPersistence()
                         onDismiss()
                     }
                 ) {
@@ -1357,6 +1548,10 @@ private fun AuthorComposerHeader(
 private fun SelectedImagePreview(
     uri: String,
     index: Int,
+    canMoveLeft: Boolean,
+    canMoveRight: Boolean,
+    onMoveLeft: () -> Unit,
+    onMoveRight: () -> Unit,
     onRemove: () -> Unit
 ) {
     Box(
@@ -1388,6 +1583,44 @@ private fun SelectedImagePreview(
                     tint = Color.White,
                     modifier = Modifier.padding(6.dp)
                 )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (canMoveLeft) {
+                IconButton(
+                    onClick = onMoveLeft,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Surface(shape = CircleShape, color = Color.Black.copy(alpha = .62f)) {
+                        Icon(
+                            Icons.Default.KeyboardArrowLeft,
+                            contentDescription = "Move image left",
+                            tint = Color.White,
+                            modifier = Modifier.padding(5.dp)
+                        )
+                    }
+                }
+            }
+            if (canMoveRight) {
+                IconButton(
+                    onClick = onMoveRight,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Surface(shape = CircleShape, color = Color.Black.copy(alpha = .62f)) {
+                        Icon(
+                            Icons.Default.KeyboardArrowRight,
+                            contentDescription = "Move image right",
+                            tint = Color.White,
+                            modifier = Modifier.padding(5.dp)
+                        )
+                    }
+                }
             }
         }
     }
