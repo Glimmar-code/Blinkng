@@ -314,6 +314,33 @@ fun BlinkDropsRoute(
                     )
                 }
 
+                analytics?.let { value ->
+                    item { DropAnalyticsCard(value, formatter) }
+                }
+
+                if (!isOnline) {
+                    item {
+                        StatusCard(
+                            "You're offline. Existing Drop history stays visible, but rewards and spending wait until you reconnect.",
+                            isError = false,
+                        )
+                    }
+                }
+
+                if (error != null && state == null) {
+                    item {
+                        OutlinedButton(
+                            onClick = { refresh() },
+                            enabled = isOnline && !loading,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Retry Drops")
+                        }
+                    }
+                }
+
                 error?.let { value ->
                     item { StatusCard(value, isError = true) }
                 }
@@ -356,10 +383,39 @@ fun BlinkDropsRoute(
                         "Your Drops",
                         "Reserved coins stay locked until claimed, cancelled or expired."
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        listOf("ALL", "ACTIVE", "EXPIRED", "CANCELLED").forEach { status ->
+                            FilterChip(
+                                selected = historyFilter == status,
+                                onClick = { historyFilter = status },
+                                label = {
+                                    Text(
+                                        when (status) {
+                                            "EXPIRED" -> "Ended"
+                                            else -> status.lowercase().replaceFirstChar { it.uppercase() }
+                                        }
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = historyQuery,
+                        onValueChange = { historyQuery = it.take(60) },
+                        label = { Text("Search your Drops") },
+                        placeholder = { Text("Post, Reel, action or status") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
 
                 if (myDrops.isEmpty()) {
-                    item { EmptyCard("You have not organized a BLINK Drop yet.") }
+                    item {
+                        EmptyCard(
+                            if (allMyDrops.isEmpty()) "You have not organized a BLINK Drop yet."
+                            else "No Drops match this history filter."
+                        )
+                    }
                 } else {
                     items(myDrops, key = { "my-drop-${it.id}" }) { drop ->
                         DropCard(
@@ -387,6 +443,19 @@ fun BlinkDropsRoute(
                                 }
                             } else null,
                         )
+                    }
+                }
+
+                if (receipts.isNotEmpty()) {
+                    item {
+                        Spacer(Modifier.height(4.dp))
+                        SectionHeader(
+                            "Growth receipts",
+                            "Every Drop reserve, reward and refund stays auditable in your Blink Coin ledger."
+                        )
+                    }
+                    items(receipts.take(12), key = { "drop-receipt-" + it.optString("id") }) { receipt ->
+                        DropReceiptCard(receipt, formatter)
                     }
                 }
             }
