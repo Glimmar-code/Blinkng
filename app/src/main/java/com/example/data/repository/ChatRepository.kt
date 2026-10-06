@@ -421,6 +421,26 @@ class ChatRepository(
         )
     }
 
+    suspend fun updateConversationPresence(
+        conversationId: String,
+        deviceId: String,
+        state: String,
+        ttlSeconds: Int = 30
+    ): Boolean {
+        if (!isServerUuid(conversationId) || deviceId.isBlank()) return false
+        val cleanState = state.lowercase().takeIf {
+            it in setOf("online", "typing", "recording", "uploading")
+        } ?: return false
+        return booleanRpc(
+            "upsert_conversation_presence",
+            JSONObject()
+                .put("p_conversation_id", conversationId)
+                .put("p_device_id", deviceId.take(200))
+                .put("p_state", cleanState)
+                .put("p_ttl_seconds", ttlSeconds.coerceIn(5, 120))
+        )
+    }
+
     suspend fun reportConversation(conversationId: String, reason: String): Boolean {
         if (!isServerUuid(conversationId) || reason.isBlank()) return false
         return booleanRpc(
