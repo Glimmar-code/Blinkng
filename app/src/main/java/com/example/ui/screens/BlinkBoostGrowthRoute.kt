@@ -1344,17 +1344,37 @@ private fun CampaignQuoteCard(
                     val cost = quote.optLong("coin_cost", 0L)
                     val low = quote.optLong("estimated_reach_low", 0L)
                     val high = quote.optLong("estimated_reach_high", 0L)
+                    val audienceCount = quote.optLong("audience_user_count", 0L)
+                    val dailyLow = quote.optLong("estimated_daily_reach_low", 0L)
+                    val dailyHigh = quote.optLong("estimated_daily_reach_high", 0L)
+                    val remainingAfter = quote.optLong(
+                        "remaining_balance_after_reserve",
+                        balance?.minus(cost) ?: Long.MIN_VALUE,
+                    )
                     Text(
                         formatter.format(cost) + " Blink Coins",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Black,
                     )
                     Text("Estimated reach: " + formatter.format(low) + "–" + formatter.format(high))
+                    if (dailyHigh > 0) {
+                        Text("Expected daily delivery: " + formatter.format(dailyLow) + "–" + formatter.format(dailyHigh))
+                    }
+                    if (audienceCount > 0) {
+                        Text("Audience preview: " + formatter.format(audienceCount) + " eligible BLINK users")
+                    }
                     Text(
                         balance?.let { "Balance: " + formatter.format(it) + " coins" }
                             ?: "Balance unavailable",
                         color = if (balance == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                     )
+                    if (remainingAfter != Long.MIN_VALUE) {
+                        Text(
+                            "After reserve: " + formatter.format(remainingAfter.coerceAtLeast(0L)) + " coins",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Text(
                         "Estimates are not guarantees. Paid delivery is marked Promoted and stays separate from organic Trending.",
                         style = MaterialTheme.typography.bodySmall,
@@ -1396,17 +1416,147 @@ private fun ActiveCampaignCard(
                 Spacer(Modifier.weight(1f))
                 Text(formatter.format(budget) + " coins", style = MaterialTheme.typography.labelMedium)
             }
+            val progress = if (budget <= 0L) 0f else (spent.toFloat() / budget.toFloat()).coerceIn(0f, 1f)
+            val conversion = if (impressions <= 0L) 0.0 else opens.toDouble() * 100.0 / impressions.toDouble()
+            LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
             Text(
-                impressions.toString() + " promoted impressions • " + opens + " opens",
+                ((progress * 100).toInt()).toString() + "% delivered • " +
+                    formatter.format(impressions) + " impressions • " +
+                    formatter.format(opens) + " opens",
                 style = MaterialTheme.typography.bodySmall,
             )
             Text(
-                "Spent " + formatter.format(spent) + " • Reserved remaining " + formatter.format(remaining) + " coins",
+                "Open rate: " + String.format(Locale.US, "%.1f%%", conversion) +
+                    " • Spent " + formatter.format(spent) +
+                    " • Reserved " + formatter.format(remaining),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            campaign.optString("ends_at").takeIf { it.isNotBlank() }?.let {
+                Text(
+                    "Ends " + shortGrowthDate(it),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             OutlinedButton(onClick = onCancel, enabled = !working) {
                 Text("Cancel & refund unused budget")
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoostAnalyticsCard(
+    analytics: JSONObject,
+    formatter: NumberFormat,
+) {
+    val campaigns = analytics.optInt("campaigns", 0)
+    val spent = analytics.optLong("spent", 0L)
+    val refunded = analytics.optLong("refunded", 0L)
+    val impressions = analytics.optLong("impressions", 0L)
+    val opens = analytics.optLong("opens", 0L)
+    val conversion = analytics.optDouble("conversion_rate", 0.0)
+    Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text("Boost performance", fontWeight = FontWeight.Black)
+            Text(
+                formatter.format(campaigns) + " campaigns • " +
+                    formatter.format(impressions) + " impressions • " +
+                    formatter.format(opens) + " opens",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "Spent " + formatter.format(spent) + " • Refunded " + formatter.format(refunded) +
+                    " • Open rate " + String.format(Locale.US, "%.1f%%", conversion),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CampaignHistoryCard(
+    campaign: JSONObject,
+    formatter: NumberFormat,
+) {
+    val status = campaign.optString("status", "ENDED")
+    val target = campaign.optString("target_type", "BOOST")
+    val objective = campaign.optString("objective", "")
+    val budget = campaign.optLong("coin_budget", 0L)
+    val spent = campaign.optLong("coin_spent", 0L)
+    val refunded = campaign.optLong("coin_refunded", 0L)
+    val impressions = campaign.optLong("promoted_impressions", 0L)
+    val opens = campaign.optLong("promoted_opens", 0L)
+    Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    target.lowercase().replaceFirstChar { it.uppercase() } +
+                        if (objective.isBlank()) "" else " • " + objective.lowercase().replace('_',' '),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                AssistChip(
+                    onClick = {},
+                    label = { Text(if (status == "ENDED") "Completed" else status.lowercase().replaceFirstChar { it.uppercase() }) },
+                )
+            }
+            Text(
+                "Budget " + formatter.format(budget) +
+                    " • Spent " + formatter.format(spent) +
+                    " • Refunded " + formatter.format(refunded),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                formatter.format(impressions) + " impressions • " + formatter.format(opens) + " opens",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            campaign.optString("created_at").takeIf { it.isNotBlank() }?.let {
+                Text("Started " + shortGrowthDate(it), style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GrowthReceiptCard(
+    receipt: JSONObject,
+    formatter: NumberFormat,
+) {
+    val amount = receipt.optLong("amount", 0L)
+    val kind = receipt.optString("kind").replace('_',' ').lowercase().replaceFirstChar { it.uppercase() }
+    Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(receipt.optString("item_name").ifBlank { kind }, fontWeight = FontWeight.SemiBold)
+                Text(
+                    kind + " • " + shortGrowthDate(receipt.optString("created_at")),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    (if (amount > 0) "+" else "") + formatter.format(amount) + " coins",
+                    fontWeight = FontWeight.Black,
+                )
+                Text(
+                    "Balance " + formatter.format(receipt.optLong("balance_after", 0L)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -1439,6 +1589,9 @@ private fun BalanceCard(
         }
     }
 }
+
+private fun shortGrowthDate(raw: String): String =
+    raw.replace('T', ' ').replace("Z", "").take(16).ifBlank { "—" }
 
 private fun boostUserMessage(error: Throwable, fallback: String): String {
     val raw = error.message.orEmpty()
