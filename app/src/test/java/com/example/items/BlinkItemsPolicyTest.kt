@@ -2,6 +2,7 @@ package com.example.items
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BlinkItemsPolicyTest {
@@ -52,6 +53,6 @@ class BlinkItemsPolicyTest {
     fun officialWeatherSeveritySortsAboveMinorAlerts() {
         val severe = BlinkItemsPolicy.weatherPriority("severe", "expected")
         val minor = BlinkItemsPolicy.weatherPriority("minor", "immediate")
-        assert(severe > minor)
+        assertTrue(severe > minor)
     }
 }
