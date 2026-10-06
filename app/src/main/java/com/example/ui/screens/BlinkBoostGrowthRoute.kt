@@ -349,7 +349,7 @@ private fun BoostCampaignColumn(
 
     LaunchedEffect(targetType, targetId, boostPower, objective, audience, durationDays, selectedUniversity) {
         quote = null
-        if (!targetReady) return@LaunchedEffect
+        if (!targetReady || !isOnline) return@LaunchedEffect
         delay(260)
         quoteLoading = true
         service.quoteBoostCampaign(
@@ -362,6 +362,7 @@ private fun BoostCampaignColumn(
             targetUniversity = targetUniversity,
         ).onSuccess {
             quote = it
+            it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
             error = null
         }.onFailure {
             error = boostUserMessage(it, "Unable to calculate this boost right now. Please try again.")
