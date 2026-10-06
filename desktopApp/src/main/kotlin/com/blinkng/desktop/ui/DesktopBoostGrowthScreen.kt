@@ -482,12 +482,21 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
                             )
                             Text(campaign.optString("status"), fontSize = 11.sp)
                         }
+                        val budget = campaign.optLong("coin_budget", 0L)
+                        val spent = campaign.optLong("coin_spent", 0L)
+                        val refunded = campaign.optLong("coin_refunded", 0L)
+                        val remaining = (budget - spent - refunded).coerceAtLeast(0L)
                         Text(
                             campaign.optInt("boost_power").toString() + "% power · " +
                                 campaign.optInt("duration_days").toString() + " days · " +
-                                formatter.format(campaign.optLong("coin_budget")) + " coins",
+                                formatter.format(budget) + " reserved coins",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp,
+                        )
+                        Text(
+                            "Spent " + formatter.format(spent) + " · Reserved remaining " + formatter.format(remaining),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp,
                         )
                         if (active) {
                             OutlinedButton(
