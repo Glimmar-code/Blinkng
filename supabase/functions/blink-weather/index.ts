@@ -3,6 +3,46 @@ const JSON_HEADERS = {
   "Cache-Control": "private, max-age=300",
 };
 
+const WEATHER_CACHE_TTL_MS = 10 * 60 * 1_000;
+const WEATHER_CACHE_MAX_ENTRIES = 500;
+const MAX_OFFICIAL_ALERTS = 5;
+
+type JsonRecord = Record<string, unknown>;
+
+type OfficialAlert = {
+  id: string;
+  title: string;
+  description: string;
+  instruction: string;
+  source: string;
+  severity: string;
+  urgency: string;
+  startsAt: number;
+  endsAt: number;
+  official: boolean;
+};
+
+type WeatherPayload = {
+  temperatureC: number;
+  feelsLikeC: number;
+  humidityPercent: number;
+  windKph: number;
+  condition: string;
+  precipitationProbabilityPercent: number;
+  nextRainAt: number | null;
+  provider: string;
+  officialAlertsAvailable: boolean;
+  alerts: OfficialAlert[];
+  fetchedAt: number;
+};
+
+type CacheEntry = {
+  expiresAt: number;
+  payload: WeatherPayload;
+};
+
+const weatherCache = new Map<string, CacheEntry>();
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
@@ -12,6 +52,37 @@ function finiteCoordinate(value: string | null, min: number, max: number): numbe
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < min || parsed > max) return null;
   return parsed;
+}
+
+function roundedCoordinate(value: number): number {
+  // Weather does not need precise GPS. About 0.01° is roughly 1 km and lets nearby
+  // users share a cache entry while avoiding sending exact device coordinates.
+  return Math.round(value * 100) / 100;
+}
+
+function cacheKey(latitude: number, longitude: number): string {
+  return `${latitude.toFixed(2)}:${longitude.toFixed(2)}`;
+}
+
+function getCachedWeather(key: string): WeatherPayload | null {
+  const cached = weatherCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    weatherCache.delete(key);
+    return null;
+  }
+  return cached.payload;
+}
+
+function setCachedWeather(key: string, payload: WeatherPayload): void {
+  if (weatherCache.size >= WEATHER_CACHE_MAX_ENTRIES) {
+    const oldestKey = weatherCache.keys().next().value as string | undefined;
+    if (oldestKey) weatherCache.delete(oldestKey);
+  }
+  weatherCache.set(key, {
+    expiresAt: Date.now() + WEATHER_CACHE_TTL_MS,
+    payload,
+  });
 }
 
 function weatherCondition(code: number): string {
@@ -28,32 +99,35 @@ function weatherCondition(code: number): string {
   return "Weather";
 }
 
-type OfficialAlert = {
-  id: string;
-  title: string;
-  description: string;
-  instruction: string;
-  source: string;
-  severity: string;
-  urgency: string;
-  startsAt: number;
-  endsAt: number;
-  official: boolean;
-};
+function asRecord(value: unknown): JsonRecord {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as JsonRecord
+    : {};
+}
 
-async function fetchOfficialAlerts(
-  latitude: number,
-  longitude: number,
-): Promise<{ available: boolean; alerts: OfficialAlert[] }> {
-  const key = (Deno.env.get("OPENWEATHER_API_KEY") || "").trim();
-  if (!key) return { available: false, alerts: [] };
+function englishDescription(value: unknown): string {
+  if (typeof value === "string") return value.trim().slice(0, 8_000);
+  if (!Array.isArray(value)) return "";
 
-  const url = new URL("https://api.openweathermap.org/data/3.0/onecall");
-  url.searchParams.set("lat", String(latitude));
-  url.searchParams.set("lon", String(longitude));
-  url.searchParams.set("exclude", "current,minutely,hourly,daily");
-  url.searchParams.set("units", "metric");
-  url.searchParams.set("appid", key);
+  const rows = value
+    .map(asRecord)
+    .filter((row) => typeof row.description === "string");
+
+  const preferred = rows.find((row) =>
+    String(row.language || "").toLowerCase().startsWith("en")
+  ) ?? rows[0];
+
+  return String(preferred?.description || "").trim().slice(0, 8_000);
+}
+
+async function fetchOpenWeatherAlert(
+  alertId: string,
+  apiKey: string,
+): Promise<OfficialAlert | null> {
+  const url = new URL(
+    `https://api.openweathermap.org/data/4.0/onecall/alert/${encodeURIComponent(alertId)}`,
+  );
+  url.searchParams.set("appid", apiKey);
 
   try {
     const response = await fetch(url, {
@@ -61,35 +135,90 @@ async function fetchOfficialAlerts(
       signal: AbortSignal.timeout(8_000),
     });
     if (!response.ok) {
-      console.warn("blink-weather official alerts unavailable", response.status);
+      console.warn("blink-weather alert detail unavailable", response.status);
+      return null;
+    }
+
+    const item = asRecord(await response.json());
+    const source = String(item.sender_name || "Official weather authority").trim();
+    const tags = Array.isArray(item.tags)
+      ? item.tags.map(String).map((tag) => tag.trim()).filter(Boolean)
+      : [];
+    const title = String(item.event || "").trim() ||
+      tags.slice(0, 3).join(", ") ||
+      "Weather alert";
+    const start = Number(item.start || 0);
+    const end = Number(item.end || 0);
+
+    return {
+      id: String(item.id || alertId).trim() || alertId,
+      title,
+      description: englishDescription(item.description),
+      instruction: "",
+      source,
+      // One Call 4.0 alert detail currently exposes source/event/start/end/description/tags,
+      // but not a standardized severity/urgency pair. Do not invent those values.
+      severity: "unknown",
+      urgency: "unknown",
+      startsAt: Number.isFinite(start) ? start : 0,
+      endsAt: Number.isFinite(end) ? end : 0,
+      official: true,
+    };
+  } catch (error) {
+    console.warn("blink-weather alert detail request failed", error);
+    return null;
+  }
+}
+
+async function fetchOfficialAlerts(
+  latitude: number,
+  longitude: number,
+): Promise<{ available: boolean; alerts: OfficialAlert[] }> {
+  const apiKey = (Deno.env.get("OPENWEATHER_API_KEY") || "").trim();
+  if (!apiKey) return { available: false, alerts: [] };
+
+  const url = new URL("https://api.openweathermap.org/data/4.0/onecall/current");
+  url.searchParams.set("lat", String(latitude));
+  url.searchParams.set("lon", String(longitude));
+  url.searchParams.set("units", "metric");
+  url.searchParams.set("lang", "en");
+  url.searchParams.set("appid", apiKey);
+
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) {
+      console.warn("blink-weather One Call 4.0 unavailable", response.status);
       return { available: false, alerts: [] };
     }
 
-    const payload = await response.json() as Record<string, unknown>;
-    const rows = Array.isArray(payload.alerts) ? payload.alerts : [];
-    const alerts: OfficialAlert[] = rows.slice(0, 12).map((raw, index) => {
-      const item = (raw || {}) as Record<string, unknown>;
-      const source = String(item.sender_name || "Official weather authority").trim();
-      const title = String(item.event || "Weather alert").trim();
-      const start = Number(item.start || 0);
-      const end = Number(item.end || 0);
-      return {
-        id: [source, title, Number.isFinite(start) ? start : 0, index].join(":"),
-        title,
-        description: String(item.description || "").trim().slice(0, 8_000),
-        instruction: "",
-        source,
-        severity: "unknown",
-        urgency: "unknown",
-        startsAt: Number.isFinite(start) ? start : 0,
-        endsAt: Number.isFinite(end) ? end : 0,
-        official: true,
-      };
-    });
+    const payload = asRecord(await response.json());
+    const first = Array.isArray(payload.data) ? asRecord(payload.data[0]) : {};
+    const alertIds = Array.isArray(first.alerts)
+      ? [...new Set(
+        first.alerts
+          .map(String)
+          .map((id) => id.trim())
+          .filter(Boolean),
+      )].slice(0, MAX_OFFICIAL_ALERTS)
+      : [];
 
-    return { available: true, alerts };
+    if (alertIds.length === 0) {
+      return { available: true, alerts: [] };
+    }
+
+    const details = await Promise.all(
+      alertIds.map((id) => fetchOpenWeatherAlert(id, apiKey)),
+    );
+
+    return {
+      available: true,
+      alerts: details.filter((item): item is OfficialAlert => item !== null),
+    };
   } catch (error) {
-    console.warn("blink-weather official alert request failed", error);
+    console.warn("blink-weather One Call 4.0 request failed", error);
     return { available: false, alerts: [] };
   }
 }
@@ -118,9 +247,9 @@ async function fetchForecast(latitude: number, longitude: number) {
     throw new Error(`Open-Meteo request failed (${response.status})`);
   }
 
-  const payload = await response.json() as Record<string, unknown>;
-  const current = (payload.current || {}) as Record<string, unknown>;
-  const hourly = (payload.hourly || {}) as Record<string, unknown>;
+  const payload = asRecord(await response.json());
+  const current = asRecord(payload.current);
+  const hourly = asRecord(payload.hourly);
 
   const times = Array.isArray(hourly.time) ? hourly.time as unknown[] : [];
   const rain = Array.isArray(hourly.rain) ? hourly.rain as unknown[] : [];
@@ -134,7 +263,8 @@ async function fetchForecast(latitude: number, longitude: number) {
   for (let index = 0; index < times.length; index++) {
     const probability = Math.max(0, Math.min(100, Number(probabilities[index] || 0)));
     strongestProbability = Math.max(strongestProbability, probability);
-    const liquid = Math.max(0, Number(rain[index] || 0)) + Math.max(0, Number(showers[index] || 0));
+    const liquid = Math.max(0, Number(rain[index] || 0)) +
+      Math.max(0, Number(showers[index] || 0));
     if (nextRainAt == null && probability >= 50 && liquid > 0) {
       const epoch = Number(times[index]);
       if (Number.isFinite(epoch) && epoch > 0) nextRainAt = epoch;
@@ -164,10 +294,21 @@ Deno.serve(async (req: Request) => {
   }
 
   const url = new URL(req.url);
-  const latitude = finiteCoordinate(url.searchParams.get("lat"), -90, 90);
-  const longitude = finiteCoordinate(url.searchParams.get("lon"), -180, 180);
-  if (latitude == null || longitude == null) {
+  const rawLatitude = finiteCoordinate(url.searchParams.get("lat"), -90, 90);
+  const rawLongitude = finiteCoordinate(url.searchParams.get("lon"), -180, 180);
+  if (rawLatitude == null || rawLongitude == null) {
     return json({ error: "Valid lat and lon are required." }, 400);
+  }
+
+  const latitude = roundedCoordinate(rawLatitude);
+  const longitude = roundedCoordinate(rawLongitude);
+  const key = cacheKey(latitude, longitude);
+  const cached = getCachedWeather(key);
+  if (cached) {
+    return json({
+      ...cached,
+      cache: "edge-memory",
+    });
   }
 
   try {
@@ -176,15 +317,18 @@ Deno.serve(async (req: Request) => {
       fetchOfficialAlerts(latitude, longitude),
     ]);
 
-    return json({
+    const payload: WeatherPayload = {
       ...forecast,
       provider: official.available
-        ? "Open-Meteo forecast + official authority alerts"
+        ? "Open-Meteo forecast + OpenWeather One Call 4.0 official alerts"
         : "Open-Meteo",
       officialAlertsAvailable: official.available,
       alerts: official.alerts,
-      fetchedAt: Math.floor(Date.now() / 1000),
-    });
+      fetchedAt: Math.floor(Date.now() / 1_000),
+    };
+
+    setCachedWeather(key, payload);
+    return json(payload);
   } catch (error) {
     console.error("blink-weather failed", error);
     return json({ error: "Weather data is temporarily unavailable." }, 503);
