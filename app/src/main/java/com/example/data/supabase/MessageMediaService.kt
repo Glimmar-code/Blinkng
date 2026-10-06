@@ -312,6 +312,34 @@ object MessageMediaService {
         conversations: List<ChatConversation>
     ): List<ChatConversation> = hydrateMedia(conversations)
 
+    suspend fun hydrateMessagePage(
+        messages: List<ChatMessage>
+    ): List<ChatMessage> = withContext(Dispatchers.IO) {
+        if (messages.isEmpty() || SupabaseService.accessToken().isNullOrBlank()) {
+            return@withContext messages
+        }
+        val signedCache = mutableMapOf<String, String?>()
+        fun resolve(reference: String?): String? {
+            if (reference.isNullOrBlank()) return reference
+            return when {
+                reference.startsWith("$PRIVATE_BUCKET:") -> {
+                    val objectPath = reference.removePrefix("$PRIVATE_BUCKET:")
+                    signedCache.getOrPut(objectPath) { signedUrl(objectPath) }
+                }
+                reference.startsWith("http") -> reference
+                else -> reference
+            }
+        }
+        messages.map { message ->
+            message.copy(
+                attachedImageUrl = resolve(message.attachedImageUrl),
+                attachedVideoUrl = resolve(message.attachedVideoUrl),
+                attachedAudioUrl = resolve(message.attachedAudioUrl),
+                attachedDocumentUrl = resolve(message.attachedDocumentUrl)
+            )
+        }
+    }
+
     suspend fun hydrateMedia(
         conversations: List<ChatConversation>
     ): List<ChatConversation> = withContext(Dispatchers.IO) {
