@@ -300,6 +300,7 @@ fun PremiumFeedScreen(
     homeReselectSignal: Int = 0,
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
     hasUnreadNotifications: Boolean = false,
+    unreadNotificationCount: Int = 0,
     routedReelId: String? = null
 ) {
     val context = LocalContext.current
@@ -369,6 +370,7 @@ fun PremiumFeedScreen(
             isLoadingMoreReels = isLoadingMoreReels,
             homeReselectSignal = homeReselectSignal,
             hasUnreadNotifications = hasUnreadNotifications,
+            unreadNotificationCount = unreadNotificationCount,
             onLaneChanged = { feedLane = it.coerceIn(0, 1) },
             onLikePost = onLikePost,
             onCommentPost = onCommentPost,
@@ -520,6 +522,7 @@ private fun PremiumHomeFeed(
     isLoadingMoreReels: Boolean,
     homeReselectSignal: Int,
     hasUnreadNotifications: Boolean,
+    unreadNotificationCount: Int,
     onLaneChanged: (Int) -> Unit,
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
@@ -1117,6 +1120,7 @@ private fun PremiumHomeFeed(
                     FeedTopBar(
                         userAvatar = userAvatar,
                         hasUnreadNotifications = hasUnreadNotifications,
+                        unreadNotificationCount = unreadNotificationCount,
                         onSearchClick = onSearchClick,
                         onItemsClick = onItemsClick,
                         onNotificationClick = onOpenActivity,
