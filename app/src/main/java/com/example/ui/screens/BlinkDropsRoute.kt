@@ -86,6 +86,20 @@ import java.util.UUID
 
 private enum class DropsColumn { GIVEAWAYS, TOP_GIVERS }
 
+private data class DropDraftSnapshot(
+    val targetType: BlinkDropTargetType = BlinkDropTargetType.POST,
+    val selectedTargetId: String = "",
+    val action: String = BlinkDropAction.LIKE.name,
+    val rewardText: String = "100",
+    val winnerText: String = "1",
+    val audience: String = BlinkDropAudienceScope.ALL_CAMPUSES.name,
+    val durationHours: Int = 24,
+)
+
+private object DropDraftStore {
+    var value = DropDraftSnapshot()
+}
+
 private data class DropTarget(
     val id: String,
     val type: String,
