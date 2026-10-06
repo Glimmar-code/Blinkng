@@ -1010,11 +1010,12 @@ private fun PremiumHomeFeed(
                     listState.scrollToItem(0)
                 }
             } else {
-                onRefresh()
+                latestRefresh()
             }
             headerOffsetPx.value = 0f
             headerScrollDirection[0] = 0
             pendingDirectionDistancePx[0] = 0f
+            lastFlingVelocityY[0] = 0f
             fabExpanded = true
             onBottomBarVisibilityChange(true)
         }
@@ -1325,7 +1326,7 @@ private fun PremiumHomeFeed(
                                     when (val row = homeRows[index]) {
                                         is PremiumHomeRow.PostRow -> {
                                             val post = row.post
-                                            PremiumPostEntrance(index = row.sourceIndex) {
+                                            PremiumPostEntrance(index = row.sourceIndex, reduceMotion = reduceMotion) {
                                                 PostCard(
                                                     post = post,
                                                     isDark = true,
@@ -1337,8 +1338,9 @@ private fun PremiumHomeFeed(
                                                     onOptionsClick = { onOptionsClick(post) },
                                                     onProfileClick = onProfileClick,
                                                     onVotePoll = onVotePoll,
-                                                    isAuthor = post.author.equals(currentUsername.removePrefix("@"), ignoreCase = true) ||
-                                                            post.authorUsername.removePrefix("@").equals(currentUsername.removePrefix("@"), ignoreCase = true),
+                                                    isAuthor =
+                                                        post.author.trim().removePrefix("@").lowercase() == currentUserKey ||
+                                                            post.authorUsername.trim().removePrefix("@").lowercase() == currentUserKey,
                                                     onDelete = { onDeletePost(post.id) }
                                                 )
                                             }
@@ -1374,6 +1376,7 @@ private fun PremiumHomeFeed(
                                             InlineReelPreviewCard(
                                                 reel = row.reel,
                                                 isActive = activeInlineReelKey == previewKey,
+                                                shouldPreload = preloadedInlineReelKey == previewKey,
                                                 onContinue = { positionMs ->
                                                     onOpenInlineReel(row.reel.id, positionMs)
                                                 },
@@ -1453,9 +1456,10 @@ private fun PremiumHomeFeed(
                                         headerOffsetPx.value = 0f
                                         headerScrollDirection[0] = 0
                                         pendingDirectionDistancePx[0] = 0f
+                                        lastFlingVelocityY[0] = 0f
                                         fabExpanded = true
                                         onBottomBarVisibilityChange(true)
-                                        onRefresh()
+                                        latestRefresh()
                                     }
                                 }
                             )
@@ -1690,10 +1694,14 @@ private fun LegacyChromeCrop(
 }
 
 @Composable
-private fun PremiumPostEntrance(index: Int, content: @Composable () -> Unit) {
-    // Only the first few rows get a very small initial fade. Rows composed during normal
-    // scrolling render immediately, avoiding the delayed website-like card animation.
-    if (index > 2) {
+private fun PremiumPostEntrance(
+    index: Int,
+    reduceMotion: Boolean,
+    content: @Composable () -> Unit
+) {
+    // Only the first few rows get a very small initial fade. Reduced-motion users and
+    // rows composed during normal scrolling render immediately.
+    if (index > 2 || reduceMotion) {
         content()
         return
     }
