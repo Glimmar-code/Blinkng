@@ -1196,7 +1196,7 @@ fun CreatePostSheet(
 
                     OutlinedButton(
                         onClick = { showPreviewDialog = true },
-                        enabled = hasComposerInput && !isSubmitting,
+                        enabled = canSubmit,
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Preview")
