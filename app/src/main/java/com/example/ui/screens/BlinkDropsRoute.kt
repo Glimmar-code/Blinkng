@@ -443,8 +443,7 @@ fun BlinkDropsRoute(
                 }
             },
             onCreate = { target, action, reward, winners, audience, duration ->
-                if (creatingDrop || !isOnline) return@OrganizeDropDialog
-                scope.launch {
+                if (!creatingDrop && isOnline) scope.launch {
                     creatingDrop = true
                     val fingerprint = listOf(
                         target.type,target.id,action,reward.toString(),winners.toString(),
@@ -470,6 +469,7 @@ fun BlinkDropsRoute(
                         error = null
                         pendingCreateRequestId = null
                         pendingCreateFingerprint = null
+                        DropDraftStore.value = DropDraftSnapshot()
                         showOrganizer = false
                         refresh()
                     }.onFailure {
