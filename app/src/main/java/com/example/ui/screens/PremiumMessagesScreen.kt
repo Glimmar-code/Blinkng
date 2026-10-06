@@ -108,6 +108,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -160,6 +161,7 @@ import coil.compose.AsyncImage
 import com.example.data.models.ActivityItem
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
+import com.example.data.models.ChatPrivacySettings
 import com.example.data.models.MessageStatus
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
@@ -209,6 +211,7 @@ fun PremiumMessagesScreen(
     conversations: List<ChatConversation>,
     stories: List<Story>,
     activities: List<ActivityItem>,
+    chatPrivacySettings: ChatPrivacySettings = ChatPrivacySettings(),
     myAvatar: String,
     myName: String,
     activePartner: String?,
@@ -230,6 +233,7 @@ fun PremiumMessagesScreen(
     onStoryClick: (Story) -> Unit,
     onAddStoryClick: () -> Unit,
     onOpenActivity: () -> Unit,
+    onUpdateChatPrivacy: (ChatPrivacySettings) -> Unit = {},
     onComposeMessage: () -> Unit = {},
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
     isConnected: Boolean = true,
@@ -245,6 +249,7 @@ fun PremiumMessagesScreen(
     }
     val messageTheme = MessageThemeMode.fromStorage(storedTheme)
     var showAppearanceSheet by rememberSaveable { mutableStateOf(false) }
+    var showPrivacySheet by rememberSaveable { mutableStateOf(false) }
     var activeCall by remember { mutableStateOf<MessageCallState?>(null) }
 
     val liveActiveConversation = activePartner?.let { partner ->
@@ -373,11 +378,24 @@ fun PremiumMessagesScreen(
                     preferences.edit().putString(MESSAGE_THEME_KEY, selected.storageValue).apply()
                     showAppearanceSheet = false
                 },
+                onOpenPrivacy = {
+                    showAppearanceSheet = false
+                    showPrivacySheet = true
+                },
                 onOpenActivity = {
                     showAppearanceSheet = false
                     onOpenActivity()
                 },
                 onDismiss = { showAppearanceSheet = false }
+            )
+        }
+
+        if (showPrivacySheet && activeCall == null) {
+            ChatPrivacySettingsSheet(
+                settings = chatPrivacySettings,
+                palette = palette,
+                onChange = onUpdateChatPrivacy,
+                onDismiss = { showPrivacySheet = false }
             )
         }
     }
