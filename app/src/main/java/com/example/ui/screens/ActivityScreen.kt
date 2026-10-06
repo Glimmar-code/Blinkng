@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import com.example.R
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -681,7 +682,7 @@ private fun NotificationSwipeRow(
                 )
             }
         },
-        content = content
+        content = { content() }
     )
 }
 
