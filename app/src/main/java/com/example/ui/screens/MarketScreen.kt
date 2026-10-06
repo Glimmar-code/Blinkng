@@ -396,6 +396,13 @@ fun MarketScreen(
             }
         }
 
+        item {
+            BlinkPromotedMarketRail(
+                isDark = isDark,
+                onListingClick = onItemClick,
+            )
+        }
+
         // Categories horizontal list
         item {
             LazyRow(
