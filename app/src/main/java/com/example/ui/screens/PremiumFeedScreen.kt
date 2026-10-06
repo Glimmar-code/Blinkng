@@ -271,6 +271,8 @@ fun PremiumFeedScreen(
     onOpenMenu: () -> Unit,
     onToggleTheme: () -> Unit,
     isServerConnected: Boolean = true,
+    activityPulsePolicy: com.blinkng.shared.BlinkActivityPulsePolicy = com.blinkng.shared.BlinkActivityPulseDefaults.policy,
+    onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit = { _, _, _, _, _ -> },
     isLoading: Boolean = false,
     isRefreshing: Boolean = false,
     errorMessage: String? = null,
@@ -470,6 +472,9 @@ fun PremiumFeedScreen(
             connectHub = connectHub,
             connectHubActions = connectHubActions,
             isConnectHubLoading = isConnectHubLoading,
+            isLiveDataAvailable = isServerConnected,
+            activityPulsePolicy = activityPulsePolicy,
+            onActivityPulseEvent = onActivityPulseEvent,
             onHomeClick = {
                 feedLane = 0
                 onSubTabChanged(0)
@@ -1526,6 +1531,9 @@ private fun PremiumConnectHost(
     connectHub: ConnectHubSnapshot,
     connectHubActions: ConnectHubActions,
     isConnectHubLoading: Boolean,
+    isLiveDataAvailable: Boolean,
+    activityPulsePolicy: com.blinkng.shared.BlinkActivityPulsePolicy,
+    onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit,
     onHomeClick: () -> Unit,
     onReelClick: () -> Unit,
     onGameClick: () -> Unit
@@ -1548,6 +1556,9 @@ private fun PremiumConnectHost(
             connectHub = connectHub,
             connectHubActions = connectHubActions,
             isConnectHubLoading = isConnectHubLoading,
+            isLiveDataAvailable = isLiveDataAvailable,
+            activityPulsePolicy = activityPulsePolicy,
+            onActivityPulseEvent = onActivityPulseEvent,
             selectedTopTab = 2,
             onHomeClick = onHomeClick,
             onReelClick = onReelClick,
