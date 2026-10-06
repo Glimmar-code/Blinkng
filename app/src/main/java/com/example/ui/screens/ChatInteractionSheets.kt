@@ -21,9 +21,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ClearAll
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Forward
+import androidx.compose.material.icons.filled.MarkEmailUnread
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
@@ -69,6 +72,11 @@ data class ChatInteractionActions(
     val onReportMessage: (ChatMessage, String) -> Unit = { _, _ -> },
     val onClearConversation: (ChatConversation) -> Unit = {},
     val onMuteConversation: (ChatConversation, Boolean) -> Unit = { _, _ -> },
+    val onArchiveConversation: (ChatConversation, Boolean) -> Unit = { _, _ -> },
+    val onPinConversation: (ChatConversation, Boolean) -> Unit = { _, _ -> },
+    val onMarkConversationUnread: (ChatConversation, Boolean) -> Unit = { _, _ -> },
+    val onRespondMessageRequest: (ChatConversation, Boolean) -> Unit = { _, _ -> },
+    val onBlockConversation: (ChatConversation) -> Unit = {},
     val onReportConversation: (ChatConversation, String) -> Unit = { _, _ -> }
 )
 
@@ -258,6 +266,10 @@ internal fun ChatOverflowSheet(
     onPinned: () -> Unit,
     onStarred: () -> Unit,
     onMute: () -> Unit,
+    onPinConversation: () -> Unit,
+    onMarkUnread: () -> Unit,
+    onArchive: () -> Unit,
+    onBlock: () -> Unit,
     onDelete: () -> Unit,
     onReport: () -> Unit,
     onDismiss: () -> Unit
@@ -283,7 +295,26 @@ internal fun ChatOverflowSheet(
         OverflowRow(if (pinnedOnly) "Show all messages" else "Pinned messages", Icons.Default.Place, palette, onPinned)
         OverflowRow(if (starredOnly) "Show all messages" else "Starred messages", Icons.Default.Star, palette, onStarred)
         OverflowRow(if (conversation.isMuted) "Unmute notifications" else "Mute notifications", Icons.Default.VolumeOff, palette, onMute)
+        OverflowRow(
+            if (conversation.isConversationPinned) "Unpin chat" else "Pin chat",
+            Icons.Default.Place,
+            palette,
+            onPinConversation
+        )
+        OverflowRow(
+            if (conversation.isMarkedUnread) "Mark as read" else "Mark as unread",
+            Icons.Default.MarkEmailUnread,
+            palette,
+            onMarkUnread
+        )
+        OverflowRow(
+            if (conversation.isArchived) "Unarchive chat" else "Archive chat",
+            Icons.Default.Archive,
+            palette,
+            onArchive
+        )
         HorizontalDivider(color = palette.border, modifier = Modifier.padding(vertical = 6.dp))
+        OverflowRow("Block user", Icons.Default.Block, palette, onBlock, danger = true)
         OverflowRow("Delete chat", Icons.Default.Delete, palette, onDelete, danger = true)
         OverflowRow("Report conversation", Icons.Default.Report, palette, onReport, danger = true)
         Spacer(Modifier.height(20.dp))
