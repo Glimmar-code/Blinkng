@@ -5,7 +5,9 @@ const JSON_HEADERS = {
 
 const WEATHER_CACHE_TTL_MS = 10 * 60 * 1_000;
 const WEATHER_CACHE_MAX_ENTRIES = 500;
-const MAX_OFFICIAL_ALERTS = 5;
+const ALERT_CACHE_DEFAULT_TTL_MS = 60 * 60 * 1_000;
+const ALERT_CACHE_MAX_ENTRIES = 250;
+const MAX_OFFICIAL_ALERTS = 3;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -42,6 +44,7 @@ type CacheEntry = {
 };
 
 const weatherCache = new Map<string, CacheEntry>();
+const alertCache = new Map<string, { expiresAt: number; alert: OfficialAlert }>();
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
@@ -55,9 +58,9 @@ function finiteCoordinate(value: string | null, min: number, max: number): numbe
 }
 
 function roundedCoordinate(value: number): number {
-  // Weather does not need precise GPS. About 0.01° is roughly 1 km and lets nearby
-  // users share a cache entry while avoiding sending exact device coordinates.
-  return Math.round(value * 100) / 100;
+  // Weather does not need precise GPS. About 0.02° is roughly 2 km and lets nearby
+  // users share provider/cache requests while avoiding exact device coordinates.
+  return Math.round(value * 50) / 50;
 }
 
 function cacheKey(latitude: number, longitude: number): string {
@@ -124,6 +127,12 @@ async function fetchOpenWeatherAlert(
   alertId: string,
   apiKey: string,
 ): Promise<OfficialAlert | null> {
+  const cached = alertCache.get(alertId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.alert;
+  }
+  if (cached) alertCache.delete(alertId);
+
   const url = new URL(
     `https://api.openweathermap.org/data/4.0/onecall/alert/${encodeURIComponent(alertId)}`,
   );
@@ -150,7 +159,7 @@ async function fetchOpenWeatherAlert(
     const start = Number(item.start || 0);
     const end = Number(item.end || 0);
 
-    return {
+    const alert: OfficialAlert = {
       id: String(item.id || alertId).trim() || alertId,
       title,
       description: englishDescription(item.description),
@@ -164,6 +173,20 @@ async function fetchOpenWeatherAlert(
       endsAt: Number.isFinite(end) ? end : 0,
       official: true,
     };
+
+    if (alertCache.size >= ALERT_CACHE_MAX_ENTRIES) {
+      const oldestKey = alertCache.keys().next().value as string | undefined;
+      if (oldestKey) alertCache.delete(oldestKey);
+    }
+    const naturalExpiry = alert.endsAt > 0
+      ? Math.max(Date.now() + 5 * 60 * 1_000, alert.endsAt * 1_000)
+      : Date.now() + ALERT_CACHE_DEFAULT_TTL_MS;
+    alertCache.set(alertId, {
+      expiresAt: Math.min(naturalExpiry, Date.now() + 6 * 60 * 60 * 1_000),
+      alert,
+    });
+
+    return alert;
   } catch (error) {
     console.warn("blink-weather alert detail request failed", error);
     return null;
