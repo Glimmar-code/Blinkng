@@ -1129,24 +1129,7 @@ fun ProfileScreen(state: DesktopAppState) {
 
 @Composable
 fun GamesScreen(state: DesktopAppState) {
-    var challenges by remember { mutableStateOf<Int?>(null) }
-    var coins by remember { mutableStateOf<Long?>(null) }
-    LaunchedEffect(Unit) {
-        val summary = runCatching { state.client.fetchGameSummary() }.getOrDefault(0 to 0L)
-        challenges = summary.first
-        coins = summary.second
-    }
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { ScreenHeader("Games", "Challenges, rewards and Blink Coins") }
-        item {
-            Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 2.dp) {
-                Row(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(42.dp)) {
-                    Stat("Available challenges", challenges?.toString() ?: "…")
-                    Stat("Coin balance", coins?.toString() ?: "…")
-                }
-            }
-        }
-    }
+    DesktopGeneralStudyGame()
 }
 
 @Composable
