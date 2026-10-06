@@ -106,6 +106,8 @@ import com.example.ui.components.BlinkStoreLivePreview
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
 import com.example.util.startActivitySafely
+import com.blinkng.shared.BlinkStoreProductGroup
+import com.blinkng.shared.BlinkStoreProductGroups
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -143,6 +145,7 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
     var working by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(BlinkStoreTab.STORE) }
+    var selectedGroup by remember { mutableStateOf<BlinkStoreProductGroup?>(null) }
     var previewItem by remember { mutableStateOf<BlinkStoreItem?>(null) }
     var purchaseItem by remember { mutableStateOf<BlinkStoreItem?>(null) }
     var activateRow by remember { mutableStateOf<JSONObject?>(null) }
@@ -175,6 +178,7 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
     val balance = snapshot.optLong("balance", 0L)
     val inventory = snapshot.optJSONArray("inventory").objects()
     val equippedIds = snapshot.optJSONArray("equipped").objects().map { it.optString("catalog_id") }.toSet()
+    val vipActive = snapshot.optJSONObject("vip")?.optBoolean("active", false) ?: false
 
     Scaffold(
         topBar = {
@@ -254,8 +258,8 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
                         BlinkStoreTab.STORE -> StoreTab(
                             inventory = inventory,
                             equippedIds = equippedIds,
-                            onPreview = { previewItem = it },
-                            onBuy = { purchaseItem = it },
+                            vipActive = vipActive,
+                            onOpenGroup = { selectedGroup = it },
                         )
                         BlinkStoreTab.VAULT -> VaultTab(
                             inventory = inventory,
@@ -320,13 +324,32 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
         }
     }
 
+    selectedGroup?.let { group ->
+        StoreGroupDialog(
+            group = group,
+            inventory = inventory,
+            equippedIds = equippedIds,
+            balance = balance,
+            vipActive = vipActive,
+            onDismiss = { selectedGroup = null },
+            onPreview = { item ->
+                selectedGroup = null
+                previewItem = item
+            },
+            onBuy = { item ->
+                selectedGroup = null
+                purchaseItem = item
+            },
+        )
+    }
+
     previewItem?.let { item ->
         val owned = item.type == BlinkStoreItemType.PERMANENT &&
             inventory.any { it.optString("catalog_id") == item.id && it.optString("status") == "PERMANENT" }
         ProductPreviewDialog(
             item = item,
             balance = balance,
-            vipActive = false,
+            vipActive = vipActive,
             owned = owned,
             onDismiss = { previewItem = null },
             onBuy = {
@@ -340,7 +363,7 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
         PurchaseDialog(
             item = item,
             balance = balance,
-            vipActive = false,
+            vipActive = vipActive,
             onDismiss = { purchaseItem = null },
             onConfirm = { quantity, multiplier ->
                 purchaseItem = null
@@ -388,25 +411,34 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
 private fun StoreTab(
     inventory: List<JSONObject>,
     equippedIds: Set<String>,
-    onPreview: (BlinkStoreItem) -> Unit,
-    onBuy: (BlinkStoreItem) -> Unit
+    vipActive: Boolean,
+    onOpenGroup: (BlinkStoreProductGroup) -> Unit,
 ) {
-    var category by remember { mutableStateOf("All") }
+    var category by remember { mutableStateOf("For You") }
     var query by remember { mutableStateOf("") }
-    val visibleCatalog = remember {
-        BlinkStoreCatalog.items.filterNot { it.vipOnly || it.id == "blink_vip_10d" || it.category.equals("VIP", true) }
+    val catalog = BlinkStoreCatalog.items
+    val filteredGroups = BlinkStoreProductGroups.groupsForCategory(category).filter { group ->
+        if (query.isBlank()) {
+            true
+        } else {
+            val needle = query.trim()
+            group.title.contains(needle, ignoreCase = true) ||
+                group.description.contains(needle, ignoreCase = true) ||
+                group.category.contains(needle, ignoreCase = true) ||
+                group.itemIds.mapNotNull { id -> catalog.firstOrNull { it.id == id } }.any { item ->
+                    item.name.contains(needle, ignoreCase = true) ||
+                        item.description.contains(needle, ignoreCase = true) ||
+                        item.category.contains(needle, ignoreCase = true)
+                }
+        }
     }
-    val categories = remember(visibleCatalog) { listOf("All") + visibleCatalog.map { it.category }.distinct() }
-    val items = visibleCatalog.filter { item ->
-        (category == "All" || item.category == category) &&
-            (query.isBlank() || listOf(item.name, item.description, item.category)
-                .any { it.contains(query.trim(), ignoreCase = true) })
-    }
-    val vipActive = false
 
-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         item {
-            PremiumStoreHero(vipActive = false, itemCount = visibleCatalog.size)
+            PremiumStoreHero(vipActive = vipActive, itemCount = BlinkStoreProductGroups.all.size)
         }
         item {
             OutlinedTextField(
@@ -416,53 +448,281 @@ private fun StoreTab(
                 singleLine = true,
                 shape = RoundedCornerShape(18.dp),
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                placeholder = { Text("Search profile, comments, chat, effects…") },
+                placeholder = { Text("Search themes, effects, boosts, gifts…") },
             )
         }
         item {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(horizontal = 16.dp)
+                modifier = Modifier.padding(horizontal = 16.dp),
             ) {
-                items(categories) { name ->
+                items(BlinkStoreProductGroups.categories) { name ->
                     FilterChip(
                         selected = category == name,
                         onClick = { category = name },
-                        label = { Text(name) }
+                        label = { Text(name) },
                     )
                 }
             }
         }
-        items(items, key = { it.id }) { item ->
-            val owned = item.type == BlinkStoreItemType.PERMANENT &&
-                inventory.any { it.optString("catalog_id") == item.id && it.optString("status") == "PERMANENT" }
-            val active = inventory.any { it.optString("catalog_id") == item.id && it.optString("status") == "ACTIVE" }
-            val equipped = item.id in equippedIds
-            val vipLocked = item.vipOnly && !vipActive
-            StoreItemCard(
-                item = item,
-                owned = owned,
-                active = active,
-                equipped = equipped,
-                vipLocked = vipLocked,
-                vipActive = vipActive,
-                onPreview = onPreview,
-                onBuy = onBuy
-            )
+
+        items(filteredGroups.chunked(2), key = { row -> row.joinToString("|") { it.id } }) { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                row.forEach { group ->
+                    Box(Modifier.weight(1f)) {
+                        StoreGroupCard(
+                            group = group,
+                            catalog = catalog,
+                            inventory = inventory,
+                            equippedIds = equippedIds,
+                            vipActive = vipActive,
+                            onOpen = { onOpenGroup(group) },
+                        )
+                    }
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
         }
-        if (items.isEmpty()) {
+
+        if (filteredGroups.isEmpty()) {
             item {
                 Column(
                     Modifier.fillMaxWidth().padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text("No Store items found", fontWeight = FontWeight.Black)
-                    Text("Try another name or category.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("No Store collections found", fontWeight = FontWeight.Black)
+                    Text(
+                        "Try another name or category.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
         item { Spacer(Modifier.height(18.dp)) }
     }
+}
+
+@Composable
+private fun StoreGroupCard(
+    group: BlinkStoreProductGroup,
+    catalog: List<BlinkStoreItem>,
+    inventory: List<JSONObject>,
+    equippedIds: Set<String>,
+    vipActive: Boolean,
+    onOpen: () -> Unit,
+) {
+    val primary = catalog.firstOrNull { it.id == group.primaryItemId } ?: return
+    val variants = group.itemIds.mapNotNull { id -> catalog.firstOrNull { it.id == id } }
+    val accent = premiumAccent(primary.premiumExperience())
+    val applied = variants.any { it.id in equippedIds }
+    val active = variants.any { variant ->
+        inventory.any { it.optString("catalog_id") == variant.id && it.optString("status") == "ACTIVE" }
+    }
+    val ownedCount = variants.count { variant ->
+        inventory.any { row ->
+            row.optString("catalog_id") == variant.id &&
+                row.optString("status") in listOf("PERMANENT", "AVAILABLE", "ACTIVE")
+        }
+    }
+    val displayPrice = BlinkStoreCatalog.priceFor(primary).let {
+        if (vipActive) max(0, (it * .9).toInt()) else it
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        border = BorderStroke(1.dp, accent.copy(alpha = .32f)),
+        shape = RoundedCornerShape(22.dp),
+    ) {
+        Column {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(126.dp)
+                    .padding(7.dp),
+            ) {
+                BlinkStoreLivePreview(
+                    catalogId = primary.id,
+                    itemName = group.title,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        group.title,
+                        modifier = Modifier.weight(1f),
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (group.id == "blink_vip") Text("👑", fontSize = 14.sp)
+                }
+                Text(
+                    group.description,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (variants.size > 1) "From 🪙 $displayPrice" else "🪙 $displayPrice",
+                        modifier = Modifier.weight(1f),
+                        fontWeight = FontWeight.Black,
+                        color = accent,
+                    )
+                    Text(
+                        "${variants.size} ${if (variants.size == 1) "option" else "options"}",
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (applied || active || ownedCount > 0) {
+                    Spacer(Modifier.height(7.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        when {
+                            applied -> PremiumPill("APPLIED", Color(0xFF16A34A))
+                            active -> PremiumPill("LIVE", Color(0xFF16A34A))
+                        }
+                        if (ownedCount > 0) PremiumPill("$ownedCount OWNED", accent)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StoreGroupDialog(
+    group: BlinkStoreProductGroup,
+    inventory: List<JSONObject>,
+    equippedIds: Set<String>,
+    balance: Long,
+    vipActive: Boolean,
+    onDismiss: () -> Unit,
+    onPreview: (BlinkStoreItem) -> Unit,
+    onBuy: (BlinkStoreItem) -> Unit,
+) {
+    val variants = group.itemIds.mapNotNull { id -> BlinkStoreCatalog.items.firstOrNull { it.id == id } }
+    val primary = variants.firstOrNull { it.id == group.primaryItemId } ?: variants.firstOrNull()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(group.title, fontWeight = FontWeight.Black)
+                Text(
+                    "${variants.size} ${if (variants.size == 1) "option" else "options"} • choose the exact style you want",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().height(500.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                primary?.let { preview ->
+                    item {
+                        BlinkStoreLivePreview(
+                            catalogId = preview.id,
+                            itemName = group.title,
+                            modifier = Modifier.height(170.dp),
+                        )
+                    }
+                }
+                item {
+                    Text(
+                        group.description,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                items(variants, key = { it.id }) { variant ->
+                    val experience = variant.premiumExperience()
+                    val accent = premiumAccent(experience)
+                    val owned = variant.type == BlinkStoreItemType.PERMANENT &&
+                        inventory.any {
+                            it.optString("catalog_id") == variant.id &&
+                                it.optString("status") == "PERMANENT"
+                        }
+                    val active = inventory.any {
+                        it.optString("catalog_id") == variant.id &&
+                            it.optString("status") == "ACTIVE"
+                    }
+                    val equipped = variant.id in equippedIds
+                    val vipLocked = variant.vipOnly && !vipActive
+                    val displayPrice = BlinkStoreCatalog.priceFor(variant).let {
+                        if (vipActive) max(0, (it * .9).toInt()) else it
+                    }
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                        border = BorderStroke(1.dp, accent.copy(alpha = .28f)),
+                        shape = RoundedCornerShape(18.dp),
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(13.dp),
+                                    color = accent.copy(alpha = .12f),
+                                    modifier = Modifier.size(42.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(storeIcon(variant), null, tint = accent, modifier = Modifier.size(22.dp))
+                                    }
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(variant.name, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                                    Text(
+                                        experience.benefit,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                when {
+                                    equipped -> PremiumPill("APPLIED", Color(0xFF16A34A))
+                                    active -> PremiumPill("LIVE", Color(0xFF16A34A))
+                                    owned -> PremiumPill("OWNED", accent)
+                                    variant.vipOnly -> PremiumPill("VIP", Color(0xFFF59E0B))
+                                }
+                            }
+                            Spacer(Modifier.height(9.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("🪙 $displayPrice", modifier = Modifier.weight(1f), fontWeight = FontWeight.Black, color = accent)
+                                OutlinedButton(onClick = { onPreview(variant) }) { Text("Preview") }
+                                Spacer(Modifier.width(6.dp))
+                                Button(
+                                    onClick = { onBuy(variant) },
+                                    enabled = !owned && !vipLocked && balance >= displayPrice,
+                                ) {
+                                    Text(
+                                        when {
+                                            owned -> "Owned"
+                                            vipLocked -> "VIP required"
+                                            else -> "Buy"
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { OutlinedButton(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 @Composable
@@ -504,9 +764,9 @@ private fun PremiumStoreHero(vipActive: Boolean, itemCount: Int) {
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Make premium visible", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black)
+                    Text("Browse premium collections", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black)
                     Text(
-                        "$itemCount real Store experiences • buy → Vault → use/apply",
+                        "$itemCount premium collections • 70 existing variants • buy → Vault → use/apply",
                         color = Color.White.copy(alpha = .82f),
                         fontSize = 11.sp
                     )
