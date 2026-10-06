@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -383,8 +384,8 @@ fun BlinkDropsRoute(
                         "Your Drops",
                         "Reserved coins stay locked until claimed, cancelled or expired."
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        listOf("ALL", "ACTIVE", "COMPLETED", "EXPIRED", "CANCELLED").forEach { status ->
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        items(listOf("ALL", "ACTIVE", "COMPLETED", "EXPIRED", "CANCELLED")) { status ->
                             FilterChip(
                                 selected = historyFilter == status,
                                 onClick = { historyFilter = status },
