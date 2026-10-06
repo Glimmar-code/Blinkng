@@ -19,12 +19,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.models.MarketItem
 import com.example.data.supabase.BlinkEconomyService
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun BlinkPromotedMarketRail(
@@ -33,6 +35,7 @@ internal fun BlinkPromotedMarketRail(
     modifier: Modifier = Modifier,
 ) {
     val service = remember { BlinkEconomyService() }
+    val scope = rememberCoroutineScope()
     var placements by remember { mutableStateOf<List<BlinkPromotedDiscoveryPlacement>>(emptyList()) }
 
     LaunchedEffect(Unit) {
@@ -83,7 +86,13 @@ internal fun BlinkPromotedMarketRail(
                         ProductCard(
                             item = listing,
                             onClick = {
-                                service.recordBoostDelivery
+                                scope.launch {
+                                    service.recordBoostDelivery(
+                                        placement.campaignId,
+                                        "LISTING_OPEN",
+                                        "MARKET"
+                                    )
+                                }
                                 onListingClick(listing)
                             },
                             isDark = isDark,
