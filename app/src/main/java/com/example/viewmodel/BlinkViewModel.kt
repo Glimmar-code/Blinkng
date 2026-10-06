@@ -3357,6 +3357,28 @@ private suspend fun restoreSupabaseSession() {
 
     fun closeConversation() { _uiState.value = _uiState.value.copy(activeConversationPartner = null, isConversationFullScreen = false) }
 
+    fun updateChatPresence(partnerUsername: String, state: String) {
+        val cleanPartner = partnerUsername.trim().removePrefix("@")
+        val conversation = _uiState.value.conversations.firstOrNull {
+            it.partnerUsername.equals(cleanPartner, true)
+        } ?: return
+        if (conversation.id.isBlank() || conversation.id.startsWith("local_")) return
+        val deviceId = android.provider.Settings.Secure.getString(
+            appContext.contentResolver,
+            android.provider.Settings.Secure.ANDROID_ID
+        ).orEmpty().ifBlank { "blink-android" }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                chatRepository.updateConversationPresence(
+                    conversationId = conversation.id,
+                    deviceId = deviceId,
+                    state = state,
+                    ttlSeconds = if (state == "typing" || state == "recording") 12 else 30
+                )
+            }.onFailure { Log.w(TAG, "Chat presence update failed", it) }
+        }
+    }
+
     fun sendMessage(
         partnerUsername: String,
         text: String,
@@ -3827,6 +3849,29 @@ private suspend fun restoreSupabaseSession() {
     private fun handleRealtimeEvent(event: RealtimeEvent) {
         when (event) {
             is RealtimeEvent.MessageEvent -> handleIncomingRealtimeMessage(event.message)
+            is RealtimeEvent.ConversationPresenceEvent -> {
+                val myId = _uiState.value.myProfile.id
+                if (event.userId.isNotBlank() && event.userId != myId && event.conversationId.isNotBlank()) {
+                    val label = if (event.eventType.equals("DELETE", true)) {
+                        ""
+                    } else {
+                        when (event.state.lowercase()) {
+                            "typing" -> "Typing…"
+                            "recording" -> "Recording voice…"
+                            "uploading" -> "Sending attachment…"
+                            else -> ""
+                        }
+                    }
+                    val latest = _uiState.value
+                    _uiState.value = latest.copy(
+                        conversations = latest.conversations.map { conversation ->
+                            if (conversation.id == event.conversationId) {
+                                conversation.copy(presenceLabel = label)
+                            } else conversation
+                        }
+                    )
+                }
+            }
             is RealtimeEvent.ConversationEvent -> viewModelScope.launch {
                 runCatching { chatRepository.fetchConversations() }
                     .onSuccess { summaries ->
