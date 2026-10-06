@@ -515,6 +515,12 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 }
             }
 
+            BlinkNotificationType.SECURITY -> BlinkNotificationHelper.showSecurityNotification(
+                context = this,
+                title = title,
+                body = body
+            )
+
             else -> BlinkNotificationHelper.showSocialNotification(
                 context = this,
                 title = title,
