@@ -408,6 +408,7 @@ BEGIN
   WHERE user_id=v_uid
     AND store_name=v_store
     AND status='pending'
+    AND provider_reference IS NULL
     AND created_at>now()-interval '30 minutes'
   ORDER BY created_at DESC
   LIMIT 1;
