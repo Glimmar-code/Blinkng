@@ -21,6 +21,29 @@ data class PostPoll(
     val hasVoted: Boolean = false
 )
 
+data class CreatePostRequest(
+    val clientRequestId: String,
+    val text: String,
+    val faculty: String,
+    val imageUris: List<String> = emptyList(),
+    val videoUri: String? = null,
+    val tags: List<String> = emptyList(),
+    val mentions: List<String> = emptyList(),
+    val poll: PostPoll? = null,
+    val isReel: Boolean = false,
+    val audience: String = "Everyone",
+    val category: String = "Campus Life",
+    val location: String? = null,
+    val linkUrl: String? = null,
+    val allowComments: Boolean = true,
+    val hideLikes: Boolean = false,
+    val isPinned: Boolean = false,
+    val isDisappearing: Boolean = false,
+    val audioTitle: String? = null,
+    val altText: String? = null,
+    val textStyle: String? = null
+)
+
 data class FeedPost(
     val id: String,
     val author: String,
