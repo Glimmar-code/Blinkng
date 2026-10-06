@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -92,6 +93,7 @@ fun FeedTopBar(
     userAvatar: String,
     hasUnreadNotifications: Boolean,
     onSearchClick: () -> Unit,
+    onItemsClick: () -> Unit,
     onNotificationClick: () -> Unit,
     onMenuClick: () -> Unit,
     onProfileClick: () -> Unit,
@@ -139,6 +141,7 @@ fun FeedTopBar(
             FeedHeaderActions(
                 hasUnreadNotifications = hasUnreadNotifications,
                 onSearchClick = onSearchClick,
+                onItemsClick = onItemsClick,
                 onNotificationClick = onNotificationClick,
                 onMenuClick = onMenuClick
             )
@@ -203,6 +206,7 @@ private fun FeedProfileAvatar(
 private fun FeedHeaderActions(
     hasUnreadNotifications: Boolean,
     onSearchClick: () -> Unit,
+    onItemsClick: () -> Unit,
     onNotificationClick: () -> Unit,
     onMenuClick: () -> Unit
 ) {
@@ -215,6 +219,12 @@ private fun FeedHeaderActions(
             contentDescription = "Search people and posts",
             onClick = onSearchClick,
             modifier = Modifier.testTag("feed_search_action")
+        )
+        FeedRadialHeaderAction(
+            imageVector = Icons.Default.Widgets,
+            contentDescription = "Open Items",
+            onClick = onItemsClick,
+            modifier = Modifier.testTag("feed_items_action")
         )
         Box(modifier = Modifier.size(44.dp)) {
             FeedRadialHeaderAction(
