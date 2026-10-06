@@ -61,7 +61,7 @@ drop policy if exists profile_follower_snapshots_read on public.profile_follower
 create policy profile_follower_snapshots_read
 on public.profile_follower_daily_snapshots
 for select to authenticated
-using (true);
+using (profile_id = (select auth.uid()));
 
 create or replace function private.capture_profile_follower_snapshot(p_profile_id uuid)
 returns void
@@ -112,6 +112,7 @@ as $$
   select s.snapshot_date, s.follower_count
   from public.profile_follower_daily_snapshots s
   where s.profile_id = p_profile_id
+    and p_profile_id = (select auth.uid())
     and s.snapshot_date >= current_date - greatest(1, least(coalesce(p_days,30), 90))
   order by s.snapshot_date;
 $$;
@@ -297,6 +298,170 @@ $$;
 revoke all on function public.get_profile_connections(uuid,text,integer) from public, anon;
 grant execute on function public.get_profile_connections(uuid,text,integer) to authenticated;
 
+create or replace function private.notify_profile_subscribers_after_feed_post()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_creator_name text;
+  v_creator_username text;
+  v_is_vip boolean := false;
+begin
+  if not coalesce(new.is_active, true)
+     or upper(coalesce(new.audience, 'EVERYONE')) <> 'EVERYONE'
+     or coalesce(new.is_sponsored, false) then
+    return new;
+  end if;
+
+  select
+    coalesce(nullif(trim(p.full_name), ''), nullif(trim(p.username), ''), 'Someone'),
+    coalesce(nullif(trim(p.username), ''), 'user'),
+    coalesce(p.blink_vip_until > now(), false)
+  into v_creator_name, v_creator_username, v_is_vip
+  from public.profiles p
+  where p.id = new.user_id;
+
+  insert into public.notifications(
+    user_id,
+    actor_id,
+    type,
+    post_id,
+    text,
+    sub_text,
+    actor_is_vip,
+    vip_priority,
+    target_type,
+    target_id,
+    metadata
+  )
+  select
+    pref.subscriber_id,
+    new.user_id,
+    'system'::public.notification_type_enum,
+    new.id,
+    case when coalesce(new.is_reel, false)
+      then v_creator_name || ' posted a new reel'
+      else v_creator_name || ' posted a new post'
+    end,
+    '@' || v_creator_username,
+    v_is_vip,
+    v_is_vip,
+    case when coalesce(new.is_reel, false) then 'REEL' else 'POST' end,
+    new.id,
+    jsonb_build_object(
+      'source', 'profile_subscription',
+      'profile_id', new.user_id,
+      'mode', pref.mode
+    )
+  from public.profile_notification_preferences pref
+  where pref.profile_id = new.user_id
+    and (
+      pref.mode = 'ALL'
+      or (pref.mode = 'REELS' and coalesce(new.is_reel, false))
+    )
+    and not exists (
+      select 1
+      from public.blocks b
+      where (b.blocker_id = pref.subscriber_id and b.blocked_id = new.user_id)
+         or (b.blocker_id = new.user_id and b.blocked_id = pref.subscriber_id)
+    );
+
+  return new;
+end;
+$$;
+revoke all on function private.notify_profile_subscribers_after_feed_post()
+  from public, anon, authenticated;
+
+drop trigger if exists trg_notify_profile_subscribers_after_feed_post
+  on public.feed_posts;
+create trigger trg_notify_profile_subscribers_after_feed_post
+after insert on public.feed_posts
+for each row
+execute function private.notify_profile_subscribers_after_feed_post();
+
+create or replace function private.notify_important_profile_subscribers_after_pin()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_creator_name text;
+  v_creator_username text;
+  v_is_vip boolean := false;
+begin
+  if not coalesce(new.is_pinned, false)
+     or coalesce(old.is_pinned, false)
+     or not coalesce(new.is_active, true)
+     or upper(coalesce(new.audience, 'EVERYONE')) <> 'EVERYONE'
+     or coalesce(new.is_sponsored, false) then
+    return new;
+  end if;
+
+  select
+    coalesce(nullif(trim(p.full_name), ''), nullif(trim(p.username), ''), 'Someone'),
+    coalesce(nullif(trim(p.username), ''), 'user'),
+    coalesce(p.blink_vip_until > now(), false)
+  into v_creator_name, v_creator_username, v_is_vip
+  from public.profiles p
+  where p.id = new.user_id;
+
+  insert into public.notifications(
+    user_id,
+    actor_id,
+    type,
+    post_id,
+    text,
+    sub_text,
+    actor_is_vip,
+    vip_priority,
+    target_type,
+    target_id,
+    metadata
+  )
+  select
+    pref.subscriber_id,
+    new.user_id,
+    'system'::public.notification_type_enum,
+    new.id,
+    v_creator_name || ' pinned an important update',
+    '@' || v_creator_username,
+    v_is_vip,
+    true,
+    case when coalesce(new.is_reel, false) then 'REEL' else 'POST' end,
+    new.id,
+    jsonb_build_object(
+      'source', 'profile_subscription',
+      'profile_id', new.user_id,
+      'mode', 'IMPORTANT'
+    )
+  from public.profile_notification_preferences pref
+  where pref.profile_id = new.user_id
+    and pref.mode = 'IMPORTANT'
+    and not exists (
+      select 1
+      from public.blocks b
+      where (b.blocker_id = pref.subscriber_id and b.blocked_id = new.user_id)
+         or (b.blocker_id = new.user_id and b.blocked_id = pref.subscriber_id)
+    );
+
+  return new;
+end;
+$$;
+revoke all on function private.notify_important_profile_subscribers_after_pin()
+  from public, anon, authenticated;
+
+drop trigger if exists trg_notify_important_profile_subscribers_after_pin
+  on public.feed_posts;
+create trigger trg_notify_important_profile_subscribers_after_pin
+after update of is_pinned on public.feed_posts
+for each row
+execute function private.notify_important_profile_subscribers_after_pin();
+
+-- SECURITY DEFINER is used only to construct a redacted projection from the legacy
+-- profiles row. Execution is restricted to authenticated and auth.uid() is mandatory.
 create or replace function public.get_profile_detail(p_identifier text)
 returns jsonb
 language plpgsql
