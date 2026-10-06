@@ -114,7 +114,8 @@ fun PostOptionsMenuSheet(
     onShare: () -> Unit,
     onDelete: () -> Unit,
     onReport: (reason: String) -> Unit,
-    onMuteUser: (username: String) -> Unit
+    onMuteUser: (username: String) -> Unit,
+    onNotInterested: () -> Unit = {}
 ) {
     val clipboardManager: ClipboardManager =
         LocalClipboardManager.current
@@ -246,7 +247,7 @@ fun PostOptionsMenuSheet(
                 ) {
 
                     Text(
-                        text = "Post actions",
+                        text = if (post.isReel) "Reel actions" else "Post actions",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Black,
                         color =
@@ -561,7 +562,7 @@ fun PostOptionsMenuSheet(
                     title =
                         "Not interested",
                     subtitle =
-                        "Show fewer posts like this",
+                        if (post.isReel) "Show fewer reels like this" else "Show fewer posts like this",
                     onClick = {
                         showHideConfirmDialog = true
                     },
@@ -793,9 +794,7 @@ fun PostOptionsMenuSheet(
 
                 showHideConfirmDialog = false
 
-                // Existing callback has no hide-specific action.
-                // Dismiss the menu so the caller can decide how
-                // to handle "not interested" externally.
+                onNotInterested()
                 onDismiss()
             }
         )
