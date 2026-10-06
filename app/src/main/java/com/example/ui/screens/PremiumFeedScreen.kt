@@ -78,6 +78,7 @@ import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.FollowStateStore
+import com.example.data.supabase.BlinkEconomyService
 import com.example.ui.components.BlinkNativeAdPlacement
 import com.example.ui.components.BlinkSponsoredNativeAd
 import com.example.ui.components.CreatePostFab
@@ -114,6 +115,7 @@ private const val FEED_SPONSORED_INTERVAL = 8
 
 private sealed interface PremiumHomeRow {
     data class PostRow(val post: FeedPost, val sourceIndex: Int) : PremiumHomeRow
+    data class BoostedPostRow(val placement: BlinkPromotedFeedPlacement, val slot: Int) : PremiumHomeRow
     data class ReelPreviewRow(val reel: FeedPost, val slot: Int) : PremiumHomeRow
     data class SponsoredRow(val slot: Int) : PremiumHomeRow
 }
@@ -121,28 +123,41 @@ private sealed interface PremiumHomeRow {
 private fun buildPremiumHomeRows(
     posts: List<FeedPost>,
     reels: List<FeedPost>,
+    promotedPosts: List<BlinkPromotedFeedPlacement>,
     seed: Int
 ): List<PremiumHomeRow> {
     if (posts.isEmpty()) return emptyList()
-    if (reels.isEmpty()) {
-        return posts.mapIndexed { index, post -> PremiumHomeRow.PostRow(post, index) }
-    }
 
     val random = Random(seed)
-    val rows = ArrayList<PremiumHomeRow>(posts.size + (posts.size / 6) + 2)
+    val rows = ArrayList<PremiumHomeRow>(posts.size + (posts.size / 5) + promotedPosts.size + 2)
     var postsSincePreview = 0
     var nextGap = random.nextInt(10, 21)
     var reelSlot = 0
     var sponsoredSlot = 0
+    var promotedSlot = 0
 
     posts.forEachIndexed { index, post ->
         rows += PremiumHomeRow.PostRow(post, index)
         postsSincePreview += 1
 
+        val organicPosition = index + 1
+        val shouldInsertBoosted =
+            promotedSlot < promotedPosts.size &&
+                organicPosition >= 5 &&
+                (organicPosition - 5) % 10 == 0 &&
+                index < posts.lastIndex
         val shouldInsertSponsored =
-            (index + 1) % FEED_SPONSORED_INTERVAL == 0 && index < posts.lastIndex
+            organicPosition % FEED_SPONSORED_INTERVAL == 0 && index < posts.lastIndex
 
-        if (shouldInsertSponsored) {
+        if (shouldInsertBoosted) {
+            rows += PremiumHomeRow.BoostedPostRow(
+                placement = promotedPosts[promotedSlot],
+                slot = promotedSlot
+            )
+            promotedSlot += 1
+            postsSincePreview = 0
+            nextGap = random.nextInt(10, 21)
+        } else if (shouldInsertSponsored) {
             rows += PremiumHomeRow.SponsoredRow(slot = sponsoredSlot++)
             // Avoid putting an inline reel preview directly beside a sponsored card.
             postsSincePreview = 0
@@ -630,8 +645,23 @@ private fun PremiumHomeFeed(
     val reelMixSeed = remember(laneResumeKey, filter, filteredPosts.firstOrNull()?.id) {
         "$laneResumeKey:${filter.name}:${filteredPosts.firstOrNull()?.id.orEmpty()}".hashCode()
     }
-    val homeRows = remember(filteredPosts, rankedInlineReels, reelMixSeed) {
-        buildPremiumHomeRows(filteredPosts, rankedInlineReels, reelMixSeed)
+    val boostGrowthService = remember { BlinkEconomyService() }
+    var promotedFeed by remember(laneResumeKey) {
+        mutableStateOf<List<BlinkPromotedFeedPlacement>>(emptyList())
+    }
+
+    LaunchedEffect(laneIndex, isOnline, laneResumeKey) {
+        if (laneIndex != 0 || !isOnline) {
+            promotedFeed = emptyList()
+            return@LaunchedEffect
+        }
+        boostGrowthService.promotedBoostSlots("HOME", 3)
+            .onSuccess { promotedFeed = parseBlinkPromotedFeedPlacements(it) }
+            .onFailure { promotedFeed = emptyList() }
+    }
+
+    val homeRows = remember(filteredPosts, rankedInlineReels, promotedFeed, reelMixSeed) {
+        buildPremiumHomeRows(filteredPosts, rankedInlineReels, promotedFeed, reelMixSeed)
     }
     val pendingNewPostCount = remember(
         posts,
@@ -1067,6 +1097,7 @@ private fun PremiumHomeFeed(
                                     key = { index ->
                                         when (val row = homeRows[index]) {
                                             is PremiumHomeRow.PostRow -> "post:${row.post.id}"
+                                            is PremiumHomeRow.BoostedPostRow -> "boosted:${row.placement.campaignId}:${row.slot}"
                                             is PremiumHomeRow.ReelPreviewRow -> "reel_preview:${row.slot}:${row.reel.id}"
                                             is PremiumHomeRow.SponsoredRow -> "sponsored:${row.slot}"
                                         }
@@ -1074,6 +1105,7 @@ private fun PremiumHomeFeed(
                                     contentType = { index ->
                                         when (val row = homeRows[index]) {
                                             is PremiumHomeRow.PostRow -> premiumPostContentType(row.post)
+                                            is PremiumHomeRow.BoostedPostRow -> 18
                                             is PremiumHomeRow.ReelPreviewRow -> 16
                                             is PremiumHomeRow.SponsoredRow -> 17
                                         }
