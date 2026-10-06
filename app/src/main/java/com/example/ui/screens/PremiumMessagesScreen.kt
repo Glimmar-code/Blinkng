@@ -2355,6 +2355,15 @@ private fun MessageBubble(
                         )
                         .border(1.dp, palette.border.copy(alpha = .55f), bubbleShape)
                 ) {
+                    if (message.isForwarded) {
+                        Text(
+                            "Forwarded",
+                            color = palette.textSecondary,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 7.dp)
+                        )
+                    }
                     if (message.replyToMessageId != null) {
                         Surface(
                             color = palette.glass.copy(alpha = .45f),
