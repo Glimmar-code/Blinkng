@@ -815,8 +815,6 @@ object BlinkNotificationHelper {
                 .setAutoCancel(
                     true
                 )
-                .setOnlyAlertOnce(!stableNotificationKey.isNullOrBlank())
-                .setNumber(notificationCount.coerceAtLeast(1))
                 .setContentIntent(
                     buildChatPendingIntent(
                         context,
@@ -898,6 +896,8 @@ object BlinkNotificationHelper {
                 .setAutoCancel(
                     true
                 )
+                .setOnlyAlertOnce(!stableNotificationKey.isNullOrBlank())
+                .setNumber(notificationCount.coerceAtLeast(1))
                 .setContentIntent(
                     when {
                         targetType.equals("profile", ignoreCase = true) &&
