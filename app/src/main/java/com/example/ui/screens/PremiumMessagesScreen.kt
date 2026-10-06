@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.Manifest
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
@@ -111,6 +112,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -1328,6 +1330,64 @@ private fun PremiumChatDetail(
     onToggleFullScreen: () -> Unit
 ) {
     val context = LocalContext.current
+    val voiceRecorder = remember(conversation.id) { ChatVoiceRecorder(context.applicationContext) }
+    var isRecordingVoice by remember(conversation.id) { mutableStateOf(false) }
+    var recordingSeconds by remember(conversation.id) { mutableIntStateOf(0) }
+
+    fun startVoiceRecordingNow() {
+        voiceRecorder.start()
+            .onSuccess {
+                isRecordingVoice = true
+                recordingSeconds = 0
+                onPresenceChange("recording")
+            }
+            .onFailure {
+                Toast.makeText(context, "Unable to start voice recording.", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    val voicePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startVoiceRecordingNow()
+        else Toast.makeText(context, "Microphone permission is needed for voice notes.", Toast.LENGTH_SHORT).show()
+    }
+
+    fun beginVoiceRecording() {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) startVoiceRecordingNow()
+        else voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
+    fun finishVoiceRecording(send: Boolean) {
+        if (!isRecordingVoice) return
+        if (send) {
+            voiceRecorder.stopAndKeep()
+                .onSuccess { (uri, _) -> onSendAttachment(uri, "voice") }
+                .onFailure {
+                    Toast.makeText(context, "Voice recording could not be saved.", Toast.LENGTH_SHORT).show()
+                }
+        } else {
+            voiceRecorder.cancel()
+        }
+        isRecordingVoice = false
+        recordingSeconds = 0
+        onPresenceChange("online")
+    }
+
+    LaunchedEffect(isRecordingVoice) {
+        while (isRecordingVoice) {
+            recordingSeconds = voiceRecorder.elapsedSeconds()
+            delay(500)
+        }
+    }
+    DisposableEffect(conversation.id) {
+        onDispose { voiceRecorder.cancel() }
+    }
+
     var text by rememberPersistentTextState(
         key = "chat_composer_text",
         scope = conversation.id.ifBlank { conversation.partnerUsername.lowercase() }
@@ -1721,7 +1781,12 @@ private fun PremiumChatDetail(
                 onDictation = startDictation,
                 onEmoji = { showEmojiRail = !showEmojiRail },
                 onSubmit = { submitMessage() },
-                onQuickLike = { submitMessage("👍") }
+                onQuickLike = { submitMessage("👍") },
+                isRecording = isRecordingVoice,
+                recordingSeconds = recordingSeconds,
+                onVoiceStart = { beginVoiceRecording() },
+                onVoiceStop = { finishVoiceRecording(true) },
+                onVoiceCancel = { finishVoiceRecording(false) }
             )
         }
     }
