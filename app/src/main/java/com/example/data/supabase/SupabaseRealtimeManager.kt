@@ -70,6 +70,12 @@ sealed class RealtimeEvent {
         val conversationId: String
     ) : RealtimeEvent()
     data class ConnectHubEvent(val eventType: String, val table: String) : RealtimeEvent()
+    data class WalletBalanceEvent(
+        val eventType: String,
+        val userId: String,
+        val balance: Long,
+        val updatedAt: String
+    ) : RealtimeEvent()
 }
 
 class SupabaseRealtimeManager private constructor() {
@@ -174,7 +180,7 @@ class SupabaseRealtimeManager private constructor() {
         if (sent) lastAccessTokenSent = token
     }
     private fun subscribeToTables() {
-        val tables = listOf("messages","conversations","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","calls","roommate_profiles","roommate_applications","mentor_profiles","mentor_requests","reading_mate_profiles","reading_mate_requests","housing_agent_profiles","housing_requests","housing_request_applications","game_challenges","skill_endorsements","poll_votes")
+        val tables = listOf("messages","conversations","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","calls","roommate_profiles","roommate_applications","mentor_profiles","mentor_requests","reading_mate_profiles","reading_mate_requests","housing_agent_profiles","housing_requests","housing_request_applications","game_challenges","skill_endorsements","poll_votes","user_balances")
         tables.forEach { table -> val join = JSONObject().apply { put("topic", "realtime:public:$table"); put("event", "phx_join"); put("payload", JSONObject().apply { put("config", JSONObject().apply { put("postgres_changes", org.json.JSONArray().apply { put(JSONObject().apply { put("event", "*"); put("schema", "public"); put("table", table) }) }) }) }); put("ref", refCounter.getAndIncrement().toString()) }; webSocket?.send(join.toString()) }
     }
     private fun handleIncomingMessage(text: String) {
@@ -289,6 +295,22 @@ class SupabaseRealtimeManager private constructor() {
                     }
                 }
                 "feed_posts" -> publishEvent(RealtimeEvent.FeedPostEvent(type, record.optString("id")))
+                "user_balances" -> {
+                    val userId = record.optString("user_id")
+                    if (userId == activeUserId) {
+                        val rawBalance = record.optString("spendable_coin_balance")
+                        val balance = rawBalance.toBigDecimalOrNull()?.toLong()
+                            ?: record.optLong("spendable_coin_balance", 0L)
+                        publishEvent(
+                            RealtimeEvent.WalletBalanceEvent(
+                                eventType = type,
+                                userId = userId,
+                                balance = balance.coerceAtLeast(0L),
+                                updatedAt = record.optString("updated_at")
+                            )
+                        )
+                    }
+                }
                 "calls" -> {
                     val calleeId = record.optString("callee_id")
                     val status = record.optString("status")
