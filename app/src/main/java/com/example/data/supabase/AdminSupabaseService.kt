@@ -25,6 +25,20 @@ data class AdminDashboardStats(
     val ownerPosts: Int = 0
 )
 
+data class AdminNotificationDeliveryHealth(
+    val activeDevices: Int = 0,
+    val usersWithPush: Int = 0,
+    val socialSent: Int = 0,
+    val socialFailed: Int = 0,
+    val socialSending: Int = 0,
+    val socialRetried: Int = 0,
+    val messageSent: Int = 0,
+    val messageFailed: Int = 0,
+    val messageSending: Int = 0,
+    val messageRetried: Int = 0,
+    val failuresLast24h: Int = 0
+)
+
 data class AdminUserSummary(
     val id: String,
     val username: String,
@@ -184,6 +198,23 @@ class AdminSupabaseService {
             activeAdmins = json.optInt("active_admins", 0),
             posts = json.optInt("posts", 0),
             ownerPosts = json.optInt("owner_posts", 0)
+        )
+    }
+
+    suspend fun fetchNotificationDeliveryHealth(): Result<AdminNotificationDeliveryHealth> = runCatching {
+        val json = JSONObject(rpc("admin_notification_delivery_health"))
+        AdminNotificationDeliveryHealth(
+            activeDevices = json.optInt("active_devices", 0),
+            usersWithPush = json.optInt("users_with_push", 0),
+            socialSent = json.optInt("social_sent", 0),
+            socialFailed = json.optInt("social_failed", 0),
+            socialSending = json.optInt("social_sending", 0),
+            socialRetried = json.optInt("social_retried", 0),
+            messageSent = json.optInt("message_sent", 0),
+            messageFailed = json.optInt("message_failed", 0),
+            messageSending = json.optInt("message_sending", 0),
+            messageRetried = json.optInt("message_retried", 0),
+            failuresLast24h = json.optInt("failures_24h", 0)
         )
     }
 
