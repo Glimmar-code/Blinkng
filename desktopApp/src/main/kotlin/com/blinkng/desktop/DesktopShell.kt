@@ -160,7 +160,9 @@ fun runBlinkDesktopApplication() = application {
     var notificationTitle by remember { mutableStateOf("Blinkng") }
     var notificationBody by remember { mutableStateOf("") }
     var foregroundNotification by remember { mutableStateOf<DesktopNotification?>(null) }
+    var unreadNotificationCount by remember { mutableIntStateOf(0) }
     val foregroundNotificationQueue = remember { java.util.ArrayDeque<DesktopNotification>() }
+    val recentNotificationBursts = remember { linkedMapOf<String, Long>() }
     val trayNotification = rememberNotification(notificationTitle, notificationBody)
 
     fun showNativeNotification(title: String, body: String) {
@@ -204,6 +206,7 @@ fun runBlinkDesktopApplication() = application {
 
         while (appState.session?.userId == activeUserId) {
             val rows = runCatching { appState.client.fetchNotifications() }.getOrDefault(emptyList())
+            unreadNotificationCount = rows.count { !it.isRead }
             if (!baselineReady) {
                 seenIds = rows.mapTo(linkedSetOf()) { it.id }
                 baselineReady = true
@@ -213,18 +216,34 @@ fun runBlinkDesktopApplication() = application {
                     .sortedBy { it.createdAt }
                 seenIds = rows.mapTo(linkedSetOf()) { it.id }
                 fresh.forEach { item ->
-                    if (foregroundNotification == null) {
-                        foregroundNotification = item
-                    } else if (foregroundNotification?.id != item.id &&
-                        foregroundNotificationQueue.none { it.id == item.id }
-                    ) {
-                        foregroundNotificationQueue.addLast(item)
+                    val type = item.type.trim().lowercase()
+                    val target = item.postId ?: item.targetId
+                    val burstKey = when {
+                        type in setOf("like", "comment", "reply", "mention") && !target.isNullOrBlank() ->
+                            type + ":" + target
+                        type == "follow" -> "follow"
+                        else -> item.id
                     }
-                    if (!isWindowVisible) {
-                        showNativeNotification(
-                            item.text.ifBlank { "Blink notification" },
-                            item.subText.orEmpty().ifBlank { "Open Blinkng to view it." },
-                        )
+                    val now = System.currentTimeMillis()
+                    val previous = recentNotificationBursts[burstKey]
+                    val suppressBurst = previous != null && now - previous <= 3_500L
+                    recentNotificationBursts[burstKey] = now
+                    recentNotificationBursts.entries.removeAll { now - it.value > 15_000L }
+
+                    if (!suppressBurst) {
+                        if (foregroundNotification == null) {
+                            foregroundNotification = item
+                        } else if (foregroundNotification?.id != item.id &&
+                            foregroundNotificationQueue.none { it.id == item.id }
+                        ) {
+                            foregroundNotificationQueue.addLast(item)
+                        }
+                        if (!isWindowVisible) {
+                            showNativeNotification(
+                                item.text.ifBlank { "Blink notification" },
+                                item.subText.orEmpty().ifBlank { "Open Blinkng to view it." },
+                            )
+                        }
                     }
                 }
             }
@@ -310,7 +329,10 @@ fun runBlinkDesktopApplication() = application {
                                         },
                                     )
                                 }
-                                AuthenticatedShell(appState)
+                                AuthenticatedShell(
+                                    state = appState,
+                                    unreadNotificationCount = unreadNotificationCount,
+                                )
                             }
                         }
 
@@ -448,14 +470,17 @@ private fun InitializingScreen() {
 }
 
 @Composable
-private fun AuthenticatedShell(state: DesktopAppState) {
+private fun AuthenticatedShell(
+    state: DesktopAppState,
+    unreadNotificationCount: Int,
+) {
     val visibleDestinations = remember(state.adminCapability.allowed) {
         desktopDestinations.filter { !it.adminOnly || state.adminCapability.allowed }
     }
     if (state.selectedRoute == "admin" && !state.adminCapability.allowed) state.selectedRoute = "home"
 
     Column(modifier = Modifier.fillMaxSize()) {
-        DesktopTopBar(state)
+        DesktopTopBar(state, unreadNotificationCount)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         AndroidParityDesignDock(
             route = state.selectedRoute,
@@ -502,7 +527,10 @@ private fun AuthenticatedShell(state: DesktopAppState) {
 }
 
 @Composable
-private fun DesktopTopBar(state: DesktopAppState) {
+private fun DesktopTopBar(
+    state: DesktopAppState,
+    unreadNotificationCount: Int,
+) {
     var search by remember(state.globalSearch) { mutableStateOf(state.globalSearch) }
     val profile = state.profile
     Row(
@@ -531,8 +559,25 @@ private fun DesktopTopBar(state: DesktopAppState) {
             state.globalSearch = search.trim()
             state.selectedRoute = "search"
         }) { Icon(Icons.Rounded.Search, contentDescription = "Search") }
-        IconButton(onClick = { state.selectedRoute = "notifications" }) {
-            Icon(Icons.Rounded.Notifications, contentDescription = "Notifications")
+        Box {
+            IconButton(onClick = { state.selectedRoute = "notifications" }) {
+                Icon(Icons.Rounded.Notifications, contentDescription = "Notifications")
+            }
+            if (unreadNotificationCount > 0) {
+                Surface(
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                ) {
+                    Text(
+                        text = if (unreadNotificationCount > 99) "99+" else unreadNotificationCount.toString(),
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                    )
+                }
+            }
         }
         Row(
             modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable { state.selectedRoute = "profile" }
