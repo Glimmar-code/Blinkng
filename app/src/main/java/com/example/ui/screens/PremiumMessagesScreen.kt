@@ -176,6 +176,7 @@ private const val MESSAGE_PREFERENCES = "blink_message_preferences"
 private const val MESSAGE_THEME_KEY = "message_theme"
 
 private enum class MessageCallKind { AUDIO, VIDEO }
+private enum class MessageInboxTab { PRIMARY, REQUESTS, ARCHIVED }
 
 private data class MessageCallState(
     val conversation: ChatConversation,
@@ -619,12 +620,26 @@ private fun PremiumMessagesHome(
     isConnected: Boolean,
     isLoading: Boolean
 ) {
-    var query by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:query:1")
-    val sortedConversations = remember(conversations) {
-        conversations.sortedWith(
-            compareByDescending<ChatConversation> { it.lastMessageRawTime }
-                .thenByDescending { it.id }
-        )
+    var query by rememberPersistentTextState(key = "message_home_search")
+    var inboxTab by rememberSaveable { mutableStateOf(MessageInboxTab.PRIMARY) }
+    val requestCount = conversations.count { it.inboxCategory == "requests" && !it.isArchived }
+    val archivedCount = conversations.count { it.isArchived }
+    val sortedConversations = remember(conversations, inboxTab) {
+        conversations
+            .filter { conversation ->
+                when (inboxTab) {
+                    MessageInboxTab.PRIMARY ->
+                        !conversation.isArchived && conversation.inboxCategory != "requests"
+                    MessageInboxTab.REQUESTS ->
+                        !conversation.isArchived && conversation.inboxCategory == "requests"
+                    MessageInboxTab.ARCHIVED -> conversation.isArchived
+                }
+            }
+            .sortedWith(
+                compareByDescending<ChatConversation> { it.isConversationPinned }
+                    .thenByDescending { it.lastMessageRawTime }
+                    .thenByDescending { it.id }
+            )
     }
     val filteredConversations = remember(sortedConversations, query) {
         if (query.isBlank()) sortedConversations
@@ -683,12 +698,12 @@ private fun PremiumMessagesHome(
                 )
             }
 
-            Text(
-                text = "All messages",
-                color = palette.textPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 18.dp, top = 8.dp, bottom = 8.dp)
+            MessageInboxTabs(
+                selected = inboxTab,
+                requestCount = requestCount,
+                archivedCount = archivedCount,
+                palette = palette,
+                onSelect = { inboxTab = it }
             )
 
             if (!isConnected) {
@@ -1366,6 +1381,81 @@ private fun PremiumChatDetail(
                 onToggleFullScreen = onToggleFullScreen
             )
 
+            if (conversation.inboxCategory == "requests") {
+                Surface(
+                    color = palette.glassElevated,
+                    border = BorderStroke(1.dp, palette.border)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        Text(
+                            "Message request",
+                            color = palette.textPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Accept to move this chat into your main inbox.",
+                            color = palette.textSecondary,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Surface(
+                                color = palette.accent,
+                                contentColor = Color.White,
+                                shape = RoundedCornerShape(100.dp),
+                                modifier = Modifier.clickable {
+                                    interactionActions.onRespondMessageRequest(conversation, true)
+                                }
+                            ) {
+                                Text(
+                                    "Accept",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                )
+                            }
+                            Surface(
+                                color = palette.glass,
+                                contentColor = palette.textPrimary,
+                                shape = RoundedCornerShape(100.dp),
+                                border = BorderStroke(1.dp, palette.border),
+                                modifier = Modifier.clickable {
+                                    interactionActions.onRespondMessageRequest(conversation, false)
+                                    onBack()
+                                }
+                            ) {
+                                Text(
+                                    "Delete",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                )
+                            }
+                            Surface(
+                                color = palette.danger.copy(alpha = .10f),
+                                contentColor = palette.danger,
+                                shape = RoundedCornerShape(100.dp),
+                                border = BorderStroke(1.dp, palette.danger.copy(alpha = .30f)),
+                                modifier = Modifier.clickable {
+                                    interactionActions.onBlockConversation(conversation)
+                                    onBack()
+                                }
+                            ) {
+                                Text(
+                                    "Block",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             if (!isConnected) {
                 Surface(color = palette.danger.copy(alpha = .18f)) {
                     Text(
@@ -1639,6 +1729,24 @@ private fun PremiumChatDetail(
             onMute = {
                 showOverflow = false
                 interactionActions.onMuteConversation(conversation, !conversation.isMuted)
+            },
+            onPinConversation = {
+                showOverflow = false
+                interactionActions.onPinConversation(conversation, !conversation.isConversationPinned)
+            },
+            onMarkUnread = {
+                showOverflow = false
+                interactionActions.onMarkConversationUnread(conversation, !conversation.isMarkedUnread)
+            },
+            onArchive = {
+                showOverflow = false
+                interactionActions.onArchiveConversation(conversation, !conversation.isArchived)
+                if (!conversation.isArchived) onBack()
+            },
+            onBlock = {
+                showOverflow = false
+                interactionActions.onBlockConversation(conversation)
+                onBack()
             },
             onDelete = {
                 showOverflow = false
