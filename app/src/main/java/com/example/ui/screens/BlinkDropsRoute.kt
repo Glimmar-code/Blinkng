@@ -77,6 +77,7 @@ import com.blinkng.shared.BlinkDropsPolicy
 import com.example.data.network.NetworkMonitor
 import com.example.data.supabase.BlinkDropsService
 import com.example.data.supabase.BlinkWalletStore
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -701,6 +702,11 @@ private fun OrganizeDropDialog(
     balance: Long?,
     posts: List<DropTarget>,
     listings: List<DropTarget>,
+    eligibleFollowersAll: Int,
+    eligibleFollowersCampus: Int,
+    isOnline: Boolean,
+    creating: Boolean,
+    onGetCoins: () -> Unit,
     onDismiss: () -> Unit,
     onCreate: (
         target: DropTarget,
@@ -711,24 +717,93 @@ private fun OrganizeDropDialog(
         durationHours: Int,
     ) -> Unit,
 ) {
-    var targetType by remember { mutableStateOf(BlinkDropTargetType.POST) }
-    var selectedTarget by remember { mutableStateOf<DropTarget?>(null) }
-    var action by remember { mutableStateOf(BlinkDropAction.LIKE.name) }
-    var rewardText by remember { mutableStateOf("100") }
-    var winnerText by remember { mutableStateOf("1") }
-    var audience by remember { mutableStateOf(BlinkDropAudienceScope.ALL_CAMPUSES.name) }
-    var duration by remember { mutableIntStateOf(24) }
+    val service = remember { BlinkDropsService() }
+    val draft = remember { DropDraftStore.value }
+    var targetType by remember { mutableStateOf(draft.targetType) }
+    var selectedTargetId by remember { mutableStateOf(draft.selectedTargetId) }
+    var action by remember { mutableStateOf(draft.action) }
+    var rewardText by remember { mutableStateOf(draft.rewardText) }
+    var winnerText by remember { mutableStateOf(draft.winnerText) }
+    var audience by remember { mutableStateOf(draft.audience) }
+    var duration by remember { mutableIntStateOf(draft.durationHours) }
+    var quote by remember { mutableStateOf<JSONObject?>(null) }
+    var quoteLoading by remember { mutableStateOf(false) }
+    var confirmPublish by remember { mutableStateOf(false) }
 
     val availableTargets = when (targetType) {
         BlinkDropTargetType.POST -> posts.filter { it.type == "POST" }
         BlinkDropTargetType.REEL -> posts.filter { it.type == "REEL" }
         BlinkDropTargetType.LISTING -> listings
     }
+    val selectedTarget = availableTargets.firstOrNull { it.id == selectedTargetId }
     val actions = BlinkDropsPolicy.actionsFor(targetType)
     val reward = rewardText.toIntOrNull() ?: 0
     val winners = winnerText.toIntOrNull() ?: 0
     val total = reward.toLong() * winners.toLong()
-    val valid = selectedTarget != null &&
+    val localEligible = if (audience == BlinkDropAudienceScope.MY_CAMPUS.name) {
+        eligibleFollowersCampus
+    } else {
+        eligibleFollowersAll
+    }
+
+    LaunchedEffect(
+        targetType,
+        selectedTargetId,
+        action,
+        rewardText,
+        winnerText,
+        audience,
+        duration,
+    ) {
+        DropDraftStore.value = DropDraftSnapshot(
+            targetType = targetType,
+            selectedTargetId = selectedTargetId,
+            action = action,
+            rewardText = rewardText,
+            winnerText = winnerText,
+            audience = audience,
+            durationHours = duration,
+        )
+
+        quote = null
+        if (
+            !isOnline ||
+            selectedTarget == null ||
+            !BlinkDropsPolicy.isRewardValid(reward) ||
+            !BlinkDropsPolicy.isWinnerCountValid(winners) ||
+            action !in actions.map { it.name }
+        ) return@LaunchedEffect
+
+        delay(250)
+        quoteLoading = true
+        service.quoteDrop(
+            targetType = selectedTarget.type,
+            targetId = selectedTarget.id,
+            action = action,
+            rewardPerUser = reward,
+            winnerCount = winners,
+            audienceScope = audience,
+            durationHours = duration,
+        ).onSuccess {
+            quote = it
+        }.onFailure {
+            quote = null
+        }
+        quoteLoading = false
+    }
+
+    val eligibleFollowers = quote?.optInt("eligible_followers", localEligible) ?: localEligible
+    val maximumPossibleRecipients = quote?.optInt(
+        "maximum_possible_recipients",
+        minOf(eligibleFollowers, winners.coerceAtLeast(0)),
+    ) ?: minOf(eligibleFollowers, winners.coerceAtLeast(0))
+    val remainingBalance = quote?.takeIf { it.has("remaining_balance_after_reserve") }
+        ?.optLong("remaining_balance_after_reserve")
+        ?: balance?.minus(total)
+
+    val valid = isOnline &&
+        !creating &&
+        selectedTarget != null &&
         BlinkDropsPolicy.isRewardValid(reward) &&
         BlinkDropsPolicy.isWinnerCountValid(winners) &&
         total <= BlinkDropsPolicy.MAX_TOTAL_BUDGET &&
@@ -736,7 +811,7 @@ private fun OrganizeDropDialog(
         total <= balance &&
         action in actions.map { it.name }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = { if (!creating) onDismiss() }) {
         Surface(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(.9f),
             shape = RoundedCornerShape(24.dp),
@@ -756,9 +831,18 @@ private fun OrganizeDropDialog(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        IconButton(onClick = onDismiss) {
+                        IconButton(onClick = onDismiss, enabled = !creating) {
                             Icon(Icons.Default.Close, contentDescription = "Close")
                         }
+                    }
+                }
+
+                if (!isOnline) {
+                    item {
+                        StatusCard(
+                            "You're offline. Your Drop draft is saved, but publishing waits until you reconnect.",
+                            isError = false,
+                        )
                     }
                 }
 
@@ -770,7 +854,7 @@ private fun OrganizeDropDialog(
                                 selected = targetType == type,
                                 onClick = {
                                     targetType = type
-                                    selectedTarget = null
+                                    selectedTargetId = ""
                                     action = BlinkDropsPolicy.actionsFor(type).first().name
                                 },
                                 label = { Text(targetLabel(type.name)) },
@@ -786,9 +870,9 @@ private fun OrganizeDropDialog(
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { selectedTarget = target },
+                                .clickable(enabled = !creating) { selectedTargetId = target.id },
                             colors = CardDefaults.cardColors(
-                                containerColor = if (selectedTarget?.id == target.id) {
+                                containerColor = if (selectedTargetId == target.id) {
                                     MaterialTheme.colorScheme.surfaceVariant
                                 } else {
                                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
@@ -833,6 +917,7 @@ private fun OrganizeDropDialog(
                             label = { Text("Coins per person") },
                             supportingText = { Text("Minimum 100 · multiples of 100") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            enabled = !creating,
                             modifier = Modifier.weight(1f),
                         )
                         OutlinedTextField(
@@ -840,6 +925,7 @@ private fun OrganizeDropDialog(
                             onValueChange = { winnerText = it.filter(Char::isDigit).take(3) },
                             label = { Text("People") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            enabled = !creating,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -849,6 +935,18 @@ private fun OrganizeDropDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    remainingBalance?.let {
+                        Text(
+                            "Balance after reserve: ${NumberFormat.getIntegerInstance(Locale.US).format(it.coerceAtLeast(0L))} coins",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (balance != null && total > balance) {
+                        OutlinedButton(onClick = onGetCoins, enabled = !creating) {
+                            Text("Get Blink Coins")
+                        }
+                    }
                 }
 
                 item {
@@ -866,6 +964,15 @@ private fun OrganizeDropDialog(
                             label = { Text("My campus") },
                             leadingIcon = { Icon(Icons.Default.School, null, modifier = Modifier.size(16.dp)) }
                         )
+                    }
+                    Text(
+                        "Eligible followers: ${NumberFormat.getIntegerInstance(Locale.US).format(eligibleFollowers)} · " +
+                            "Maximum possible recipients: ${NumberFormat.getIntegerInstance(Locale.US).format(maximumPossibleRecipients)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (quoteLoading) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
                 }
 
@@ -894,10 +1001,7 @@ private fun OrganizeDropDialog(
                 item {
                     Divider()
                     Button(
-                        onClick = {
-                            val target = selectedTarget ?: return@Button
-                            onCreate(target, action, reward, winners, audience, duration)
-                        },
+                        onClick = { confirmPublish = true },
                         enabled = valid,
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
@@ -907,13 +1011,19 @@ private fun OrganizeDropDialog(
                             disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
                     ) {
-                        Icon(Icons.Default.CardGiftcard, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Reserve coins & publish Drop")
+                        if (creating) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                        } else {
+                            Icon(Icons.Default.CardGiftcard, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(if (creating) "Publishing…" else "Review & publish Drop")
                     }
-                    if (!valid) {
+                    if (!valid && !creating) {
                         Text(
                             when {
+                                !isOnline -> "Reconnect to publish this Drop."
                                 selectedTarget == null -> "Choose content first."
                                 balance == null -> "Balance is unavailable. Retry."
                                 !BlinkDropsPolicy.isRewardValid(reward) -> "Reward must be 100, 200, 300… coins per person."
@@ -923,15 +1033,58 @@ private fun OrganizeDropDialog(
                                 else -> "Check the Drop details."
                             },
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
             }
         }
     }
-}
 
+    if (confirmPublish) {
+        AlertDialog(
+            onDismissRequest = { if (!creating) confirmPublish = false },
+            title = { Text("Publish this Drop?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(selectedTarget?.title.orEmpty().ifBlank { targetLabel(targetType.name) }, fontWeight = FontWeight.Bold)
+                    Text(actionLabel(action) + " · " + (if (audience == BlinkDropAudienceScope.MY_CAMPUS.name) "My campus" else "All campuses"))
+                    Text("$winners recipient${if (winners == 1) "" else "s"} · ${NumberFormat.getIntegerInstance(Locale.US).format(reward)} coins each")
+                    Text("Reserve: ${NumberFormat.getIntegerInstance(Locale.US).format(total)} Blink Coins", fontWeight = FontWeight.Black)
+                    balance?.let {
+                        Text("Remaining balance: ${NumberFormat.getIntegerInstance(Locale.US).format((it - total).coerceAtLeast(0L))} Blink Coins")
+                    }
+                    Text(
+                        "Eligible followers are snapshotted when you publish. Unclaimed coins are returned when the Drop is cancelled or expires.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = valid && !creating,
+                    onClick = {
+                        val target = selectedTarget ?: return@Button
+                        confirmPublish = false
+                        onCreate(target, action, reward, winners, audience, duration)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.onSurface,
+                        contentColor = MaterialTheme.colorScheme.surface,
+                    ),
+                ) {
+                    Text("Reserve & publish")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmPublish = false }, enabled = !creating) {
+                    Text("Back")
+                }
+            },
+        )
+    }
+}
 @Composable
 private fun CommentDropDialog(
     reward: Int,
