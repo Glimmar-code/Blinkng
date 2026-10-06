@@ -132,6 +132,7 @@ import kotlinx.coroutines.launch
  * Premium home-feed card. It renders only real post media: text-only posts never
  * allocate an empty image area and video content remains routed to Reels.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun PostCard(
     post: FeedPost,
@@ -972,6 +973,7 @@ private fun NaturalAspectPostImage(
  * Tap a feed image to open it full-screen. Pinch with two fingers to zoom up to
  * 5x and pan around the enlarged image. Back or the close button exits safely.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ImageFullscreenDialog(
     images: List<String>,
