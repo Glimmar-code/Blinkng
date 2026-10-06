@@ -3731,7 +3731,8 @@ private suspend fun restoreSupabaseSession() {
                     .setInitialDelay(durationMillis, TimeUnit.MILLISECONDS)
                     .setInputData(
                         workDataOf(
-                            ConversationMuteExpiryWorker.KEY_CONVERSATION_ID to conversation.id
+                            ConversationMuteExpiryWorker.KEY_CONVERSATION_ID to conversation.id,
+                            ConversationMuteExpiryWorker.KEY_OWNER_ID to supabaseService.getCurrentUserId().orEmpty()
                         )
                     )
                     .build()
