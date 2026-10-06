@@ -2039,11 +2039,15 @@ fun getCurrentUserId(): String? {
 
         val profiles = mutableMapOf<String, JSONObject>()
         if (userIds.isNotEmpty()) {
+            val body = JSONObject().put("p_ids", JSONArray(userIds.toList()))
             executeRequest(
                 newRequestBuilder(
-                    "/rest/v1/profiles?id=in.(${userIds.joinToString(",")})&select=id,username,avatar_url,is_verified,verification_badge,full_name",
+                    "/rest/v1/rpc/get_public_profiles_by_ids",
                     authenticated = true
-                ).get().build()
+                )
+                    .addHeader("Content-Type", "application/json")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
             ).use { response ->
                 val raw = response.body?.string().orEmpty()
                 if (response.isSuccessful && raw.isNotBlank() && raw != "[]") {
@@ -2789,50 +2793,27 @@ suspend fun uploadPostMedia(
     // PROFILES LIST
     // ============================================================
 
-    suspend fun fetchProfiles():
-        List<UserProfile> =
+    suspend fun fetchProfiles(): List<UserProfile> =
         withContext(Dispatchers.IO) {
-
             try {
-
-                val request =
-                    newRequestBuilder(
-                        "/rest/v1/profiles" +
-                                "?select=*" +
-                                "&order=created_at.desc" +
-                                "&limit=100",
-                        authenticated = true
-                    )
-                        .get()
-                        .build()
+                val body = JSONObject().put("p_limit", 100)
+                val request = newRequestBuilder(
+                    "/rest/v1/rpc/get_profile_directory",
+                    authenticated = true
+                )
+                    .addHeader("Content-Type", "application/json")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
 
                 executeRequest(request).use { response ->
-
-                    val body =
-                        response.body
-                            ?.string()
-                            .orEmpty()
-
-                    if (!response.isSuccessful) {
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful || raw.isBlank() || raw == "[]") {
                         return@withContext emptyList()
                     }
 
-                    if (
-                        body.isBlank() ||
-                        body == "[]"
-                    ) {
-                        return@withContext emptyList()
-                    }
-
-                    val array =
-                        JSONArray(body)
-
+                    val array = JSONArray(raw)
                     buildList {
-
-                        for (
-                            i in 0 until array.length()
-                        ) {
-
+                        for (i in 0 until array.length()) {
                             parseUserProfile(array.getJSONObject(i)).let { profile ->
                                 if (profile.username.isNotBlank() &&
                                     !profile.username.equals("null", ignoreCase = true)
@@ -2841,15 +2822,8 @@ suspend fun uploadPostMedia(
                         }
                     }
                 }
-
             } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "PROFILES_FETCH exception",
-                    e
-                )
-
+                Log.w(TAG, "PROFILE_DIRECTORY failed", e)
                 emptyList()
             }
         }
