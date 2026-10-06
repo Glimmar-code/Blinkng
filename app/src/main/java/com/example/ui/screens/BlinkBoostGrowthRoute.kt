@@ -264,7 +264,7 @@ private fun BoostCampaignColumn(
     suspend fun reloadState() {
         service.boostGrowthState()
             .onSuccess { state = it; error = null }
-            .onFailure { error = it.message ?: "Unable to load Boost." }
+            .onFailure { error = boostUserMessage(it, "Boost is temporarily unavailable. Please try again.") }
     }
 
     LaunchedEffect(Unit) { reloadState() }
@@ -303,12 +303,12 @@ private fun BoostCampaignColumn(
             quote = it
             error = null
         }.onFailure {
-            error = it.message ?: "Unable to calculate this boost."
+            error = boostUserMessage(it, "Unable to calculate this boost right now. Please try again.")
         }
         quoteLoading = false
     }
 
-    val balance = state?.optLong("balance", 0L) ?: 0L
+    val balance = state?.takeIf { it.has("balance") }?.optLong("balance")
     val quoteCost = quote?.optLong("coin_cost", 0L) ?: 0L
     val activeCampaigns = state?.optJSONArray("campaigns").objectList()
         .filter { it.optString("status") == "ACTIVE" }
@@ -322,12 +322,12 @@ private fun BoostCampaignColumn(
 
         error?.let { value ->
             item {
-                StatusCard(value, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
+                StatusCard(value, MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurface)
             }
         }
         message?.let { value ->
             item {
-                StatusCard(value, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+                StatusCard(value, MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurface)
             }
         }
 
@@ -405,41 +405,7 @@ private fun BoostCampaignColumn(
         }
 
         item {
-            SectionTitle("2. Boost power", "Higher power increases delivery speed and estimated reach.")
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Slider(
-                    value = boostPower.toFloat(),
-                    onValueChange = { boostPower = it.toInt().coerceIn(1, 100) },
-                    valueRange = 1f..100f,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    "$boostPower%",
-                    modifier = Modifier.padding(start = 12.dp),
-                    fontWeight = FontWeight.Black,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
-        }
-
-        item {
-            SectionTitle(
-                "3. Goal",
-                "Choose views, likes, comments, saves, any engagement, visits or followers. Results are estimates.",
-            )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(objectivesFor(targetType)) { item ->
-                    FilterChip(
-                        selected = objective == item,
-                        onClick = { objective = item },
-                        label = { Text(objectiveLabel(item)) },
-                    )
-                }
-            }
-        }
-
-        item {
-            SectionTitle("4. Audience", "Choose your campus or expand across BLINK.")
+            SectionTitle("2. Audience", "Choose your campus or expand across BLINK.")
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(BlinkBoostAudienceScope.values().toList()) { item ->
                     FilterChip(
@@ -488,6 +454,40 @@ private fun BoostCampaignColumn(
         }
 
         item {
+            SectionTitle(
+                "3. Goal",
+                "Choose views, likes, comments, saves, any engagement, visits or followers. Results are estimates.",
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(objectivesFor(targetType)) { item ->
+                    FilterChip(
+                        selected = objective == item,
+                        onClick = { objective = item },
+                        label = { Text(objectiveLabel(item)) },
+                    )
+                }
+            }
+        }
+
+        item {
+            SectionTitle("4. Boost power", "Higher power increases delivery speed and estimated reach.")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Slider(
+                    value = boostPower.toFloat(),
+                    onValueChange = { boostPower = it.toInt().coerceIn(1, 100) },
+                    valueRange = 1f..100f,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "$boostPower%",
+                    modifier = Modifier.padding(start = 12.dp),
+                    fontWeight = FontWeight.Black,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+        }
+
+        item {
             SectionTitle("5. Duration", "Longer campaigns receive the built-in duration discount.")
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(listOf(1, 3, 7, 14, 30)) { days ->
@@ -512,7 +512,7 @@ private fun BoostCampaignColumn(
         item {
             Button(
                 onClick = { confirmStart = true },
-                enabled = !working && !quoteLoading && quote != null && quoteCost > 0 && balance >= quoteCost,
+                enabled = !working && !quoteLoading && quote != null && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (working) {
@@ -522,6 +522,7 @@ private fun BoostCampaignColumn(
                 Text(
                     when {
                         quote == null -> "Choose a boost target"
+                        balance == null -> "Balance unavailable"
                         balance < quoteCost -> "Not enough Blink Coins"
                         else -> "Start Boost • " + formatter.format(quoteCost) + " coins"
                     },
@@ -552,7 +553,7 @@ private fun BoostCampaignColumn(
                                         }
                                         reloadState()
                                     }
-                                    .onFailure { error = it.message ?: "Unable to cancel this boost." }
+                                    .onFailure { error = boostUserMessage(it, "Unable to cancel this boost right now.") }
                                 working = false
                             }
                         }
@@ -584,7 +585,7 @@ private fun BoostCampaignColumn(
             },
             confirmButton = {
                 Button(
-                    enabled = !working && quoteCost > 0 && balance >= quoteCost,
+                    enabled = !working && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
                     onClick = {
                         scope.launch {
                             working = true
@@ -602,7 +603,7 @@ private fun BoostCampaignColumn(
                                 message = "Boost started. " + formatter.format(charged) + " coins were charged for campaign delivery."
                                 reloadState()
                             }.onFailure {
-                                error = it.message ?: "Unable to start this boost."
+                                error = boostUserMessage(it, "Unable to start this boost right now. Please try again.")
                             }
                             working = false
                         }
@@ -740,7 +741,7 @@ private fun EarnRankPointsColumn(
 
         error?.let { value ->
             item {
-                StatusCard(value, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
+                StatusCard(value, MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurface)
             }
         }
 
@@ -1092,7 +1093,7 @@ private fun ProfileTargetCard(
 private fun CampaignQuoteCard(
     quote: JSONObject?,
     quoteLoading: Boolean,
-    balance: Long,
+    balance: Long?,
     formatter: NumberFormat,
 ) {
     Card(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
@@ -1120,7 +1121,11 @@ private fun CampaignQuoteCard(
                         fontWeight = FontWeight.Black,
                     )
                     Text("Estimated reach: " + formatter.format(low) + "–" + formatter.format(high))
-                    Text("Balance: " + formatter.format(balance) + " coins")
+                    Text(
+                        balance?.let { "Balance: " + formatter.format(it) + " coins" }
+                            ?: "Balance unavailable",
+                        color = if (balance == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    )
                     Text(
                         "Estimates are not guarantees. Paid delivery is marked Promoted and stays separate from organic Trending.",
                         style = MaterialTheme.typography.bodySmall,
@@ -1180,12 +1185,13 @@ private fun ActiveCampaignCard(
 
 @Composable
 private fun BalanceCard(
-    balance: Long,
+    balance: Long?,
     formatter: NumberFormat,
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .48f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(16.dp),
@@ -1196,12 +1202,24 @@ private fun BalanceCard(
             Column {
                 Text("Boost balance", style = MaterialTheme.typography.labelMedium)
                 Text(
-                    formatter.format(balance) + " Blink Coins",
+                    balance?.let { formatter.format(it) + " Blink Coins" } ?: "Balance unavailable",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black,
                 )
             }
         }
+    }
+}
+
+private fun boostUserMessage(error: Throwable, fallback: String): String {
+    val raw = error.message.orEmpty()
+    return when {
+        raw.contains("INSUFFICIENT_BLINK_COINS", ignoreCase = true) -> "You don't have enough Blink Coins."
+        raw.contains("schema cache", ignoreCase = true) ||
+            raw.contains("Could not find the function", ignoreCase = true) ->
+            "Boost is updating. Please try again shortly."
+        raw.contains("session has expired", ignoreCase = true) -> "Your Blink session expired. Please sign in again."
+        else -> fallback
     }
 }
 

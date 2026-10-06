@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -150,7 +151,7 @@ fun BlinkDropsRoute(
         loading = false
     }
 
-    val balance = state?.optLong("balance", 0L) ?: 0L
+    val balance = state?.takeIf { it.has("balance") }?.optLong("balance")
     val activeDrops = state?.optJSONArray("active_drops").toDropItems()
     val myDrops = state?.optJSONArray("my_drops").toDropItems()
     val topGivers = state?.optJSONArray("top_givers").toTopGivers()
@@ -437,12 +438,12 @@ private fun DropsTab(
 
 @Composable
 private fun BalanceAndCreateCard(
-    balance: Long,
+    balance: Long?,
     formatter: NumberFormat,
     onCreate: () -> Unit,
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .48f)),
         shape = RoundedCornerShape(22.dp),
     ) {
         Row(
@@ -452,7 +453,7 @@ private fun BalanceAndCreateCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text("Available balance", style = MaterialTheme.typography.labelMedium)
                 Text(
-                    "${formatter.format(balance)} BLINK Coins",
+                    balance?.let { "${formatter.format(it)} BLINK Coins" } ?: "Balance unavailable",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Black,
                 )
@@ -461,7 +462,16 @@ private fun BalanceAndCreateCard(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Button(onClick = onCreate) {
+            Button(
+                onClick = onCreate,
+                enabled = balance != null,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.onSurface,
+                    contentColor = MaterialTheme.colorScheme.surface,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+            ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(5.dp))
                 Text("Organize")
@@ -483,7 +493,7 @@ private fun DropCard(
     Card(
         colors = CardDefaults.cardColors(
             containerColor = if (highlighted) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = .72f)
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f)
             } else {
                 MaterialTheme.colorScheme.surface
             }
@@ -496,7 +506,7 @@ private fun DropCard(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.CardGiftcard, null, tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Default.CardGiftcard, null, tint = MaterialTheme.colorScheme.onSurface)
                 Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -609,7 +619,7 @@ private fun TopGiverCard(
 
 @Composable
 private fun OrganizeDropDialog(
-    balance: Long,
+    balance: Long?,
     posts: List<DropTarget>,
     listings: List<DropTarget>,
     onDismiss: () -> Unit,
@@ -643,6 +653,7 @@ private fun OrganizeDropDialog(
         BlinkDropsPolicy.isRewardValid(reward) &&
         BlinkDropsPolicy.isWinnerCountValid(winners) &&
         total <= BlinkDropsPolicy.MAX_TOTAL_BUDGET &&
+        balance != null &&
         total <= balance &&
         action in actions.map { it.name }
 
@@ -699,7 +710,7 @@ private fun OrganizeDropDialog(
                                 .clickable { selectedTarget = target },
                             colors = CardDefaults.cardColors(
                                 containerColor = if (selectedTarget?.id == target.id) {
-                                    MaterialTheme.colorScheme.primaryContainer
+                                    MaterialTheme.colorScheme.surfaceVariant
                                 } else {
                                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
                                 }
@@ -754,9 +765,10 @@ private fun OrganizeDropDialog(
                         )
                     }
                     Text(
-                        "Total reserved: ${NumberFormat.getIntegerInstance(Locale.US).format(total)} coins · Balance: ${NumberFormat.getIntegerInstance(Locale.US).format(balance)}",
+                        "Total reserved: ${NumberFormat.getIntegerInstance(Locale.US).format(total)} coins · Balance: " +
+                            (balance?.let { NumberFormat.getIntegerInstance(Locale.US).format(it) } ?: "—"),
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (total > balance) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
 
@@ -809,6 +821,12 @@ private fun OrganizeDropDialog(
                         },
                         enabled = valid,
                         modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.onSurface,
+                            contentColor = MaterialTheme.colorScheme.surface,
+                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
                     ) {
                         Icon(Icons.Default.CardGiftcard, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
@@ -818,10 +836,11 @@ private fun OrganizeDropDialog(
                         Text(
                             when {
                                 selectedTarget == null -> "Choose content first."
+                                balance == null -> "Balance is unavailable. Retry."
                                 !BlinkDropsPolicy.isRewardValid(reward) -> "Reward must be 100, 200, 300… coins per person."
                                 !BlinkDropsPolicy.isWinnerCountValid(winners) -> "Choose between 1 and ${BlinkDropsPolicy.MAX_WINNERS} recipients."
                                 total > BlinkDropsPolicy.MAX_TOTAL_BUDGET -> "This Drop is above the supported total budget."
-                                total > balance -> "You do not have enough BLINK Coins."
+                                balance != null && total > balance -> "You do not have enough BLINK Coins."
                                 else -> "Check the Drop details."
                             },
                             style = MaterialTheme.typography.bodySmall,
@@ -878,17 +897,13 @@ private fun SectionHeader(title: String, subtitle: String) {
 private fun StatusCard(message: String, isError: Boolean) {
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (isError) {
-                MaterialTheme.colorScheme.errorContainer
-            } else {
-                MaterialTheme.colorScheme.primaryContainer
-            }
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isError) .62f else .48f)
         )
     ) {
         Text(
             message,
             modifier = Modifier.fillMaxWidth().padding(12.dp),
-            color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }
