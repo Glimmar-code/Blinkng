@@ -658,7 +658,7 @@ private fun TopGiverCard(
             Surface(
                 modifier = Modifier.size(42.dp),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer,
+                color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.EmojiEvents, null)
@@ -1012,6 +1012,13 @@ private fun actionIcon(value: String): ImageVector = when (value.uppercase()) {
     else -> Icons.Default.CardGiftcard
 }
 
+private fun JSONArray?.objects(): List<JSONObject> {
+    if (this == null) return emptyList()
+    return buildList {
+        repeat(length()) { index -> optJSONObject(index)?.let(::add) }
+    }
+}
+
 private fun JSONArray?.toTargets(): List<DropTarget> {
     if (this == null) return emptyList()
     return buildList {
@@ -1045,12 +1052,15 @@ private fun JSONArray?.toDropItems(): List<DropItem> {
                         winnerCount = item.optInt("winner_count"),
                         claimedCount = item.optInt("claimed_count"),
                         totalCoins = item.optLong("total_coins"),
+                        coinDistributed = item.optLong("coin_distributed", 0L),
+                        coinRefunded = item.optLong("coin_refunded", 0L),
                         action = item.optString("action"),
                         targetType = item.optString("target_type"),
                         targetTitle = item.optString("target_title"),
                         audienceScope = item.optString("audience_scope"),
                         targetUniversity = item.optString("target_university"),
                         status = item.optString("status"),
+                        createdAt = item.optString("created_at"),
                         endsAt = item.optString("ends_at"),
                         eligible = item.optBoolean("eligible", false),
                     )
