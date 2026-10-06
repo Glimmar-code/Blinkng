@@ -4414,6 +4414,30 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = _uiState.value.copy(viewingProduct = item)
     }
 
+    fun openMarketFromNotification(marketId: String?) {
+        setTab(MainTab.MARKET)
+        val cleanId = marketId?.trim().orEmpty()
+        if (cleanId.isBlank()) return
+
+        _uiState.value.marketItems.firstOrNull { it.id == cleanId }?.let {
+            openProductDetail(it)
+            return
+        }
+
+        viewModelScope.launch {
+            val item = runCatching { supabaseService.fetchMarketItemById(cleanId) }.getOrNull()
+            if (item == null) {
+                showToast("This marketplace listing is no longer available.")
+                return@launch
+            }
+            val current = _uiState.value
+            _uiState.value = current.copy(
+                marketItems = (listOf(item) + current.marketItems.filterNot { it.id == item.id }),
+                viewingProduct = item
+            )
+        }
+    }
+
     fun closeProductDetail() {
         _uiState.value = _uiState.value.copy(viewingProduct = null)
     }
@@ -4622,7 +4646,7 @@ private suspend fun restoreSupabaseSession() {
         }
 
         activity.targetMarketId?.let { marketId ->
-            _uiState.value.marketItems.find { it.id == marketId }?.let { openProductDetail(it) }
+            openMarketFromNotification(marketId)
             return
         }
 
