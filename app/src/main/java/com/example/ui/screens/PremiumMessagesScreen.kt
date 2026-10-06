@@ -80,10 +80,13 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Notifications
@@ -2534,7 +2537,10 @@ private fun MessageComposer(
 @Composable
 private fun AttachmentSheet(
     palette: MessagePalette,
+    onImage: () -> Unit,
     onVideo: () -> Unit,
+    onAudio: () -> Unit,
+    onDocument: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
@@ -2557,35 +2563,81 @@ private fun AttachmentSheet(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
         )
-        Surface(
-            color = palette.glassElevated.copy(alpha = .75f),
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, palette.border),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 8.dp)
-                .clickable(onClick = onVideo)
+        Text(
+            "Media stays private to conversation members.",
+            color = palette.textSecondary,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+        )
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                modifier = Modifier.padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(shape = CircleShape, color = palette.accent.copy(alpha = .18f)) {
-                    Icon(
-                        Icons.Default.VideoLibrary,
-                        contentDescription = null,
-                        tint = palette.accent,
-                        modifier = Modifier.padding(10.dp).size(22.dp)
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("Video", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text("Choose a video from your device", color = palette.textSecondary, fontSize = 11.sp)
-                }
-            }
+            AttachmentOption(
+                label = "Photo",
+                description = "Choose an image from your device",
+                icon = Icons.Default.Image,
+                palette = palette,
+                onClick = onImage
+            )
+            AttachmentOption(
+                label = "Video",
+                description = "Choose a video from your device",
+                icon = Icons.Default.VideoLibrary,
+                palette = palette,
+                onClick = onVideo
+            )
+            AttachmentOption(
+                label = "Audio",
+                description = "Share an audio file",
+                icon = Icons.Default.MusicNote,
+                palette = palette,
+                onClick = onAudio
+            )
+            AttachmentOption(
+                label = "Document",
+                description = "PDF, slides, notes and other files",
+                icon = Icons.Default.Description,
+                palette = palette,
+                onClick = onDocument
+            )
         }
         Spacer(Modifier.height(18.dp).navigationBarsPadding())
+    }
+}
+
+@Composable
+private fun AttachmentOption(
+    label: String,
+    description: String,
+    icon: ImageVector,
+    palette: MessagePalette,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = palette.glassElevated.copy(alpha = .75f),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, palette.border),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(shape = CircleShape, color = palette.accent.copy(alpha = .16f)) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = palette.accent,
+                    modifier = Modifier.padding(10.dp).size(22.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(description, color = palette.textSecondary, fontSize = 11.sp)
+            }
+        }
     }
 }
 
