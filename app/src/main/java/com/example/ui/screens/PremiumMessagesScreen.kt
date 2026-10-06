@@ -3060,6 +3060,89 @@ private fun MessageComposer(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun ChatNotificationSettingsSheet(
+    conversation: ChatConversation,
+    palette: MessagePalette,
+    onSelect: (String, String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = palette.glass,
+        contentColor = palette.textPrimary
+    ) {
+        Text(
+            "Chat notifications",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+        Text(
+            "Choose how this conversation can notify you.",
+            color = palette.textSecondary,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+        )
+
+        val options = listOf(
+            Triple("All messages", "all", null),
+            Triple("Mentions only", "mentions", null),
+            Triple("Mute for 1 hour", "none", java.time.Instant.now().plusSeconds(3600).toString()),
+            Triple("Mute for 8 hours", "none", java.time.Instant.now().plusSeconds(8 * 3600L).toString()),
+            Triple("Mute for 1 week", "none", java.time.Instant.now().plusSeconds(7 * 24 * 3600L).toString()),
+            Triple("Mute until I turn it back on", "none", null)
+        )
+
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            options.forEach { (label, mode, until) ->
+                val selected = when {
+                    mode == "all" -> conversation.notificationMode == "all"
+                    mode == "mentions" -> conversation.notificationMode == "mentions"
+                    label.startsWith("Mute until") ->
+                        conversation.notificationMode == "none" && conversation.muteUntil == null
+                    else -> false
+                }
+                Surface(
+                    color = if (selected) palette.accent.copy(alpha = .14f) else palette.glassElevated,
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(
+                        1.dp,
+                        if (selected) palette.accent.copy(alpha = .55f) else palette.border
+                    ),
+                    modifier = Modifier.fillMaxWidth().clickable { onSelect(mode, until) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            label,
+                            color = palette.textPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (selected) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = "Selected",
+                                tint = palette.accent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(18.dp).navigationBarsPadding())
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun AttachmentSheet(
     palette: MessagePalette,
     onImage: () -> Unit,
