@@ -295,7 +295,12 @@ fun BlinkDropsRoute(
             return@Column
         }
 
-        when (selectedColumn) {
+        PullToRefreshBox(
+            isRefreshing = loading,
+            onRefresh = { if (isOnline) refresh() },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            when (selectedColumn) {
             DropsColumn.GIVEAWAYS -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
@@ -421,6 +426,7 @@ fun BlinkDropsRoute(
                         )
                     }
                 }
+            }
             }
         }
     }
