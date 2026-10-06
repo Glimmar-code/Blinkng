@@ -272,3 +272,13 @@ Windows equivalent or reason no equivalent is needed: Windows does not use the A
 Backend/shared behavior preserved: Existing Connect Hub repository calls, roommate/mentor/reading/housing/challenge actions, follow state and Supabase behavior remain unchanged.
 Tests/validation: Android quality/release-smoke, Windows build/parity and Supabase safety gates must pass on Testlab before merge.
 Owner/reviewer note: This exception is limited to the Android category-panel rendering lifecycle and cannot waive parity for future Connect capabilities or business logic.
+
+---
+
+PARITY: activity-pulse-hardening-20261007
+Date: 2026-10-07
+Feature: Connect Community Activity + Leaderboard Rank Pulse hardening
+Android behavior: Uses the shared server-controlled pulse policy, safe overflow-capped ranges, gradual session-persistent number movement, minimum hold timing, reduced-motion handling, foreground/window pausing, offline freeze, real online previews, campus activity labels, real leaderboard mover summaries, rank heat status, and rate-limited product analytics.
+Windows behavior: Uses the same shared pulse policy and range/transition functions, honors the desktop Reduce Motion preference, freezes the last pulse when live fetches fail, shows real online/campus context and real rank movement summaries, and records the same server analytics events.
+Backend/shared behavior: Adds an authenticated read-only pulse configuration table and an authenticated rate-limited analytics RPC/table. Presence rows, canonical leaderboard order, points, XP, feed/reel ranking, coins, verification, auth, messages and existing user data are not modified.
+Tests/validation: Shared/Android pulse range tests, Android quality/release smoke, Windows compile/package/parity, and disposable Supabase migration safety must pass on Testlab before production promotion.
