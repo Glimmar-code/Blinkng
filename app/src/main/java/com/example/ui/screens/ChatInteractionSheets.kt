@@ -72,6 +72,7 @@ data class ChatInteractionActions(
     val onReportMessage: (ChatMessage, String) -> Unit = { _, _ -> },
     val onClearConversation: (ChatConversation) -> Unit = {},
     val onMuteConversation: (ChatConversation, Boolean) -> Unit = { _, _ -> },
+    val onNotificationSettings: (ChatConversation, String, String?) -> Unit = { _, _, _ -> },
     val onArchiveConversation: (ChatConversation, Boolean) -> Unit = { _, _ -> },
     val onPinConversation: (ChatConversation, Boolean) -> Unit = { _, _ -> },
     val onMarkConversationUnread: (ChatConversation, Boolean) -> Unit = { _, _ -> },
@@ -266,6 +267,7 @@ internal fun ChatOverflowSheet(
     onPinned: () -> Unit,
     onStarred: () -> Unit,
     onMute: () -> Unit,
+    onNotificationSettings: () -> Unit,
     onPinConversation: () -> Unit,
     onMarkUnread: () -> Unit,
     onArchive: () -> Unit,
@@ -295,6 +297,7 @@ internal fun ChatOverflowSheet(
         OverflowRow(if (pinnedOnly) "Show all messages" else "Pinned messages", Icons.Default.Place, palette, onPinned)
         OverflowRow(if (starredOnly) "Show all messages" else "Starred messages", Icons.Default.Star, palette, onStarred)
         OverflowRow(if (conversation.isMuted) "Unmute notifications" else "Mute notifications", Icons.Default.VolumeOff, palette, onMute)
+        OverflowRow("Notification settings", Icons.Default.VolumeOff, palette, onNotificationSettings)
         OverflowRow(
             if (conversation.isConversationPinned) "Unpin chat" else "Pin chat",
             Icons.Default.Place,
