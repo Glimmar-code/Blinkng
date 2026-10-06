@@ -41,6 +41,7 @@ dependencies {
 
     // Windows DPAPI wrapper used to protect persisted refresh/access tokens at rest.
     implementation("net.java.dev.jna:jna-platform:5.17.0")
+    implementation("com.google.zxing:core:3.5.3")
 }
 
 val desktopPackageVersion = providers.environmentVariable("BLINK_DESKTOP_VERSION")
