@@ -742,7 +742,7 @@ language sql
 stable
 security definer
 set search_path=''
-as $
+as $$
     select coalesce(sum(t.points_delta),0)::integer
     from public.point_transactions t
     where t.user_id=p_user
@@ -760,7 +760,7 @@ as $
                 or (t.action_type='view_listing' and c.target_id=t.reference_id)
             )
       );
-$;
+$$;
 revoke all on function private.blink_boost_mission_points_today(uuid)
 from public, anon, authenticated;
 
@@ -772,7 +772,7 @@ create or replace function public.complete_blink_boost_mission_action(
 language plpgsql
 security definer
 set search_path=''
-as $
+as $$
 declare
     v_user uuid:=auth.uid();
     v_campaign public.blink_boost_campaigns_v2%rowtype;
@@ -893,7 +893,7 @@ begin
         'mission_points_cap',v_cap
     );
 end;
-$;
+$$;
 revoke all on function public.complete_blink_boost_mission_action(uuid,text,text)
 from public, anon;
 grant execute on function public.complete_blink_boost_mission_action(uuid,text,text)
