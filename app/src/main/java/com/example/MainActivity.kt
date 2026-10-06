@@ -729,6 +729,8 @@ fun MainAppContent(
                         onMarketClick = { viewModel.setTab(MainTab.MARKET) },
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
+                        isInteractionOverlayOpen =
+                            uiState.activeCommentsPostId != null || uiState.activePostOptionsPost != null,
                         hasMorePosts = uiState.hasMorePosts,
                         hasMoreFollowingPosts = uiState.hasMoreFollowingPosts,
                         hasMoreReels = uiState.hasMoreReels,
