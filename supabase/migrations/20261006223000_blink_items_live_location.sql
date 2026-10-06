@@ -5,7 +5,7 @@
 
 create table if not exists public.live_location_sessions (
     id uuid primary key default gen_random_uuid(),
-    owner_id uuid not null,
+    owner_id uuid not null references public.profiles(id) on delete cascade,
     expires_at timestamptz not null,
     active boolean not null default true,
     created_at timestamptz not null default now(),
@@ -15,8 +15,8 @@ create table if not exists public.live_location_sessions (
 
 create table if not exists public.live_location_recipients (
     session_id uuid not null references public.live_location_sessions(id) on delete cascade,
-    owner_id uuid not null,
-    recipient_id uuid not null,
+    owner_id uuid not null references public.profiles(id) on delete cascade,
+    recipient_id uuid not null references public.profiles(id) on delete cascade,
     created_at timestamptz not null default now(),
     primary key (session_id, recipient_id),
     constraint live_location_recipient_not_owner check (owner_id <> recipient_id)
@@ -24,7 +24,7 @@ create table if not exists public.live_location_recipients (
 
 create table if not exists public.live_location_positions (
     session_id uuid primary key references public.live_location_sessions(id) on delete cascade,
-    owner_id uuid not null,
+    owner_id uuid not null references public.profiles(id) on delete cascade,
     latitude double precision not null check (latitude between -90 and 90),
     longitude double precision not null check (longitude between -180 and 180),
     accuracy_meters real not null default 0 check (accuracy_meters >= 0),
@@ -98,6 +98,18 @@ begin
       ) candidate
       join public.profiles p on p.id = candidate.recipient_id
      where candidate.recipient_id <> v_owner
+       and exists (
+           select 1
+             from public.follows f
+            where f.follower_id = v_owner
+              and f.following_id = candidate.recipient_id
+       )
+       and not exists (
+           select 1
+             from public.blocks b
+            where (b.blocker_id = v_owner and b.blocked_id = candidate.recipient_id)
+               or (b.blocker_id = candidate.recipient_id and b.blocked_id = v_owner)
+       )
     on conflict do nothing;
 
     if not exists (
@@ -251,6 +263,18 @@ as $$
       left join public.profiles p on p.id = s.owner_id
      where r.recipient_id = auth.uid()
        and pos.updated_at > now() - interval '5 minutes'
+       and exists (
+           select 1
+             from public.follows f
+            where f.follower_id = s.owner_id
+              and f.following_id = r.recipient_id
+       )
+       and not exists (
+           select 1
+             from public.blocks b
+            where (b.blocker_id = s.owner_id and b.blocked_id = r.recipient_id)
+               or (b.blocker_id = r.recipient_id and b.blocked_id = s.owner_id)
+       )
      order by pos.updated_at desc;
 $$;
 
