@@ -89,7 +89,7 @@ class BlinkEconomyService {
 
     suspend fun promotedBoostSlots(surface: String, limit: Int = 3) = runCatching {
         val normalized = surface.trim().uppercase()
-        require(normalized in setOf("HOME", "SEARCH", "DISCOVER", "MISSIONS")) { "Unknown boost surface." }
+        require(normalized in setOf("HOME", "SEARCH", "DISCOVER", "MISSIONS", "MARKET")) { "Unknown boost surface." }
         rpc(
             "get_blink_promoted_slots",
             JSONObject()
