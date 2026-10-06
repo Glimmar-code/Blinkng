@@ -15,6 +15,10 @@ class ConversationMuteExpiryWorker(
         val conversationId = inputData.getString(KEY_CONVERSATION_ID)?.trim().orEmpty()
         if (conversationId.isBlank()) return Result.failure()
 
+        if (ConversationNotificationMuteStore.isMutedForever(applicationContext, conversationId)) {
+            return Result.success()
+        }
+
         if (ConversationNotificationMuteStore.isMuted(applicationContext, conversationId)) {
             val until = ConversationNotificationMuteStore.mutedUntil(applicationContext, conversationId)
             if (until != null && until.toEpochMilli() > System.currentTimeMillis() + 1_000L) {
