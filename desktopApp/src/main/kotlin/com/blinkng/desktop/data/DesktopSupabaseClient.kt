@@ -1,5 +1,7 @@
 package com.blinkng.desktop.data
 
+import com.blinkng.shared.BlinkActivityPulseDefaults
+import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkBackendDefaults
 import com.blinkng.shared.BlinkOnboardingPolicy
 import com.sun.net.httpserver.HttpServer
@@ -230,6 +232,61 @@ class DesktopSupabaseClient(
 
     fun signOut() {
         clearSession()
+    }
+
+    suspend fun fetchActivityPulsePolicy(): BlinkActivityPulsePolicy = withContext(Dispatchers.IO) {
+        val fallback = BlinkActivityPulseDefaults.policy
+        runCatching {
+            val rows = getArray(
+                "/rest/v1/blink_activity_pulse_config?select=*&id=eq.true&limit=1",
+            )
+            val row = rows.optJSONObject(0) ?: return@runCatching fallback
+            BlinkActivityPulsePolicy(
+                enabled = row.optBoolean("enabled", fallback.enabled),
+                communityMinPerActive = row.optInt("community_min_per_active", fallback.communityMinPerActive),
+                communityMaxPerActive = row.optInt("community_max_per_active", fallback.communityMaxPerActive),
+                rankMinPerEvent = row.optInt("rank_min_per_event", fallback.rankMinPerEvent),
+                rankMaxPerEvent = row.optInt("rank_max_per_event", fallback.rankMaxPerEvent),
+                connectTickMillis = row.optLong("connect_tick_ms", fallback.connectTickMillis),
+                rankTickMillis = row.optLong("rank_tick_ms", fallback.rankTickMillis),
+                minHoldMillis = row.optLong("min_hold_ms", fallback.minHoldMillis),
+                rankWindowMillis = row.optLong("rank_window_ms", fallback.rankWindowMillis),
+                maxStep = row.optInt("max_step", fallback.maxStep),
+                transitionStepMultiplier = row.optInt("transition_step_multiplier", fallback.transitionStepMultiplier),
+                onlinePreviewLimit = row.optInt("online_preview_limit", fallback.onlinePreviewLimit),
+                campusActiveThreshold = row.optInt("campus_active_threshold", fallback.campusActiveThreshold),
+                campusHotThreshold = row.optInt("campus_hot_threshold", fallback.campusHotThreshold),
+                hotRankUpsThreshold = row.optInt("hot_rank_ups_threshold", fallback.hotRankUpsThreshold),
+                maxUnits = row.optInt("max_units", fallback.maxUnits),
+                maxDisplayValue = row.optInt("max_display_value", fallback.maxDisplayValue),
+            ).normalized()
+        }.getOrDefault(fallback)
+    }
+
+    suspend fun recordActivityPulseEvent(
+        surface: String,
+        eventType: String,
+        realCount: Int,
+        displayedValue: Int?,
+        metadata: Map<String, String> = emptyMap(),
+    ): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val metadataJson = JSONObject().apply {
+                metadata.forEach { (key, value) ->
+                    if (key.isNotBlank()) put(key.take(80), value.take(240))
+                }
+            }
+            postObject(
+                "/rest/v1/rpc/record_blink_activity_pulse_event",
+                JSONObject()
+                    .put("p_surface", surface)
+                    .put("p_event_type", eventType)
+                    .put("p_real_count", realCount.coerceAtLeast(0))
+                    .put("p_displayed_value", displayedValue ?: JSONObject.NULL)
+                    .put("p_metadata", metadataJson),
+            )
+            true
+        }.getOrDefault(false)
     }
 
     suspend fun fetchProfile(userId: String = requireSession().userId): DesktopProfile = withContext(Dispatchers.IO) {

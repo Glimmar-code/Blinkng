@@ -1,3 +1,10 @@
+## 2026-10-07 — Final BLINK logo parity
+
+- Android: applies the approved black-background BLINK eye mark to the launcher, round launcher, adaptive foreground, splash/in-app brand asset, and keeps the artwork centered without stretching or cropping. The manifest now uses the launcher resources so platform masking is handled correctly; themed monochrome is intentionally omitted because the approved artwork has an opaque black background.
+- Windows: uses the same approved artwork for in-app branding, window/tray icon, and the native EXE/MSI package icon through the shared ICO resource.
+- Web/PWA: uses the same approved artwork for boot/brand surfaces, favicon/apple touch icon target, PWA manifest icons, social preview reference, and refreshes the service-worker cache key so clients do not retain the older mark.
+- Safety: branding-only change. No feed/Reels ranking, qualified views, auth, notifications, wallet/coins, Store, payments, Supabase schema/RPC/RLS, or user-data behavior is changed.
+
 ## 2026-10-06 — Leaderboard Top 20 + Connect Hub/Students split
 
 - Android: Leaderboard now renders ranks #1–#20 as one consistent scrollable list, including ranks #1–#3 in the same row design as everyone else. Connect keeps Smart Match first, then exposes two equal swipeable columns: Connect Hub and Students. Roommate/Mentor/Reading/Housing/Challenge rows now open the existing left-slide workflow reliably by opening the panel before paging its content. Student Discovery keeps Search + All/Same campus/Online filters and adds real Follow/Following actions backed by the canonical follow RPC state.
@@ -272,3 +279,13 @@ Windows equivalent or reason no equivalent is needed: Windows does not use the A
 Backend/shared behavior preserved: Existing Connect Hub repository calls, roommate/mentor/reading/housing/challenge actions, follow state and Supabase behavior remain unchanged.
 Tests/validation: Android quality/release-smoke, Windows build/parity and Supabase safety gates must pass on Testlab before merge.
 Owner/reviewer note: This exception is limited to the Android category-panel rendering lifecycle and cannot waive parity for future Connect capabilities or business logic.
+
+---
+
+PARITY: activity-pulse-hardening-20261007
+Date: 2026-10-07
+Feature: Connect Community Activity + Leaderboard Rank Pulse hardening
+Android behavior: Uses the shared server-controlled pulse policy, safe overflow-capped ranges, gradual session-persistent number movement, minimum hold timing, reduced-motion handling, foreground/window pausing, offline freeze, real online previews, campus activity labels, real leaderboard mover summaries, rank heat status, and rate-limited product analytics.
+Windows behavior: Uses the same shared pulse policy and range/transition functions, honors the desktop Reduce Motion preference, freezes the last pulse when live fetches fail, shows real online/campus context and real rank movement summaries, and records the same server analytics events.
+Backend/shared behavior: Adds an authenticated read-only pulse configuration table and an authenticated rate-limited analytics RPC/table. Presence rows, canonical leaderboard order, points, XP, feed/reel ranking, coins, verification, auth, messages and existing user data are not modified.
+Tests/validation: Shared/Android pulse range tests, Android quality/release smoke, Windows compile/package/parity, and disposable Supabase migration safety must pass on Testlab before production promotion.
