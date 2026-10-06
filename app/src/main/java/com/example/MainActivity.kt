@@ -821,6 +821,11 @@ fun MainAppContent(
                             onReportMessage = { message, reason -> viewModel.reportChatMessage(message, reason) },
                             onClearConversation = { conversation -> viewModel.clearConversationForMe(conversation) },
                             onMuteConversation = { conversation, muted -> viewModel.setConversationMuted(conversation, muted) },
+                            onArchiveConversation = { conversation, archived -> viewModel.setConversationArchived(conversation, archived) },
+                            onPinConversation = { conversation, pinned -> viewModel.setConversationPinned(conversation, pinned) },
+                            onMarkConversationUnread = { conversation, unread -> viewModel.setConversationMarkedUnread(conversation, unread) },
+                            onRespondMessageRequest = { conversation, accept -> viewModel.respondToMessageRequest(conversation, accept) },
+                            onBlockConversation = { conversation -> viewModel.blockChatUser(conversation) },
                             onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
                         ),
                         onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
