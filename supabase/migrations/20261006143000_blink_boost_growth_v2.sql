@@ -117,7 +117,7 @@ create table if not exists public.blink_boost_delivery_events_v2 (
     campaign_id uuid not null references public.blink_boost_campaigns_v2(id) on delete cascade,
     viewer_id uuid not null references public.profiles(id) on delete cascade,
     event_type text not null check (event_type in ('IMPRESSION','CARD_OPEN','PROFILE_OPEN','LISTING_OPEN')),
-    surface text not null check (surface in ('HOME','SEARCH','DISCOVER','MISSIONS')),
+    surface text not null check (surface in ('HOME','SEARCH','DISCOVER','MISSIONS','MARKET')),
     created_at timestamptz not null default now()
 );
 create unique index if not exists blink_boost_delivery_once_idx
@@ -612,7 +612,7 @@ begin
     if v_event not in ('IMPRESSION','CARD_OPEN','PROFILE_OPEN','LISTING_OPEN') then
         raise exception 'INVALID_BOOST_EVENT';
     end if;
-    if v_surface not in ('HOME','SEARCH','DISCOVER','MISSIONS') then
+    if v_surface not in ('HOME','SEARCH','DISCOVER','MISSIONS','MARKET') then
         raise exception 'INVALID_BOOST_SURFACE';
     end if;
 
