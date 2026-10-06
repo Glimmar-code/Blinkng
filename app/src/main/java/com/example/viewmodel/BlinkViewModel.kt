@@ -3288,11 +3288,13 @@ private suspend fun restoreSupabaseSession() {
         }
 
         try {
-            val page = chatRepository.fetchMessagePage(
-                conversationId = resolvedConversationId,
-                beforeCreatedAt = beforeAt,
-                beforeId = beforeId,
-                limit = 50
+            val page = MessageMediaService.hydrateMessagePage(
+                chatRepository.fetchMessagePage(
+                    conversationId = resolvedConversationId,
+                    beforeCreatedAt = beforeAt,
+                    beforeId = beforeId,
+                    limit = 50
+                )
             )
 
             withContext(Dispatchers.Main) {
