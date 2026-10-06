@@ -181,3 +181,16 @@ Windows equivalent or reason no equivalent is needed: Windows keeps its existing
 Backend/shared behavior preserved: Supabase call state, signaling, WebRTC media semantics, call permissions, history, notifications semantics and shared user-facing call rules are unchanged. This patch only corrects the Android OS adapter and the Testlab call CI invocation.
 Tests/validation: Testlab Call Quality, Android quality, Android release smoke, Supabase safety, Windows build and Windows parity gates must pass on PR #133 before merge.
 Owner/reviewer note: This exception is limited to Android Core-Telecom/audio-routing reliability and cannot be reused to waive Windows parity for call features, shared business rules or backend behavior.
+
+
+---
+
+PARITY-EXCEPTION: android-feed-x-style-scroll-header-20261006
+Date: 2026-10-06
+Feature: Scroll-linked Android Home feed header motion
+Android behavior: Replaces threshold-triggered AnimatedVisibility fade/slide transitions for the Home feed top chrome with a continuously translated collapsing header. Downward gestures collapse the combined header one-to-one, intentional upward reversal reveals it, a 12dp reversal dead-zone suppresses jitter, partially exposed states settle to a stable endpoint, the real feed top always restores the full header, and the bottom navigation remains independent. Feed ranking, Following/For You data, pagination, qualified views, impressions, caching and Supabase contracts are unchanged.
+Why this is genuinely Android-specific presentation: This patch changes touch/nested-scroll behavior of the compact phone Home chrome and uses Android Compose nested scrolling. It does not add, remove or alter a BLINK feature, backend rule or content result.
+Windows equivalent or reason no equivalent is needed: Windows keeps its desktop navigation/chrome conventions. The desktop Home screen already derives a compact-feed signal from its LazyList scroll position for the wide-screen shell; forcing the phone's touch collapse gesture onto desktop mouse/keyboard scrolling would reduce desktop usability rather than provide feature parity.
+Backend/shared behavior preserved: No shared model, route, ranking rule, wallet rule, authentication behavior, notification contract, Supabase schema, RLS policy or server function changes.
+Tests/validation: Feed header motion math has JVM regression coverage. Android unit/lint/instrumentation/debug/release checks and the Windows desktop/parity gate must pass on the Testlab feature branch before promotion to main.
+Owner/reviewer note: This exception is limited to mobile feed chrome motion. Any future change to what navigation actions exist, what content is shown, or how feed data is ranked still requires Windows/shared parity.
