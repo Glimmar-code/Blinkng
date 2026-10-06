@@ -80,6 +80,89 @@ class BlinkEconomyService {
 
     suspend fun state() = runCatching { rpc("get_blink_store_state") }
     suspend fun boostableContent() = runCatching { rpc("get_my_blink_boostable_content") }
+
+    suspend fun boostGrowthState() = runCatching { rpc("get_blink_boost_growth_state") }
+
+    suspend fun boostMissions(limit: Int = 12) = runCatching {
+        rpc("get_blink_boost_missions", JSONObject().put("p_limit", limit.coerceIn(1, 30)))
+    }
+
+    suspend fun promotedBoostSlots(surface: String, limit: Int = 3) = runCatching {
+        val normalized = surface.trim().uppercase()
+        require(normalized in setOf("HOME", "SEARCH", "DISCOVER", "MISSIONS")) { "Unknown boost surface." }
+        rpc(
+            "get_blink_promoted_slots",
+            JSONObject()
+                .put("p_surface", normalized)
+                .put("p_limit", limit.coerceIn(1, 10))
+        )
+    }
+
+    suspend fun quoteBoostCampaign(
+        targetType: String,
+        targetId: String,
+        boostPower: Int,
+        objective: String,
+        audienceScope: String,
+        durationDays: Int,
+        targetUniversity: String? = null,
+    ) = runCatching {
+        require(targetId.isNotBlank()) { "Choose something to boost." }
+        rpc(
+            "quote_blink_boost_campaign",
+            JSONObject()
+                .put("p_target_type", targetType.trim().uppercase())
+                .put("p_target_id", targetId.trim())
+                .put("p_boost_power", boostPower.coerceIn(1, 100))
+                .put("p_objective", objective.trim().uppercase())
+                .put("p_audience_scope", audienceScope.trim().uppercase())
+                .put("p_duration_days", durationDays)
+                .put("p_target_university", targetUniversity?.trim()?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
+        )
+    }
+
+    suspend fun createBoostCampaign(
+        targetType: String,
+        targetId: String,
+        boostPower: Int,
+        objective: String,
+        audienceScope: String,
+        durationDays: Int,
+        targetUniversity: String? = null,
+    ) = runCatching {
+        require(targetId.isNotBlank()) { "Choose something to boost." }
+        rpc(
+            "create_blink_boost_campaign",
+            JSONObject()
+                .put("p_target_type", targetType.trim().uppercase())
+                .put("p_target_id", targetId.trim())
+                .put("p_boost_power", boostPower.coerceIn(1, 100))
+                .put("p_objective", objective.trim().uppercase())
+                .put("p_audience_scope", audienceScope.trim().uppercase())
+                .put("p_duration_days", durationDays)
+                .put("p_target_university", targetUniversity?.trim()?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
+        )
+    }
+
+    suspend fun cancelBoostCampaign(campaignId: String) = runCatching {
+        require(campaignId.isNotBlank()) { "Campaign is missing." }
+        rpc("cancel_blink_boost_campaign", JSONObject().put("p_campaign_id", campaignId.trim()))
+    }
+
+    suspend fun recordBoostDelivery(
+        campaignId: String,
+        eventType: String,
+        surface: String,
+    ) = runCatching {
+        require(campaignId.isNotBlank()) { "Campaign is missing." }
+        rpc(
+            "record_blink_boost_delivery",
+            JSONObject()
+                .put("p_campaign_id", campaignId.trim())
+                .put("p_event_type", eventType.trim().uppercase())
+                .put("p_surface", surface.trim().uppercase())
+        )
+    }
     suspend fun economyStatus() = runCatching { rpc("get_blink_economy_status") }
     suspend fun dailyMissions() = runCatching { rpc("get_my_daily_missions") }
     suspend fun progressHub() = runCatching { rpc("get_my_progress_hub") }
