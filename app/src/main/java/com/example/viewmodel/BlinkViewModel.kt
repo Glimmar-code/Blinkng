@@ -47,6 +47,7 @@ import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import com.blinkng.shared.BlinkOnboardingPolicy
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -3751,7 +3752,16 @@ private suspend fun restoreSupabaseSession() {
 
         if (conversation.id.startsWith("local_")) return
         viewModelScope.launch {
-            if (!chatRepository.setConversationMuted(conversation.id, muted)) {
+            val serverUpdated = if (muted && durationMillis != null && durationMillis > 0L) {
+                chatRepository.setConversationMutedUntil(
+                    conversation.id,
+                    Instant.ofEpochMilli(System.currentTimeMillis() + durationMillis).toString()
+                )
+            } else {
+                chatRepository.setConversationMuted(conversation.id, muted)
+            }
+
+            if (!serverUpdated) {
                 val latest = _uiState.value
                 _uiState.value = latest.copy(conversations = latest.conversations.map {
                     if (it.id == conversation.id) it.copy(isMuted = before) else it
