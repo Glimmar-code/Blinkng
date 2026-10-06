@@ -3678,6 +3678,7 @@ private fun MessageAppearanceSheet(
     palette: MessagePalette,
     unreadActivityCount: Int,
     onSelect: (MessageThemeMode) -> Unit,
+    onOpenPrivacy: () -> Unit,
     onOpenActivity: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -3729,6 +3730,31 @@ private fun MessageAppearanceSheet(
                     onClick = { onSelect(mode) }
                 )
             }
+        }
+
+        HorizontalDivider(color = palette.border)
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenPrivacy)
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(shape = CircleShape, color = palette.glassElevated) {
+                Icon(
+                    Icons.Default.Menu,
+                    contentDescription = null,
+                    tint = palette.accent,
+                    modifier = Modifier.padding(10.dp).size(21.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Privacy & messaging", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Who can message, call and see your activity", color = palette.textSecondary, fontSize = 11.sp)
+            }
+            Text("›", color = palette.accent, fontSize = 24.sp)
         }
 
         HorizontalDivider(color = palette.border)
