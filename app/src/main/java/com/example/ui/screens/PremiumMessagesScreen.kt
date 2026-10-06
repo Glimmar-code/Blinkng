@@ -215,6 +215,7 @@ fun PremiumMessagesScreen(
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
     onSendAttachment: (String, Uri, String) -> Unit = { _, _, _ -> },
+    onPresenceChange: (String, String) -> Unit = { _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
     hasMoreMessages: (String) -> Boolean = { false },
     isLoadingOlder: (String) -> Boolean = { false },
@@ -323,6 +324,7 @@ fun PremiumMessagesScreen(
                         onSendMessage = onSendMessage,
                         onSendVideo = onSendVideo,
                         onSendAttachment = onSendAttachment,
+                        onPresenceChange = onPresenceChange,
                         onRetryMessage = onRetryMessage,
                         hasMoreMessages = hasMoreMessages,
                         isLoadingOlder = isLoadingOlder,
@@ -422,6 +424,7 @@ private fun PremiumMessagesMasterDetail(
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
     onSendAttachment: (String, Uri, String) -> Unit,
+    onPresenceChange: (String, String) -> Unit,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
     hasMoreMessages: (String) -> Boolean,
     isLoadingOlder: (String) -> Boolean,
@@ -485,6 +488,9 @@ private fun PremiumMessagesMasterDetail(
                 onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
                 onSendAttachment = { uri, kind ->
                     onSendAttachment(displayedConversation.partnerUsername, uri, kind)
+                },
+                onPresenceChange = { state ->
+                    onPresenceChange(displayedConversation.partnerUsername, state)
                 },
                 onRetry = { message ->
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
@@ -1167,10 +1173,22 @@ private fun ConversationCard(
                 }
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    conversation.lastMessage.ifBlank { "Start the conversation" },
-                    color = if (conversation.unreadCount > 0) palette.textSecondary else palette.textMuted,
+                    conversation.presenceLabel.ifBlank {
+                        conversation.lastMessage.ifBlank { "Start the conversation" }
+                    },
+                    color = if (conversation.presenceLabel.isNotBlank()) {
+                        palette.accent
+                    } else if (conversation.unreadCount > 0) {
+                        palette.textSecondary
+                    } else {
+                        palette.textMuted
+                    },
                     fontSize = 11.sp,
-                    fontWeight = if (conversation.unreadCount > 0) FontWeight.Medium else FontWeight.Normal,
+                    fontWeight = if (conversation.presenceLabel.isNotBlank() || conversation.unreadCount > 0) {
+                        FontWeight.Medium
+                    } else {
+                        FontWeight.Normal
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1210,6 +1228,7 @@ private fun PremiumChatDetail(
     interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
     onSendAttachment: (Uri, String) -> Unit,
+    onPresenceChange: (String) -> Unit,
     onRetry: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
     onAudioCall: () -> Unit,
@@ -1253,18 +1272,32 @@ private fun PremiumChatDetail(
     }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onSendAttachment(uri, "image")
+        onPresenceChange("online")
     }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onSendVideo(uri)
+        onPresenceChange("online")
     }
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onSendAttachment(uri, "audio")
+        onPresenceChange("online")
     }
     val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) onSendAttachment(uri, "document")
+        onPresenceChange("online")
     }
     val startDictation = rememberSpeechInput { spoken ->
         text = listOf(text.trim(), spoken.trim()).filter { it.isNotBlank() }.joinToString(" ")
+    }
+
+    LaunchedEffect(conversation.id, text) {
+        if (text.isBlank()) {
+            onPresenceChange("online")
+        } else {
+            onPresenceChange("typing")
+            delay(1800)
+            onPresenceChange("online")
+        }
     }
 
     val visibleMessages = conversation.messages.filter { message ->
@@ -1591,18 +1624,22 @@ private fun PremiumChatDetail(
             palette = palette,
             onImage = {
                 showAttachmentSheet = false
+                onPresenceChange("uploading")
                 imagePicker.launch("image/*")
             },
             onVideo = {
                 showAttachmentSheet = false
+                onPresenceChange("uploading")
                 videoPicker.launch("video/*")
             },
             onAudio = {
                 showAttachmentSheet = false
+                onPresenceChange("uploading")
                 audioPicker.launch("audio/*")
             },
             onDocument = {
                 showAttachmentSheet = false
+                onPresenceChange("uploading")
                 documentPicker.launch(arrayOf("*/*"))
             },
             onDismiss = { showAttachmentSheet = false }
@@ -1687,7 +1724,9 @@ private fun ChatHeader(
                 )
             }
             Text(
-                if (conversation.isOnline) "Active now" else conversation.lastSeen,
+                conversation.presenceLabel.ifBlank {
+                    if (conversation.isOnline) "Active now" else conversation.lastSeen
+                },
                 color = if (conversation.isOnline) palette.online else palette.textSecondary,
                 fontSize = 9.sp,
                 maxLines = 1,
@@ -1899,7 +1938,9 @@ private fun ChatContactProfileOverlay(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                if (conversation.isOnline) "Active now" else conversation.lastSeen,
+                                conversation.presenceLabel.ifBlank {
+                    if (conversation.isOnline) "Active now" else conversation.lastSeen
+                },
                                 color = palette.textSecondary,
                                 fontSize = 10.sp
                             )
