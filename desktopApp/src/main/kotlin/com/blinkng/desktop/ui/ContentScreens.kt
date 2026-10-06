@@ -44,6 +44,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -78,6 +79,7 @@ import com.blinkng.desktop.data.DesktopFeedPost
 import com.blinkng.desktop.data.DesktopInventoryItem
 import com.blinkng.desktop.data.DesktopLeaderboardEntry
 import com.blinkng.desktop.data.DesktopMarketItem
+import com.blinkng.desktop.data.DesktopProfile
 import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.data.DesktopNotification
 import com.blinkng.desktop.data.DesktopSearchResults
@@ -550,8 +552,13 @@ fun MarketplaceScreen(state: DesktopAppState) {
 @Composable
 fun ConnectScreen(state: DesktopAppState) {
     var listings by remember { mutableStateOf<List<DesktopConnectListing>>(emptyList()) }
+    var students by remember { mutableStateOf<List<DesktopProfile>>(emptyList()) }
+    var followingIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
+    var selectedPane by remember { mutableStateOf(0) }
+    var studentQuery by remember { mutableStateOf("") }
+    var studentFilter by remember { mutableStateOf("all") }
     var type by remember { mutableStateOf("community") }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -559,10 +566,38 @@ fun ConnectScreen(state: DesktopAppState) {
 
     suspend fun reload() {
         loading = true
-        listings = runCatching { state.client.fetchConnectListings() }.getOrDefault(emptyList())
+        val loadedListings = runCatching { state.client.fetchConnectListings() }.getOrDefault(emptyList())
+        val loadedStudents = runCatching { state.client.fetchOnboardingSuggestions(100) }.getOrDefault(emptyList())
+        val loadedFollowing = runCatching { state.client.fetchFollowingIds() }.getOrDefault(emptySet())
+        listings = loadedListings
+        students = loadedStudents.filterNot { it.id == state.profile?.id }
+        followingIds = loadedFollowing
         loading = false
     }
+
     LaunchedEffect(Unit) { reload() }
+
+    val myCampus = state.profile?.university.orEmpty()
+    val visibleStudents = remember(students, studentQuery, studentFilter, myCampus) {
+        val query = studentQuery.trim()
+        students.filter { profile ->
+            val matchesQuery = query.isBlank() ||
+                profile.fullName.contains(query, ignoreCase = true) ||
+                profile.username.contains(query, ignoreCase = true) ||
+                profile.university.orEmpty().contains(query, ignoreCase = true) ||
+                profile.faculty.orEmpty().contains(query, ignoreCase = true) ||
+                profile.department.orEmpty().contains(query, ignoreCase = true)
+
+            val matchesFilter = when (studentFilter) {
+                "campus" -> myCampus.isNotBlank() &&
+                    profile.university.orEmpty().equals(myCampus, ignoreCase = true)
+                "online" -> profile.isOnline
+                else -> true
+            }
+
+            matchesQuery && matchesFilter
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -576,22 +611,138 @@ fun ConnectScreen(state: DesktopAppState) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ScreenHeader("Connect", "Study circles, mentors, communities and campus connections")
-                    Button(onClick = { showCreate = true }) { Text("Create") }
+                    ScreenHeader("Connect", "Connect Hub and student discovery")
+                    if (selectedPane == 0) {
+                        Button(onClick = { showCreate = true }) { Text("Create") }
+                    }
                 }
             }
-            if (loading) item { LoadingRow() }
-            items(listings, key = { it.id }) { listing ->
-                Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(listing.title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                        Text(listing.description)
-                        Text(
-                            listOfNotNull(listing.listingType, listing.university, listing.department, listing.academicLevel, listing.location).joinToString(" • "),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 12.sp,
-                        )
-                        if (listing.tags.isNotEmpty()) Text(listing.tags.joinToString("  ") { "#$it" }, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    FilterChip(
+                        selected = selectedPane == 0,
+                        onClick = { selectedPane = 0 },
+                        label = { Text("Connect Hub") },
+                        modifier = Modifier.weight(1f),
+                    )
+                    FilterChip(
+                        selected = selectedPane == 1,
+                        onClick = { selectedPane = 1 },
+                        label = { Text("Students") },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+
+            if (loading) {
+                item { LoadingRow() }
+            } else if (selectedPane == 0) {
+                items(listings, key = { it.id }) { listing ->
+                    Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(listing.title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Text(listing.description)
+                            Text(
+                                listOfNotNull(
+                                    listing.listingType,
+                                    listing.university,
+                                    listing.department,
+                                    listing.academicLevel,
+                                    listing.location,
+                                ).joinToString(" • "),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp,
+                            )
+                            if (listing.tags.isNotEmpty()) {
+                                Text(
+                                    listing.tags.joinToString("  ") { "#$it" },
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 12.sp,
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                item {
+                    OutlinedTextField(
+                        value = studentQuery,
+                        onValueChange = { studentQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Search students") },
+                    )
+                }
+
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            "all" to "All",
+                            "campus" to "Same campus",
+                            "online" to "Online",
+                        ).forEach { (key, label) ->
+                            FilterChip(
+                                selected = studentFilter == key,
+                                onClick = { studentFilter = key },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                }
+
+                items(visibleStudents, key = { it.id }) { profile ->
+                    val isFollowing = profile.id in followingIds
+                    Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                VerifiedName(profile.fullName.ifBlank { profile.username }, profile.isVerified)
+                                Text(
+                                    "@" + profile.username,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    listOfNotNull(
+                                        profile.university,
+                                        profile.faculty,
+                                        profile.department,
+                                        profile.academicLevel,
+                                    ).filter { it.isNotBlank() }.joinToString(" • "),
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    if (profile.isOnline) "Online" else "Offline",
+                                    fontSize = 11.sp,
+                                    color = if (profile.isOnline) Color(0xFF22C55E)
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    scope.launch {
+                                        followingIds = runCatching {
+                                            state.client.setFollowing(profile.id, !isFollowing)
+                                        }.getOrDefault(followingIds)
+                                    }
+                                },
+                            ) {
+                                Text(if (isFollowing) "Following" else "Follow")
+                            }
+                        }
                     }
                 }
             }
@@ -718,9 +869,12 @@ fun LeaderboardScreen(state: DesktopAppState) {
         loading = false
     }
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { ScreenHeader("Leaderboard", "World and campus ranking") }
+        item { ScreenHeader("Leaderboard", "Ranks #1–#20 from live Blink activity") }
         if (loading) item { LoadingRow() }
-        items(entries, key = { it.userId }) { entry ->
+        items(
+            entries.sortedBy { it.worldRank ?: Int.MAX_VALUE }.take(20),
+            key = { it.userId }
+        ) { entry ->
             Surface(shape = RoundedCornerShape(14.dp), tonalElevation = 1.dp) {
                 Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("#${entry.worldRank ?: "–"}", modifier = Modifier.width(64.dp), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
