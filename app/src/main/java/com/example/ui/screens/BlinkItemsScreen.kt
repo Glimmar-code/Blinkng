@@ -379,6 +379,19 @@ private fun BlinkStepsItem() {
     var milestones by remember { mutableStateOf(BlinkItemPreferences.stepMilestonesEnabled(context)) }
     var goalAlerts by remember { mutableStateOf(BlinkItemPreferences.stepGoalEnabled(context)) }
 
+    val stepNotificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
+    fun requestStepNotificationsIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            stepNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     fun refresh() {
         if (!enabled) return
         loading = true
@@ -406,8 +419,10 @@ private fun BlinkStepsItem() {
         val canRead = BlinkStepRepository.readStepsPermission in granted
         BlinkItemPreferences.setStepsEnabled(context, canRead)
         enabled = canRead
-        if (canRead) refresh()
-        else message = "Step access was not granted."
+        if (canRead) {
+            requestStepNotificationsIfNeeded()
+            refresh()
+        } else message = "Step access was not granted."
     }
 
     LaunchedEffect(Unit) {
@@ -528,6 +543,19 @@ private fun BlinkWeatherItem() {
     var rainAlerts by remember { mutableStateOf(BlinkItemPreferences.rainAlertsEnabled(context)) }
     var severeAlerts by remember { mutableStateOf(BlinkItemPreferences.severeAlertsEnabled(context)) }
 
+    val weatherNotificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
+    fun requestWeatherNotificationsIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            weatherNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     fun refreshWeather() {
         if (!BlinkLocationClient.hasCoarsePermission(context)) {
             message = "Allow approximate location to show local weather."
@@ -562,6 +590,7 @@ private fun BlinkWeatherItem() {
         if (granted || BlinkLocationClient.hasCoarsePermission(context)) {
             BlinkItemPreferences.setWeatherEnabled(context, true)
             enabled = true
+            requestWeatherNotificationsIfNeeded()
             refreshWeather()
         } else {
             message = "Weather stays off until approximate location is allowed."
@@ -628,6 +657,7 @@ private fun BlinkWeatherItem() {
                     } else if (BlinkLocationClient.hasCoarsePermission(context)) {
                         BlinkItemPreferences.setWeatherEnabled(context, true)
                         enabled = true
+                        requestWeatherNotificationsIfNeeded()
                         refreshWeather()
                     } else {
                         locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
