@@ -259,3 +259,14 @@ Windows equivalent or reason no equivalent is needed: The Windows client does no
 Backend/shared behavior preserved: Feed ranking, Following/For You ordering, qualified views, XP, coins, verification, ads, posts, reels, messages, calls, authentication and existing profile data are unchanged. The live-location migration is additive and locked behind authenticated owner-scoped RPCs; exact coordinates are never exposed through Feed/Profile/Search and are deleted when sharing stops.
 Tests/validation: Android unit/lint/instrumentation/debug/release checks, Supabase migration-safety, domain integration and the Windows build/parity gate must pass on Testlab before promotion. Real MAPS_API_KEY and server-side OPENWEATHER_API_KEY configuration must also be validated before production rollout.
 Owner/reviewer note: This exception is limited to phone-sensor collection, Android location publishing, and their Android permission/foreground-service UI. It cannot be reused to waive Windows parity for ordinary cross-platform BLINK product features.
+
+
+---
+
+PARITY: activity-pulse-hardening-20261007
+Date: 2026-10-07
+Feature: Connect Community Activity + Leaderboard Rank Pulse hardening
+Android behavior: Uses the shared server-controlled pulse policy, safe overflow-capped ranges, gradual session-persistent number movement, minimum hold timing, reduced-motion handling, foreground/window pausing, offline freeze, real online previews, campus activity labels, real leaderboard mover summaries, rank heat status, and rate-limited product analytics.
+Windows behavior: Uses the same shared pulse policy and range/transition functions, honors the desktop Reduce Motion preference, freezes the last pulse when live fetches fail, shows real online/campus context and real rank movement summaries, and records the same server analytics events.
+Backend/shared behavior: Adds an authenticated read-only pulse configuration table and an authenticated rate-limited analytics RPC/table. Presence rows, canonical leaderboard order, points, XP, feed/reel ranking, coins, verification, auth, messages and existing user data are not modified.
+Tests/validation: Shared/Android pulse range tests, Android quality/release smoke, Windows compile/package/parity, and disposable Supabase migration safety must pass on Testlab before production promotion.
