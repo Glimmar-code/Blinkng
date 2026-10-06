@@ -8,6 +8,10 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.example.auth.AccountSessionStore
 import com.example.auth.AuthErrorMapper
 import com.example.auth.PasswordRecoveryLinkParser
@@ -30,6 +34,8 @@ import com.example.notification.BlinkInAppNotificationCenter
 import com.example.notification.BlinkInAppNotificationDestination
 import com.example.notification.BlinkNotificationType
 import com.example.notification.NotificationPreferenceStore
+import com.example.notification.ConversationMuteExpiryWorker
+import com.example.notification.ConversationNotificationMuteStore
 import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
 import com.example.util.safeBoolean
@@ -42,6 +48,7 @@ import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import com.blinkng.shared.BlinkOnboardingPolicy
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -3696,12 +3703,51 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun setConversationMuted(conversation: ChatConversation, muted: Boolean) {
+        applyConversationMute(conversation, muted = muted, durationMillis = null)
+    }
+
+    fun muteConversationFor(conversation: ChatConversation, durationMillis: Long?) {
+        applyConversationMute(conversation, muted = true, durationMillis = durationMillis)
+    }
+
+    private fun applyConversationMute(
+        conversation: ChatConversation,
+        muted: Boolean,
+        durationMillis: Long?
+    ) {
         val before = conversation.isMuted
+        val workName = "blink_conversation_unmute_" + conversation.id
+
         val state = _uiState.value
         _uiState.value = state.copy(conversations = state.conversations.map {
             if (it.id == conversation.id) it.copy(isMuted = muted) else it
         })
         persistConversations()
+
+        if (muted) {
+            ConversationNotificationMuteStore.mute(appContext, conversation.id, durationMillis)
+            if (durationMillis != null && durationMillis > 0L && !conversation.id.startsWith("local_")) {
+                val request = OneTimeWorkRequestBuilder<ConversationMuteExpiryWorker>()
+                    .setInitialDelay(durationMillis, TimeUnit.MILLISECONDS)
+                    .setInputData(
+                        workDataOf(
+                            ConversationMuteExpiryWorker.KEY_CONVERSATION_ID to conversation.id
+                        )
+                    )
+                    .build()
+                WorkManager.getInstance(appContext).enqueueUniqueWork(
+                    workName,
+                    ExistingWorkPolicy.REPLACE,
+                    request
+                )
+            } else {
+                WorkManager.getInstance(appContext).cancelUniqueWork(workName)
+            }
+        } else {
+            ConversationNotificationMuteStore.unmute(appContext, conversation.id)
+            WorkManager.getInstance(appContext).cancelUniqueWork(workName)
+        }
+
         if (conversation.id.startsWith("local_")) return
         viewModelScope.launch {
             if (!chatRepository.setConversationMuted(conversation.id, muted)) {
@@ -3709,8 +3755,24 @@ private suspend fun restoreSupabaseSession() {
                 _uiState.value = latest.copy(conversations = latest.conversations.map {
                     if (it.id == conversation.id) it.copy(isMuted = before) else it
                 })
+                if (before) {
+                    ConversationNotificationMuteStore.mute(appContext, conversation.id, null)
+                } else {
+                    ConversationNotificationMuteStore.unmute(appContext, conversation.id)
+                    WorkManager.getInstance(appContext).cancelUniqueWork(workName)
+                }
                 persistConversations()
                 showToast("Couldn't update chat notifications.")
+            } else {
+                val durationLabel = when (durationMillis) {
+                    null -> if (muted) "until you turn them back on" else ""
+                    60L * 60L * 1_000L -> "for 1 hour"
+                    8L * 60L * 60L * 1_000L -> "for 8 hours"
+                    24L * 60L * 60L * 1_000L -> "for 24 hours"
+                    else -> "temporarily"
+                }
+                if (muted) showToast("Chat notifications muted " + durationLabel + ".")
+                else showToast("Chat notifications unmuted.")
             }
         }
     }
