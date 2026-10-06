@@ -281,9 +281,10 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         val marketTarget = data["market_id"].orEmpty()
         val genericTarget = data["target_id"].orEmpty()
         val targetType = data["target_type"].orEmpty()
-        val inAppDestination = if (targetType.equals("giveaway", ignoreCase = true)) {
-            BlinkInAppNotificationDestination.DROPS
-        } else when (type) {
+        val inAppDestination = when {
+            targetType.equals("giveaway", ignoreCase = true) -> BlinkInAppNotificationDestination.DROPS
+            targetType.equals("boost", ignoreCase = true) -> BlinkInAppNotificationDestination.BOOST
+            else -> when (type) {
             BlinkNotificationType.MESSAGE -> BlinkInAppNotificationDestination.CHAT
             BlinkNotificationType.MARKET,
             BlinkNotificationType.MARKET_ORDER -> BlinkInAppNotificationDestination.MARKET
@@ -301,6 +302,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 BlinkInAppNotificationDestination.NOTIFICATIONS
             }
             else -> BlinkInAppNotificationDestination.NOTIFICATIONS
+            }
         }
 
         val inAppKey = when (type) {
