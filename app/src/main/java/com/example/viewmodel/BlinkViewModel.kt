@@ -98,6 +98,7 @@ data class BlinkUiState(
     val leaderboardUsers: List<LeaderboardUser> = emptyList(),
     val gameLeaderboardUsers: List<LeaderboardUser> = emptyList(),
     val conversations: List<ChatConversation> = emptyList(),
+    val chatPrivacySettings: ChatPrivacySettings = ChatPrivacySettings(),
     val isConversationsLoading: Boolean = false,
     val activities: List<ActivityItem> = emptyList(),
     val activitiesLoading: Boolean = false,
@@ -1526,6 +1527,10 @@ private suspend fun restoreSupabaseSession() {
                         runCatching { MessageMediaService.hydrateVideos(chatRepository.fetchConversations()) }
                             .onFailure { Log.e(TAG, "Message fetch failed", it) }
                     }
+                    val chatPrivacyRequest = async {
+                        runCatching { chatRepository.fetchChatPrivacySettings() }
+                            .onFailure { Log.e(TAG, "Chat privacy fetch failed", it) }
+                    }
                     val leaderboardRequest = async {
                         runCatching { supabaseService.fetchLeaderboard() }
                             .onFailure { Log.e(TAG, "Leaderboard fetch failed", it) }
@@ -1573,6 +1578,8 @@ private suspend fun restoreSupabaseSession() {
                         summaries = conversationSummaries,
                         local = before.conversations
                     )
+                    val chatPrivacySettings = chatPrivacyRequest.await()
+                        .getOrDefault(before.chatPrivacySettings)
                     if (conversationsResult.isSuccess) {
                         cacheWriteMutex.withLock {
                             runCatching { offlineContentStore.replaceConversations(conversations, _uiState.value.myProfile.username) }
@@ -1619,6 +1626,7 @@ private suspend fun restoreSupabaseSession() {
                         profiles = liveProfiles,
                         marketItems = market,
                         conversations = conversations,
+                        chatPrivacySettings = chatPrivacySettings,
                         leaderboardUsers = leaderboard,
                         gameLeaderboardUsers = gameLeaderboard,
                         connectHub = connectHub,
@@ -3359,6 +3367,17 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun closeConversation() { _uiState.value = _uiState.value.copy(activeConversationPartner = null, isConversationFullScreen = false) }
+
+    fun updateChatPrivacySettings(settings: ChatPrivacySettings) {
+        val before = _uiState.value.chatPrivacySettings
+        _uiState.value = _uiState.value.copy(chatPrivacySettings = settings)
+        viewModelScope.launch {
+            if (!chatRepository.updateChatPrivacySettings(settings)) {
+                _uiState.value = _uiState.value.copy(chatPrivacySettings = before)
+                showToast("Couldn't update message privacy.")
+            }
+        }
+    }
 
     fun updateChatPresence(partnerUsername: String, state: String) {
         val cleanPartner = partnerUsername.trim().removePrefix("@")
