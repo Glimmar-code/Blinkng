@@ -39,6 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
@@ -288,6 +289,7 @@ fun FeedUtilityRow(
     onGameClick: () -> Unit,
     onStoreClick: () -> Unit,
     onBoostClick: () -> Unit,
+    onDropsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -325,6 +327,13 @@ fun FeedUtilityRow(
             contentDescription = "Open Boost and Earn Rank Points",
             onClick = onBoostClick,
             modifier = Modifier.weight(1f).testTag("feed_boost_action")
+        )
+        FeedUtilityAction(
+            icon = Icons.Default.CardGiftcard,
+            label = "Drops",
+            contentDescription = "Open BLINK Drops",
+            onClick = onDropsClick,
+            modifier = Modifier.weight(1f).testTag("feed_drops_action")
         )
     }
 }

@@ -281,6 +281,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            BlinkInAppNotificationDestination.DROPS -> {
+                startActivity(
+                    Intent(this, BlinkDropsActivity::class.java).apply {
+                        putExtra(BlinkDropsActivity.EXTRA_DROP_ID, event.targetId)
+                    }
+                )
+            }
+
             BlinkInAppNotificationDestination.NOTIFICATIONS -> {
                 viewModel.openActivity(true)
             }
@@ -697,6 +705,7 @@ fun MainAppContent(
                         onLeaderboardClick = { feedUtilitySheet = "leaderboard" },
                         onStoreClick = { feedUtilitySheet = "store" },
                         onBoostClick = { feedUtilitySheet = "boost" },
+                        onDropsClick = { feedUtilitySheet = "drops" },
                         onGameClick = { feedUtilitySheet = "game" },
                         onMarketClick = { viewModel.setTab(MainTab.MARKET) },
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
@@ -913,24 +922,8 @@ fun MainAppContent(
                             onClose = { dismissUtility() },
                         )
 
-                        "boost" -> BlinkBoostGrowthRoute(
-                            posts = uiState.posts,
-                            reels = uiState.reels,
-                            marketItems = uiState.marketItems,
-                            myProfile = uiState.myProfile,
-                            isDark = uiState.isDarkMode,
-                            onLikePost = { postId -> viewModel.togglePostLike(postId) },
-                            onCommentPost = { postId ->
-                                dismissUtility { viewModel.openCommentsForPost(postId) }
-                            },
-                            onBookmarkPost = { postId -> viewModel.toggleBookmark(postId) },
-                            onProfileClick = { username ->
-                                dismissUtility { viewModel.openProfile(username) }
-                            },
-                            onListingClick = { listing ->
-                                dismissUtility { viewModel.openProductDetail(listing) }
-                            },
-                            onClose = { dismissUtility() },
+                        "drops" -> BlinkDropsRoute(
+                            onClose = { dismissUtility() }
                         )
                     }
                 }

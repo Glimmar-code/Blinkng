@@ -82,6 +82,9 @@ import com.example.data.models.UserProfile
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.FollowStateStore
 import com.example.data.supabase.BlinkEconomyService
+import com.example.data.supabase.BlinkDropDiscovery
+import com.example.data.supabase.BlinkDropsService
+import com.example.ui.components.BlinkDropDiscoveryCard
 import com.example.ui.components.BlinkNativeAdPlacement
 import com.example.ui.components.BlinkSponsoredNativeAd
 import com.example.ui.components.CreatePostFab
@@ -117,29 +120,60 @@ private sealed interface PremiumHomeRow {
     data class BoostedPostRow(val placement: BlinkPromotedFeedPlacement, val slot: Int) : PremiumHomeRow
     data class ReelPreviewRow(val reel: FeedPost, val slot: Int) : PremiumHomeRow
     data class SponsoredRow(val slot: Int) : PremiumHomeRow
+    data class DropDiscoveryRow(val item: BlinkDropDiscovery, val slot: Int) : PremiumHomeRow
 }
 
 private fun buildPremiumHomeRows(
     posts: List<FeedPost>,
     reels: List<FeedPost>,
     promotedPosts: List<BlinkPromotedFeedPlacement>,
+    dropDiscovery: List<BlinkDropDiscovery>,
     seed: Int
 ): List<PremiumHomeRow> {
-    if (posts.isEmpty()) return emptyList()
+    if (posts.isEmpty()) {
+        return dropDiscovery.take(1).mapIndexed { slot, item ->
+            PremiumHomeRow.DropDiscoveryRow(item, slot)
+        }
+    }
 
     val random = Random(seed)
-    val rows = ArrayList<PremiumHomeRow>(posts.size + (posts.size / 5) + promotedPosts.size + 2)
+    val rows = ArrayList<PremiumHomeRow>(
+        posts.size + (posts.size / 5) + promotedPosts.size + dropDiscovery.size + 2
+    )
     var postsSincePreview = 0
     var nextGap = random.nextInt(10, 21)
     var reelSlot = 0
     var sponsoredSlot = 0
     var promotedSlot = 0
+    var dropSlot = 0
+    var postsSinceDrop = 0
+    var nextDropGap = random.nextInt(8, 13)
+
+    // The first missed-Drop module appears before organic Post #1 without replacing it.
+    if (dropDiscovery.isNotEmpty()) {
+        rows += PremiumHomeRow.DropDiscoveryRow(dropDiscovery.first(), dropSlot++)
+    }
 
     posts.forEachIndexed { index, post ->
         rows += PremiumHomeRow.PostRow(post, index)
         postsSincePreview += 1
+        postsSinceDrop += 1
 
         val organicPosition = index + 1
+
+        if (
+            dropSlot < dropDiscovery.size &&
+            postsSinceDrop >= nextDropGap &&
+            index < posts.lastIndex
+        ) {
+            rows += PremiumHomeRow.DropDiscoveryRow(
+                item = dropDiscovery[dropSlot],
+                slot = dropSlot
+            )
+            dropSlot += 1
+            postsSinceDrop = 0
+            nextDropGap = random.nextInt(8, 13)
+        }
         val shouldInsertBoosted =
             promotedSlot < promotedPosts.size &&
                 organicPosition >= 5 &&
@@ -203,7 +237,7 @@ private fun mergeStablePremiumFeed(
  * Premium feed shell.
  *
  * For You and Following stay inside Home. Reels and Connect use the persistent
- * bottom navigation, while Rank, Game, Store and Boost remain visible Home shortcuts.
+ * bottom navigation, while Rank, Game, Store, Boost and Drops remain visible Home shortcuts.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -249,6 +283,7 @@ fun PremiumFeedScreen(
     onLeaderboardClick: () -> Unit = {},
     onStoreClick: () -> Unit = {},
     onBoostClick: () -> Unit = {},
+    onDropsClick: () -> Unit = {},
     onGameClick: () -> Unit = {},
     onMarketClick: () -> Unit = {},
     onMessageClick: () -> Unit = {},
@@ -349,6 +384,7 @@ fun PremiumFeedScreen(
             onLeaderboardClick = onLeaderboardClick,
             onStoreClick = onStoreClick,
             onBoostClick = onBoostClick,
+            onDropsClick = onDropsClick,
             onRefresh = onRefresh,
             onRetry = onRetry,
             onViewedPost = onViewedPost,
@@ -498,6 +534,7 @@ private fun PremiumHomeFeed(
     onLeaderboardClick: () -> Unit,
     onStoreClick: () -> Unit,
     onBoostClick: () -> Unit,
+    onDropsClick: () -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
     onViewedPost: (String) -> Unit,
@@ -643,6 +680,21 @@ private fun PremiumHomeFeed(
         mutableStateOf<List<BlinkPromotedFeedPlacement>>(emptyList())
     }
 
+    val dropsService = remember { BlinkDropsService() }
+    var dropDiscovery by remember(laneResumeKey) {
+        mutableStateOf<List<BlinkDropDiscovery>>(emptyList())
+    }
+
+    LaunchedEffect(laneIndex, isOnline, laneResumeKey, homeReselectSignal) {
+        if (laneIndex != 0 || !isOnline) {
+            dropDiscovery = emptyList()
+            return@LaunchedEffect
+        }
+        dropsService.discovery(3)
+            .onSuccess { dropDiscovery = it }
+            .onFailure { dropDiscovery = emptyList() }
+    }
+
     LaunchedEffect(laneIndex, isOnline, laneResumeKey) {
         if (laneIndex != 0 || !isOnline) {
             promotedFeed = emptyList()
@@ -653,8 +705,14 @@ private fun PremiumHomeFeed(
             .onFailure { promotedFeed = emptyList() }
     }
 
-    val homeRows = remember(filteredPosts, rankedInlineReels, promotedFeed, reelMixSeed) {
-        buildPremiumHomeRows(filteredPosts, rankedInlineReels, promotedFeed, reelMixSeed)
+    val homeRows = remember(filteredPosts, rankedInlineReels, promotedFeed, dropDiscovery, reelMixSeed) {
+        buildPremiumHomeRows(
+            filteredPosts,
+            rankedInlineReels,
+            promotedFeed,
+            dropDiscovery,
+            reelMixSeed
+        )
     }
     val pendingNewPostCount = remember(
         posts,
@@ -1065,7 +1123,8 @@ private fun PremiumHomeFeed(
                         onLeaderboardClick = onLeaderboardClick,
                         onGameClick = onGameClick,
                         onStoreClick = onStoreClick,
-                        onBoostClick = onBoostClick
+                        onBoostClick = onBoostClick,
+                        onDropsClick = onDropsClick
                     )
                     Box {
                         FeedTabs(
@@ -1175,6 +1234,7 @@ private fun PremiumHomeFeed(
                                             is PremiumHomeRow.BoostedPostRow -> "boosted:${row.placement.campaignId}:${row.slot}"
                                             is PremiumHomeRow.ReelPreviewRow -> "reel_preview:${row.slot}:${row.reel.id}"
                                             is PremiumHomeRow.SponsoredRow -> "sponsored:${row.slot}"
+                                            is PremiumHomeRow.DropDiscoveryRow -> "drop_discovery:${row.item.dropId}:${row.slot}"
                                         }
                                     },
                                     contentType = { index ->
@@ -1183,6 +1243,7 @@ private fun PremiumHomeFeed(
                                             is PremiumHomeRow.BoostedPostRow -> 18
                                             is PremiumHomeRow.ReelPreviewRow -> 16
                                             is PremiumHomeRow.SponsoredRow -> 17
+                                            is PremiumHomeRow.DropDiscoveryRow -> 19
                                         }
                                     }
                                 ) { index ->
@@ -1249,6 +1310,25 @@ private fun PremiumHomeFeed(
                                             BlinkSponsoredNativeAd(
                                                 adUnitId = BuildConfig.ADMOB_FEED_NATIVE_AD_UNIT_ID,
                                                 placement = BlinkNativeAdPlacement.FEED,
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                            )
+                                        }
+
+                                        is PremiumHomeRow.DropDiscoveryRow -> {
+                                            BlinkDropDiscoveryCard(
+                                                item = row.item,
+                                                onFollow = {
+                                                    uiScope.launch {
+                                                        dropsService.followCreator(row.item.creatorId)
+                                                            .onSuccess {
+                                                                dropDiscovery = dropDiscovery.filterNot {
+                                                                    it.creatorId == row.item.creatorId
+                                                                }
+                                                                FollowStateStore.refresh()
+                                                            }
+                                                    }
+                                                },
+                                                onOpenDrops = onDropsClick,
                                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                                             )
                                         }
