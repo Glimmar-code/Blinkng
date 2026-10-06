@@ -788,6 +788,79 @@ class DesktopSupabaseClient(
         parseConnectListing(created)
     }
 
+    suspend fun fetchConnectInbox(): DesktopConnectInbox = withContext(Dispatchers.IO) {
+        val currentId = requireSession().userId
+
+        val requests = runCatching {
+            val payload = postObject(
+                "/rest/v1/rpc/get_connect_request_inbox",
+                JSONObject().put("p_limit", 120),
+            )
+            val rows = payload as? JSONArray ?: JSONArray()
+            (0 until rows.length()).mapNotNull { index ->
+                rows.optJSONObject(index)?.let { row ->
+                    DesktopConnectRequestItem(
+                        kind = row.optString("kind"),
+                        requestId = row.optString("request_id"),
+                        direction = row.optString("direction"),
+                        status = row.optString("status"),
+                        title = row.optString("title"),
+                        otherUserId = row.optString("other_user_id"),
+                        createdAt = row.optString("created_at"),
+                    )
+                }
+            }
+        }.getOrDefault(emptyList())
+
+        val challenges = runCatching {
+            val rows = getArray(
+                "/rest/v1/game_challenges" +
+                    "?select=id,challenger_id,opponent_id,game_type,status,created_at" +
+                    "&or=(challenger_id.eq.${encode(currentId)},opponent_id.eq.${encode(currentId)})" +
+                    "&order=created_at.desc&limit=60",
+            )
+            (0 until rows.length()).mapNotNull { index ->
+                rows.optJSONObject(index)?.let { row ->
+                    DesktopGameChallenge(
+                        id = row.optString("id"),
+                        challengerId = row.optString("challenger_id"),
+                        opponentId = row.optString("opponent_id"),
+                        gameType = row.optString("game_type"),
+                        status = row.optString("status"),
+                        createdAt = row.optString("created_at"),
+                    )
+                }
+            }
+        }.getOrDefault(emptyList())
+
+        DesktopConnectInbox(requests = requests, challenges = challenges)
+    }
+
+    suspend fun respondConnectRequest(kind: String, requestId: String, accept: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            rpcBoolean(
+                postObject(
+                    "/rest/v1/rpc/respond_connect_request",
+                    JSONObject()
+                        .put("p_kind", kind)
+                        .put("p_request_id", requestId)
+                        .put("p_accept", accept),
+                ),
+            )
+        }
+
+    suspend fun respondGameChallenge(challengeId: String, accept: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            rpcBoolean(
+                postObject(
+                    "/rest/v1/rpc/respond_game_challenge",
+                    JSONObject()
+                        .put("p_challenge_id", challengeId)
+                        .put("p_accept", accept),
+                ),
+            )
+        }
+
     suspend fun fetchStore(): Pair<List<DesktopStoreItem>, List<DesktopInventoryItem>> = withContext(Dispatchers.IO) {
         val catalogRows = getArray(
             "/rest/v1/blink_store_catalog?is_active=eq.true&select=id,name,description,category,price,item_type,target_type,duration_seconds,vip_only,boost_multipliers&order=sort_order.asc",
@@ -1195,6 +1268,15 @@ class DesktopSupabaseClient(
             else -> JSONObject().put("value", trimmed)
         }
     }
+
+    private fun rpcBoolean(result: Any): Boolean =
+        when (result) {
+            is JSONObject -> result.optString("value")
+                .trim()
+                .removeSurrounding("\"")
+                .equals("true", ignoreCase = true)
+            else -> false
+        }
 
     private fun patch(path: String, body: JSONObject) {
         execute(
