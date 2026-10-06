@@ -2887,6 +2887,35 @@ suspend fun uploadPostMedia(
             }
         }
 
+    suspend fun fetchMarketItemById(marketId: String): MarketItem? =
+        withContext(Dispatchers.IO) {
+            val cleanId = marketId.trim()
+            if (cleanId.isBlank()) return@withContext null
+
+            try {
+                val request = newRequestBuilder(
+                    "/rest/v1/market_items" +
+                        "?id=eq.${encodeValue(cleanId)}" +
+                        "&select=*" +
+                        "&limit=1"
+                )
+                    .get()
+                    .build()
+
+                executeRequest(request).use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful || body.isBlank() || body == "[]") {
+                        return@withContext null
+                    }
+                    val array = JSONArray(body)
+                    if (array.length() == 0) null else parseMarketItem(array.getJSONObject(0))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "MARKET_FETCH_BY_ID exception", e)
+                null
+            }
+        }
+
     suspend fun createMarketItem(
         item: MarketItem
     ): Boolean =
