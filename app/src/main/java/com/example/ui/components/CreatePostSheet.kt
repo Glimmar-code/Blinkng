@@ -286,32 +286,14 @@ fun CreatePostSheet(
         PersistentTextDraftStore.clearValue(context, "create_post_autosave_v2", composerScope)
     }
 
-    fun normalizedLink(raw: String): String? {
-        val trimmed = raw.trim()
-        if (trimmed.isBlank()) return null
-        val candidate = if (
-            trimmed.startsWith("https://", true) ||
-            trimmed.startsWith("http://", true)
-        ) trimmed else "https://$trimmed"
-        val parsed = runCatching { Uri.parse(candidate) }.getOrNull() ?: return null
-        return candidate.takeIf { !parsed.host.isNullOrBlank() }
-    }
+    fun normalizedLink(raw: String): String? =
+        PostComposerRules.normalizedLink(raw)
 
     fun extractedTags(value: String): List<String> =
-        Regex("""(?<![A-Za-z0-9_])#([A-Za-z0-9_]{1,50})""")
-            .findAll(value)
-            .map { it.groupValues[1].lowercase() }
-            .distinct()
-            .take(20)
-            .toList()
+        PostComposerRules.tags(value)
 
     fun extractedMentions(value: String): List<String> =
-        Regex("""(?<![A-Za-z0-9._])@([A-Za-z0-9._]{2,32})""")
-            .findAll(value)
-            .map { it.groupValues[1] }
-            .distinctBy { it.lowercase() }
-            .take(20)
-            .toList()
+        PostComposerRules.mentions(value)
 
     LaunchedEffect(composerScope) {
         val raw = PersistentTextDraftStore.readValue(
@@ -418,9 +400,7 @@ fun CreatePostSheet(
     val cleanText = text.trim()
     val validPollOptions = pollOptions.map(String::trim).filter(String::isNotBlank)
     val pollValid = showPoll &&
-        pollQuestion.isNotBlank() &&
-        validPollOptions.size >= 2 &&
-        validPollOptions.map { it.lowercase() }.distinct().size == validPollOptions.size
+        PostComposerRules.validPoll(pollQuestion, pollOptions)
     val normalizedLinkUrl = normalizedLink(linkUrl)
     val linkValid = linkUrl.isBlank() || normalizedLinkUrl != null
     val hasContent = cleanText.isNotBlank() ||
