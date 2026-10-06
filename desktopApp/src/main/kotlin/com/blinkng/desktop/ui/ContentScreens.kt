@@ -87,6 +87,15 @@ import com.blinkng.desktop.data.DesktopSearchResults
 import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
+import com.blinkng.shared.BlinkActivityPulseDefaults
+import com.blinkng.shared.BlinkActivityPulsePolicy
+import com.blinkng.shared.BlinkPulseSessionStore
+import com.blinkng.shared.BlinkPulseTrend
+import com.blinkng.shared.campusActivityLabel
+import com.blinkng.shared.communityActivityRange
+import com.blinkng.shared.nextPulseValue
+import com.blinkng.shared.pulseTrend
+import com.blinkng.shared.rankPulseRange
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
@@ -1633,37 +1642,65 @@ private fun parseDesktopEconomyPolicy(payload: JSONObject?): BlinkEconomyPolicy 
     )
 }
 
-private fun desktopCommunityActivityRange(realOnlineCount: Int): IntRange {
-    val units = realOnlineCount.coerceAtLeast(1).coerceAtMost(100_000)
-    return (units * 30)..(units * 50)
-}
-
-private fun desktopRankPulseRange(rankUpsInWindow: Int): IntRange {
-    val units = rankUpsInWindow.coerceAtLeast(1).coerceAtMost(100_000)
-    return (units * 10)..(units * 15)
-}
-
 @Composable
-private fun rememberDesktopFluctuatingPulse(
+private fun rememberDesktopManagedPulse(
+    key: String,
     range: IntRange,
     tickMillis: Long,
-): Int {
-    val min = minOf(range.first, range.last)
-    val max = maxOf(range.first, range.last)
-    var value by remember(min, max) {
-        mutableIntStateOf(if (min == max) min else Random.nextInt(min, max + 1))
+    policy: BlinkActivityPulsePolicy,
+    liveDataAvailable: Boolean,
+    reduceMotion: Boolean,
+): Int? {
+    val normalized = policy.normalized()
+    val minValue = minOf(range.first, range.last)
+    val maxValue = maxOf(range.first, range.last)
+    var value by remember(key) {
+        mutableStateOf(BlinkPulseSessionStore.get(key))
     }
 
-    LaunchedEffect(min, max, tickMillis) {
+    LaunchedEffect(
+        key,
+        minValue,
+        maxValue,
+        tickMillis,
+        normalized.minHoldMillis,
+        normalized.maxStep,
+        normalized.transitionStepMultiplier,
+        liveDataAvailable,
+        reduceMotion,
+    ) {
+        if (!liveDataAvailable || !normalized.enabled) return@LaunchedEffect
+
+        if (value == null) {
+            val seeded = if (minValue == maxValue) minValue else Random.nextInt(minValue, maxValue + 1)
+            value = seeded
+            BlinkPulseSessionStore.put(key, seeded)
+        }
+
+        val hold = maxOf(tickMillis, normalized.minHoldMillis) * if (reduceMotion) 2L else 1L
         while (true) {
-            delay(tickMillis)
-            val magnitude = Random.nextInt(1, 5)
+            delay(hold)
+            val current = value ?: continue
+            val magnitude = Random.nextInt(1, normalized.maxStep + 1)
             val direction = if (Random.nextBoolean()) 1 else -1
-            var next = (value + (magnitude * direction)).coerceIn(min, max)
-            if (next == value && min < max) {
-                next = if (value <= min) value + 1 else value - 1
+            var next = nextPulseValue(
+                current = current,
+                range = minValue..maxValue,
+                requestedStep = magnitude * direction,
+                maxStep = normalized.maxStep,
+                transitionStepMultiplier = normalized.transitionStepMultiplier,
+            )
+            if (next == current && current in minValue..maxValue && minValue < maxValue) {
+                next = nextPulseValue(
+                    current = current,
+                    range = minValue..maxValue,
+                    requestedStep = if (current <= minValue) 1 else -1,
+                    maxStep = normalized.maxStep,
+                    transitionStepMultiplier = normalized.transitionStepMultiplier,
+                )
             }
-            value = next.coerceIn(min, max)
+            value = next
+            BlinkPulseSessionStore.put(key, next)
         }
     }
 
