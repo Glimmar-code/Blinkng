@@ -799,6 +799,7 @@ fun MainAppContent(
                         conversations = uiState.conversations,
                         stories = uiState.stories,
                         activities = uiState.activities,
+                        chatPrivacySettings = uiState.chatPrivacySettings,
                         myAvatar = uiState.myProfile.avatarUrl,
                         myName = uiState.myProfile.fullName.ifBlank { uiState.myProfile.username },
                         activePartner = uiState.activeConversationPartner,
@@ -858,6 +859,9 @@ fun MainAppContent(
                         onStoryClick = { story -> viewModel.openStory(story) },
                         onAddStoryClick = { viewModel.openCreateStory(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
+                        onUpdateChatPrivacy = { settings ->
+                            viewModel.updateChatPrivacySettings(settings)
+                        },
                         onComposeMessage = { viewModel.setTab(MainTab.SEARCH) },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline,
