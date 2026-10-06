@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var adConsentManager: BlinkAdConsentManager
     private var presenceHeartbeatJob: Job? = null
     private var rewardedAdShowPending = false
+    private var itemsOpenSignal by mutableIntStateOf(0)
 
     private val inAppUpdateLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -222,6 +223,12 @@ class MainActivity : ComponentActivity() {
             BlinkNotificationHelper.ACTION_OPEN_SOCIAL -> {
                 viewModel.openActivity(true)
             }
+
+            BlinkNotificationHelper.ACTION_OPEN_ITEMS -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(0)
+                itemsOpenSignal += 1
+            }
         }
 
         intent.removeExtra(BlinkNotificationHelper.EXTRA_ACTION)
@@ -287,6 +294,12 @@ class MainActivity : ComponentActivity() {
                         putExtra(BlinkDropsActivity.EXTRA_DROP_ID, event.targetId)
                     }
                 )
+            }
+
+            BlinkInAppNotificationDestination.ITEMS -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(0)
+                itemsOpenSignal += 1
             }
 
             BlinkInAppNotificationDestination.NOTIFICATIONS -> {
@@ -508,6 +521,7 @@ class MainActivity : ComponentActivity() {
                                         uiState = uiState,
                                         viewModel = viewModel,
                                         onWatchAdForCoins = ::showRewardedAdForCoins,
+                                        itemsOpenSignal = itemsOpenSignal,
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
                                         onAdPrivacyOptions = ::showAdPrivacyOptions
                                     )
@@ -539,6 +553,7 @@ fun MainAppContent(
     uiState: com.example.viewmodel.BlinkUiState,
     viewModel: BlinkViewModel,
     onWatchAdForCoins: () -> Unit,
+    itemsOpenSignal: Int,
     isAdPrivacyOptionsRequired: Boolean,
     onAdPrivacyOptions: () -> Unit
 ) {
@@ -546,6 +561,9 @@ fun MainAppContent(
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(itemsOpenSignal) {
+        if (itemsOpenSignal > 0) feedUtilitySheet = "items"
+    }
     val context = androidx.compose.ui.platform.LocalContext.current
     val connectHubActions = remember(viewModel) {
         ConnectHubActions(
@@ -702,6 +720,7 @@ fun MainAppContent(
                             viewModel.openChatWithUser(partner, partnerName, partnerAvatar)
                         },
                         onSearchClick = { viewModel.setTab(MainTab.SEARCH) },
+                        onItemsClick = { feedUtilitySheet = "items" },
                         onLeaderboardClick = { feedUtilitySheet = "leaderboard" },
                         onStoreClick = { feedUtilitySheet = "store" },
                         onBoostClick = { feedUtilitySheet = "boost" },
@@ -924,6 +943,14 @@ fun MainAppContent(
 
                         "drops" -> BlinkDropsRoute(
                             onClose = { dismissUtility() }
+                        )
+
+                        "items" -> BlinkItemsScreen(
+                            profiles = uiState.profiles,
+                            currentUserId = uiState.myProfile.id,
+                            currentUsername = uiState.myProfile.username,
+                            onClose = { dismissUtility() },
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
