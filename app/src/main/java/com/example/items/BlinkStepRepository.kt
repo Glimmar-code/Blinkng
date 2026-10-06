@@ -1,76 +1,90 @@
 package com.example.items
 
+import android.Manifest
 import android.content.Context
-import android.content.Intent
-import androidx.health.connect.client.HealthConnectClient
-import androidx.health.connect.client.HealthConnectFeatures
-import androidx.health.connect.client.permission.HealthPermission
-import androidx.health.connect.client.records.StepsRecord
-import androidx.health.connect.client.request.AggregateRequest
-import androidx.health.connect.client.time.TimeRangeFilter
+import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 
+/**
+ * Reads Android's hardware step counter without raising BLINK's existing minSdk.
+ *
+ * TYPE_STEP_COUNTER is a low-power cumulative counter maintained by the device since boot.
+ * BLINK converts that cumulative value into an approximate daily count using a local baseline.
+ * Nothing is uploaded unless another feature explicitly asks for a daily summary.
+ */
 class BlinkStepRepository(context: Context) {
     private val appContext = context.applicationContext
-
-    companion object {
-        val readStepsPermission: String =
-            HealthPermission.getReadPermission(StepsRecord::class)
-        val backgroundReadPermission: String =
-            HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
-    }
-
-    fun sdkStatus(): Int = HealthConnectClient.getSdkStatus(appContext)
+    private val sensorManager =
+        appContext.getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
     fun isAvailable(): Boolean =
-        sdkStatus() == HealthConnectClient.SDK_AVAILABLE
+        sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) != null
 
-    fun manageAccessIntent(): Intent =
-        Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
+    fun requiresRuntimePermission(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
 
-    fun requestedPermissions(): Set<String> {
-        if (!isAvailable()) return emptySet()
-        val client = HealthConnectClient.getOrCreate(appContext)
-        val permissions = linkedSetOf(readStepsPermission)
-        if (
-            client.features.getFeatureStatus(
-                HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_IN_BACKGROUND
-            ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
-        ) {
-            permissions += backgroundReadPermission
-        }
-        return permissions
-    }
-
-    suspend fun hasReadPermission(requireBackground: Boolean = false): Boolean {
-        if (!isAvailable()) return false
-        val client = HealthConnectClient.getOrCreate(appContext)
-        val granted = client.permissionController.getGrantedPermissions()
-        if (readStepsPermission !in granted) return false
-        if (requireBackground &&
-            backgroundReadPermission in requestedPermissions() &&
-            backgroundReadPermission !in granted
-        ) return false
-        return true
-    }
+    fun hasReadPermission(): Boolean =
+        !requiresRuntimePermission() ||
+            ContextCompat.checkSelfPermission(
+                appContext,
+                Manifest.permission.ACTIVITY_RECOGNITION
+            ) == PackageManager.PERMISSION_GRANTED
 
     suspend fun readTodaySteps(now: Instant = Instant.now()): Result<Long> = runCatching {
-        check(isAvailable()) { "Health Connect is unavailable on this device." }
-        val client = HealthConnectClient.getOrCreate(appContext)
-        check(client.permissionController.getGrantedPermissions().contains(readStepsPermission)) {
-            "Step access has not been granted."
-        }
+        check(isAvailable()) { "This device does not provide a hardware step counter." }
+        check(hasReadPermission()) { "Physical activity permission has not been granted." }
 
-        val zone = ZoneId.systemDefault()
-        val start = LocalDate.now(zone).atStartOfDay(zone).toInstant()
-        val aggregate = client.aggregate(
-            AggregateRequest(
-                metrics = setOf(StepsRecord.COUNT_TOTAL),
-                timeRangeFilter = TimeRangeFilter.between(start, now)
-            )
+        val cumulative = readCumulativeCounter()
+            ?: error("The device step counter did not respond.")
+        val date = LocalDate.ofInstant(now, ZoneId.systemDefault()).toString()
+        BlinkItemPreferences.stepsFromSensorCounter(
+            context = appContext,
+            date = date,
+            cumulativeCounter = cumulative
         )
-        (aggregate[StepsRecord.COUNT_TOTAL] ?: 0L).coerceAtLeast(0L)
+    }
+
+    private suspend fun readCumulativeCounter(): Long? {
+        val sensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) ?: return null
+
+        return withTimeoutOrNull(5_000L) {
+            suspendCancellableCoroutine { continuation ->
+                val listener = object : SensorEventListener {
+                    override fun onSensorChanged(event: SensorEvent) {
+                        if (!continuation.isActive) return
+                        val raw = event.values.firstOrNull()?.toLong() ?: return
+                        sensorManager.unregisterListener(this)
+                        continuation.resume(raw.coerceAtLeast(0L))
+                    }
+
+                    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+                }
+
+                val registered = sensorManager.registerListener(
+                    listener,
+                    sensor,
+                    SensorManager.SENSOR_DELAY_NORMAL
+                )
+                if (!registered) {
+                    continuation.resume(null)
+                    return@suspendCancellableCoroutine
+                }
+
+                continuation.invokeOnCancellation {
+                    sensorManager.unregisterListener(listener)
+                }
+            }
+        }
     }
 }
