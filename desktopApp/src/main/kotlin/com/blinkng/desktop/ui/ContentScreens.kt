@@ -1016,69 +1016,144 @@ fun LeaderboardScreen(state: DesktopAppState) {
     var entries by remember { mutableStateOf<List<DesktopLeaderboardEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var previousRanks by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var worldRankMovement by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var rankUpsInWindow by remember { mutableIntStateOf(0) }
+    var pulsePolicy by remember { mutableStateOf(BlinkActivityPulseDefaults.policy) }
+    var liveActivityAvailable by remember { mutableStateOf(false) }
+    var pulseImpressionRecorded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
+        pulsePolicy = runCatching { state.client.fetchActivityPulsePolicy() }
+            .getOrDefault(pulsePolicy)
+            .normalized()
+
         while (true) {
-            val loaded = runCatching { state.client.fetchLeaderboard() }.getOrDefault(entries)
+            val result = runCatching { state.client.fetchLeaderboard() }
+            val loaded = result.getOrDefault(entries)
             val currentRanks = loaded.mapNotNull { entry ->
                 entry.worldRank?.let { rank -> entry.userId to rank }
             }.toMap()
-            rankUpsInWindow = if (previousRanks.isEmpty()) {
-                0
+
+            val movement = if (previousRanks.isEmpty()) {
+                emptyMap()
             } else {
-                currentRanks.count { (userId, rank) ->
+                currentRanks.mapValues { (userId, rank) ->
                     val previous = previousRanks[userId]
-                    previous != null && rank < previous
+                    if (previous == null) 0 else previous - rank
                 }
             }
+            worldRankMovement = movement
+            rankUpsInWindow = movement.values.count { it > 0 }
             entries = loaded
-            previousRanks = currentRanks
+            if (result.isSuccess) previousRanks = currentRanks
+            liveActivityAvailable = result.isSuccess
             loading = false
-            delay(20_000L)
+            delay(pulsePolicy.rankWindowMillis)
         }
     }
 
-    val rankPulse = rememberDesktopFluctuatingPulse(
-        range = desktopRankPulseRange(rankUpsInWindow),
-        tickMillis = 2_400L,
+    val policy = remember(pulsePolicy) { pulsePolicy.normalized() }
+    val reduceMotion = state.settings?.reduceMotion == true
+    val rankPulse = rememberDesktopManagedPulse(
+        key = "desktop-leaderboard:" + state.profile?.username.orEmpty().lowercase(),
+        range = rankPulseRange(rankUpsInWindow, policy),
+        tickMillis = policy.rankTickMillis,
+        policy = policy,
+        liveDataAvailable = liveActivityAvailable,
+        reduceMotion = reduceMotion,
     )
+    val rankStatus = remember(rankUpsInWindow, policy.hotRankUpsThreshold) {
+        when {
+            rankUpsInWindow >= policy.hotRankUpsThreshold -> "Heating up"
+            rankUpsInWindow > 0 -> "Active"
+            else -> "Stable"
+        }
+    }
+    val recentMovers = remember(worldRankMovement, entries) {
+        worldRankMovement
+            .filterValues { it > 0 }
+            .entries
+            .sortedByDescending { it.value }
+            .take(3)
+            .mapNotNull { movement ->
+                entries.firstOrNull { it.userId == movement.key }?.let { it to movement.value }
+            }
+    }
 
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LaunchedEffect(rankPulse, liveActivityAvailable, pulseImpressionRecorded) {
+        if (rankPulse != null && liveActivityAvailable && !pulseImpressionRecorded) {
+            state.client.recordActivityPulseEvent(
+                surface = "leaderboard",
+                eventType = "impression",
+                realCount = rankUpsInWindow,
+                displayedValue = rankPulse,
+                metadata = mapOf("status" to rankStatus),
+            )
+            pulseImpressionRecorded = true
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(24.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         item { ScreenHeader("Leaderboard", "Ranks #1–#20 from live Blink activity") }
-        item {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                tonalElevation = 1.dp,
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+
+        if (policy.enabled) {
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    tonalElevation = 1.dp,
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Rank Pulse", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Rank Pulse", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                                Text(
+                                    if (liveActivityAvailable) (policy.rankWindowMillis / 1000).toString() + "-second activity window • " + rankStatus
+                                    else "Last known rank activity • offline",
+                                    fontSize = 10.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(100.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            ) {
+                                Text(
+                                    rankPulse?.toString() ?: "—",
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black,
+                                )
+                            }
+                        }
                         Text(
-                            "20-second activity window • reacts to real rank-ups",
-                            fontSize = 10.5.sp,
+                            "Confirmed rank-ups in this window: $rankUpsInWindow",
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(100.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                    ) {
-                        Text(
-                            rankPulse.toString(),
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Black,
-                        )
+                        if (recentMovers.isNotEmpty()) {
+                            HorizontalDivider()
+                            recentMovers.forEach { (entry, places) ->
+                                Text(
+                                    "@${entry.handle} moved up $places place" + if (places == 1) "" else "s",
+                                    fontSize = 10.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
+
         if (loading) item { LoadingRow() }
         items(
             entries.sortedBy { it.worldRank ?: Int.MAX_VALUE }.take(20),
