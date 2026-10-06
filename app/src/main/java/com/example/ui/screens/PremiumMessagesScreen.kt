@@ -2662,6 +2662,37 @@ private fun MessageContent(message: ChatMessage, isMine: Boolean, palette: Messa
                     lineHeight = 18.sp,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                 )
+                firstHttpUrl(message.text)?.let { url ->
+                    val host = runCatching { java.net.URI(url).host }.getOrNull().orEmpty()
+                    Surface(
+                        color = contentColor.copy(alpha = .08f),
+                        contentColor = contentColor,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, contentColor.copy(alpha = .14f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 7.dp, vertical = 4.dp)
+                            .clickable { openExternalUri(context, Uri.parse(url)) }
+                    ) {
+                        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                            Text(
+                                host.ifBlank { "Open link" },
+                                color = contentColor,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                url,
+                                color = contentColor.copy(alpha = .72f),
+                                fontSize = 8.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
             }
         }
     }
