@@ -443,6 +443,26 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
+                ShareContentType.MARKET -> {
+                    val listing = runCatching { supabaseService.fetchMarketItemById(link.id) }.getOrNull()
+                    if (listing == null) {
+                        showToast("This Market listing is unavailable.")
+                        return@launch
+                    }
+                    val state = _uiState.value
+                    _uiState.value = state.copy(
+                        selectedTab = MainTab.MARKET,
+                        marketItems = listOf(listing) + state.marketItems.filterNot { it.id == listing.id },
+                        viewingProduct = listing,
+                        viewingProfile = null,
+                        deepLinkedPost = null,
+                        activePostOptionsPost = null,
+                        activeCommentsPostId = null
+                    )
+                    persistExtendedCache()
+                    runCatching { supabaseService.recordMarketView(listing.id) }
+                }
+
                 ShareContentType.POST, ShareContentType.REEL -> {
                     val post = runCatching { postRepository.fetchPostById(link.id) }.getOrNull()
                     val expectsReel = link.type == ShareContentType.REEL
