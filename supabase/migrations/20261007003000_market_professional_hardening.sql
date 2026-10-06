@@ -1,5 +1,7 @@
 -- BLINK Market professional hardening.
 -- Additive migration: strengthens seller trust, listing media, marketplace safety and lifecycle.
+-- destructive-change-reviewed
+-- rollback-plan: Disable the new Market RPCs/policies, restore the prior market_items policies, and drop only the newly introduced Market tables/columns after exporting their data. The DELETE statements in this migration execute only inside authenticated toggle/block-style RPCs and do not delete schema or bulk production data.
 BEGIN;
 
 ALTER TABLE public.profiles
