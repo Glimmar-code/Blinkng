@@ -28,7 +28,7 @@ import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.WhatsApp
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,7 +49,6 @@ import com.example.data.models.MarketItem
 import com.example.data.models.VerificationBadge
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.BlinkPink
-import com.example.ui.theme.BlinkPurple
 import com.example.util.startActivitySafely
 import java.text.NumberFormat
 import java.util.Locale
@@ -520,7 +519,7 @@ fun ProductDetailScreen(
                         contentPadding = PaddingValues(horizontal = 12.dp),
                         modifier = Modifier.weight(1.2f)
                     ) {
-                        Icon(Icons.Default.WhatsApp, null, modifier = Modifier.size(17.dp))
+                        Icon(Icons.Default.Call, null, modifier = Modifier.size(17.dp))
                         Spacer(modifier = Modifier.width(5.dp))
                         Text("WhatsApp", fontWeight = FontWeight.Bold)
                     }
