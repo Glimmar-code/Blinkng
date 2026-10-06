@@ -208,6 +208,15 @@ private sealed interface ReelPagerItem {
     data class Sponsored(val slot: Int) : ReelPagerItem
 }
 
+internal fun selectReelsForTab(
+    reels: List<FeedPost>,
+    followingReels: List<FeedPost>,
+    selectedTab: String
+): List<FeedPost> = if (selectedTab == "Following") followingReels else reels
+
+internal fun shouldPreloadReelPage(index: Int, currentPage: Int): Boolean =
+    abs(index - currentPage) <= 1
+
 private fun buildReelPagerItems(
     reels: List<FeedPost>,
     promotedReels: List<BlinkPromotedDiscoveryPlacement>,
@@ -297,7 +306,7 @@ private fun ReelsContent(
         mutableStateOf(resumePrefs.getBoolean("reels_muted:$resumeUserKey", false))
     }
     val activeReels = remember(selectedTab, reels, followingReels) {
-        if (selectedTab == "Following") followingReels else reels
+        selectReelsForTab(reels, followingReels, selectedTab)
     }
     val activeHasMore = if (selectedTab == "Following") hasMoreFollowing else hasMore
     val activeIsLoadingMore = if (selectedTab == "Following") isLoadingMoreFollowing else isLoadingMore
@@ -457,7 +466,7 @@ private fun ReelsContent(
                         reel = reel,
                         pageOffset = pageOffset,
                         isActive = index == pager.currentPage,
-                        shouldPreload = abs(index - pager.currentPage) <= 1,
+                        shouldPreload = shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
@@ -508,7 +517,7 @@ private fun ReelsContent(
                         reel = reel,
                         pageOffset = pageOffset,
                         isActive = index == pager.currentPage,
-                        shouldPreload = abs(index - pager.currentPage) <= 1,
+                        shouldPreload = shouldPreloadReelPage(index, pager.currentPage),
                         isMuted = reelsMuted,
                         onToggleMuted = {
                             reelsMuted = !reelsMuted
