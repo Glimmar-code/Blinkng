@@ -22,8 +22,12 @@ insert into private.blink_boost_growth_config(key,numeric_value) values
 ('profile_base_daily',800),
 ('listing_base_daily',1000),
 ('objective_reach_bps',10000),
+('objective_views_bps',10000),
+('objective_likes_bps',11500),
+('objective_saves_bps',12000),
 ('objective_profile_visits_bps',11500),
 ('objective_engagement_bps',12500),
+('objective_comments_bps',13000),
 ('objective_followers_bps',13000),
 ('objective_buyer_interest_bps',14000),
 ('audience_my_university_bps',10000),
@@ -70,7 +74,7 @@ create table if not exists public.blink_boost_campaigns_v2 (
     user_id uuid not null references public.profiles(id) on delete cascade,
     target_type text not null check (target_type in ('POST','REEL','PROFILE','LISTING')),
     target_id uuid not null,
-    objective text not null check (objective in ('REACH','ENGAGEMENT','PROFILE_VISITS','FOLLOWERS','BUYER_INTEREST')),
+    objective text not null check (objective in ('REACH','VIEWS','LIKES','COMMENTS','SAVES','ENGAGEMENT','PROFILE_VISITS','FOLLOWERS','BUYER_INTEREST')),
     boost_power smallint not null check (boost_power between 1 and 100),
     audience_scope text not null check (audience_scope in ('MY_UNIVERSITY','SELECTED_UNIVERSITY','ALL_CAMPUSES')),
     target_university text,
@@ -209,8 +213,12 @@ begin
 
     v_objective_bps := case v_objective
         when 'REACH' then private.blink_boost_growth_number('objective_reach_bps',10000)
+        when 'VIEWS' then private.blink_boost_growth_number('objective_views_bps',10000)
+        when 'LIKES' then private.blink_boost_growth_number('objective_likes_bps',11500)
+        when 'SAVES' then private.blink_boost_growth_number('objective_saves_bps',12000)
         when 'PROFILE_VISITS' then private.blink_boost_growth_number('objective_profile_visits_bps',11500)
         when 'ENGAGEMENT' then private.blink_boost_growth_number('objective_engagement_bps',12500)
+        when 'COMMENTS' then private.blink_boost_growth_number('objective_comments_bps',13000)
         when 'FOLLOWERS' then private.blink_boost_growth_number('objective_followers_bps',13000)
         when 'BUYER_INTEREST' then private.blink_boost_growth_number('objective_buyer_interest_bps',14000)
         else null end;
