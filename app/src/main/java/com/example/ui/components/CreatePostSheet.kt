@@ -524,7 +524,17 @@ fun CreatePostSheet(
             if (!isSubmitting) {
                 Toast.makeText(
                     context,
-                    if (showPoll && !pollValid) "Add a poll question and at least two options." else "Add something to your post first.",
+                    when {
+                        showPoll && validPollOptions.size >= 2 &&
+                            validPollOptions.map { it.lowercase() }.distinct().size != validPollOptions.size ->
+                            "Poll options must be different."
+                        showPoll && !pollValid ->
+                            "Add a poll question and at least two options."
+                        linkUrl.isNotBlank() && !linkValid ->
+                            "Enter a valid link before publishing."
+                        else ->
+                            "Add something to your post first."
+                    },
                     Toast.LENGTH_SHORT
                 ).show()
             }
@@ -914,7 +924,14 @@ fun CreatePostSheet(
                             selectedVideo = null
                             mode = "post"
                         }
-                    }
+                    },
+                    onMention = {
+                        if (text.length < 4999) {
+                            text = text.trimEnd() + if (text.isBlank()) "@" else " @"
+                        }
+                    },
+                    onLink = { showAdvancedSettings = true },
+                    onLocation = { showAdvancedSettings = true }
                 )
 
                 Card(
@@ -1289,6 +1306,13 @@ fun CreatePostSheet(
         )
     }
 
+    if (showPreviewDialog) {
+        PostPreviewDialog(
+            post = scheduledPreviewPost(),
+            onDismiss = { showPreviewDialog = false }
+        )
+    }
+
     if (showDiscardDialog) {
         AlertDialog(
             onDismissRequest = { showDiscardDialog = false },
@@ -1316,6 +1340,140 @@ fun CreatePostSheet(
     }
 }
 
+
+@Composable
+private fun PostPreviewDialog(
+    post: FeedPost,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp,
+            shadowElevation = 10.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Post preview",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 19.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = onDismiss) { Text("Done") }
+                }
+
+                if (post.audience.isNotBlank()) {
+                    Text(
+                        "${post.audience} • ${post.category}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                if (post.text.isNotBlank()) {
+                    Text(
+                        post.text,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+
+                if (post.images.isNotEmpty()) {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(post.images) { uri ->
+                            AsyncImage(
+                                model = uri,
+                                contentDescription = post.altText ?: "Post image",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(156.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            )
+                        }
+                    }
+                }
+
+                if (!post.videoUrl.isNullOrBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f)
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text("Reel video selected", fontWeight = FontWeight.SemiBold)
+                            post.audioTitle?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                post.poll?.let { poll ->
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .4f)
+                        )
+                    ) {
+                        Column(
+                            Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(poll.question, fontWeight = FontWeight.Bold)
+                            poll.options.forEach { option ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.outlineVariant
+                                    )
+                                ) {
+                                    Text(
+                                        option.text,
+                                        modifier = Modifier.padding(
+                                            horizontal = 12.dp,
+                                            vertical = 8.dp
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                post.location?.let {
+                    Text(
+                        "Location: $it",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                post.linkUrl?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun ColoredTextComposer(
@@ -1728,7 +1886,10 @@ private fun AddToPostCard(
     enabled: Boolean,
     onImages: () -> Unit,
     onVideo: () -> Unit,
-    onPoll: () -> Unit
+    onPoll: () -> Unit,
+    onMention: () -> Unit,
+    onLink: () -> Unit,
+    onLocation: () -> Unit
 ) {
     Text(
         text = "Add to your post",
@@ -1749,6 +1910,15 @@ private fun AddToPostCard(
         }
         item {
             ComposerActionTile("Poll", Icons.Default.Poll, enabled, onPoll)
+        }
+        item {
+            ComposerActionTile("Mention", Icons.Default.People, enabled, onMention)
+        }
+        item {
+            ComposerActionTile("Link", Icons.Default.Link, enabled, onLink)
+        }
+        item {
+            ComposerActionTile("Location", Icons.Default.LocationOn, enabled, onLocation)
         }
     }
 }
