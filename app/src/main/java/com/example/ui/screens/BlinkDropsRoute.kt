@@ -384,7 +384,7 @@ fun BlinkDropsRoute(
                         "Reserved coins stay locked until claimed, cancelled or expired."
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        listOf("ALL", "ACTIVE", "EXPIRED", "CANCELLED").forEach { status ->
+                        listOf("ALL", "ACTIVE", "COMPLETED", "EXPIRED", "CANCELLED").forEach { status ->
                             FilterChip(
                                 selected = historyFilter == status,
                                 onClick = { historyFilter = status },
