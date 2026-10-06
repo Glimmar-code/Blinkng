@@ -131,6 +131,7 @@ class SupabaseService {
          * inherit a refresh token from a different account when Supabase omits one.
          */
         fun replaceSession(accessToken: String?, refreshToken: String?) {
+            BlinkWalletStore.clear()
             val context = appContext ?: return
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
@@ -148,6 +149,7 @@ class SupabaseService {
         }
 
         fun clearSession() {
+            BlinkWalletStore.clear()
             appContext
                 ?.getSharedPreferences(
                     PREFS,
