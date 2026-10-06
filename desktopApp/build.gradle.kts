@@ -64,6 +64,7 @@ compose.desktop {
                 menuGroup = "Blinkng"
                 shortcut = true
                 menu = true
+                iconFile.set(project.file("src/main/resources/blink.ico"))
                 upgradeUuid = "5F71C5F0-0D14-4FCE-9A92-8E29A3A5F7A1"
             }
         }
