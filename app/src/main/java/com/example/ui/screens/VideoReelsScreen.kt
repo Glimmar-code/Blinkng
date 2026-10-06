@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
@@ -1340,14 +1341,16 @@ private fun VideoProgressBar(
         animationSpec = tween(120, easing = LinearEasing),
         label = "videoProgress"
     )
-    BoxWithConstraints(
+    var widthPx by remember { mutableIntStateOf(1) }
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .height(12.dp)
-            .pointerInput(constraints.maxWidth) {
+            .onSizeChanged { widthPx = it.width.coerceAtLeast(1) }
+            .pointerInput(widthPx) {
                 detectTapGestures { offset ->
-                    val width = constraints.maxWidth.toFloat()
-                    if (width > 0f) onSeek((offset.x / width).coerceIn(0f, 1f))
+                    onSeek((offset.x / widthPx.toFloat()).coerceIn(0f, 1f))
                 }
             },
         contentAlignment = Alignment.CenterStart
@@ -1652,6 +1655,7 @@ private fun ReelVideo(
     var completed by remember(url) { mutableStateOf(false) }
     var rewatched by remember(url) { mutableStateOf(false) }
     var autoRetryCount by remember(url) { mutableIntStateOf(0) }
+    var sessionWasActive by remember(url) { mutableStateOf(false) }
 
     val currentOnProgressChange by rememberUpdatedState(onProgressChange)
     val currentOnBufferingChange by rememberUpdatedState(onBufferingChange)
@@ -1699,9 +1703,30 @@ private fun ReelVideo(
             }
     }
 
+    fun finishPlaybackSessionIfNeeded() {
+        val duration = knownDurationMs.takeIf { it > 0L }
+            ?: player.duration.takeIf { it > 0L }
+        if (sessionWasActive && duration != null && duration >= 1_000L && watchedMs >= 250L) {
+            currentOnSessionEnd(
+                ReelPlaybackSession(
+                    watchedMs = watchedMs,
+                    durationMs = duration,
+                    completed = completed,
+                    rewatched = rewatched
+                )
+            )
+        }
+        watchedMs = 0L
+        completed = false
+        rewatched = false
+        previousPositionMs = player.currentPosition.coerceAtLeast(0L)
+        sessionWasActive = false
+    }
+
     LaunchedEffect(isActive, player, initialPositionMs) {
         player.playWhenReady = isActive
         if (isActive) {
+            sessionWasActive = true
             if (initialPositionMs > 0L) {
                 player.seekTo(initialPositionMs)
                 currentOnInitialPositionConsumed()
@@ -1709,6 +1734,7 @@ private fun ReelVideo(
             player.play()
         } else {
             player.pause()
+            finishPlaybackSessionIfNeeded()
         }
     }
 
@@ -1769,18 +1795,7 @@ private fun ReelVideo(
 
     DisposableEffect(player) {
         onDispose {
-            val duration = knownDurationMs.takeIf { it > 0L }
-                ?: player.duration.takeIf { it > 0L }
-            if (duration != null && duration >= 1_000L && watchedMs >= 250L) {
-                currentOnSessionEnd(
-                    ReelPlaybackSession(
-                        watchedMs = watchedMs,
-                        durationMs = duration,
-                        completed = completed,
-                        rewatched = rewatched
-                    )
-                )
-            }
+            finishPlaybackSessionIfNeeded()
             player.release()
         }
     }
