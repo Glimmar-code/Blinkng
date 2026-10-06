@@ -2865,7 +2865,12 @@ private fun MessageComposer(
     onDictation: () -> Unit,
     onEmoji: () -> Unit,
     onSubmit: () -> Unit,
-    onQuickLike: () -> Unit
+    onQuickLike: () -> Unit,
+    isRecording: Boolean,
+    recordingSeconds: Int,
+    onVoiceStart: () -> Unit,
+    onVoiceStop: () -> Unit,
+    onVoiceCancel: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -2885,66 +2890,145 @@ private fun MessageComposer(
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                GlassIconButton(
-                    icon = Icons.Default.Add,
-                    contentDescription = "Add attachment",
-                    palette = palette,
-                    size = 40.dp,
-                    onClick = onAttachment
-                )
+                if (isRecording) {
+                    GlassIconButton(
+                        icon = Icons.Default.Close,
+                        contentDescription = "Cancel voice note",
+                        palette = palette,
+                        size = 40.dp,
+                        onClick = onVoiceCancel
+                    )
+                } else {
+                    GlassIconButton(
+                        icon = Icons.Default.Add,
+                        contentDescription = "Add attachment",
+                        palette = palette,
+                        size = 40.dp,
+                        onClick = onAttachment
+                    )
+                }
                 Spacer(Modifier.width(5.dp))
 
-                TextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    placeholder = { Text("Message", color = palette.textMuted, fontSize = 12.sp) },
-                    trailingIcon = {
-                        IconButton(onClick = onEmoji) {
-                            Icon(
-                                Icons.Default.EmojiEmotions,
-                                contentDescription = "Choose emoji",
-                                tint = palette.textSecondary,
-                                modifier = Modifier.size(20.dp)
+                if (isRecording) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 44.dp)
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = palette.danger,
+                            modifier = Modifier.size(9.dp)
+                        ) {}
+                        Spacer(Modifier.width(9.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Recording voice note",
+                                color = palette.textPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                formatCallDuration(recordingSeconds),
+                                color = palette.textSecondary,
+                                fontSize = 9.sp
                             )
                         }
-                    },
-                    maxLines = 4,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { if (value.isNotBlank()) onSubmit() }),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedTextColor = palette.textPrimary,
-                        unfocusedTextColor = palette.textPrimary,
-                        cursorColor = palette.accent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 44.dp, max = 112.dp)
-                )
+                    }
+                } else {
+                    TextField(
+                        value = value,
+                        onValueChange = onValueChange,
+                        placeholder = { Text("Message", color = palette.textMuted, fontSize = 12.sp) },
+                        trailingIcon = {
+                            IconButton(onClick = onEmoji) {
+                                Icon(
+                                    Icons.Default.EmojiEmotions,
+                                    contentDescription = "Choose emoji",
+                                    tint = palette.textSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        },
+                        maxLines = 4,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { if (value.isNotBlank()) onSubmit() }),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = palette.textPrimary,
+                            unfocusedTextColor = palette.textPrimary,
+                            cursorColor = palette.accent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 44.dp, max = 112.dp)
+                    )
+                }
 
                 Spacer(Modifier.width(4.dp))
-                Surface(
-                    shape = CircleShape,
-                    color = palette.accent,
-                    contentColor = Color.White,
-                    modifier = Modifier.size(42.dp)
-                ) {
-                    IconButton(onClick = if (value.isBlank()) onDictation else onSubmit) {
-                        AnimatedContent(
-                            targetState = value.isNotBlank(),
-                            transitionSpec = { fadeIn(tween(120)) togetherWith fadeOut(tween(90)) },
-                            label = "composer_action"
-                        ) { hasText ->
-                            Icon(
-                                if (hasText) Icons.Default.Send else Icons.Default.Mic,
-                                contentDescription = if (hasText) "Send message" else "Voice input",
-                                tint = Color.White,
-                                modifier = Modifier.size(21.dp)
-                            )
+                when {
+                    isRecording -> {
+                        Surface(
+                            shape = CircleShape,
+                            color = palette.accent,
+                            contentColor = Color.White,
+                            modifier = Modifier.size(42.dp).clickable(onClick = onVoiceStop)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Send,
+                                    contentDescription = "Send voice note",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
+                        }
+                    }
+                    value.isNotBlank() -> {
+                        Surface(
+                            shape = CircleShape,
+                            color = palette.accent,
+                            contentColor = Color.White,
+                            modifier = Modifier.size(42.dp).clickable(onClick = onSubmit)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Send,
+                                    contentDescription = "Send message",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
+                        }
+                    }
+                    else -> {
+                        Surface(
+                            shape = CircleShape,
+                            color = palette.accent,
+                            contentColor = Color.White,
+                            modifier = Modifier
+                                .size(42.dp)
+                                .pointerInput(onDictation, onVoiceStart) {
+                                    detectTapGestures(
+                                        onTap = { onDictation() },
+                                        onLongPress = { onVoiceStart() }
+                                    )
+                                }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Mic,
+                                    contentDescription = "Tap for voice typing, hold for voice note",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
                         }
                     }
                 }
