@@ -13,7 +13,8 @@ class ConversationMuteExpiryWorker(
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
         val conversationId = inputData.getString(KEY_CONVERSATION_ID)?.trim().orEmpty()
-        if (conversationId.isBlank()) return Result.failure()
+        val ownerId = inputData.getString(KEY_OWNER_ID)?.trim().orEmpty()
+        if (conversationId.isBlank() || ownerId.isBlank()) return Result.failure()
 
         if (ConversationNotificationMuteStore.isMutedForever(applicationContext, conversationId)) {
             return Result.success()
@@ -28,7 +29,11 @@ class ConversationMuteExpiryWorker(
 
         SupabaseService.initialize(applicationContext)
         val service = SupabaseService()
-        if (!service.restoreSession()) return if (runAttemptCount < 3) Result.retry() else Result.success()
+        if (!service.restoreSession()) return Result.retry()
+
+        // A WorkManager job can wake after the user switches accounts. Never mutate the
+        // conversation under whichever account happens to be active at that moment.
+        if (service.getCurrentUserId().orEmpty() != ownerId) return Result.retry()
 
         val updated = runCatching {
             ChatRepository().setConversationMuted(conversationId, false)
@@ -37,15 +42,15 @@ class ConversationMuteExpiryWorker(
         return if (updated) {
             ConversationNotificationMuteStore.unmute(applicationContext, conversationId)
             Result.success()
-        } else if (runAttemptCount < 3) {
-            Result.retry()
         } else {
-            ConversationNotificationMuteStore.unmute(applicationContext, conversationId)
-            Result.success()
+            // Keep retrying with WorkManager backoff. Clearing local state while the server is
+            // still muted would make the UI claim alerts are restored when delivery is not.
+            Result.retry()
         }
     }
 
     companion object {
         const val KEY_CONVERSATION_ID = "conversation_id"
+        const val KEY_OWNER_ID = "owner_id"
     }
 }
