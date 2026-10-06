@@ -289,6 +289,7 @@ data class ChatConversation(
     val messages: MutableList<ChatMessage> = mutableListOf(),
     val isArchived: Boolean = false,
     val isConversationPinned: Boolean = false,
+    val isMarkedUnread: Boolean = false,
     val inboxCategory: String = "primary",
     val notificationMode: String = "all",
     val muteUntil: String? = null,
