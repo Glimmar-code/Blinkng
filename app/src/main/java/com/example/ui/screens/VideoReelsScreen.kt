@@ -152,9 +152,10 @@ fun VideoReelsScreen(
             )
         }
     ) {
+        val hasAnyReels = reels.isNotEmpty() || followingReels.isNotEmpty()
         val uiState = when {
-            reels.isEmpty() && isLoading -> ReelsUiState.Loading
-            reels.isEmpty() -> ReelsUiState.Empty
+            !hasAnyReels && isLoading -> ReelsUiState.Loading
+            !hasAnyReels -> ReelsUiState.Empty
             else -> ReelsUiState.Content
         }
 
