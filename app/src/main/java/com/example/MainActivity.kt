@@ -811,6 +811,9 @@ fun MainAppContent(
                         onSendMessage = { partner, text, replyTo ->
                             viewModel.sendMessage(partner, text, replyToMessageId = replyTo)
                         },
+                        onForwardMessage = { target, message ->
+                            viewModel.forwardChatMessage(target, message)
+                        },
                         interactionActions = ChatInteractionActions(
                             onReact = { partner, message, emoji -> viewModel.toggleMessageReaction(partner, message, emoji) },
                             onEdit = { partner, message, content -> viewModel.editChatMessage(partner, message, content) },
