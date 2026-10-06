@@ -249,6 +249,7 @@ fun PremiumFeedScreen(
     onLeaderboardClick: () -> Unit = {},
     onStoreClick: () -> Unit = {},
     onBoostClick: () -> Unit = {},
+    onDropsClick: () -> Unit = {},
     onGameClick: () -> Unit = {},
     onMarketClick: () -> Unit = {},
     onMessageClick: () -> Unit = {},
@@ -349,6 +350,7 @@ fun PremiumFeedScreen(
             onLeaderboardClick = onLeaderboardClick,
             onStoreClick = onStoreClick,
             onBoostClick = onBoostClick,
+            onDropsClick = onDropsClick,
             onRefresh = onRefresh,
             onRetry = onRetry,
             onViewedPost = onViewedPost,
@@ -498,6 +500,7 @@ private fun PremiumHomeFeed(
     onLeaderboardClick: () -> Unit,
     onStoreClick: () -> Unit,
     onBoostClick: () -> Unit,
+    onDropsClick: () -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
     onViewedPost: (String) -> Unit,
@@ -1065,7 +1068,8 @@ private fun PremiumHomeFeed(
                         onLeaderboardClick = onLeaderboardClick,
                         onGameClick = onGameClick,
                         onStoreClick = onStoreClick,
-                        onBoostClick = onBoostClick
+                        onBoostClick = onBoostClick,
+                        onDropsClick = onDropsClick
                     )
                     Box {
                         FeedTabs(
