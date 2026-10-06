@@ -299,6 +299,11 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
             BlinkNotificationHelper.CHANNEL_MARKET_ORDERS
         ),
         ChannelSetting(
+            "Account security",
+            "Important login, password and account security alerts",
+            BlinkNotificationHelper.CHANNEL_SECURITY
+        ),
+        ChannelSetting(
             "Voice-call Android channel",
             "System-level importance, lock-screen and interruption controls",
             IncomingCallNotification.incomingChannelId(context, CallType.AUDIO),
