@@ -50,6 +50,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -633,6 +634,9 @@ private fun EarnRankPointsColumn(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var refreshNonce by remember { mutableIntStateOf(0) }
+    var commentMission by remember { mutableStateOf<MissionItem?>(null) }
+    var commentText by remember { mutableStateOf("") }
+    var actionBusy by remember { mutableStateOf<String?>(null) }
 
     suspend fun reload() {
         loading = true
@@ -642,10 +646,28 @@ private fun EarnRankPointsColumn(
         loading = false
     }
 
-    fun refreshSoon() {
+    fun completeMission(
+        mission: MissionItem,
+        action: String,
+        comment: String? = null,
+        afterSuccess: () -> Unit = {},
+    ) {
+        if (actionBusy != null) return
+        actionBusy = mission.campaignId + ":" + action
         scope.launch {
-            delay(650)
-            refreshNonce++
+            service.completeBoostMissionAction(
+                campaignId = mission.campaignId,
+                action = action,
+                commentText = comment,
+            ).onSuccess {
+                afterSuccess()
+                if (action == "follow") FollowStateStore.refresh()
+                error = null
+                refreshNonce++
+            }.onFailure {
+                error = it.message ?: "This Rank Point action could not be completed."
+            }
+            actionBusy = null
         }
     }
 
@@ -657,6 +679,11 @@ private fun EarnRankPointsColumn(
     val missions = payload?.optJSONArray("items").objectList().mapNotNull(::parseMissionItem)
     val offered = payload?.optInt("offered_points", 0) ?: 0
     val cap = payload?.optInt("suggested_points_cap", 20) ?: 20
+    val earnedToday = payload?.optInt("earned_from_missions_today", 0) ?: 0
+    val remainingToday = payload?.optInt(
+        "remaining_mission_points_today",
+        (cap - earnedToday).coerceAtLeast(0),
+    ) ?: (cap - earnedToday).coerceAtLeast(0)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -677,22 +704,29 @@ private fun EarnRankPointsColumn(
                         Spacer(Modifier.size(8.dp))
                         Text("Earn Rank Points", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
                         Spacer(Modifier.weight(1f))
-                        IconButton(onClick = { refreshNonce++ }) {
+                        IconButton(onClick = { refreshNonce++ }, enabled = actionBusy == null) {
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh opportunities")
                         }
                     }
                     Text(
-                        "Complete genuine actions on promoted content. BLINK uses the normal Rank Points ledger, so each action can pay only once.",
+                        "Complete genuine actions on promoted content. Each content/action pair can reward you only once, even if you undo and repeat it.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        "Suggested opportunities: " + offered + " / " + cap + " RP",
+                        "Today: $earnedToday / $cap RP · Available now: up to $offered RP",
                         fontWeight = FontWeight.Bold,
                     )
                     LinearProgressIndicator(
-                        progress = if (cap <= 0) 0f else (offered.toFloat() / cap).coerceIn(0f, 1f),
+                        progress = if (cap <= 0) 0f else (earnedToday.toFloat() / cap).coerceIn(0f, 1f),
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    if (remainingToday <= 0) {
+                        Text(
+                            "Daily Boost Mission limit reached. Normal BLINK activity can still follow its regular Rank Point rules.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
                 }
             }
         }
@@ -714,7 +748,11 @@ private fun EarnRankPointsColumn(
         if (!loading && missions.isEmpty() && error == null) {
             item {
                 EmptyTargetCard(
-                    "No new promoted Rank Point opportunities are available right now. Completed actions are never recycled for extra points.",
+                    if (remainingToday <= 0) {
+                        "You reached today's Boost Mission Rank Point limit."
+                    } else {
+                        "No new promoted Rank Point opportunities are available right now. Completed actions are never recycled for extra points."
+                    },
                 )
             }
         }
@@ -724,33 +762,36 @@ private fun EarnRankPointsColumn(
                 service.recordBoostDelivery(mission.campaignId, "IMPRESSION", "MISSIONS")
             }
 
+            var localPost by remember(mission.campaignId) {
+                mutableStateOf(mission.post?.copy(isSponsored = true, adLabel = "Promoted"))
+            }
+            val available = mission.actions.map { it.key }.toSet()
+
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 PromotedHeader(mission)
 
-                mission.post?.let { initialPost ->
-                    var localPost by remember(mission.campaignId) {
-                        mutableStateOf(initialPost.copy(isSponsored = true, adLabel = "Promoted"))
-                    }
-                    val available = mission.actions.map { it.key }.toSet()
-
+                localPost?.let { post ->
                     PostCard(
-                        post = localPost,
+                        post = post,
                         isDark = isDark,
                         onLike = {
                             if ("like" in available) {
-                                localPost = localPost.copy(isLiked = true, likes = localPost.likes + 1)
-                                onLikePost(localPost.id)
-                                refreshSoon()
+                                completeMission(mission, "like") {
+                                    localPost = post.copy(isLiked = true, likes = post.likes + if (post.isLiked) 0 else 1)
+                                }
                             }
                         },
                         onComment = {
-                            if ("comment" in available) onCommentPost(localPost.id)
+                            if ("comment" in available) {
+                                commentText = ""
+                                commentMission = mission
+                            }
                         },
                         onBookmark = {
                             if ("save" in available) {
-                                localPost = localPost.copy(isBookmarked = true)
-                                onBookmarkPost(localPost.id)
-                                refreshSoon()
+                                completeMission(mission, "save") {
+                                    localPost = post.copy(isBookmarked = true)
+                                }
                             }
                         },
                         onRepost = {},
@@ -761,16 +802,11 @@ private fun EarnRankPointsColumn(
                         authorUsername = mission.ownerUsername,
                         authorProfileId = mission.ownerId,
                         isFollowingAuthor = mission.ownerId in followingIds,
-                        onFollowAuthor = { profileId ->
-                            scope.launch {
-                                if (FollowStateStore.setFollowing(profileId, true)) {
-                                    delay(300)
-                                    refreshNonce++
-                                }
-                            }
+                        onFollowAuthor = {
+                            if ("follow" in available) completeMission(mission, "follow")
                         },
                         onUnfollowAuthor = {},
-                        trackExposure = true,
+                        trackExposure = false,
                     )
                 }
 
@@ -778,11 +814,13 @@ private fun EarnRankPointsColumn(
                     ProductCard(
                         item = listing,
                         onClick = {
-                            scope.launch {
-                                service.recordBoostDelivery(mission.campaignId, "LISTING_OPEN", "MISSIONS")
-                                refreshNonce++
+                            if ("listing_open" in available) {
+                                completeMission(mission, "listing_open") {
+                                    onListingClick(listing)
+                                }
+                            } else {
+                                onListingClick(listing)
                             }
-                            onListingClick(listing)
                         },
                         isDark = isDark,
                     )
@@ -799,12 +837,7 @@ private fun EarnRankPointsColumn(
                             onProfileClick(mission.ownerUsername)
                         },
                         onFollow = {
-                            scope.launch {
-                                if (FollowStateStore.setFollowing(mission.ownerId, true)) {
-                                    delay(250)
-                                    refreshNonce++
-                                }
-                            }
+                            if ("follow" in available) completeMission(mission, "follow")
                         },
                     )
                 }
@@ -813,33 +846,82 @@ private fun EarnRankPointsColumn(
                     actions = mission.actions,
                     onAction = { action ->
                         when (action.key) {
-                            "like" -> mission.post?.let {
-                                onLikePost(it.id)
-                                refreshSoon()
+                            "view" -> completeMission(mission, "view")
+                            "like" -> completeMission(mission, "like") {
+                                localPost = localPost?.let { it.copy(isLiked = true, likes = it.likes + if (it.isLiked) 0 else 1) }
                             }
-                            "comment" -> mission.post?.let { onCommentPost(it.id) }
-                            "save" -> mission.post?.let {
-                                onBookmarkPost(it.id)
-                                refreshSoon()
+                            "comment" -> {
+                                commentText = ""
+                                commentMission = mission
                             }
-                            "follow" -> scope.launch {
-                                if (FollowStateStore.setFollowing(mission.ownerId, true)) {
-                                    delay(300)
-                                    refreshNonce++
-                                }
+                            "save" -> completeMission(mission, "save") {
+                                localPost = localPost?.copy(isBookmarked = true)
                             }
-                            "listing_open" -> mission.listing?.let { listing ->
-                                scope.launch {
-                                    service.recordBoostDelivery(mission.campaignId, "LISTING_OPEN", "MISSIONS")
-                                    refreshNonce++
-                                }
-                                onListingClick(listing)
+                            "follow" -> completeMission(mission, "follow")
+                            "listing_open" -> completeMission(mission, "listing_open") {
+                                mission.listing?.let(onListingClick)
                             }
                         }
                     },
                 )
+
+                if (actionBusy?.startsWith(mission.campaignId + ":") == true) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
             }
         }
+    }
+
+    commentMission?.let { mission ->
+        AlertDialog(
+            onDismissRequest = {
+                if (actionBusy == null) {
+                    commentMission = null
+                    commentText = ""
+                }
+            },
+            title = { Text("Comment for +2 RP") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Write a genuine comment. A second comment on the same promoted post will not earn another Rank Point reward.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = commentText,
+                        onValueChange = { commentText = it.take(2000) },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3,
+                        maxLines = 6,
+                        label = { Text("Your comment") },
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val clean = commentText.trim()
+                        if (clean.isBlank()) return@Button
+                        completeMission(mission, "comment", clean) {
+                            commentMission = null
+                            commentText = ""
+                        }
+                    },
+                    enabled = commentText.trim().isNotEmpty() && actionBusy == null,
+                ) {
+                    Text("Post comment")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        commentMission = null
+                        commentText = ""
+                    },
+                    enabled = actionBusy == null,
+                ) { Text("Cancel") }
+            },
+        )
     }
 }
 
