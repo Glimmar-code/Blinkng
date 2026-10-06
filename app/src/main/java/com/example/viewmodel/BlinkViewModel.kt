@@ -35,6 +35,8 @@ import com.example.sharing.ShareContentType
 import com.example.util.safeBoolean
 import com.example.util.safeInt
 import com.example.util.safeString
+import com.blinkng.shared.BlinkActivityPulseDefaults
+import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
@@ -121,6 +123,7 @@ data class BlinkUiState(
     val pendingMessageCount: Int = 0,
     val blinkCoinBalance: Long = 0L,
     val economyPolicy: BlinkEconomyPolicy = BlinkEconomyDefaults.policy,
+    val activityPulsePolicy: BlinkActivityPulsePolicy = BlinkActivityPulseDefaults.policy,
     val rewardedAdsToday: Int = 0,
     val rewardedCoinsToday: Int = 0,
     val dailyMissions: List<BlinkDailyMission> = emptyList(),
@@ -1462,6 +1465,10 @@ private suspend fun restoreSupabaseSession() {
 
                 try {
                     runCatching { supabaseService.setMyPresence(true) }
+                    val activityPulsePolicyRequest = async {
+                        runCatching { supabaseService.fetchActivityPulsePolicy() }
+                            .onFailure { Log.w(TAG, "Activity pulse policy fetch failed", it) }
+                    }
                     val postsRequest = async {
                         runCatching { postRepository.fetchFeed(isReel = false) }
                             .onFailure { Log.e(TAG, "Post page fetch failed", it) }
@@ -1477,6 +1484,8 @@ private suspend fun restoreSupabaseSession() {
                     val postsResult = postsRequest.await()
                     val reelsResult = reelsRequest.await()
                     val followingResult = followingRequest.await()
+                    val activityPulsePolicy = activityPulsePolicyRequest.await()
+                        .getOrDefault(before.activityPulsePolicy)
 
                     val normalPosts = postsResult.getOrNull()
                         ?.let { reconcileRefreshedFeed(before.posts, it) }
@@ -1498,6 +1507,7 @@ private suspend fun restoreSupabaseSession() {
                         hasMoreFollowingPosts = followingResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMoreFollowingPosts,
                         hasMoreReels = reelsResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMoreReels,
                         isLiveSupabaseConnected = feedSucceeded,
+                        activityPulsePolicy = activityPulsePolicy,
                         isFeedLoading = false,
                         feedErrorMessage = if (!feedSucceeded) {
                             "Couldn't refresh live Supabase data. Check your connection and try again."
@@ -1685,6 +1695,26 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = _uiState.value.copy(leaderboardUsers = live)
                 }
                 .onFailure { Log.w(TAG, "Progress leaderboard refresh failed", it) }
+        }
+    }
+
+    fun recordActivityPulseEvent(
+        surface: String,
+        eventType: String,
+        realCount: Int,
+        displayedValue: Int?,
+        metadata: Map<String, String> = emptyMap(),
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                supabaseService.recordActivityPulseEvent(
+                    surface = surface,
+                    eventType = eventType,
+                    realCount = realCount,
+                    displayedValue = displayedValue,
+                    metadata = metadata,
+                )
+            }.onFailure { Log.w(TAG, "Activity pulse analytics failed", it) }
         }
     }
 
