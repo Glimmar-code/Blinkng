@@ -254,9 +254,9 @@ returns table(
 )
 language sql
 stable
-security invoker
+security definer
 set search_path = public, pg_temp
-as $$
+as $
   select p.id, p.username, p.full_name, p.avatar_url, p.university, p.faculty,
          p.department, p.academic_level, p.verification_badge, p.is_verified,
          case
@@ -278,7 +278,8 @@ as $$
            else null
          end
   from public.profiles p
-  where p.id in (
+  where auth.uid() is not null
+    and p.id in (
     select case
       when upper(coalesce(p_kind,'')) = 'FOLLOWERS' then f.follower_id
       else f.following_id
@@ -460,6 +461,275 @@ after update of is_pinned on public.feed_posts
 for each row
 execute function private.notify_important_profile_subscribers_after_pin();
 
+-- Safe public profile projections. Raw public.profiles rows become owner-only below.
+create or replace function public.get_public_profiles_by_ids(p_ids uuid[])
+returns table(
+  id uuid,
+  username text,
+  avatar_url text,
+  is_verified boolean,
+  verification_badge text,
+  full_name text,
+  blink_vip_until timestamptz,
+  university text,
+  faculty text
+)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select
+    p.id,
+    p.username,
+    p.avatar_url,
+    coalesce(p.is_verified, false),
+    coalesce(p.verification_badge, p.verification_tier::text, ''),
+    coalesce(p.full_name, p.username, ''),
+    p.blink_vip_until,
+    p.university,
+    p.faculty
+  from public.profiles p
+  where auth.uid() is not null
+    and p.id = any(coalesce(p_ids, array[]::uuid[]))
+    and not exists (
+      select 1 from public.blocks b
+      where (b.blocker_id = auth.uid() and b.blocked_id = p.id)
+         or (b.blocker_id = p.id and b.blocked_id = auth.uid())
+    );
+$$;
+revoke all on function public.get_public_profiles_by_ids(uuid[]) from public, anon;
+grant execute on function public.get_public_profiles_by_ids(uuid[]) to authenticated;
+
+drop function if exists public.search_profiles_page(text, integer, text, uuid);
+create function public.search_profiles_page(
+  p_query text,
+  p_limit integer default 30,
+  p_after_username text default null,
+  p_after_id uuid default null
+)
+returns table(
+  id uuid,
+  full_name text,
+  name text,
+  username text,
+  handle text,
+  avatar_url text,
+  university text,
+  faculty text,
+  department text,
+  academic_level text,
+  bio text,
+  professional_headline text,
+  is_verified boolean,
+  verification_badge text,
+  verification_tier text,
+  follower_count integer,
+  following_count integer,
+  posts_count integer,
+  online_now boolean,
+  is_online boolean,
+  last_seen_at timestamptz,
+  points integer,
+  total_xp bigint,
+  xp_level integer,
+  created_at timestamptz,
+  blink_vip_until timestamptz,
+  verified_at timestamptz,
+  daily_streak integer,
+  world_rank integer,
+  campus_rank integer
+)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  with q as (
+    select lower(trim(coalesce(p_query,''))) as term
+  )
+  select
+    p.id,
+    coalesce(p.full_name, p.username, ''),
+    coalesce(p.name, p.full_name, p.username, ''),
+    p.username,
+    coalesce(p.handle, p.username, ''),
+    p.avatar_url,
+    p.university,
+    p.faculty,
+    p.department,
+    p.academic_level,
+    p.bio,
+    p.professional_headline,
+    coalesce(p.is_verified, false),
+    coalesce(p.verification_badge, p.verification_tier::text, ''),
+    coalesce(p.verification_tier::text, ''),
+    greatest(coalesce(p.follower_count,0),0),
+    greatest(coalesce(p.following_count,0),0),
+    greatest(coalesce(p.posts_count,0),0),
+    case
+      when p.id = auth.uid() then coalesce(p.online_now,false)
+      when p.presence_visibility = 'PUBLIC' then coalesce(p.online_now,false)
+      when p.presence_visibility = 'FOLLOWERS' and exists(
+        select 1 from public.follows f
+        where f.follower_id = auth.uid() and f.following_id = p.id
+      ) then coalesce(p.online_now,false)
+      else false
+    end,
+    case
+      when p.id = auth.uid() then coalesce(p.is_online,false)
+      when p.presence_visibility = 'PUBLIC' then coalesce(p.is_online,false)
+      when p.presence_visibility = 'FOLLOWERS' and exists(
+        select 1 from public.follows f
+        where f.follower_id = auth.uid() and f.following_id = p.id
+      ) then coalesce(p.is_online,false)
+      else false
+    end,
+    case
+      when p.id = auth.uid() then p.last_seen_at
+      when p.presence_visibility = 'PUBLIC' then p.last_seen_at
+      when p.presence_visibility = 'FOLLOWERS' and exists(
+        select 1 from public.follows f
+        where f.follower_id = auth.uid() and f.following_id = p.id
+      ) then p.last_seen_at
+      else null
+    end,
+    greatest(coalesce(p.points,0),0),
+    greatest(coalesce(p.total_xp,0),0),
+    greatest(coalesce(p.xp_level,1),1),
+    p.created_at,
+    p.blink_vip_until,
+    p.verified_at,
+    greatest(coalesce(p.daily_streak,0),0),
+    greatest(coalesce(p.world_rank,0),0),
+    greatest(coalesce(p.campus_rank,0),0)
+  from public.profiles p, q
+  where auth.uid() is not null
+    and q.term <> ''
+    and nullif(trim(p.username),'') is not null
+    and (
+      lower(coalesce(p.username,'')) like '%' || q.term || '%'
+      or lower(coalesce(p.full_name,'')) like '%' || q.term || '%'
+      or lower(coalesce(p.university,'')) like '%' || q.term || '%'
+      or lower(coalesce(p.faculty,'')) like '%' || q.term || '%'
+      or lower(coalesce(p.department,'')) like '%' || q.term || '%'
+    )
+    and (
+      p_after_username is null
+      or lower(p.username) > lower(p_after_username)
+      or (lower(p.username) = lower(p_after_username) and (p_after_id is null or p.id > p_after_id))
+    )
+    and not exists (
+      select 1 from public.blocks b
+      where (b.blocker_id = auth.uid() and b.blocked_id = p.id)
+         or (b.blocker_id = p.id and b.blocked_id = auth.uid())
+    )
+  order by lower(p.username), p.id
+  limit greatest(1, least(coalesce(p_limit,30),60));
+$$;
+revoke all on function public.search_profiles_page(text,integer,text,uuid) from public, anon;
+grant execute on function public.search_profiles_page(text,integer,text,uuid) to authenticated;
+
+create or replace function public.get_profile_directory(p_limit integer default 100)
+returns table(
+  id uuid,
+  full_name text,
+  name text,
+  username text,
+  handle text,
+  avatar_url text,
+  university text,
+  faculty text,
+  department text,
+  academic_level text,
+  bio text,
+  is_verified boolean,
+  verification_badge text,
+  verification_tier text,
+  follower_count integer,
+  following_count integer,
+  posts_count integer,
+  online_now boolean,
+  is_online boolean,
+  last_seen_at timestamptz,
+  points integer,
+  total_xp bigint,
+  xp_level integer,
+  created_at timestamptz,
+  blink_vip_until timestamptz,
+  verified_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select
+    p.id,
+    coalesce(p.full_name, p.username, ''),
+    coalesce(p.name, p.full_name, p.username, ''),
+    p.username,
+    coalesce(p.handle, p.username, ''),
+    p.avatar_url,
+    p.university,
+    p.faculty,
+    p.department,
+    p.academic_level,
+    p.bio,
+    coalesce(p.is_verified,false),
+    coalesce(p.verification_badge, p.verification_tier::text, ''),
+    coalesce(p.verification_tier::text, ''),
+    greatest(coalesce(p.follower_count,0),0),
+    greatest(coalesce(p.following_count,0),0),
+    greatest(coalesce(p.posts_count,0),0),
+    case
+      when p.id = auth.uid() then coalesce(p.online_now,false)
+      when p.presence_visibility = 'PUBLIC' then coalesce(p.online_now,false)
+      when p.presence_visibility = 'FOLLOWERS' and exists(
+        select 1 from public.follows f
+        where f.follower_id = auth.uid() and f.following_id = p.id
+      ) then coalesce(p.online_now,false)
+      else false
+    end,
+    case
+      when p.id = auth.uid() then coalesce(p.is_online,false)
+      when p.presence_visibility = 'PUBLIC' then coalesce(p.is_online,false)
+      when p.presence_visibility = 'FOLLOWERS' and exists(
+        select 1 from public.follows f
+        where f.follower_id = auth.uid() and f.following_id = p.id
+      ) then coalesce(p.is_online,false)
+      else false
+    end,
+    case
+      when p.id = auth.uid() then p.last_seen_at
+      when p.presence_visibility = 'PUBLIC' then p.last_seen_at
+      when p.presence_visibility = 'FOLLOWERS' and exists(
+        select 1 from public.follows f
+        where f.follower_id = auth.uid() and f.following_id = p.id
+      ) then p.last_seen_at
+      else null
+    end,
+    greatest(coalesce(p.points,0),0),
+    greatest(coalesce(p.total_xp,0),0),
+    greatest(coalesce(p.xp_level,1),1),
+    p.created_at,
+    p.blink_vip_until,
+    p.verified_at
+  from public.profiles p
+  where auth.uid() is not null
+    and p.id <> auth.uid()
+    and nullif(trim(p.username),'') is not null
+    and not exists (
+      select 1 from public.blocks b
+      where (b.blocker_id = auth.uid() and b.blocked_id = p.id)
+         or (b.blocker_id = p.id and b.blocked_id = auth.uid())
+    )
+  order by coalesce(p.online_now,false) desc, lower(p.username), p.id
+  limit greatest(1, least(coalesce(p_limit,100),200));
+$$;
+revoke all on function public.get_profile_directory(integer) from public, anon;
+grant execute on function public.get_profile_directory(integer) to authenticated;
+
 -- SECURITY DEFINER is used only to construct a redacted projection from the legacy
 -- profiles row. Execution is restricted to authenticated and auth.uid() is mandatory.
 create or replace function public.get_profile_detail(p_identifier text)
@@ -499,7 +769,8 @@ begin
   return (to_jsonb(v_profile)
     - 'current_wallet_balance'
     - 'fcm_token'
-    - 'profile_views_this_week')
+    - 'profile_views_this_week'
+    - 'campus_hostel_location')
     || jsonb_build_object(
       'email', case
         when v_viewer=v_profile.id then v_profile.email
@@ -549,6 +820,15 @@ end;
 $$;
 revoke all on function public.get_profile_detail(text) from public, anon;
 grant execute on function public.get_profile_detail(text) to authenticated;
+
+-- Raw profile rows contain private/auth-adjacent fields. Public reads must use the
+-- redacted functions above; authenticated users may select only their own raw row.
+drop policy if exists profiles_select_authenticated on public.profiles;
+drop policy if exists profiles_select_owner_only on public.profiles;
+create policy profiles_select_owner_only
+on public.profiles
+for select to authenticated
+using (id = (select auth.uid()));
 
 notify pgrst, 'reload schema';
 commit;
