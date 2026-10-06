@@ -487,7 +487,7 @@ private fun BoostCampaignColumn(
         when (targetType) {
             BlinkBoostTargetType.POST -> {
                 if (ownPosts.isEmpty()) {
-                    item { EmptyTargetCard("You do not have a boostable post yet.") }
+                    item { EmptyTargetCard("You do not have a boostable post yet.", "Create a post", onCreateContent) }
                 } else {
                     items(ownPosts.take(12), key = { "boost-post-" + it.id }) { post ->
                         SelectablePostTarget(
@@ -502,7 +502,7 @@ private fun BoostCampaignColumn(
             }
             BlinkBoostTargetType.REEL -> {
                 if (ownReels.isEmpty()) {
-                    item { EmptyTargetCard("You do not have a boostable Reel yet.") }
+                    item { EmptyTargetCard("You do not have a boostable Reel yet.", "Create content", onCreateContent) }
                 } else {
                     items(ownReels.take(12), key = { "boost-reel-" + it.id }) { reel ->
                         SelectablePostTarget(
@@ -1392,17 +1392,25 @@ private fun SectionTitle(
 }
 
 @Composable
-private fun EmptyTargetCard(message: String) {
+private fun EmptyTargetCard(
+    message: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(
-            message,
-            modifier = Modifier.padding(16.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (actionLabel != null && onAction != null) {
+                OutlinedButton(onClick = onAction) { Text(actionLabel) }
+            }
+        }
     }
 }
 
