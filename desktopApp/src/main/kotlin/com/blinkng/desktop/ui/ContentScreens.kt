@@ -585,10 +585,10 @@ fun ConnectScreen(state: DesktopAppState) {
         }.lowercase()
 
         return when {
-            listOf("room", "housing", "accommodation", "agent", "relocation").any(text::contains) -> "Housing"
-            listOf("study", "reading", "course", "research", "project", "accountability").any(text::contains) -> "Study"
-            listOf("career", "mentor", "intern", "skill", "founder", "freelance", "alumni").any(text::contains) -> "Career & Skills"
-            listOf("game", "challenge", "quiz").any(text::contains) -> "Games"
+            listOf("room", "housing", "accommodation", "agent", "relocation").any { text.contains(it) } -> "Housing"
+            listOf("study", "reading", "course", "research", "project", "accountability").any { text.contains(it) } -> "Study"
+            listOf("career", "mentor", "intern", "skill", "founder", "freelance", "alumni").any { text.contains(it) } -> "Career & Skills"
+            listOf("game", "challenge", "quiz").any { text.contains(it) } -> "Games"
             else -> "People & Community"
         }
     }
