@@ -43,6 +43,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,6 +55,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -66,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -78,8 +81,10 @@ import com.example.data.models.MarketItem
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.models.kNigerianUniversitiesList
+import com.example.data.network.NetworkMonitor
 import com.example.data.repository.FollowStateStore
 import com.example.data.supabase.BlinkEconomyService
+import com.example.data.supabase.BlinkWalletStore
 import com.example.ui.components.PostCard
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -87,8 +92,23 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.text.NumberFormat
 import java.util.Locale
+import java.util.UUID
 
 private enum class BoostGrowthColumn { BOOST, EARN }
+
+private data class BoostDraftSnapshot(
+    val targetType: BlinkBoostTargetType = BlinkBoostTargetType.POST,
+    val targetId: String = "",
+    val boostPower: Int = 25,
+    val objective: BlinkBoostObjective = BlinkBoostObjective.VIEWS,
+    val audience: BlinkBoostAudienceScope = BlinkBoostAudienceScope.MY_UNIVERSITY,
+    val durationDays: Int = 3,
+    val selectedUniversity: String = "",
+)
+
+private object BoostDraftStore {
+    var value = BoostDraftSnapshot()
+}
 
 private data class MissionItem(
     val campaignId: String,
@@ -120,6 +140,8 @@ fun BlinkBoostGrowthRoute(
     onBookmarkPost: (String) -> Unit,
     onProfileClick: (String) -> Unit,
     onListingClick: (MarketItem) -> Unit,
+    onGetCoins: () -> Unit = {},
+    onCreateContent: () -> Unit = {},
     onClose: () -> Unit,
 ) {
     var selectedColumn by remember { mutableStateOf(BoostGrowthColumn.BOOST) }
@@ -178,6 +200,8 @@ fun BlinkBoostGrowthRoute(
                 marketItems = marketItems,
                 myProfile = myProfile,
                 isDark = isDark,
+                onGetCoins = onGetCoins,
+                onCreateContent = onCreateContent,
             )
             BoostGrowthColumn.EARN -> EarnRankPointsColumn(
                 isDark = isDark,
@@ -217,6 +241,7 @@ private fun GrowthColumnTab(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BoostCampaignColumn(
     posts: List<FeedPost>,
@@ -224,6 +249,8 @@ private fun BoostCampaignColumn(
     marketItems: List<MarketItem>,
     myProfile: UserProfile,
     isDark: Boolean,
+    onGetCoins: () -> Unit,
+    onCreateContent: () -> Unit,
 ) {
     val service = remember { BlinkEconomyService() }
     val scope = rememberCoroutineScope()
