@@ -358,6 +358,7 @@ fun SearchScreen(state: DesktopAppState) {
     var query by remember { mutableStateOf(state.globalSearch) }
     var results by remember { mutableStateOf(DesktopSearchResults(emptyList(), emptyList())) }
     var loading by remember { mutableStateOf(false) }
+    var selectedProfile by remember { mutableStateOf<DesktopProfile?>(null) }
     val scope = rememberCoroutineScope()
 
     suspend fun searchNow() {
@@ -402,11 +403,15 @@ fun SearchScreen(state: DesktopAppState) {
         if (results.profiles.isNotEmpty()) {
             item { SectionTitle("People") }
             items(results.profiles, key = { "profile-${it.id}" }) { profile ->
-                Surface(shape = RoundedCornerShape(16.dp), tonalElevation = 1.dp) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    tonalElevation = 1.dp,
+                    modifier = Modifier.clickable { selectedProfile = profile },
+                ) {
                     Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         PresenceAvatar(profile.fullName, profile.isOnline)
                         Spacer(Modifier.width(10.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             VerifiedName(profile.fullName, profile.isVerified)
                             Text("@${profile.username} • ${profile.university ?: "Blinkng"}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
@@ -415,6 +420,7 @@ fun SearchScreen(state: DesktopAppState) {
                                 color = if (profile.isOnline) Color(0xFF22C55E) else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        TextButton(onClick = { selectedProfile = profile }) { Text("View") }
                     }
                 }
             }
@@ -435,6 +441,14 @@ fun SearchScreen(state: DesktopAppState) {
         if (!loading && query.isNotBlank() && results.profiles.isEmpty() && results.posts.isEmpty()) {
             item { EmptyState("No results for “$query”.") }
         }
+    }
+
+    selectedProfile?.let { profile ->
+        DesktopUserProfileDialog(
+            state = state,
+            initialProfile = profile,
+            onDismiss = { selectedProfile = null },
+        )
     }
 }
 
@@ -565,6 +579,7 @@ fun ConnectScreen(state: DesktopAppState) {
     var type by remember { mutableStateOf("community") }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var selectedStudentProfile by remember { mutableStateOf<DesktopProfile?>(null) }
     val scope = rememberCoroutineScope()
 
     suspend fun reload() {
@@ -773,6 +788,9 @@ fun ConnectScreen(state: DesktopAppState) {
                                     else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                            OutlinedButton(onClick = { selectedStudentProfile = profile }) {
+                                Text("View")
+                            }
                             OutlinedButton(
                                 onClick = {
                                     scope.launch {
@@ -788,6 +806,19 @@ fun ConnectScreen(state: DesktopAppState) {
                     }
                 }
             }
+        }
+
+        selectedStudentProfile?.let { profile ->
+            DesktopUserProfileDialog(
+                state = state,
+                initialProfile = profile,
+                onDismiss = {
+                    selectedStudentProfile = null
+                    scope.launch {
+                        followingIds = runCatching { state.client.fetchFollowingIds() }.getOrDefault(followingIds)
+                    }
+                },
+            )
         }
 
         if (showCreate) {
