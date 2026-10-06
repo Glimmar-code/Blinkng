@@ -258,7 +258,7 @@ object GeneralStudyBank {
                 2 -> q("How many consonants are in '" + word + "'?", consonants.toString(), numberChoices(consonants.toLong(), "", salt).filter { it != consonants.toString() }, salt)
                 3 -> fromOptions("What is the first letter of '" + word + "'?", word.first().toString(), listOf(word.last().toString(), "a", "e"), salt)
                 4 -> fromOptions("What is the last letter of '" + word + "'?", word.last().toString(), listOf(word.first().toString(), "s", "n"), salt)
-                5 -> fromOptions("Reverse the word '" + word + "'.", word.reversed(), listOf(word, word.drop(1) + word.first(), word.sorted().joinToString("")), salt)
+                5 -> fromOptions("Reverse the word '" + word + "'.", word.reversed(), listOf(word, word.drop(1) + word.first(), word.toList().sorted().joinToString("")), salt)
                 6 -> q("What is the alphabet position of the first letter in '" + word + "'?", firstPos.toString(), numberChoices(firstPos.toLong(), "", salt).filter { it != firstPos.toString() }, salt)
                 7 -> q("What is the alphabet position of the last letter in '" + word + "'?", lastPos.toString(), numberChoices(lastPos.toLong(), "", salt).filter { it != lastPos.toString() }, salt)
                 8 -> fromOptions("Does '" + word + "' begin with a vowel?", if (word.first().lowercaseChar() in "aeiou") "Yes" else "No", listOf("Yes", "No", "Sometimes", "Not enough information"), salt)
