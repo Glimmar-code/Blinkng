@@ -3347,7 +3347,9 @@ private suspend fun restoreSupabaseSession() {
             // Make the merged page durable before acknowledging it to the server.
             persistConversationsNow()
             runCatching { chatRepository.ackPendingDeliveries() }
-            if (!older) runCatching { chatRepository.markConversationRead(partnerUsername) }
+            if (!older && _uiState.value.chatPrivacySettings.sendReadReceipts) {
+                runCatching { chatRepository.markConversationRead(partnerUsername) }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Message history hydration failed for @$partnerUsername", e)
         } finally {
@@ -3380,6 +3382,12 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun updateChatPresence(partnerUsername: String, state: String) {
+        val privacy = _uiState.value.chatPrivacySettings
+        when (state.lowercase()) {
+            "typing" -> if (!privacy.showTyping) return
+            "recording" -> if (!privacy.showRecording) return
+            "online" -> if (!privacy.showOnline) return
+        }
         val cleanPartner = partnerUsername.trim().removePrefix("@")
         val conversation = _uiState.value.conversations.firstOrNull {
             it.partnerUsername.equals(cleanPartner, true)
@@ -4496,7 +4504,9 @@ private suspend fun restoreSupabaseSession() {
             persistConversations()
 
             if (active) {
-                chatRepository.markConversationRead(partner)
+                if (_uiState.value.chatPrivacySettings.sendReadReceipts) {
+                    chatRepository.markConversationRead(partner)
+                }
             } else if (NotificationPreferenceStore.isAllowed(appContext, BlinkNotificationType.MESSAGE)) {
                 val handledInApp = BlinkInAppNotificationCenter.publish(
                     BlinkInAppNotification(
