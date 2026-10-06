@@ -2187,21 +2187,79 @@ private fun MessageContent(message: ChatMessage, isMine: Boolean, palette: Messa
                     }
                 }
             }
-            if (message.isVoiceNote) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            if (!message.attachedAudioUrl.isNullOrBlank()) {
+                Surface(
+                    color = Color.Transparent,
+                    contentColor = contentColor,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .widthIn(min = 190.dp)
+                        .clickable { openExternalUri(context, Uri.parse(message.attachedAudioUrl)) }
                 ) {
-                    Icon(Icons.Default.Mic, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Box(Modifier.width(104.dp).height(3.dp).clip(CircleShape).background(contentColor.copy(alpha = .55f)))
-                    Spacer(Modifier.width(8.dp))
-                    Text(message.voiceDuration.ifBlank { "0:00" }, color = contentColor, fontSize = 9.sp)
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (message.isVoiceNote) Icons.Default.Mic else Icons.Default.MusicNote,
+                            contentDescription = if (message.isVoiceNote) "Play voice message" else "Play audio",
+                            tint = contentColor,
+                            modifier = Modifier.size(19.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Box(
+                            Modifier
+                                .width(104.dp)
+                                .height(3.dp)
+                                .clip(CircleShape)
+                                .background(contentColor.copy(alpha = .55f))
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (message.isVoiceNote) message.voiceDuration.ifBlank { "Voice" } else "Audio",
+                            color = contentColor,
+                            fontSize = 9.sp
+                        )
+                    }
+                }
+            }
+            if (!message.attachedDocumentUrl.isNullOrBlank()) {
+                Surface(
+                    color = contentColor.copy(alpha = .08f),
+                    contentColor = contentColor,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, contentColor.copy(alpha = .16f)),
+                    modifier = Modifier
+                        .widthIn(min = 190.dp, max = 240.dp)
+                        .clickable { openExternalUri(context, Uri.parse(message.attachedDocumentUrl)) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(21.dp))
+                        Spacer(Modifier.width(9.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                message.attachmentName ?: message.text.ifBlank { "Document" },
+                                color = contentColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text("Tap to open", color = contentColor.copy(alpha = .72f), fontSize = 9.sp)
+                        }
+                    }
                 }
             }
             val placeholderOnly =
                 (!message.attachedVideoUrl.isNullOrBlank() && message.text.equals("Video", true)) ||
-                    (!message.attachedImageUrl.isNullOrBlank() && message.text.equals("Image", true))
+                    (!message.attachedImageUrl.isNullOrBlank() &&
+                        (message.text.equals("Image", true) || message.text.equals("Photo", true))) ||
+                    (!message.attachedAudioUrl.isNullOrBlank() &&
+                        (message.text.equals("Audio", true) || message.text.equals("Voice message", true))) ||
+                    !message.attachedDocumentUrl.isNullOrBlank()
             if (message.text.isNotBlank() && !placeholderOnly && !message.isVoiceNote) {
                 Text(
                     message.text,
@@ -2236,6 +2294,8 @@ private fun MessageActionsPopover(
     val attachmentUrl = message.attachedVideoUrl
         ?.takeIf { it.isNotBlank() }
         ?: message.attachedImageUrl?.takeIf { it.isNotBlank() }
+        ?: message.attachedAudioUrl?.takeIf { it.isNotBlank() }
+        ?: message.attachedDocumentUrl?.takeIf { it.isNotBlank() }
 
     Popup(
         alignment = Alignment.CenterEnd,
