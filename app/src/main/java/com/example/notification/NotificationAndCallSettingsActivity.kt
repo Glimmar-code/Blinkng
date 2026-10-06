@@ -98,6 +98,12 @@ private data class ChannelSetting(
     val callChannel: Boolean = false
 )
 
+private data class NotificationPreferenceSetting(
+    val title: String,
+    val subtitle: String,
+    val type: BlinkNotificationType
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
@@ -122,6 +128,44 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
         )
     }
 
+    val preferenceSettings = remember {
+        listOf(
+            NotificationPreferenceSetting("Direct messages", "New chat messages and replies", BlinkNotificationType.MESSAGE),
+            NotificationPreferenceSetting("Calls", "Incoming and missed Blink calls", BlinkNotificationType.INCOMING_CALL),
+            NotificationPreferenceSetting("Likes & activity", "Likes, saves, reposts and general social activity", BlinkNotificationType.SOCIAL),
+            NotificationPreferenceSetting("Mentions", "When someone mentions you", BlinkNotificationType.MENTION),
+            NotificationPreferenceSetting("Comments & replies", "Comments and replies on your posts", BlinkNotificationType.COMMENT),
+            NotificationPreferenceSetting("New followers", "Follow activity on your profile", BlinkNotificationType.FOLLOW),
+            NotificationPreferenceSetting("Marketplace", "Buyer, seller and order activity", BlinkNotificationType.MARKET),
+            NotificationPreferenceSetting("BLINK notices", "Official announcements and system notices", BlinkNotificationType.ADMIN),
+            NotificationPreferenceSetting("Coins & rewards", "Coin and reward activity", BlinkNotificationType.COIN),
+            NotificationPreferenceSetting("Stories", "Story interactions and activity", BlinkNotificationType.STORY),
+            NotificationPreferenceSetting("Reels", "Reel interactions and activity", BlinkNotificationType.REEL),
+            NotificationPreferenceSetting("Boosts", "Boost progress and completion", BlinkNotificationType.BOOST),
+            NotificationPreferenceSetting("VIP & verification", "Account cosmetic and verification updates", BlinkNotificationType.VIP),
+            NotificationPreferenceSetting("Security", "Important account and security alerts", BlinkNotificationType.SECURITY)
+        )
+    }
+    var notificationMasterEnabled by remember {
+        mutableStateOf(NotificationPreferenceStore.isMasterEnabled(context))
+    }
+    var quietHoursEnabled by remember {
+        mutableStateOf(NotificationPreferenceStore.quietHoursEnabled(context))
+    }
+    var quietStartMinute by remember {
+        mutableStateOf(NotificationPreferenceStore.quietStartMinute(context))
+    }
+    var quietEndMinute by remember {
+        mutableStateOf(NotificationPreferenceStore.quietEndMinute(context))
+    }
+    var categoryStates by remember {
+        mutableStateOf(
+            preferenceSettings.associate { setting ->
+                setting.type to NotificationPreferenceStore.isCategoryEnabled(context, setting.type)
+            }
+        )
+    }
+
     fun refreshAllState() {
         voiceRingEnabled = CallSoundPreferences.ringEnabled(context, CallType.AUDIO)
         videoRingEnabled = CallSoundPreferences.ringEnabled(context, CallType.VIDEO)
@@ -131,6 +175,13 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
         notificationDeliveryEnabled = BlinkNotificationHelper.areNotificationsEnabled(context)
         fullScreenCallAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
             notificationManager.canUseFullScreenIntent()
+        notificationMasterEnabled = NotificationPreferenceStore.isMasterEnabled(context)
+        quietHoursEnabled = NotificationPreferenceStore.quietHoursEnabled(context)
+        quietStartMinute = NotificationPreferenceStore.quietStartMinute(context)
+        quietEndMinute = NotificationPreferenceStore.quietEndMinute(context)
+        categoryStates = preferenceSettings.associate { setting ->
+            setting.type to NotificationPreferenceStore.isCategoryEnabled(context, setting.type)
+        }
         IncomingCallNotification.createChannels(context)
     }
 
@@ -315,6 +366,76 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
                         "Android can still show a heads-up call alert, but full-screen ringing is currently disabled."
                     },
                     healthy = fullScreenCallAllowed
+                )
+            }
+
+            item {
+                Text(
+                    "BLINK notification preferences",
+                    modifier = Modifier.padding(top = 5.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Choose what can alert you. These preferences sync with your Blink account.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+            }
+
+            item {
+                NotificationPreferenceToggleCard(
+                    title = "All BLINK notifications",
+                    subtitle = "Master control for Blink alerts on this account",
+                    checked = notificationMasterEnabled,
+                    onCheckedChange = { enabled ->
+                        notificationMasterEnabled = enabled
+                        NotificationPreferenceStore.setMasterEnabled(context, enabled)
+                    }
+                )
+            }
+
+            items(preferenceSettings, key = { "notification_pref_" + it.type.name }) { setting ->
+                val enabled = categoryStates[setting.type] ?: true
+                NotificationPreferenceToggleCard(
+                    title = setting.title,
+                    subtitle = setting.subtitle,
+                    checked = enabled,
+                    enabled = notificationMasterEnabled,
+                    onCheckedChange = { checked ->
+                        categoryStates = categoryStates.toMutableMap().apply {
+                            put(setting.type, checked)
+                        }
+                        NotificationPreferenceStore.setCategoryEnabled(context, setting.type, checked)
+                    }
+                )
+            }
+
+            item {
+                QuietHoursPreferenceCard(
+                    enabled = quietHoursEnabled,
+                    startMinute = quietStartMinute,
+                    endMinute = quietEndMinute,
+                    onEnabledChange = { enabled ->
+                        quietHoursEnabled = enabled
+                        NotificationPreferenceStore.setQuietHours(
+                            context = context,
+                            enabled = enabled,
+                            startMinute = quietStartMinute,
+                            endMinute = quietEndMinute
+                        )
+                    },
+                    onPreset = { start, end ->
+                        quietStartMinute = start
+                        quietEndMinute = end
+                        quietHoursEnabled = true
+                        NotificationPreferenceStore.setQuietHours(
+                            context = context,
+                            enabled = true,
+                            startMinute = start,
+                            endMinute = end
+                        )
+                    }
                 )
             }
 
@@ -549,6 +670,102 @@ private fun CallToneCard(
                 Button(onClick = onPreview, enabled = ringingEnabled, modifier = Modifier.weight(1f)) {
                     Text("Preview")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationPreferenceToggleCard(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold)
+                Text(
+                    subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp
+                )
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                enabled = enabled
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuietHoursPreferenceCard(
+    enabled: Boolean,
+    startMinute: Int,
+    endMinute: Int,
+    onEnabledChange: (Boolean) -> Unit,
+    onPreset: (Int, Int) -> Unit
+) {
+    fun formatMinute(value: Int): String {
+        val minute = value.coerceIn(0, 1439)
+        val hour24 = minute / 60
+        val mins = minute % 60
+        val hour12 = when (val h = hour24 % 12) { 0 -> 12; else -> h }
+        val suffix = if (hour24 < 12) "AM" else "PM"
+        return "%d:%02d %s".format(hour12, mins, suffix)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(Modifier.padding(15.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Quiet hours", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (enabled) {
+                            formatMinute(startMinute) + " – " + formatMinute(endMinute)
+                        } else {
+                            "Off"
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                }
+                Switch(checked = enabled, onCheckedChange = onEnabledChange)
+            }
+            Text(
+                "Non-critical alerts stay quiet during this period. Calls and security alerts can still come through.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 6.dp, bottom = 10.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Button(
+                    onClick = { onPreset(22 * 60, 7 * 60) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("10:00 PM – 7:00 AM") }
+                Button(
+                    onClick = { onPreset(23 * 60, 7 * 60) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("11:00 PM – 7:00 AM") }
+                Button(
+                    onClick = { onPreset(0, 7 * 60) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("12:00 AM – 7:00 AM") }
             }
         }
     }
