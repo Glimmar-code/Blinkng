@@ -81,11 +81,10 @@ create or replace function public.admin_notification_delivery_health()
 returns jsonb
 language sql
 stable
-security definer
 set search_path = ''
 as $$
   select private.admin_notification_delivery_health_impl()
 $$;
 
-revoke all on function public.admin_notification_delivery_health() from public, anon;
+revoke all on function public.admin_notification_delivery_health() from public, anon, authenticated;
 grant execute on function public.admin_notification_delivery_health() to authenticated;
