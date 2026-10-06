@@ -597,6 +597,22 @@ object BlinkNotificationHelper {
         )
     }
 
+    private fun buildDropsPendingIntent(
+        context: Context,
+        dropId: String?
+    ): PendingIntent {
+        val intent = Intent(context, com.example.BlinkDropsActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(com.example.BlinkDropsActivity.EXTRA_DROP_ID, dropId)
+        }
+        return PendingIntent.getActivity(
+            context,
+            positiveHash("drop_${dropId ?: "unknown"}"),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
     // ================================================================
     // PROFILE DEEP LINK
     // ================================================================
@@ -887,6 +903,8 @@ object BlinkNotificationHelper {
                             buildProfilePendingIntent(context, targetId)
                         targetType.equals("market", ignoreCase = true) ->
                             buildMarketPendingIntent(context, targetId)
+                        targetType.equals("giveaway", ignoreCase = true) ->
+                            buildDropsPendingIntent(context, targetId)
                         targetType.equals("story", ignoreCase = true) ||
                             targetType.equals("notification", ignoreCase = true) ||
                             (targetPostId.isNullOrBlank() && targetId.isNullOrBlank()) ->
