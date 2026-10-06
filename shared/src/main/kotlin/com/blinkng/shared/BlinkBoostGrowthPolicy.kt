@@ -3,7 +3,7 @@ package com.blinkng.shared
 import kotlin.math.ceil
 
 enum class BlinkBoostTargetType { POST, REEL, PROFILE, LISTING }
-enum class BlinkBoostObjective { REACH, ENGAGEMENT, PROFILE_VISITS, FOLLOWERS, BUYER_INTEREST }
+enum class BlinkBoostObjective { REACH, VIEWS, LIKES, COMMENTS, SAVES, ENGAGEMENT, PROFILE_VISITS, FOLLOWERS, BUYER_INTEREST }
 enum class BlinkBoostAudienceScope { MY_UNIVERSITY, SELECTED_UNIVERSITY, ALL_CAMPUSES }
 enum class BlinkBoostMissionAction { QUALIFIED_VIEW, LIKE, COMMENT, SAVE, FOLLOW, LISTING_OPEN }
 
@@ -28,8 +28,12 @@ object BlinkBoostGrowthDefaults {
 
     fun objectiveMultiplier(objective: BlinkBoostObjective): Double = when (objective) {
         BlinkBoostObjective.REACH -> 1.00
-        BlinkBoostObjective.PROFILE_VISITS -> 1.15
+        BlinkBoostObjective.VIEWS -> 1.00
+        BlinkBoostObjective.LIKES -> 1.15
+        BlinkBoostObjective.SAVES -> 1.20
         BlinkBoostObjective.ENGAGEMENT -> 1.25
+        BlinkBoostObjective.COMMENTS -> 1.30
+        BlinkBoostObjective.PROFILE_VISITS -> 1.15
         BlinkBoostObjective.FOLLOWERS -> 1.30
         BlinkBoostObjective.BUYER_INTEREST -> 1.40
     }
