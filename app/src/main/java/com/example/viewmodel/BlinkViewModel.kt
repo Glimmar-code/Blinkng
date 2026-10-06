@@ -4657,6 +4657,36 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    fun toggleActivityReadState(activity: ActivityItem) {
+        val newUnreadState = !activity.isUnread
+        _uiState.value = _uiState.value.copy(
+            activities = _uiState.value.activities.map {
+                if (it.id == activity.id) it.copy(isUnread = newUnreadState) else it
+            }
+        )
+        persistExtendedCache()
+
+        viewModelScope.launch {
+            val synced = runCatching {
+                if (newUnreadState) {
+                    supabaseService.markActivityUnread(activity.id)
+                } else {
+                    supabaseService.markActivityRead(activity.id)
+                }
+            }.getOrDefault(false)
+
+            if (!synced) {
+                _uiState.value = _uiState.value.copy(
+                    activities = _uiState.value.activities.map {
+                        if (it.id == activity.id) it.copy(isUnread = activity.isUnread) else it
+                    }
+                )
+                persistExtendedCache()
+                showToast("Couldn't sync notification read status.")
+            }
+        }
+    }
+
     fun markAllActivitiesRead() {
         val unreadIds = _uiState.value.activities.filter { it.isUnread }.mapTo(hashSetOf()) { it.id }
         if (unreadIds.isEmpty()) return
