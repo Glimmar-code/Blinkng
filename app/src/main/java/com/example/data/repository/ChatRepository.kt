@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
+import com.example.data.models.ChatPrivacySettings
 import com.example.data.models.MessageStatus
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
@@ -38,6 +39,62 @@ class ChatRepository(
         val nextBeforeId: String?,
         val hasMore: Boolean
     )
+
+    suspend fun fetchChatPrivacySettings(): ChatPrivacySettings = withContext(Dispatchers.IO) {
+        val token = SupabaseService.accessToken()?.takeIf { it.isNotBlank() }
+            ?: return@withContext ChatPrivacySettings()
+        runCatching {
+            client.newCall(
+                Request.Builder()
+                    .url(
+                        "${SupabaseConfig.url.trimEnd('/')}/rest/v1/user_chat_privacy" +
+                            "?select=who_can_message,who_can_call,who_can_group_invite,show_online," +
+                            "show_last_seen,send_read_receipts,show_typing,show_recording," +
+                            "show_profile_photo_in_chat,allow_link_previews,notification_preview&limit=1"
+                    )
+                    .addHeader("apikey", SupabaseConfig.anonKey)
+                    .addHeader("Authorization", "Bearer $token")
+                    .addHeader("Accept", "application/json")
+                    .get()
+                    .build()
+            ).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@use ChatPrivacySettings()
+                val row = org.json.JSONArray(raw.ifBlank { "[]" }).optJSONObject(0)
+                    ?: return@use ChatPrivacySettings()
+                ChatPrivacySettings(
+                    whoCanMessage = row.optString("who_can_message").ifBlank { "everyone" },
+                    whoCanCall = row.optString("who_can_call").ifBlank { "everyone" },
+                    whoCanGroupInvite = row.optString("who_can_group_invite").ifBlank { "everyone" },
+                    showOnline = row.optBoolean("show_online", true),
+                    showLastSeen = row.optBoolean("show_last_seen", true),
+                    sendReadReceipts = row.optBoolean("send_read_receipts", true),
+                    showTyping = row.optBoolean("show_typing", true),
+                    showRecording = row.optBoolean("show_recording", true),
+                    showProfilePhotoInChat = row.optBoolean("show_profile_photo_in_chat", true),
+                    allowLinkPreviews = row.optBoolean("allow_link_previews", true),
+                    notificationPreview = row.optString("notification_preview").ifBlank { "full" }
+                )
+            }
+        }.getOrDefault(ChatPrivacySettings())
+    }
+
+    suspend fun updateChatPrivacySettings(settings: ChatPrivacySettings): Boolean =
+        booleanRpc(
+            "update_chat_privacy",
+            JSONObject()
+                .put("p_who_can_message", settings.whoCanMessage)
+                .put("p_who_can_call", settings.whoCanCall)
+                .put("p_who_can_group_invite", settings.whoCanGroupInvite)
+                .put("p_show_online", settings.showOnline)
+                .put("p_show_last_seen", settings.showLastSeen)
+                .put("p_send_read_receipts", settings.sendReadReceipts)
+                .put("p_show_typing", settings.showTyping)
+                .put("p_show_recording", settings.showRecording)
+                .put("p_show_profile_photo_in_chat", settings.showProfilePhotoInChat)
+                .put("p_allow_link_previews", settings.allowLinkPreviews)
+                .put("p_notification_preview", settings.notificationPreview)
+        )
 
     suspend fun fetchConversations(): List<ChatConversation> = withContext(Dispatchers.IO) {
         // Conversation summaries are account data, not cache data. Walk the full server
