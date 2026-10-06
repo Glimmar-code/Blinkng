@@ -194,3 +194,17 @@ Windows equivalent or reason no equivalent is needed: Windows keeps its desktop 
 Backend/shared behavior preserved: No shared model, route, ranking rule, wallet rule, authentication behavior, notification contract, Supabase schema, RLS policy or server function changes.
 Tests/validation: Feed header motion math has JVM regression coverage. Android unit/lint/instrumentation/debug/release checks and the Windows desktop/parity gate must pass on the Testlab feature branch before promotion to main.
 Owner/reviewer note: This exception is limited to mobile feed chrome motion. Any future change to what navigation actions exist, what content is shown, or how feed data is ranked still requires Windows/shared parity.
+
+## 2026-10-06 — General Study becomes the first Game catalog entry
+
+- Cleared the visible legacy Games hub on Android and Windows without deleting reusable backend game infrastructure.
+- Added **General Study** as the first available game, with a clean catalog card and **More games coming soon** placeholder.
+- Added one shared, deterministic question-bank implementation used by both clients:
+  - Easy: 5,000
+  - Medium: 5,000
+  - Hard: 5,000
+  - Expert: 5,000
+  - Total: 20,000 questions across Mathematics, English, Science, Geography, History & Civics, Technology, Logic, and General Knowledge.
+- Added 10-question rounds, difficulty selection, answer feedback, scores/results, replay, and difficulty switching on both Android and Windows.
+- Kept the old server game tables/repository code intact for future game additions; this change only resets the visible Games experience.
+
