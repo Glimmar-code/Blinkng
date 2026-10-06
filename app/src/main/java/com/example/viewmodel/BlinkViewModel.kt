@@ -95,6 +95,12 @@ data class BlinkUiState(
     val savedDrafts: List<PostDraft> = emptyList(),
     val scheduledPosts: List<ScheduledPost> = emptyList(),
     val marketItems: List<MarketItem> = emptyList(),
+    val isMarketLoading: Boolean = true,
+    val isLoadingMoreMarket: Boolean = false,
+    val marketHasMore: Boolean = true,
+    val marketErrorMessage: String? = null,
+    val isPublishingMarketItem: Boolean = false,
+    val isSellerActivationLoading: Boolean = false,
     val leaderboardUsers: List<LeaderboardUser> = emptyList(),
     val gameLeaderboardUsers: List<LeaderboardUser> = emptyList(),
     val conversations: List<ChatConversation> = emptyList(),
@@ -1340,9 +1346,27 @@ private suspend fun restoreSupabaseSession() {
                 onSuccess = { payload ->
                     if (payload.optString("status").equals("fulfilled", ignoreCase = true)) {
                         prefs.edit().remove(KEY_PENDING_PAYSTACK_ORDER).apply()
-                        refreshProfileRewards()
+                        val kind = payload.optString("kind").uppercase()
+                        if (kind == "MARKET_SELLER_ACTIVATION") {
+                            val refreshed = runCatching {
+                                profileRepository.fetchById(_uiState.value.myProfile.id)
+                            }.getOrNull()
+                            val activeProfile = refreshed ?: _uiState.value.myProfile.copy(isSellerActive = true)
+                            _uiState.value = _uiState.value.copy(
+                                myProfile = activeProfile,
+                                isBecomeSellerOpen = false,
+                                isSellerActivationLoading = false,
+                                showSellerCongratulationsDialog = true
+                            )
+                            saveLocalProfile(activeProfile)
+                            persistProfile(activeProfile)
+                            persistExtendedCache()
+                            showToast("Payment confirmed. Your Market seller account is active.")
+                        } else {
+                            refreshProfileRewards()
+                            showToast("Payment confirmed. Your BLINK purchase is ready.")
+                        }
                         fetchSupabaseData()
-                        showToast("Payment confirmed. Your BLINK purchase is ready.")
                     }
                 },
                 onFailure = { error ->
@@ -1564,8 +1588,8 @@ private suspend fun restoreSupabaseSession() {
                         }
                     }
 
-                    val market = marketRequest.await()
-                        .getOrDefault(before.marketItems)
+                    val marketResult = marketRequest.await()
+                    val market = marketResult.getOrDefault(before.marketItems)
 
                     val conversationsResult = conversationsRequest.await()
                     val conversationSummaries = conversationsResult.getOrDefault(before.conversations)
@@ -1618,6 +1642,9 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = _uiState.value.copy(
                         profiles = liveProfiles,
                         marketItems = market,
+                        isMarketLoading = false,
+                        marketHasMore = marketResult.isSuccess && market.size >= 40,
+                        marketErrorMessage = marketResult.exceptionOrNull()?.message,
                         conversations = conversations,
                         leaderboardUsers = leaderboard,
                         gameLeaderboardUsers = gameLeaderboard,
@@ -4299,21 +4326,74 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun addMarketListing(item: MarketItem) {
-        if (_uiState.value.isPostItemOpen.not()) return
+    fun refreshMarketItems() {
+        if (!_uiState.value.isOnline) {
+            showToast("You're offline. Showing your saved Market cache.")
+            return
+        }
+        _uiState.value = _uiState.value.copy(isMarketLoading = true, marketErrorMessage = null)
         viewModelScope.launch {
-            if (supabaseService.createMarketItem(item)) {
-                val live = runCatching { supabaseService.fetchMarketItems() }
-                    .getOrDefault(_uiState.value.marketItems)
-                _uiState.value = _uiState.value.copy(
-                    marketItems = live,
-                    isPostItemOpen = false
+            runCatching { supabaseService.fetchMarketItems(limit = 40) }
+                .onSuccess { fresh ->
+                    _uiState.value = _uiState.value.copy(
+                        marketItems = fresh,
+                        isMarketLoading = false,
+                        marketHasMore = fresh.size >= 40,
+                        marketErrorMessage = null
+                    )
+                    persistExtendedCache()
+                }
+                .onFailure { error ->
+                    Log.w(TAG, "Market refresh failed", error)
+                    _uiState.value = _uiState.value.copy(
+                        isMarketLoading = false,
+                        marketErrorMessage = error.message ?: "Couldn't refresh Market."
+                    )
+                }
+        }
+    }
+
+    fun loadMoreMarketItems() {
+        val current = _uiState.value
+        if (!current.isOnline || current.isLoadingMoreMarket || !current.marketHasMore) return
+        _uiState.value = current.copy(isLoadingMoreMarket = true)
+        viewModelScope.launch {
+            runCatching {
+                supabaseService.fetchMarketItems(
+                    limit = 40,
+                    offset = _uiState.value.marketItems.size
                 )
-                showToast("🛍️ Product published to Aluta Market.")
-            } else {
-                showToast("Product wasn't published. Check your details and try again.")
+            }.onSuccess { page ->
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    marketItems = (latest.marketItems + page).distinctBy { it.id },
+                    isLoadingMoreMarket = false,
+                    marketHasMore = page.size >= 40,
+                    marketErrorMessage = null
+                )
+                persistExtendedCache()
+            }.onFailure { error ->
+                Log.w(TAG, "Market pagination failed", error)
+                _uiState.value = _uiState.value.copy(
+                    isLoadingMoreMarket = false,
+                    marketErrorMessage = error.message ?: "Couldn't load more listings."
+                )
             }
         }
+    }
+
+    private suspend fun uploadMarketImage(source: String, userId: String): String? = withContext(Dispatchers.IO) {
+        val clean = source.trim()
+        if (clean.startsWith("https://") || clean.startsWith("http://")) return@withContext clean
+        val uri = runCatching { Uri.parse(clean) }.getOrNull() ?: return@withContext null
+        val resolver = appContext.contentResolver
+        val mimeType = resolver.getType(uri) ?: "image/jpeg"
+        if (!mimeType.startsWith("image/")) return@withContext null
+        val bytes = runCatching {
+            resolver.openInputStream(uri)?.use { stream -> stream.readBytes() }
+        }.getOrNull() ?: return@withContext null
+        if (bytes.isEmpty() || bytes.size > 10 * 1024 * 1024) return@withContext null
+        supabaseService.uploadMarketMedia(userId, bytes, mimeType)
     }
 
     fun addMarketItem(
@@ -4322,18 +4402,48 @@ private suspend fun restoreSupabaseSession() {
         category: String,
         condition: String,
         description: String,
-        imageUrl: String?
+        imageSources: List<String>,
+        quantity: Int,
+        negotiable: Boolean,
+        deliveryMethod: String,
+        pickupLocation: String
     ) {
-        val p = _uiState.value.myProfile
-        addMarketListing(
-            MarketItem(
+        val state = _uiState.value
+        val p = state.myProfile
+        if (!state.isPostItemOpen) return
+        if (!p.isSellerActive) {
+            showToast("Activate your seller account before publishing listings.")
+            return
+        }
+        val cleanTitle = title.trim()
+        val cleanDescription = description.trim()
+        val cleanSources = imageSources.map(String::trim).filter(String::isNotBlank).distinct().take(8)
+        if (cleanTitle.length < 3 || cleanDescription.length < 10 || price <= 0L || cleanSources.isEmpty()) {
+            showToast("Add a title, price, description and at least one product photo.")
+            return
+        }
+
+        _uiState.value = state.copy(isPublishingMarketItem = true)
+        viewModelScope.launch {
+            val uploaded = mutableListOf<String>()
+            for (source in cleanSources) {
+                val url = uploadMarketImage(source, p.id)
+                if (url == null) {
+                    _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
+                    showToast("One of the product photos couldn't be uploaded. Please try again.")
+                    return@launch
+                }
+                uploaded += url
+            }
+
+            val listing = MarketItem(
                 id = "",
-                title = title,
+                title = cleanTitle,
                 price = price,
-                images = if (imageUrl.isNullOrBlank()) emptyList() else listOf(imageUrl),
+                images = uploaded,
                 sellerUsername = p.username,
                 sellerAvatar = p.avatarUrl,
-                sellerName = p.fullName,
+                sellerName = p.fullName.ifBlank { p.username },
                 sellerPhone = p.phone.value,
                 sellerWhatsapp = p.whatsapp.value,
                 sellerIsVerified = p.verificationBadge != VerificationBadge.NONE,
@@ -4342,18 +4452,147 @@ private suspend fun restoreSupabaseSession() {
                 location = p.currentCityState,
                 category = category,
                 condition = condition,
-                description = description,
-                postedTime = "Just now"
+                description = cleanDescription,
+                postedTime = "Just now",
+                quantity = quantity.coerceIn(1,9999),
+                isNegotiable = negotiable,
+                deliveryMethod = deliveryMethod,
+                pickupLocation = pickupLocation.trim()
             )
-        )
+
+            if (supabaseService.createMarketItem(listing)) {
+                val live = runCatching { supabaseService.fetchMarketItems(limit = 40) }
+                    .getOrDefault(_uiState.value.marketItems)
+                _uiState.value = _uiState.value.copy(
+                    marketItems = live,
+                    isPostItemOpen = false,
+                    isPublishingMarketItem = false,
+                    marketHasMore = live.size >= 40,
+                    marketErrorMessage = null
+                )
+                persistExtendedCache()
+                showToast("Product published to BLINK Market.")
+            } else {
+                _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
+                showToast("Product wasn't published. Check your seller status and details.")
+            }
+        }
     }
 
     fun openProductDetail(item: MarketItem) {
         _uiState.value = _uiState.value.copy(viewingProduct = item)
+        if (item.id.isBlank() || !_uiState.value.isOnline) return
+        viewModelScope.launch {
+            val count = supabaseService.recordMarketView(item.id) ?: return@launch
+            val latest = _uiState.value
+            val update: (MarketItem) -> MarketItem = { current ->
+                if (current.id == item.id) current.copy(viewsCount = count) else current
+            }
+            _uiState.value = latest.copy(
+                marketItems = latest.marketItems.map(update),
+                viewingProduct = latest.viewingProduct?.let(update)
+            )
+        }
     }
 
     fun closeProductDetail() {
         _uiState.value = _uiState.value.copy(viewingProduct = null)
+    }
+
+    fun toggleMarketSaved(item: MarketItem) {
+        if (item.id.isBlank()) return
+        val before = _uiState.value
+        val optimisticSaved = !item.isSaved
+        fun update(current: MarketItem): MarketItem =
+            if (current.id == item.id) current.copy(
+                isSaved = optimisticSaved,
+                savesCount = (current.savesCount + if (optimisticSaved) 1 else -1).coerceAtLeast(0)
+            ) else current
+        _uiState.value = before.copy(
+            marketItems = before.marketItems.map(::update),
+            viewingProduct = before.viewingProduct?.let(::update)
+        )
+        viewModelScope.launch {
+            val saved = supabaseService.toggleMarketWishlist(item.id)
+            if (saved == null) {
+                _uiState.value = before
+                showToast("Couldn't update saved listing.")
+            } else {
+                val latest = _uiState.value
+                fun reconcile(current: MarketItem): MarketItem =
+                    if (current.id == item.id) current.copy(isSaved = saved) else current
+                _uiState.value = latest.copy(
+                    marketItems = latest.marketItems.map(::reconcile),
+                    viewingProduct = latest.viewingProduct?.let(::reconcile)
+                )
+                persistExtendedCache()
+            }
+        }
+    }
+
+    fun requestMarketplaceOrder(item: MarketItem, quantity: Int) {
+        if (item.id.isBlank() || item.isSold || item.status != "active") {
+            showToast("This listing is no longer available.")
+            return
+        }
+        viewModelScope.launch {
+            val orderId = supabaseService.createMarketplaceOrder(item.id, quantity)
+            if (orderId != null) {
+                showToast("Purchase request sent. Continue in BLINK DM to arrange pickup or delivery.")
+                if (item.sellerUsername.isNotBlank()) {
+                    openChatWithUser(item.sellerUsername, item.sellerName, item.sellerAvatar)
+                }
+            } else {
+                showToast("Couldn't create the purchase request. The item may have changed.")
+            }
+        }
+    }
+
+    fun reportMarketItem(item: MarketItem, reason: String, details: String = "") {
+        if (item.id.isBlank()) return
+        viewModelScope.launch {
+            if (supabaseService.reportMarketItem(item.id, reason, details)) {
+                showToast("Listing reported. Thank you for helping keep Market safe.")
+            } else {
+                showToast("Couldn't submit that report.")
+            }
+        }
+    }
+
+    fun updateMarketListingStatus(item: MarketItem, status: String) {
+        if (item.id.isBlank()) return
+        viewModelScope.launch {
+            if (supabaseService.updateMarketListingStatus(item.id, status)) {
+                val live = runCatching { supabaseService.fetchMarketItems(limit = 40) }
+                    .getOrDefault(_uiState.value.marketItems)
+                val updatedViewing = _uiState.value.viewingProduct?.takeIf { it.id != item.id }
+                    ?: item.copy(status = status, isSold = status == "sold")
+                _uiState.value = _uiState.value.copy(
+                    marketItems = live,
+                    viewingProduct = updatedViewing
+                )
+                persistExtendedCache()
+                showToast("Listing updated.")
+            } else {
+                showToast("Couldn't update the listing.")
+            }
+        }
+    }
+
+    fun deleteMarketListing(item: MarketItem) {
+        if (item.id.isBlank()) return
+        viewModelScope.launch {
+            if (supabaseService.deleteMarketListing(item.id)) {
+                _uiState.value = _uiState.value.copy(
+                    marketItems = _uiState.value.marketItems.filterNot { it.id == item.id },
+                    viewingProduct = null
+                )
+                persistExtendedCache()
+                showToast("Listing removed.")
+            } else {
+                showToast("Couldn't remove the listing.")
+            }
+        }
     }
 
     fun activateSellerAccount(
@@ -4363,29 +4602,56 @@ private suspend fun restoreSupabaseSession() {
         state: String,
         city: String
     ) {
-        val current = _uiState.value.myProfile
-        val cleanStore = storeName.trim().ifBlank { current.fullName.ifBlank { "Campus Store" } }
+        val currentState = _uiState.value
+        val current = currentState.myProfile
+        if (current.isSellerActive) {
+            showToast("Your Market seller account is already active.")
+            return
+        }
+        if (!currentState.economyPolicy.cashCheckoutEnabled) {
+            showToast("Secure Paystack seller activation is not enabled yet.")
+            return
+        }
+
+        val cleanStore = storeName.trim()
+        val cleanPhone = phone.filter(Char::isDigit)
+        val cleanWhatsapp = whatsapp.filter(Char::isDigit)
+        if (cleanStore.length < 2 || cleanPhone.length !in 10..15 || cleanWhatsapp.length !in 10..15) {
+            showToast("Enter a valid store name, phone number and WhatsApp number.")
+            return
+        }
+
         val profileUpdate = current.copy(
             sellerStoreName = cleanStore,
             phone = ContactField(phone.trim(), true),
             whatsapp = ContactField(whatsapp.trim(), true),
             currentCityState = listOf(city.trim(), state.trim()).filter { it.isNotBlank() }.joinToString(", ")
         )
+        _uiState.value = currentState.copy(isSellerActivationLoading = true)
         viewModelScope.launch {
             val profileSaved = profileRepository.updateProfile(profileUpdate)
-            val sellerActivated = supabaseService.activateMarketplaceProfile(cleanStore)
-            if (profileSaved && sellerActivated) {
-                val activated = profileUpdate.copy(isSellerActive = true)
-                _uiState.value = _uiState.value.copy(
-                    myProfile = activated,
-                    isBecomeSellerOpen = false,
-                    showSellerCongratulationsDialog = true
-                )
-                saveLocalProfile(activated)
-                showToast("🎉 Your seller profile is active.")
-            } else {
-                showToast("Seller activation failed. Please try again.")
+            if (!profileSaved) {
+                _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
+                showToast("Couldn't save your seller details.")
+                return@launch
             }
+
+            _uiState.value = _uiState.value.copy(myProfile = profileUpdate)
+            saveLocalProfile(profileUpdate)
+            blinkEconomyService.initializePaystackMarketSellerCheckout(cleanStore).fold(
+                onSuccess = { payload ->
+                    _uiState.value = _uiState.value.copy(
+                        isSellerActivationLoading = false,
+                        isBecomeSellerOpen = false
+                    )
+                    openPaystackCheckout(payload)
+                },
+                onFailure = { error ->
+                    Log.w(TAG, "Market seller checkout failed to initialize", error)
+                    _uiState.value = _uiState.value.copy(isSellerActivationLoading = false)
+                    showToast(error.message ?: "Couldn't start seller activation checkout.")
+                }
+            )
         }
     }
 
