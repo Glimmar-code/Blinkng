@@ -1,3 +1,11 @@
+## 2026-10-07 — Connect reliability, discovery and unified inbox overhaul
+
+- Android: Connect now uses a coordinated full-height scroll surface instead of nesting the main LazyColumn around a fixed-height pager; student discovery adds Same Department and Verified filters plus Recommended/Recently Active/Campus First/A–Z sorting and resettable empty states. The 20 Connect directory entries are grouped into Housing, Study, Career & Skills, People & Community and Games. A profile-aware For You rail and unified Connect Inbox surface requests/challenges without changing the authoritative request RPCs. Pending badges ignore completed request history.
+- Windows: Connect adds the same grouped discovery concepts, enhanced student filters/sorting, For You summaries and a real Inbox backed by the existing `get_connect_request_inbox`, `respond_connect_request` and `respond_game_challenge` contracts. No mock request state is introduced.
+- Reliability/backend: Android Connect snapshot loading now isolates Roommate, Mentor, Reading Mate, Housing Agent, Housing Request, Challenge, Smart Match, Inbox and game-stat failures so one unavailable dataset cannot blank the whole Hub. No production Supabase schema, ranking, coins, auth, messaging, moderation or notification rules are changed.
+- Safety: implemented on `Testlab-connect-overhaul-20261007`; production `main` remains unchanged until Android and Windows checks pass.
+
+
 ## 2026-10-06 — Leaderboard Top 20 + Connect Hub/Students split
 
 - Android: Leaderboard now renders ranks #1–#20 as one consistent scrollable list, including ranks #1–#3 in the same row design as everyone else. Connect keeps Smart Match first, then exposes two equal swipeable columns: Connect Hub and Students. Roommate/Mentor/Reading/Housing/Challenge rows now open the existing left-slide workflow reliably by opening the panel before paging its content. Student Discovery keeps Search + All/Same campus/Online filters and adds real Follow/Following actions backed by the canonical follow RPC state.
