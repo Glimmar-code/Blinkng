@@ -370,6 +370,36 @@ private fun BoostCampaignColumn(
         quoteLoading = false
     }
 
+    fun applyBudgetPreset(budget: Long) {
+        if (!targetReady || !isOnline || budgetWorking) return
+        scope.launch {
+            budgetWorking = true
+            service.recommendBoostPower(
+                targetType = targetType.name,
+                targetId = targetId,
+                budget = budget,
+                objective = objective.name,
+                audienceScope = audience.name,
+                durationDays = durationDays,
+                targetUniversity = targetUniversity,
+            ).onSuccess { recommendation ->
+                val recommended = recommendation.optInt("recommended_power", 0)
+                if (recommended > 0) {
+                    boostPower = recommended
+                    val cost = recommendation.optLong("coin_cost", 0L)
+                    message = "Budget preset applied: $recommended% power" +
+                        if (cost > 0) " • about ${formatter.format(cost)} coins" else ""
+                    error = null
+                } else {
+                    error = "That budget is below the minimum for this campaign setup."
+                }
+            }.onFailure {
+                error = boostUserMessage(it, "Unable to apply that budget right now.")
+            }
+            budgetWorking = false
+        }
+    }
+
     val stateBalance = state?.takeIf { it.has("balance") }?.optLong("balance")
     val balance = liveWalletBalance ?: stateBalance
     val quoteCost = quote?.optLong("coin_cost", 0L) ?: 0L
@@ -394,6 +424,24 @@ private fun BoostCampaignColumn(
     ) {
         item { BalanceCard(balance = balance, formatter = formatter) }
 
+        if (stateLoading) {
+            item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
+        }
+
+        analytics?.let { value ->
+            item { BoostAnalyticsCard(value, formatter) }
+        }
+
+        if (!isOnline) {
+            item {
+                StatusCard(
+                    "You're offline. Campaign history remains visible, but spending is disabled until you reconnect.",
+                    MaterialTheme.colorScheme.surfaceVariant,
+                    MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+
         error?.let { value ->
             item {
                 StatusCard(value, MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurface)
@@ -402,6 +450,20 @@ private fun BoostCampaignColumn(
         message?.let { value ->
             item {
                 StatusCard(value, MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurface)
+            }
+        }
+
+        if (error != null && state == null) {
+            item {
+                OutlinedButton(
+                    onClick = { refreshNonce++ },
+                    enabled = !stateLoading && isOnline,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text("Retry Boost")
+                }
             }
         }
 
@@ -548,7 +610,10 @@ private fun BoostCampaignColumn(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Slider(
                     value = boostPower.toFloat(),
-                    onValueChange = { boostPower = it.toInt().coerceIn(1, 100) },
+                    onValueChange = {
+                        boostPower = it.toInt().coerceIn(1, 100)
+                        pendingRequestId = null
+                    },
                     valueRange = 1f..100f,
                     modifier = Modifier.weight(1f),
                 )
@@ -558,6 +623,20 @@ private fun BoostCampaignColumn(
                     fontWeight = FontWeight.Black,
                     style = MaterialTheme.typography.titleMedium,
                 )
+            }
+            Text(
+                "Quick max budget",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(listOf(100L, 250L, 500L, 1_000L)) { budget ->
+                    AssistChip(
+                        onClick = { applyBudgetPreset(budget) },
+                        enabled = targetReady && isOnline && !budgetWorking,
+                        label = { Text(formatter.format(budget) + " coins") },
+                    )
+                }
             }
         }
 
