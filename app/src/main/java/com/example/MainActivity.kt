@@ -253,6 +253,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            BlinkInAppNotificationDestination.DROPS -> {
+                startActivity(
+                    Intent(this, BlinkDropsActivity::class.java).apply {
+                        putExtra(BlinkDropsActivity.EXTRA_DROP_ID, event.targetId)
+                    }
+                )
+            }
+
             BlinkInAppNotificationDestination.NOTIFICATIONS -> {
                 viewModel.openActivity(true)
             }
