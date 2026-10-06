@@ -149,14 +149,6 @@ fun PostOptionsMenuSheet(
         mutableStateOf(false)
     }
 
-    var notificationsEnabled by rememberSaveable {
-        mutableStateOf(false)
-    }
-
-    var postTranslationEnabled by rememberSaveable {
-        mutableStateOf(false)
-    }
-
     var compactPreview by rememberSaveable {
         mutableStateOf(false)
     }
@@ -484,106 +476,38 @@ fun PostOptionsMenuSheet(
             )
 
             // ========================================================
-            // PERSONALIZATION
+            // FEED CONTROLS
             // ========================================================
 
-            Text(
-                text = "Personalize your feed",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color =
-                    MaterialTheme
-                        .colorScheme
-                        .onSurfaceVariant,
-                modifier =
-                    Modifier.padding(
-                        horizontal = 4.dp,
-                        vertical = 5.dp
-                    )
-            )
-
-            ActionToggleRow(
-                icon =
-                    Icons.Outlined.NotificationsNone,
-                iconTint =
-                    if (notificationsEnabled)
-                        BlinkPink
-                    else
-                        MaterialTheme
-                            .colorScheme
-                            .onSurfaceVariant,
-                title =
-                    if (notificationsEnabled)
-                        "Notifications enabled"
-                    else
-                        "Turn on notifications",
-                subtitle =
-                    "Get updates when people interact with this post",
-                enabled =
-                    notificationsEnabled,
-                onClick = {
-                    notificationsEnabled =
-                        !notificationsEnabled
-                }
-            )
-
-            ActionToggleRow(
-                icon =
-                    Icons.Default.Translate,
-                iconTint =
-                    if (postTranslationEnabled)
-                        BlinkPurple
-                    else
-                        MaterialTheme
-                            .colorScheme
-                            .onSurfaceVariant,
-                title =
-                    if (postTranslationEnabled)
-                        "Translation enabled"
-                    else
-                        "Translate post",
-                subtitle =
-                    "Show a translated version when available",
-                enabled =
-                    postTranslationEnabled,
-                onClick = {
-                    postTranslationEnabled =
-                        !postTranslationEnabled
-                }
-            )
-
             if (!isAuthor) {
-
-                ActionItemRow(
-                    icon =
-                        Icons.Default.VisibilityOff,
-                    iconTint =
-                        Color(0xFFFF9800),
-                    title =
-                        "Not interested",
-                    subtitle =
-                        if (post.isReel) "Show fewer reels like this" else "Show fewer posts like this",
-                    onClick = {
-                        showHideConfirmDialog = true
-                    },
-                    testTag =
-                        "not_interested_action"
+                Text(
+                    text = "Feed controls",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp)
                 )
 
                 ActionItemRow(
-                    icon =
-                        Icons.Default.VolumeOff,
-                    iconTint =
-                        Color(0xFFFF9800),
-                    title =
-                        "Mute @${post.author}",
-                    subtitle =
-                        "Stop seeing posts and stories from this user",
-                    onClick = {
-                        showMuteConfirmDialog = true
+                    icon = Icons.Default.VolumeOff,
+                    iconTint = Color(0xFFFF9800),
+                    title = "Mute @${post.author}",
+                    subtitle = "Stop seeing posts and stories from this user",
+                    onClick = { showMuteConfirmDialog = true },
+                    testTag = "mute_user_action"
+                )
+
+                ActionItemRow(
+                    icon = Icons.Default.VisibilityOff,
+                    iconTint = Color(0xFFFF9800),
+                    title = "Not interested",
+                    subtitle = if (post.isReel) {
+                        "Show fewer reels like this"
+                    } else {
+                        "Show fewer posts like this"
                     },
-                    testTag =
-                        "mute_user_action"
+                    onClick = { showHideConfirmDialog = true },
+                    testTag = "not_interested_action"
                 )
             }
 
@@ -660,34 +584,16 @@ fun PostOptionsMenuSheet(
                 subtitle =
                     "Copy a direct Blink link",
                 onClick = {
-
-                    clipboardManager
-                        .setText(
-                            AnnotatedString(
-                                "https://blink.campus/post/${post.id}"
-                            )
-                        )
-
+                    ShareLinkManager.copyLink(
+                        context = context,
+                        type = if (post.isReel) ShareContentType.REEL else ShareContentType.POST,
+                        id = post.id,
+                        toastMessage = if (post.isReel) "Reel link copied" else "Post link copied"
+                    )
                     showCopiedFeedback = true
                 },
                 testTag =
                     "copy_post_link_action"
-            )
-
-            ActionItemRow(
-                icon =
-                    Icons.Default.Settings,
-                iconTint =
-                    MaterialTheme
-                        .colorScheme
-                        .onSurface,
-                title =
-                    "Post preferences",
-                subtitle =
-                    "Manage how this content appears to you",
-                onClick = {},
-                testTag =
-                    "post_preferences_action"
             )
 
             // ========================================================
@@ -706,9 +612,9 @@ fun PostOptionsMenuSheet(
                     iconTint =
                         Color(0xFFFF5252),
                     title =
-                        "Delete post",
+                        if (post.isReel) "Delete reel" else "Delete post",
                     subtitle =
-                        "Permanently remove your post",
+                        if (post.isReel) "Permanently remove your reel" else "Permanently remove your post",
                     onClick = {
                         showDeleteConfirmDialog = true
                     },
@@ -724,7 +630,7 @@ fun PostOptionsMenuSheet(
                     iconTint =
                         Color(0xFFFF5252),
                     title =
-                        "Report post",
+                        if (post.isReel) "Report reel" else "Report post",
                     subtitle =
                         "Send this content to moderation",
                     onClick = {
@@ -781,19 +687,14 @@ fun PostOptionsMenuSheet(
     }
 
     // ================================================================
-    // HIDE DIALOG
+    // NOT INTERESTED DIALOG
     // ================================================================
 
     if (showHideConfirmDialog) {
-
         NotInterestedDialog(
-            onDismiss = {
-                showHideConfirmDialog = false
-            },
+            onDismiss = { showHideConfirmDialog = false },
             onConfirm = {
-
                 showHideConfirmDialog = false
-
                 onNotInterested()
                 onDismiss()
             }
