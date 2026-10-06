@@ -707,10 +707,24 @@ private fun DropCard(
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
+            val reservedRemaining = (drop.totalCoins - drop.coinDistributed - drop.coinRefunded).coerceAtLeast(0L)
             Text(
-                "$remaining reward${if (remaining == 1) "" else "s"} remaining",
+                "${drop.claimedCount}/${drop.winnerCount} claimed · $remaining reward${if (remaining == 1) "" else "s"} remaining",
                 style = MaterialTheme.typography.labelMedium,
             )
+            Text(
+                "Distributed ${formatter.format(drop.coinDistributed)} · Reserved ${formatter.format(reservedRemaining)}" +
+                    if (drop.coinRefunded > 0) " · Refunded ${formatter.format(drop.coinRefunded)}" else "",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (drop.endsAt.isNotBlank()) {
+                Text(
+                    (if (drop.status == "ACTIVE") "Ends " else "Ended ") + shortDropDate(drop.endsAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 onComplete?.let {
@@ -729,6 +743,72 @@ private fun DropCard(
                         Text("Cancel Drop")
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DropAnalyticsCard(
+    analytics: JSONObject,
+    formatter: NumberFormat,
+) {
+    val drops = analytics.optInt("drops", 0)
+    val active = analytics.optInt("active", 0)
+    val distributed = analytics.optLong("distributed", 0L)
+    val refunded = analytics.optLong("refunded", 0L)
+    val recipients = analytics.optInt("recipients", 0)
+    Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text("Drop performance", fontWeight = FontWeight.Black)
+            Text(
+                formatter.format(drops) + " Drops • " + formatter.format(active) + " active • " +
+                    formatter.format(recipients) + " recipients",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                formatter.format(distributed) + " coins distributed • " +
+                    formatter.format(refunded) + " refunded",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DropReceiptCard(
+    receipt: JSONObject,
+    formatter: NumberFormat,
+) {
+    val amount = receipt.optLong("amount", 0L)
+    val kind = receipt.optString("kind").replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+    Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(receipt.optString("item_name").ifBlank { kind }, fontWeight = FontWeight.SemiBold)
+                Text(
+                    kind + " • " + shortDropDate(receipt.optString("created_at")),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    (if (amount > 0) "+" else "") + formatter.format(amount) + " coins",
+                    fontWeight = FontWeight.Black,
+                )
+                Text(
+                    "Balance " + formatter.format(receipt.optLong("balance_after", 0L)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -1230,6 +1310,9 @@ private fun EmptyCard(message: String) {
         )
     }
 }
+
+private fun shortDropDate(raw: String): String =
+    raw.replace('T', ' ').replace("Z", "").take(16).ifBlank { "—" }
 
 private fun actionLabel(value: String): String = when (value.uppercase()) {
     "LIKE" -> "Like post"
