@@ -8,6 +8,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +30,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
@@ -38,6 +42,7 @@ import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.Button
@@ -69,10 +74,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopComment
 import com.blinkng.desktop.data.DesktopConnectListing
@@ -227,13 +234,89 @@ fun HomeScreen(
             PostCard(
                 post = post,
                 onLike = {
+                    val beforeLiked = post.isLiked
+                    val beforeCount = post.likeCount
+                    val optimisticLiked = !beforeLiked
+                    val optimisticCount = (beforeCount + if (optimisticLiked) 1 else -1).coerceAtLeast(0)
+                    posts = posts.map {
+                        if (it.id == post.id) {
+                            it.copy(isLiked = optimisticLiked, likeCount = optimisticCount)
+                        } else {
+                            it
+                        }
+                    }
                     scope.launch {
-                        val liked = runCatching { state.client.toggleLike(post.id) }.getOrNull() ?: return@launch
-                        posts = posts.map {
-                            if (it.id == post.id) it.copy(
-                                isLiked = liked,
-                                likeCount = (it.likeCount + if (liked) 1 else -1).coerceAtLeast(0),
-                            ) else it
+                        val actual = runCatching { state.client.toggleLike(post.id) }.getOrNull()
+                        if (actual == null) {
+                            posts = posts.map {
+                                if (it.id == post.id) it.copy(isLiked = beforeLiked, likeCount = beforeCount) else it
+                            }
+                            error = "Couldn't update like."
+                        } else if (actual != optimisticLiked) {
+                            posts = posts.map {
+                                if (it.id == post.id) {
+                                    it.copy(
+                                        isLiked = actual,
+                                        likeCount = if (actual == beforeLiked) beforeCount else optimisticCount,
+                                    )
+                                } else {
+                                    it
+                                }
+                            }
+                        }
+                    }
+                },
+                onBookmark = {
+                    val before = post.isBookmarked
+                    val optimistic = !before
+                    posts = posts.map {
+                        if (it.id == post.id) it.copy(isBookmarked = optimistic) else it
+                    }
+                    scope.launch {
+                        val actual = runCatching { state.client.toggleBookmark(post.id) }.getOrNull()
+                        if (actual == null) {
+                            posts = posts.map {
+                                if (it.id == post.id) it.copy(isBookmarked = before) else it
+                            }
+                            error = "Couldn't update saved post."
+                        } else if (actual != optimistic) {
+                            posts = posts.map {
+                                if (it.id == post.id) it.copy(isBookmarked = actual) else it
+                            }
+                        }
+                    }
+                },
+                onRepost = {
+                    val beforeReposted = post.isRepostedByMe
+                    val beforeCount = post.repostCount
+                    val optimisticReposted = !beforeReposted
+                    val optimisticCount = (beforeCount + if (optimisticReposted) 1 else -1).coerceAtLeast(0)
+                    posts = posts.map {
+                        if (it.id == post.id) {
+                            it.copy(isRepostedByMe = optimisticReposted, repostCount = optimisticCount)
+                        } else {
+                            it
+                        }
+                    }
+                    scope.launch {
+                        val result = runCatching { state.client.toggleRepost(post.id) }.getOrNull()
+                        if (result == null) {
+                            posts = posts.map {
+                                if (it.id == post.id) {
+                                    it.copy(isRepostedByMe = beforeReposted, repostCount = beforeCount)
+                                } else {
+                                    it
+                                }
+                            }
+                            error = "Couldn't update repost."
+                        } else {
+                            posts = posts.map {
+                                if (it.id == post.id) {
+                                    it.copy(isRepostedByMe = result.first, repostCount = result.second)
+                                } else {
+                                    it
+                                }
+                            }
                         }
                     }
                 },
@@ -433,7 +516,75 @@ fun SearchScreen(state: DesktopAppState) {
             items(results.posts, key = { "post-${it.id}" }) { post ->
                 PostCard(
                     post = post,
-                    onLike = {},
+                    onLike = {
+                        val beforeLiked = post.isLiked
+                        val beforeCount = post.likeCount
+                        val optimisticLiked = !beforeLiked
+                        val optimisticCount = (beforeCount + if (optimisticLiked) 1 else -1).coerceAtLeast(0)
+                        results = results.copy(
+                            posts = results.posts.map {
+                                if (it.id == post.id) it.copy(isLiked = optimisticLiked, likeCount = optimisticCount) else it
+                            }
+                        )
+                        scope.launch {
+                            val actual = runCatching { state.client.toggleLike(post.id) }.getOrNull()
+                            if (actual == null) {
+                                results = results.copy(
+                                    posts = results.posts.map {
+                                        if (it.id == post.id) it.copy(isLiked = beforeLiked, likeCount = beforeCount) else it
+                                    }
+                                )
+                            }
+                        }
+                    },
+                    onBookmark = {
+                        val before = post.isBookmarked
+                        val optimistic = !before
+                        results = results.copy(
+                            posts = results.posts.map {
+                                if (it.id == post.id) it.copy(isBookmarked = optimistic) else it
+                            }
+                        )
+                        scope.launch {
+                            val actual = runCatching { state.client.toggleBookmark(post.id) }.getOrNull()
+                            if (actual == null) {
+                                results = results.copy(
+                                    posts = results.posts.map {
+                                        if (it.id == post.id) it.copy(isBookmarked = before) else it
+                                    }
+                                )
+                            }
+                        }
+                    },
+                    onRepost = {
+                        val beforeReposted = post.isRepostedByMe
+                        val beforeCount = post.repostCount
+                        val optimisticReposted = !beforeReposted
+                        val optimisticCount = (beforeCount + if (optimisticReposted) 1 else -1).coerceAtLeast(0)
+                        results = results.copy(
+                            posts = results.posts.map {
+                                if (it.id == post.id) {
+                                    it.copy(isRepostedByMe = optimisticReposted, repostCount = optimisticCount)
+                                } else {
+                                    it
+                                }
+                            }
+                        )
+                        scope.launch {
+                            val actual = runCatching { state.client.toggleRepost(post.id) }.getOrNull()
+                            results = results.copy(
+                                posts = results.posts.map {
+                                    if (it.id != post.id) {
+                                        it
+                                    } else if (actual == null) {
+                                        it.copy(isRepostedByMe = beforeReposted, repostCount = beforeCount)
+                                    } else {
+                                        it.copy(isRepostedByMe = actual.first, repostCount = actual.second)
+                                    }
+                                }
+                            )
+                        }
+                    },
                     onComments = {},
                     onCopyLink = {
                         DesktopShareLinkManager.copyToClipboard(post.id, post.isReel)
@@ -1643,40 +1794,185 @@ fun AdminScreen(state: DesktopAppState) {
 private fun PostCard(
     post: DesktopFeedPost,
     onLike: () -> Unit,
+    onBookmark: () -> Unit,
+    onRepost: () -> Unit,
     onComments: () -> Unit,
     onCopyLink: () -> Unit,
 ) {
-    Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
+    var expandedText by remember(post.id) { mutableStateOf(false) }
+    var textCanExpand by remember(post.id) { mutableStateOf(false) }
+    val mediaUrls = remember(post.id, post.imageUrl, post.images) {
+        buildList {
+            post.imageUrl?.trim()?.takeIf { it.isNotBlank() && !it.equals("null", true) }?.let(::add)
+            post.images.map(String::trim)
+                .filter { it.isNotBlank() && !it.equals("null", true) }
+                .forEach(::add)
+        }.distinct()
+    }
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 1.dp,
+        color = MaterialTheme.colorScheme.surface,
+    ) {
         Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 PresenceAvatar(post.authorName, post.authorOnline, showStatus = false)
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     VerifiedName(post.authorName, post.authorVerified)
-                    Text("@${post.authorUsername} • ${formatTime(post.createdAt)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "@${post.authorUsername} • ${formatTime(post.createdAt)}",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onBookmark) {
+                    Icon(
+                        if (post.isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                        contentDescription = if (post.isBookmarked) "Remove saved post" else "Save post",
+                        tint = if (post.isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
+
             val body = post.text?.takeIf(String::isNotBlank) ?: post.caption.orEmpty()
-            if (body.isNotBlank()) Text(body, fontSize = 15.sp)
-            if (post.imageUrl != null || post.images.isNotEmpty()) {
-                Surface(modifier = Modifier.fillMaxWidth().height(180.dp), shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("Image attachment", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (body.isNotBlank()) {
+                Text(
+                    text = body,
+                    fontSize = 15.sp,
+                    maxLines = if (expandedText) Int.MAX_VALUE else 7,
+                    overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { result ->
+                        if (!expandedText && result.hasVisualOverflow) textCanExpand = true
+                    },
+                )
+                if (textCanExpand || expandedText) {
+                    Text(
+                        text = if (expandedText) "Show less" else "See more",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable { expandedText = !expandedText },
+                    )
+                }
+            }
+
+            if (mediaUrls.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    mediaUrls.forEachIndexed { index, url ->
+                        var loadingMedia by remember(url) { mutableStateOf(true) }
+                        var failedMedia by remember(url) { mutableStateOf(false) }
+                        Surface(
+                            modifier = Modifier.width(520.dp).height(320.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = "Post image ${index + 1} of ${mediaUrls.size}",
+                                    contentScale = ContentScale.Fit,
+                                    onLoading = {
+                                        loadingMedia = true
+                                        failedMedia = false
+                                    },
+                                    onSuccess = {
+                                        loadingMedia = false
+                                        failedMedia = false
+                                    },
+                                    onError = {
+                                        loadingMedia = false
+                                        failedMedia = true
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                if (loadingMedia) {
+                                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                                }
+                                if (failedMedia) {
+                                    Text(
+                                        "Image unavailable",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 12.sp,
+                                    )
+                                }
+                                if (mediaUrls.size > 1) {
+                                    Surface(
+                                        modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
+                                        shape = RoundedCornerShape(100.dp),
+                                        color = Color.Black.copy(alpha = 0.62f),
+                                    ) {
+                                        Text(
+                                            "${index + 1}/${mediaUrls.size}",
+                                            color = Color.White,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconButton(onClick = onLike) {
-                    Icon(if (post.isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, contentDescription = "Like", tint = if (post.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+
+            val primaryMetrics = buildList {
+                add("${post.viewCount} views")
+                if (post.likeCount > 0) add("${post.likeCount} likes")
+            }
+            val secondaryMetrics = buildList {
+                if (post.commentCount > 0) add("${post.commentCount} comments")
+                if (post.shareCount > 0) add("${post.shareCount} shares")
+                if (post.repostCount > 0) add("${post.repostCount} reposts")
+            }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    primaryMetrics.joinToString("  ·  "),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.weight(1f))
+                if (secondaryMetrics.isNotEmpty()) {
+                    Text(
+                        secondaryMetrics.joinToString("  ·  "),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                Text(post.likeCount.toString(), fontSize = 12.sp)
-                IconButton(onClick = onComments) { Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments") }
-                Text(post.commentCount.toString(), fontSize = 12.sp)
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                IconButton(onClick = onLike) {
+                    Icon(
+                        if (post.isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                        contentDescription = if (post.isLiked) "Unlike" else "Like",
+                        tint = if (post.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onComments) {
+                    Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
+                }
+                IconButton(onClick = onRepost) {
+                    Icon(
+                        Icons.Rounded.Repeat,
+                        contentDescription = if (post.isRepostedByMe) "Undo repost" else "Repost",
+                        tint = if (post.isRepostedByMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 OutlinedButton(onClick = onCopyLink) {
                     Text("Copy link", fontSize = 11.sp)
                 }
-                Spacer(Modifier.weight(1f))
-                Text("${post.viewCount} views", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
