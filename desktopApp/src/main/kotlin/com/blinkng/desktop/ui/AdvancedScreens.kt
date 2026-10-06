@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.rounded.Storefront
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -57,6 +59,8 @@ import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopInventoryItem
 import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.data.DesktopStoreItem
+import com.blinkng.shared.BlinkStoreProductGroup
+import com.blinkng.shared.BlinkStoreProductGroups
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -73,8 +77,10 @@ fun StoreProScreen(state: DesktopAppState) {
     var message by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var pendingUse by remember { mutableStateOf<DesktopInventoryItem?>(null) }
+    var selectedGroup by remember { mutableStateOf<BlinkStoreProductGroup?>(null) }
     var previewItem by remember { mutableStateOf<DesktopStoreItem?>(null) }
     var searchQuery by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("For You") }
     var targetState by remember { mutableStateOf(JSONObject()) }
     var heroShown by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -139,16 +145,19 @@ fun StoreProScreen(state: DesktopAppState) {
         .map { it.optString("catalog_id") }
         .filter(String::isNotBlank)
         .toSet()
-    val visibleCatalog = remember(catalog) {
-        catalog.filterNot { it.vipOnly || it.id == "blink_vip_10d" || it.category.equals("VIP", true) }
-    }
-    val vipActive = false
-    val filteredCatalog = remember(visibleCatalog, searchQuery) {
+    val vipActive = serverState?.optJSONObject("vip")?.optBoolean("active", false) ?: false
+    val filteredGroups = remember(catalog, searchQuery, selectedCategory) {
         val query = searchQuery.trim()
-        if (query.isBlank()) visibleCatalog else visibleCatalog.filter {
-            it.name.contains(query, true) ||
-                it.description.contains(query, true) ||
-                it.category.contains(query, true)
+        BlinkStoreProductGroups.groupsForCategory(selectedCategory).filter { group ->
+            query.isBlank() ||
+                group.title.contains(query, true) ||
+                group.description.contains(query, true) ||
+                group.category.contains(query, true) ||
+                group.itemIds.mapNotNull(catalogById::get).any { item ->
+                    item.name.contains(query, true) ||
+                        item.description.contains(query, true) ||
+                        item.category.contains(query, true)
+                }
         }
     }
 
@@ -190,12 +199,12 @@ fun StoreProScreen(state: DesktopAppState) {
                         if (working) CircularProgressIndicator(modifier = Modifier.size(25.dp), color = Color.White, strokeWidth = 2.dp)
                     }
                     Text(
-                        "Premium should be visible. Public cosmetics now tell you exactly where they appear, while timed items only start when you activate them.",
+                        "Browse premium collections with visual previews, then choose the exact existing Store variant you want. Purchases still go to Vault before use or activation.",
                         color = Color.White.copy(alpha = .92f),
                         fontSize = 13.sp,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PremiumStatusPill("${visibleCatalog.size} STORE ITEMS", Color.White)
+                        PremiumStatusPill("${BlinkStoreProductGroups.all.size} COLLECTIONS", Color.White)
                         if (equippedIds.isNotEmpty()) PremiumStatusPill("${equippedIds.size} APPLIED", Color.White)
                     }
                 }
@@ -239,7 +248,7 @@ fun StoreProScreen(state: DesktopAppState) {
             }
         }
 
-        item { Text("Store", fontWeight = FontWeight.Black, fontSize = 21.sp) }
+        item { Text("Store collections", fontWeight = FontWeight.Black, fontSize = 21.sp) }
         item {
             OutlinedTextField(
                 value = searchQuery,
@@ -247,65 +256,43 @@ fun StoreProScreen(state: DesktopAppState) {
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 leadingIcon = { androidx.compose.material3.Icon(Icons.Rounded.Search, null) },
-                label = { Text("Search effects, themes and boosts") },
+                label = { Text("Search themes, effects, boosts and gifts") },
             )
         }
-        if (loading) item { Text("Loading Store…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        if (!loading && filteredCatalog.isEmpty()) item {
-            Text("No Store items match your search.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        item {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(BlinkStoreProductGroups.categories) { name ->
+                    FilterChip(
+                        selected = selectedCategory == name,
+                        onClick = { selectedCategory = name },
+                        label = { Text(name) },
+                    )
+                }
+            }
         }
-        items(filteredCatalog, key = { "pro-store-${it.id}" }) { item ->
-            val experience = item.premiumExperience()
-            val accent = desktopPremiumAccent(experience)
-            val ownedPermanent = item.itemType.equals("PERMANENT", true) && inventory.any { it.catalogId == item.id && it.status.equals("PERMANENT", true) }
-            val active = inventory.any { it.catalogId == item.id && it.status.equals("ACTIVE", true) }
-            val equipped = item.id in equippedIds
-            val vipLocked = item.vipOnly && !vipActive
-            val displayPrice = if (vipActive) (item.price * 90) / 100 else item.price
-
-            Surface(
-                modifier = Modifier.fillMaxWidth().clickable { previewItem = item },
-                shape = RoundedCornerShape(22.dp),
-                tonalElevation = 1.dp,
-                border = BorderStroke(1.dp, accent.copy(alpha = .34f)),
+        if (loading) item { Text("Loading Store…", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (!loading && filteredGroups.isEmpty()) item {
+            Text("No Store collections match your search.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        items(filteredGroups.chunked(3), key = { row -> row.joinToString("|") { it.id } }) { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top,
             ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Surface(shape = RoundedCornerShape(16.dp), color = accent.copy(alpha = .12f)) {
-                            Box(Modifier.size(50.dp), contentAlignment = Alignment.Center) {
-                                androidx.compose.material3.Icon(Icons.Rounded.AutoAwesome, null, tint = accent, modifier = Modifier.size(25.dp))
-                            }
-                        }
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(item.name, fontWeight = FontWeight.Black, fontSize = 16.sp)
-                            Text(experience.benefit, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        if (equipped) PremiumStatusPill("APPLIED", Color(0xFF16A34A))
-                        else if (active) PremiumStatusPill("LIVE", Color(0xFF16A34A))
-                        else if (ownedPermanent) PremiumStatusPill("IN VAULT", accent)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        PremiumStatusPill(
-                            if (experience.publicFacing) "PUBLIC • ${experience.label}" else "PRIVATE • ${experience.label}",
-                            accent,
+                row.forEach { group ->
+                    Box(Modifier.weight(1f)) {
+                        DesktopStoreGroupCard(
+                            group = group,
+                            catalog = catalog,
+                            inventory = inventory,
+                            equippedIds = equippedIds,
+                            vipActive = vipActive,
+                            onOpen = { selectedGroup = group },
                         )
-                        PremiumStatusPill(item.itemType.replace('_', ' '), MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Text("Seen / used on: ${experience.visibleAt}", color = accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Text(experience.activationHint, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("$displayPrice coins", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Black, fontSize = 18.sp)
-                            if (vipActive) Text("VIP price • 10% off the ${item.price}-coin standard price", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (item.boostMultipliers.isNotEmpty()) Text("Strength: ${item.boostMultipliers.joinToString(" • ") { "${it}×" }}", fontSize = 10.sp, color = accent)
-                        }
-                        OutlinedButton(onClick = { previewItem = item }) { Text("Preview") }
-                        Button(
-                            onClick = { purchase(item) },
-                            enabled = !working && !ownedPermanent && !vipLocked && balance >= displayPrice,
-                        ) { Text(if (ownedPermanent) "Owned" else if (vipLocked) "VIP" else "Buy") }
                     }
                 }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
 
@@ -395,6 +382,27 @@ fun StoreProScreen(state: DesktopAppState) {
         }
     }
 
+    selectedGroup?.let { group ->
+        DesktopStoreGroupDialog(
+            group = group,
+            catalog = catalog,
+            inventory = inventory,
+            equippedIds = equippedIds,
+            balance = balance,
+            vipActive = vipActive,
+            working = working,
+            onDismiss = { selectedGroup = null },
+            onPreview = { item ->
+                selectedGroup = null
+                previewItem = item
+            },
+            onBuy = { item ->
+                selectedGroup = null
+                purchase(item)
+            },
+        )
+    }
+
     pendingUse?.let { inventoryItem ->
         val storeItem = catalogById[inventoryItem.catalogId]
         if (storeItem != null) {
@@ -435,6 +443,191 @@ fun StoreProScreen(state: DesktopAppState) {
             buyEnabled = !working && !ownedPermanent && !vipLocked && balance >= displayPrice,
         )
     }
+}
+
+@Composable
+private fun DesktopStoreGroupCard(
+    group: BlinkStoreProductGroup,
+    catalog: List<DesktopStoreItem>,
+    inventory: List<DesktopInventoryItem>,
+    equippedIds: Set<String>,
+    vipActive: Boolean,
+    onOpen: () -> Unit,
+) {
+    val catalogById = catalog.associateBy { it.id }
+    val primary = catalogById[group.primaryItemId] ?: return
+    val variants = group.itemIds.mapNotNull(catalogById::get)
+    val experience = primary.premiumExperience()
+    val accent = desktopPremiumAccent(experience)
+    val applied = variants.any { it.id in equippedIds }
+    val active = variants.any { variant ->
+        inventory.any { it.catalogId == variant.id && it.status.equals("ACTIVE", true) }
+    }
+    val ownedCount = variants.count { variant ->
+        inventory.any {
+            it.catalogId == variant.id &&
+                it.status.uppercase() in setOf("PERMANENT", "AVAILABLE", "ACTIVE")
+        }
+    }
+    val displayPrice = if (vipActive) (primary.price * 90) / 100 else primary.price
+
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        shape = RoundedCornerShape(22.dp),
+        tonalElevation = 1.dp,
+        border = BorderStroke(1.dp, accent.copy(alpha = .32f)),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            DesktopStoreLivePreview(
+                catalogId = primary.id,
+                itemName = group.title,
+                modifier = Modifier.fillMaxWidth().height(150.dp),
+            )
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp).padding(bottom = 13.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(group.title, modifier = Modifier.weight(1f), fontWeight = FontWeight.Black, fontSize = 15.sp)
+                    if (group.id == "blink_vip") Text("👑", fontSize = 15.sp)
+                }
+                Text(
+                    group.description,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (variants.size > 1) "From $displayPrice coins" else "$displayPrice coins",
+                        modifier = Modifier.weight(1f),
+                        color = accent,
+                        fontWeight = FontWeight.Black,
+                    )
+                    Text(
+                        "${variants.size} ${if (variants.size == 1) "option" else "options"}",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (applied || active || ownedCount > 0) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        when {
+                            applied -> PremiumStatusPill("APPLIED", Color(0xFF16A34A))
+                            active -> PremiumStatusPill("LIVE", Color(0xFF16A34A))
+                        }
+                        if (ownedCount > 0) PremiumStatusPill("$ownedCount OWNED", accent)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DesktopStoreGroupDialog(
+    group: BlinkStoreProductGroup,
+    catalog: List<DesktopStoreItem>,
+    inventory: List<DesktopInventoryItem>,
+    equippedIds: Set<String>,
+    balance: Long,
+    vipActive: Boolean,
+    working: Boolean,
+    onDismiss: () -> Unit,
+    onPreview: (DesktopStoreItem) -> Unit,
+    onBuy: (DesktopStoreItem) -> Unit,
+) {
+    val catalogById = catalog.associateBy { it.id }
+    val variants = group.itemIds.mapNotNull(catalogById::get)
+    val primary = catalogById[group.primaryItemId] ?: variants.firstOrNull()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(group.title, fontWeight = FontWeight.Black)
+                Text(
+                    "${variants.size} ${if (variants.size == 1) "option" else "options"} • choose a variant",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().height(520.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                primary?.let { preview ->
+                    item {
+                        DesktopStoreLivePreview(
+                            catalogId = preview.id,
+                            itemName = group.title,
+                            modifier = Modifier.fillMaxWidth().height(180.dp),
+                        )
+                    }
+                }
+                item {
+                    Text(group.description, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                items(variants, key = { it.id }) { item ->
+                    val experience = item.premiumExperience()
+                    val accent = desktopPremiumAccent(experience)
+                    val ownedPermanent = item.itemType.equals("PERMANENT", true) &&
+                        inventory.any { it.catalogId == item.id && it.status.equals("PERMANENT", true) }
+                    val active = inventory.any { it.catalogId == item.id && it.status.equals("ACTIVE", true) }
+                    val equipped = item.id in equippedIds
+                    val vipLocked = item.vipOnly && !vipActive
+                    val displayPrice = if (vipActive) (item.price * 90) / 100 else item.price
+
+                    Surface(
+                        shape = RoundedCornerShape(17.dp),
+                        border = BorderStroke(1.dp, accent.copy(alpha = .28f)),
+                        tonalElevation = 1.dp,
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(item.name, fontWeight = FontWeight.Black)
+                                    Text(
+                                        experience.benefit,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                when {
+                                    equipped -> PremiumStatusPill("APPLIED", Color(0xFF16A34A))
+                                    active -> PremiumStatusPill("LIVE", Color(0xFF16A34A))
+                                    ownedPermanent -> PremiumStatusPill("OWNED", accent)
+                                    item.vipOnly -> PremiumStatusPill("VIP", Color(0xFFF59E0B))
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("$displayPrice coins", modifier = Modifier.weight(1f), color = accent, fontWeight = FontWeight.Black)
+                                OutlinedButton(onClick = { onPreview(item) }) { Text("Preview") }
+                                Button(
+                                    onClick = { onBuy(item) },
+                                    enabled = !working && !ownedPermanent && !vipLocked && balance >= displayPrice,
+                                ) {
+                                    Text(
+                                        when {
+                                            ownedPermanent -> "Owned"
+                                            vipLocked -> "VIP required"
+                                            else -> "Buy"
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { OutlinedButton(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 @Composable
