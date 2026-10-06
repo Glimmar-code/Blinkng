@@ -39,7 +39,23 @@ data class DesktopProfile(
     val interests: List<String> = emptyList(),
     val onboardingCompleted: Boolean = true,
     val onboardingStep: Int = 4,
+    val email: String? = null,
+    val phone: String? = null,
+    val whatsapp: String? = null,
+    val presenceVisibility: String = "PUBLIC",
 )
+
+data class DesktopProfileFollowerPoint(
+    val date: String,
+    val followerCount: Int,
+)
+
+enum class DesktopProfileNotificationMode {
+    OFF,
+    ALL,
+    REELS,
+    IMPORTANT,
+}
 
 data class DesktopFeedPost(
     val id: String,
