@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
@@ -286,6 +287,7 @@ fun FeedUtilityRow(
     onLeaderboardClick: () -> Unit,
     onGameClick: () -> Unit,
     onStoreClick: () -> Unit,
+    onBoostClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -316,6 +318,13 @@ fun FeedUtilityRow(
             contentDescription = "Open Blink Store",
             onClick = onStoreClick,
             modifier = Modifier.weight(1f).testTag("feed_store_action")
+        )
+        FeedUtilityAction(
+            icon = Icons.Default.Campaign,
+            label = "Boost",
+            contentDescription = "Open Boost and Earn Rank Points",
+            onClick = onBoostClick,
+            modifier = Modifier.weight(1f).testTag("feed_boost_action")
         )
     }
 }
