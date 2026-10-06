@@ -110,6 +110,7 @@ object BlinkNotificationHelper {
     const val ACTION_OPEN_PROFILE = "OPEN_PROFILE"
     const val ACTION_OPEN_MARKET = "OPEN_MARKET"
     const val ACTION_OPEN_SOCIAL = "OPEN_SOCIAL"
+    const val ACTION_OPEN_ITEMS = "OPEN_ITEMS"
 
     // ================================================================
     // COLORS

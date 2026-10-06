@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -25,19 +26,46 @@ def git(*args: str) -> str:
 
 
 def diff_range() -> str | None:
+    # Pull-request workflows commonly check out GitHub's synthetic merge commit with
+    # fetch-depth=1. In that state a three-dot diff can fail with "no merge base"
+    # even though the PR itself is valid. Prefer the event's exact base SHA and a
+    # two-dot tree diff, which is precisely what this gate needs: files changed by
+    # the PR relative to the base tree.
+    event_path = os.getenv("GITHUB_EVENT_PATH", "").strip()
+    if event_path:
+        try:
+            with open(event_path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            base_sha = (
+                payload.get("pull_request", {})
+                .get("base", {})
+                .get("sha", "")
+                .strip()
+            )
+            if base_sha:
+                subprocess.run(
+                    ["git", "fetch", "origin", base_sha, "--depth=1"],
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return f"{base_sha}..HEAD"
+        except (OSError, ValueError, AttributeError):
+            pass
+
     base_ref = os.getenv("GITHUB_BASE_REF", "").strip()
     if base_ref:
         subprocess.run(
-            ["git", "fetch", "origin", base_ref, "--depth=1"],
+            ["git", "fetch", "origin", base_ref, "--depth=50"],
             check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        return f"origin/{base_ref}...HEAD"
+        return f"origin/{base_ref}..HEAD"
 
     try:
         git("rev-parse", "HEAD^")
-        return "HEAD^...HEAD"
+        return "HEAD^..HEAD"
     except subprocess.CalledProcessError:
         return None
 

@@ -16,6 +16,8 @@ import com.example.data.supabase.SupabaseService
 import com.example.notification.BlinkFirebaseMessagingService
 import com.example.notification.BlinkNotificationHelper
 import com.example.notification.NotificationSyncWorker
+import com.example.items.BlinkItemNotificationManager
+import com.example.items.BlinkItemsSyncWorker
 import com.example.performance.HighRefreshRateController
 import com.example.util.safeString
 import com.google.firebase.crashlytics.FirebaseCrashlytics
@@ -44,6 +46,7 @@ class BlinkApplication : Application(), ImageLoaderFactory {
         // are allowed. Keeping it out of Application prevents ads from starting before consent.
 
         BlinkNotificationHelper.createNotificationChannels(this)
+        BlinkItemNotificationManager.createChannels(this)
         // Create voice/video/missed-call channels on cold start as well, so users can tune
         // call sounds and lock-screen behavior before their first incoming Blink call.
         IncomingCallNotification.createChannels(this)
@@ -95,6 +98,15 @@ class BlinkApplication : Application(), ImageLoaderFactory {
             "blink_notification_sync",
             ExistingPeriodicWorkPolicy.UPDATE,
             work
+        )
+
+        val itemWork = PeriodicWorkRequestBuilder<BlinkItemsSyncWorker>(15, TimeUnit.MINUTES)
+            .addTag("blink_items_sync")
+            .build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "blink_items_sync",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            itemWork
         )
     }
 

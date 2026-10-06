@@ -57,6 +57,10 @@ verify_jwt = true
 [functions.call-turn-credentials]
 verify_jwt = true
 
+# Weather is requested only by signed-in BLINK users. Provider secrets stay server-side.
+[functions.blink-weather]
+verify_jwt = true
+
 [functions.blink-ai]
 verify_jwt = false
 
