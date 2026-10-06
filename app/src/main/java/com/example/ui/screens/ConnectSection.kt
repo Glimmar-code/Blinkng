@@ -3,6 +3,7 @@ package com.example.ui.screens
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -73,6 +74,12 @@ import com.example.data.repository.FollowStateStore
 import com.example.ui.components.VerifiedMark
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.theme.BlinkOnlineGreen
+import com.blinkng.shared.BlinkActivityPulseDefaults
+import com.blinkng.shared.BlinkActivityPulsePolicy
+import com.blinkng.shared.BlinkPulseTrend
+import com.blinkng.shared.campusActivityLabel
+import com.blinkng.shared.communityActivityRange
+import com.blinkng.shared.pulseTrend
 import kotlinx.coroutines.launch
 
 private enum class LivePeopleFilter(val label: String) {
@@ -95,6 +102,9 @@ fun ConnectSection(
     connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
     connectHubActions: ConnectHubActions = ConnectHubActions(),
     isConnectHubLoading: Boolean = false,
+    isLiveDataAvailable: Boolean = true,
+    activityPulsePolicy: BlinkActivityPulsePolicy = BlinkActivityPulseDefaults.policy,
+    onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit = { _, _, _, _, _ -> },
     selectedTopTab: Int,
     onHomeClick: () -> Unit,
     onReelClick: () -> Unit,
@@ -146,13 +156,55 @@ fun ConnectSection(
         }
     }
 
+    val policy = remember(activityPulsePolicy) { activityPulsePolicy.normalized() }
     val activeNowCount = remember(liveProfiles) { liveProfiles.count { it.onlineNow } }
     // The current viewer is actively using Connect, so the pulse always has at least one real active unit.
     val realOnlineCount = remember(liveProfiles) { 1 + liveProfiles.count { it.onlineNow } }
-    val communityActivity = rememberFluctuatingPulse(
-        range = communityActivityRange(realOnlineCount),
-        tickMillis = 2_800L
+    val reduceMotion = rememberReducedMotionEnabled()
+    val windowActive = rememberWindowActive()
+    val communityPulse = rememberManagedPulse(
+        key = "connect:" + currentUsername.trim().lowercase(),
+        range = communityActivityRange(realOnlineCount, policy),
+        tickMillis = policy.connectTickMillis,
+        policy = policy,
+        liveDataAvailable = isLiveDataAvailable,
+        windowActive = windowActive,
+        reduceMotion = reduceMotion,
     )
+
+    var previousRealOnline by rememberSaveable(currentUsername) { mutableStateOf(realOnlineCount) }
+    var activityTrend by rememberSaveable(currentUsername) { mutableStateOf(BlinkPulseTrend.STABLE) }
+    LaunchedEffect(realOnlineCount) {
+        activityTrend = pulseTrend(previousRealOnline, realOnlineCount)
+        previousRealOnline = realOnlineCount
+    }
+
+    val campusName = current?.university.orEmpty().takeUnless { it.equals("null", true) }.orEmpty()
+    val realCampusOnline = remember(liveProfiles, campusName) {
+        val others = liveProfiles.count {
+            it.onlineNow && campusName.isNotBlank() && it.university.equals(campusName, ignoreCase = true)
+        }
+        others + if (campusName.isNotBlank()) 1 else 0
+    }
+    val campusLabel = remember(realCampusOnline, policy) {
+        campusActivityLabel(realCampusOnline, policy)
+    }
+    val onlinePreview = remember(liveProfiles, policy.onlinePreviewLimit) {
+        liveProfiles.filter { it.onlineNow }.take(policy.onlinePreviewLimit)
+    }
+
+    LaunchedEffect(communityPulse.value != null, currentUsername, isLiveDataAvailable) {
+        val shown = communityPulse.value
+        if (shown != null && isLiveDataAvailable) {
+            onActivityPulseEvent(
+                "connect",
+                "impression",
+                realOnlineCount,
+                shown,
+                mapOf("trend" to activityTrend.label)
+            )
+        }
+    }
 
     LaunchedEffect(Unit) {
         FollowStateStore.refresh()
@@ -181,48 +233,137 @@ fun ConnectSection(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(top = 10.dp, bottom = 120.dp)
             ) {
-                item(key = "connect_community_activity", contentType = "activity_pulse") {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                    ) {
-                        Row(
+                if (policy.enabled) {
+                    item(key = "connect_community_activity", contentType = "activity_pulse") {
+                        Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
-                            Column(Modifier.weight(1f)) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            "Community Activity",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                        Text(
+                                            when {
+                                                communityPulse.isStale -> "Last known activity • offline"
+                                                else -> "Activity Pulse • ${activityTrend.label}"
+                                            },
+                                            fontSize = 10.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(100.dp),
+                                        color = BlinkOnlineGreen.copy(alpha = .13f)
+                                    ) {
+                                        if (reduceMotion) {
+                                            Text(
+                                                communityPulse.value?.toString() ?: "—",
+                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                                color = BlinkOnlineGreen,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Black
+                                            )
+                                        } else {
+                                            Crossfade(
+                                                targetState = communityPulse.value,
+                                                label = "communityActivityPulse"
+                                            ) { pulseValue ->
+                                                Text(
+                                                    pulseValue?.toString() ?: "—",
+                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                                    color = BlinkOnlineGreen,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Black
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
                                 Text(
-                                    "Community Activity",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Black
-                                )
-                                Text(
-                                    "Live activity pulse • $realOnlineCount real active",
-                                    fontSize = 10.5.sp,
+                                    "Confirmed online now: $realOnlineCount",
+                                    fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(100.dp),
-                                color = BlinkOnlineGreen.copy(alpha = .13f)
-                            ) {
-                                Text(
-                                    communityActivity.toString(),
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                                    color = BlinkOnlineGreen,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Black
-                                )
+
+                                if (campusName.isNotBlank()) {
+                                    Text(
+                                        "$campusName activity: $campusLabel • $realCampusOnline confirmed online",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                if (onlinePreview.isNotEmpty()) {
+                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                                    Text(
+                                        "Actually online",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        onlinePreview.forEach { profile ->
+                                            Column(
+                                                modifier = Modifier
+                                                    .width(58.dp)
+                                                    .clickable {
+                                                        onActivityPulseEvent(
+                                                            "connect",
+                                                            "online_preview_open",
+                                                            realOnlineCount,
+                                                            communityPulse.value,
+                                                            mapOf("username" to profile.username)
+                                                        )
+                                                        onProfileClick(profile.username)
+                                                    },
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                AsyncImage(
+                                                    model = profile.avatarUrl,
+                                                    error = painterResource(R.drawable.ic_default_profile),
+                                                    fallback = painterResource(R.drawable.ic_default_profile),
+                                                    contentDescription = profile.fullName,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .size(34.dp)
+                                                        .clip(CircleShape)
+                                                )
+                                                Text(
+                                                    "@${profile.username}",
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    fontSize = 9.5.sp
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
+                        Spacer(Modifier.height(6.dp))
                     }
-                    Spacer(Modifier.height(6.dp))
                 }
 
                 item(key = "connect_hub_and_students") {
