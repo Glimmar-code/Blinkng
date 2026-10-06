@@ -70,7 +70,7 @@ internal fun BlinkPromotedMarketRail(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(placements, key = { "promoted-listing-" + it.campaignId }) { placement ->
-                val listing = placement.listing ?: return@items
+                val listing = checkNotNull(placement.listing)
                 LaunchedEffect(placement.campaignId) {
                     service.recordBoostDelivery(placement.campaignId, "IMPRESSION", "MARKET")
                 }
