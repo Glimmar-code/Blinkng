@@ -80,6 +80,7 @@ create table if not exists public.blink_boost_campaigns_v2 (
     target_university text,
     duration_days smallint not null check (duration_days in (1,3,7,14,30)),
     coin_budget bigint not null check (coin_budget >= 0),
+    coin_spent bigint not null default 0 check (coin_spent >= 0),
     coin_refunded bigint not null default 0 check (coin_refunded >= 0),
     estimated_reach_low bigint not null default 0 check (estimated_reach_low >= 0),
     estimated_reach_high bigint not null default 0 check (estimated_reach_high >= estimated_reach_low),
@@ -90,6 +91,7 @@ create table if not exists public.blink_boost_campaigns_v2 (
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
     check (ends_at > starts_at),
+    check (coin_spent + coin_refunded <= coin_budget),
     check (
         (audience_scope='ALL_CAMPUSES' and target_university is null)
         or (audience_scope<>'ALL_CAMPUSES' and nullif(btrim(coalesce(target_university,'')),'') is not null)
@@ -392,7 +394,7 @@ begin
         user_id,kind,catalog_id,item_name,amount,balance_after,metadata
     ) values (
         v_user,
-        'BOOST_CAMPAIGN_PURCHASE',
+        'BOOST_CAMPAIGN_RESERVE',
         null,
         'Boost '||initcap(lower(v_campaign.target_type)),
         -v_cost,
@@ -411,6 +413,7 @@ begin
     return jsonb_build_object(
         'success',true,
         'campaign_id',v_campaign.id,
+        'reserved',v_cost,
         'charged',v_cost,
         'balance',floor(v_balance)::bigint,
         'campaign',to_jsonb(v_campaign),
@@ -433,8 +436,6 @@ as $$
 declare
     v_user uuid := auth.uid();
     v_campaign public.blink_boost_campaigns_v2%rowtype;
-    v_total_seconds numeric;
-    v_remaining_seconds numeric;
     v_refund bigint := 0;
     v_balance numeric;
 begin
@@ -447,17 +448,15 @@ begin
     if not found then raise exception 'BOOST_CAMPAIGN_NOT_FOUND'; end if;
     if v_campaign.status<>'ACTIVE' then raise exception 'BOOST_CAMPAIGN_NOT_ACTIVE'; end if;
 
-    v_total_seconds := greatest(1,extract(epoch from (v_campaign.ends_at-v_campaign.starts_at)));
-    v_remaining_seconds := greatest(0,extract(epoch from (v_campaign.ends_at-now())));
-    v_refund := least(
-        v_campaign.coin_budget,
-        floor(v_campaign.coin_budget::numeric*v_remaining_seconds/v_total_seconds)::bigint
+    v_refund := greatest(
+        0,
+        v_campaign.coin_budget - v_campaign.coin_spent - v_campaign.coin_refunded
     );
 
     update public.blink_boost_campaigns_v2
        set status='CANCELLED',
            cancelled_at=now(),
-           coin_refunded=v_refund,
+           coin_refunded=coin_refunded+v_refund,
            updated_at=now()
      where id=v_campaign.id;
 
@@ -477,7 +476,11 @@ begin
         ) values (
             v_user,'BOOST_CAMPAIGN_REFUND',null,'Boost campaign refund',
             v_refund,floor(v_balance)::bigint,
-            jsonb_build_object('campaign_id',v_campaign.id,'refund_method','time_prorated')
+            jsonb_build_object(
+                'campaign_id',v_campaign.id,
+                'refund_method','unused_reserved_budget',
+                'coin_spent',v_campaign.coin_spent
+            )
         );
     else
         select spendable_coin_balance into v_balance
@@ -487,6 +490,7 @@ begin
     return jsonb_build_object(
         'success',true,
         'campaign_id',v_campaign.id,
+        'spent',v_campaign.coin_spent,
         'refunded',v_refund,
         'balance',coalesce(floor(v_balance),0)::bigint
     );
@@ -577,6 +581,7 @@ declare
 begin
     if p_viewer is null or p_campaign.user_id=p_viewer then return false; end if;
     if p_campaign.status<>'ACTIVE' or p_campaign.starts_at>now() or p_campaign.ends_at<=now() then return false; end if;
+    if p_campaign.coin_spent>=p_campaign.coin_budget then return false; end if;
     if p_campaign.audience_scope='ALL_CAMPUSES' then return true; end if;
 
     select nullif(btrim(coalesce(p.university,'')),'')
@@ -605,6 +610,7 @@ declare
     v_surface text := upper(coalesce(p_surface,''));
     v_campaign public.blink_boost_campaigns_v2%rowtype;
     v_inserted boolean := false;
+    v_impression_charge bigint := 0;
     v_points_before integer := 0;
     v_points_after integer := 0;
 begin
@@ -628,6 +634,21 @@ begin
     on conflict(campaign_id,viewer_id,event_type,surface) do nothing;
     v_inserted := found;
 
+    if v_inserted and v_event='IMPRESSION' then
+        v_impression_charge := greatest(
+            1,
+            ceil(
+                v_campaign.coin_budget::numeric /
+                greatest(1,v_campaign.estimated_reach_high)::numeric
+            )::bigint
+        );
+
+        update public.blink_boost_campaigns_v2
+           set coin_spent=least(coin_budget,coin_spent+v_impression_charge),
+               updated_at=now()
+         where id=v_campaign.id;
+    end if;
+
     select coalesce(p.points,0) into v_points_before
     from public.profiles p where p.id=v_user;
 
@@ -643,6 +664,8 @@ begin
         'recorded',v_inserted,
         'campaign_id',v_campaign.id,
         'event_type',v_event,
+        'reserved_budget',v_campaign.coin_budget,
+        'impression_charge',case when v_event='IMPRESSION' and v_inserted then v_impression_charge else 0 end,
         'points_awarded',greatest(0,v_points_after-v_points_before)
     );
 end;
@@ -1051,6 +1074,70 @@ from public, anon;
 grant execute on function public.get_blink_boost_missions(integer)
 to authenticated;
 
+create or replace function private.settle_blink_boost_campaigns(
+    p_user uuid
+) returns void
+language plpgsql
+security definer
+set search_path=''
+as $$
+declare
+    v_campaign public.blink_boost_campaigns_v2%rowtype;
+    v_refund bigint;
+    v_balance numeric;
+begin
+    if p_user is null then return; end if;
+
+    insert into public.user_balances(user_id,spendable_coin_balance,updated_at)
+    values(p_user,0,now())
+    on conflict(user_id) do nothing;
+
+    for v_campaign in
+        select c.*
+        from public.blink_boost_campaigns_v2 c
+        where c.user_id=p_user
+          and c.status='ACTIVE'
+          and c.ends_at<=now()
+        order by c.ends_at
+        for update skip locked
+    loop
+        v_refund:=greatest(
+            0,
+            v_campaign.coin_budget-v_campaign.coin_spent-v_campaign.coin_refunded
+        );
+
+        update public.blink_boost_campaigns_v2
+           set status='ENDED',
+               coin_refunded=coin_refunded+v_refund,
+               updated_at=now()
+         where id=v_campaign.id
+           and status='ACTIVE';
+
+        if found and v_refund>0 then
+            update public.user_balances
+               set spendable_coin_balance=spendable_coin_balance+v_refund,
+                   updated_at=now()
+             where user_id=p_user
+            returning spendable_coin_balance into v_balance;
+
+            insert into public.blink_coin_transactions(
+                user_id,kind,catalog_id,item_name,amount,balance_after,metadata
+            ) values (
+                p_user,'BOOST_CAMPAIGN_REFUND',null,'Expired Boost unused reserve',
+                v_refund,floor(v_balance)::bigint,
+                jsonb_build_object(
+                    'campaign_id',v_campaign.id,
+                    'refund_method','expired_unused_reserved_budget',
+                    'coin_spent',v_campaign.coin_spent
+                )
+            );
+        end if;
+    end loop;
+end;
+$$;
+revoke all on function private.settle_blink_boost_campaigns(uuid)
+from public, anon, authenticated;
+
 create or replace function public.get_my_blink_boost_campaigns()
 returns jsonb
 language sql
@@ -1085,7 +1172,6 @@ to authenticated;
 create or replace function public.get_blink_boost_growth_state()
 returns jsonb
 language plpgsql
-stable
 security definer
 set search_path=''
 as $$
@@ -1095,6 +1181,8 @@ declare
     v_campaigns jsonb;
 begin
     if v_user is null then raise exception 'AUTH_REQUIRED'; end if;
+    perform private.settle_blink_boost_campaigns(v_user);
+
     select coalesce(floor(b.spendable_coin_balance),0)::bigint into v_balance
     from public.user_balances b where b.user_id=v_user;
 
