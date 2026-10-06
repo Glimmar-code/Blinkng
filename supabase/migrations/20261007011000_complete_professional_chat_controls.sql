@@ -425,3 +425,115 @@ $$;
 
 revoke all on function public.forward_chat_message(uuid, text) from public, anon;
 grant execute on function public.forward_chat_message(uuid, text) to authenticated;
+
+
+alter table public.conversation_notification_preferences
+  add column if not exists mute_until timestamptz;
+
+create or replace function public.get_conversation_notification_settings(
+  p_conversation_ids uuid[]
+)
+returns table(
+  conversation_id uuid,
+  notification_mode text,
+  mute_until timestamptz,
+  preview_mode text,
+  vibration_enabled boolean
+)
+language sql
+security invoker
+set search_path = 'public', 'pg_temp'
+as $$
+  select
+    ids.conversation_id,
+    case
+      when coalesce(p.messages_enabled, true) = false then 'none'
+      when coalesce(p.mentions_only, false) = true then 'mentions'
+      else 'all'
+    end as notification_mode,
+    p.mute_until,
+    coalesce(p.preview_mode, 'inherit') as preview_mode,
+    coalesce(p.vibration_enabled, true) as vibration_enabled
+  from unnest(coalesce(p_conversation_ids, array[]::uuid[])) ids(conversation_id)
+  left join public.conversation_notification_preferences p
+    on p.conversation_id = ids.conversation_id
+   and p.user_id = auth.uid()
+  where exists (
+    select 1 from public.conversation_participants cp
+    where cp.conversation_id = ids.conversation_id
+      and cp.user_id = auth.uid()
+      and cp.left_at is null
+  );
+$$;
+
+revoke all on function public.get_conversation_notification_settings(uuid[]) from public, anon;
+grant execute on function public.get_conversation_notification_settings(uuid[]) to authenticated;
+
+create or replace function public.set_conversation_notification_settings(
+  p_conversation_id uuid,
+  p_notification_mode text,
+  p_mute_until timestamptz default null,
+  p_preview_mode text default 'inherit',
+  p_vibration_enabled boolean default true
+)
+returns boolean
+language plpgsql
+security invoker
+set search_path = 'public', 'pg_temp'
+as $$
+declare
+  v_me uuid := auth.uid();
+  v_mode text := lower(coalesce(p_notification_mode, 'all'));
+begin
+  if v_me is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
+  if v_mode not in ('all','mentions','none') then raise exception 'INVALID_NOTIFICATION_MODE'; end if;
+  if p_preview_mode not in ('inherit','full','sender_only','hidden') then
+    raise exception 'INVALID_PREVIEW_MODE';
+  end if;
+  if not exists (
+    select 1 from public.conversation_participants cp
+    where cp.conversation_id = p_conversation_id
+      and cp.user_id = v_me
+      and cp.left_at is null
+  ) then
+    raise exception 'NOT_A_CONVERSATION_MEMBER';
+  end if;
+
+  insert into public.conversation_notification_preferences(
+    conversation_id,
+    user_id,
+    messages_enabled,
+    calls_enabled,
+    mentions_only,
+    preview_mode,
+    vibration_enabled,
+    mute_until,
+    updated_at
+  )
+  values (
+    p_conversation_id,
+    v_me,
+    v_mode <> 'none',
+    true,
+    v_mode = 'mentions',
+    p_preview_mode,
+    p_vibration_enabled,
+    case when v_mode = 'none' then p_mute_until else null end,
+    now()
+  )
+  on conflict (conversation_id, user_id) do update
+  set messages_enabled = excluded.messages_enabled,
+      mentions_only = excluded.mentions_only,
+      preview_mode = excluded.preview_mode,
+      vibration_enabled = excluded.vibration_enabled,
+      mute_until = excluded.mute_until,
+      updated_at = now();
+
+  return true;
+end;
+$$;
+
+revoke all on function public.set_conversation_notification_settings(uuid, text, timestamptz, text, boolean)
+  from public, anon;
+grant execute on function public.set_conversation_notification_settings(uuid, text, timestamptz, text, boolean)
+  to authenticated;
