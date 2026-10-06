@@ -821,6 +821,7 @@ fun MainAppContent(
                             onReportMessage = { message, reason -> viewModel.reportChatMessage(message, reason) },
                             onClearConversation = { conversation -> viewModel.clearConversationForMe(conversation) },
                             onMuteConversation = { conversation, muted -> viewModel.setConversationMuted(conversation, muted) },
+                            onMuteConversationFor = { conversation, duration -> viewModel.muteConversationFor(conversation, duration) },
                             onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
                         ),
                         onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
