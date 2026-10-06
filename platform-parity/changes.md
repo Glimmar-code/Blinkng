@@ -235,6 +235,18 @@ Backend/shared behavior preserved: The 10-coin base reward, 5/10/15 milestones, 
 Tests/validation: Android rewarded-ad regression tests plus Android quality/release-smoke, Windows build/package, Windows parity, Supabase safety and domain integration gates must pass before merge.
 Owner/reviewer note: This exception covers only Android AdMob loading/show lifecycle reliability. It cannot waive Windows parity for any shared Blink Coin business rule or future cross-platform earning feature.
 
+---
+
+PARITY-EXCEPTION: android-boost-drops-wallet-ui-polish-20261006
+Date: 2026-10-06
+Feature: Android Boost/Drops wallet-state and monochrome presentation repair
+Android behavior: Stops failed Boost/Drops state requests from rendering a fake zero coin balance, replaces raw backend/schema errors with user-safe retry copy, reorders the Android Boost form so Audience is step 2 and Boost power is step 4, and changes the Android Drops balance/Organize/publish emphasis from purple to the app's monochrome surface/on-surface palette.
+Why this is genuinely Android-specific presentation: The patch changes only Android Compose rendering and Android RPC error presentation. It does not change the shared Blink Coin wallet, prices, Boost campaign rules, Drop eligibility/reservation/claim rules, ranking, notifications, or server data contracts.
+Windows equivalent or reason no equivalent is needed: Windows keeps its existing Boost/Drops-equivalent desktop presentation and continues to read the same server-authoritative wallet and backend contracts. The mobile step order, compact phone controls and Android Compose color treatment do not map one-to-one to the desktop layout. No Windows user capability or business rule is removed or added by this patch.
+Backend/shared behavior preserved: Production still uses public.user_balances.spendable_coin_balance as the wallet authority. Boost pricing/charging and Drop reserve/refund/claim remain server-authoritative. Existing organic ranking and recommendation behavior are unchanged.
+Tests/validation: Android unit/lint/instrumentation/debug/release checks, Supabase safety, Windows build/package and parity gates must pass on Testlab before merge.
+Owner/reviewer note: This exception is limited to Android presentation/error-state parity. Any future wallet, pricing, Boost delivery, Drop reward, or cross-platform business-rule change still requires Windows/shared implementation.
+
 
 ---
 

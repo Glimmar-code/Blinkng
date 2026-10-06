@@ -164,8 +164,11 @@ class BlinkDropsService {
             message.contains("DROP_COMMENT_TOO_LONG") -> "Your comment is too long."
             message.contains("UNIVERSITY_REQUIRED_FOR_DROP") -> "Add your university before creating a campus-only Drop."
             message.contains("INVALID_CREATOR") -> "That creator cannot be followed."
-            message.isNotBlank() -> message
-            else -> "BLINK Drops request failed ($code)."
+            message.contains("schema cache", ignoreCase = true) ||
+                message.contains("Could not find the function", ignoreCase = true) ->
+                "BLINK Drops is updating. Please try again shortly."
+            message.isNotBlank() -> "BLINK Drops couldn't complete that request. Please try again."
+            else -> "BLINK Drops couldn't complete that request. Please try again."
         }
     }
 }
