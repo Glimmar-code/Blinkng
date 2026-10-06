@@ -216,3 +216,15 @@ Owner/reviewer note: This exception is limited to mobile feed chrome motion. Any
 - Added 10-question rounds, difficulty selection, answer feedback, scores/results, replay, and difficulty switching on both Android and Windows.
 - Kept the old server game tables/repository code intact for future game additions; this change only resets the visible Games experience.
 
+
+---
+
+PARITY-EXCEPTION: android-admob-rewarded-reliability-20261006
+Date: 2026-10-06
+Feature: Rewarded AdMob Earn Coin preload/show reliability
+Android behavior: Keeps the existing opt-in Android AdMob rewarded-coin feature but makes a single user tap reliable when the rewarded ad is still preloading. The Android Activity waits for the in-flight Google Mobile Ads load, auto-opens the ad when ready, blocks duplicate taps/claims, re-preloads after resume/dismissal/failure, and surfaces network/no-fill/load errors instead of making the Earn Coin action appear dead.
+Why this is genuinely Android-only: The reliability work is entirely inside Google Mobile Ads RewardedAd and Android Activity lifecycle adapters. Google Mobile Ads for Android cannot run inside the Windows desktop client.
+Windows equivalent or reason no equivalent is needed: Windows does not expose an AdMob rewarded-ad surface. It continues to use the same server-authoritative Blink Coin wallet, balances, Store spending and reward policy. A future Windows rewarded-ad provider must use a desktop-compatible advertising SDK rather than emulating the Android adapter.
+Backend/shared behavior preserved: The 10-coin base reward, 5/10/15 milestones, 15-ad daily cap, wallet ledger, Supabase reward RPCs, Store/VIP spending and verification rules are unchanged. This patch does not make AdMob SSV mandatory while the existing SSV callback configuration is being audited.
+Tests/validation: Android rewarded-ad regression tests plus Android quality/release-smoke, Windows build/package, Windows parity, Supabase safety and domain integration gates must pass before merge.
+Owner/reviewer note: This exception covers only Android AdMob loading/show lifecycle reliability. It cannot waive Windows parity for any shared Blink Coin business rule or future cross-platform earning feature.
