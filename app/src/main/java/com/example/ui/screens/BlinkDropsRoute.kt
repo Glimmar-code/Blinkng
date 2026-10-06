@@ -41,6 +41,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -50,8 +51,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +64,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,12 +74,15 @@ import com.blinkng.shared.BlinkDropAction
 import com.blinkng.shared.BlinkDropAudienceScope
 import com.blinkng.shared.BlinkDropTargetType
 import com.blinkng.shared.BlinkDropsPolicy
+import com.example.data.network.NetworkMonitor
 import com.example.data.supabase.BlinkDropsService
+import com.example.data.supabase.BlinkWalletStore
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.NumberFormat
 import java.util.Locale
+import java.util.UUID
 
 private enum class DropsColumn { GIVEAWAYS, TOP_GIVERS }
 
@@ -95,12 +102,15 @@ private data class DropItem(
     val winnerCount: Int,
     val claimedCount: Int,
     val totalCoins: Long,
+    val coinDistributed: Long,
+    val coinRefunded: Long,
     val action: String,
     val targetType: String,
     val targetTitle: String,
     val audienceScope: String,
     val targetUniversity: String,
     val status: String,
+    val createdAt: String,
     val endsAt: String,
     val eligible: Boolean,
 )
@@ -115,14 +125,20 @@ private data class TopGiver(
     val following: Boolean,
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BlinkDropsRoute(
     onClose: () -> Unit,
     initialDropId: String? = null,
+    onGetCoins: () -> Unit = {},
 ) {
     val service = remember { BlinkDropsService() }
     val scope = rememberCoroutineScope()
     val formatter = remember { NumberFormat.getIntegerInstance(Locale.US) }
+    val context = LocalContext.current
+    val networkMonitor = remember(context) { NetworkMonitor(context) }
+    val isOnline by networkMonitor.isOnline.collectAsState(initial = networkMonitor.isCurrentlyOnline())
+    val liveWalletBalance by BlinkWalletStore.balance.collectAsState()
 
     var selectedColumn by remember { mutableStateOf(DropsColumn.GIVEAWAYS) }
     var state by remember { mutableStateOf<JSONObject?>(null) }
@@ -133,6 +149,11 @@ fun BlinkDropsRoute(
     var showOrganizer by remember { mutableStateOf(false) }
     var commentDrop by remember { mutableStateOf<DropItem?>(null) }
     var busyDropId by remember { mutableStateOf<String?>(null) }
+    var creatingDrop by remember { mutableStateOf(false) }
+    var pendingCreateRequestId by remember { mutableStateOf<String?>(null) }
+    var pendingCreateFingerprint by remember { mutableStateOf<String?>(null) }
+    var historyFilter by remember { mutableStateOf("ALL") }
+    var historyQuery by remember { mutableStateOf("") }
 
     fun refresh() {
         refreshNonce += 1
@@ -143,6 +164,7 @@ fun BlinkDropsRoute(
         service.state(30)
             .onSuccess {
                 state = it
+                it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
                 error = null
             }
             .onFailure {
@@ -151,13 +173,28 @@ fun BlinkDropsRoute(
         loading = false
     }
 
-    val balance = state?.takeIf { it.has("balance") }?.optLong("balance")
+    val stateBalance = state?.takeIf { it.has("balance") }?.optLong("balance")
+    val balance = liveWalletBalance ?: stateBalance
     val activeDrops = state?.optJSONArray("active_drops").toDropItems()
-    val myDrops = state?.optJSONArray("my_drops").toDropItems()
+    val allMyDrops = state?.optJSONArray("my_drops").toDropItems()
+    val myDrops = allMyDrops
+        .filter { historyFilter == "ALL" || it.status.equals(historyFilter, ignoreCase = true) }
+        .filter {
+            val q = historyQuery.trim()
+            q.isBlank() ||
+                it.targetTitle.contains(q, ignoreCase = true) ||
+                it.targetType.contains(q, ignoreCase = true) ||
+                it.action.contains(q, ignoreCase = true) ||
+                it.status.contains(q, ignoreCase = true)
+        }
     val topGivers = state?.optJSONArray("top_givers").toTopGivers()
     val targets = state?.optJSONObject("targets")
     val postTargets = targets?.optJSONArray("posts").toTargets()
     val listingTargets = targets?.optJSONArray("listings").toTargets()
+    val eligibleAll = state?.optInt("eligible_followers_all", 0) ?: 0
+    val eligibleCampus = state?.optInt("eligible_followers_my_campus", 0) ?: 0
+    val receipts = state?.optJSONArray("receipts").objects()
+    val analytics = state?.optJSONObject("analytics")
 
     fun complete(drop: DropItem, comment: String? = null) {
         if (busyDropId != null) return
