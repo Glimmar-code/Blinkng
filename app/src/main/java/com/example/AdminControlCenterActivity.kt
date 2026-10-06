@@ -536,7 +536,13 @@ private fun FeatureActionDialog(
     var error by remember { mutableStateOf<String?>(null) }
 
     val isBulkUsers = kind.contains("bulk_users")
-    val needsUser = targetType == "user" || isBulkUsers
+    val needsPrimaryUser = targetType == "user" ||
+        isBulkUsers ||
+        kind == "user" ||
+        kind.startsWith("user_")
+    val needsAssigneeUser = kind == "report_assignee"
+    val needsProfileLinkUser = feature.featureId == 177
+    val needsUserPicker = needsPrimaryUser || needsAssigneeUser || needsProfileLinkUser
     val needsPost = targetType == "post" || targetType == "reel"
     val needsGenericTarget = targetType in setOf("comment", "report", "campaign", "verification_request")
     val needsUniversity = kind.contains("university") || kind.contains("universities")
@@ -552,7 +558,7 @@ private fun FeatureActionDialog(
         "query", "message", "user_message", "user_message_reason", "bulk_users_message",
         "university_message", "universities_message", "scheduled_message", "campaign_message",
         "user_note", "report_note", "role_template", "bonus_config", "event_config",
-        "version", "emergency", "feature_toggle", "report_assignee"
+        "version", "emergency", "feature_toggle"
     )
 
     val mergedUniversities = remember(universityQuery, serverUniversities) {
@@ -596,8 +602,12 @@ private fun FeatureActionDialog(
             error = "Overall-owner access is required."
             return
         }
-        if (needsUser && selectedUsers.isEmpty() && kind != "user_optional") {
-            error = "Select at least one user."
+        if (needsUserPicker && selectedUsers.isEmpty() && kind != "user_optional") {
+            error = when {
+                needsAssigneeUser -> "Select the admin/user to assign."
+                needsProfileLinkUser -> "Select the profile to link."
+                else -> "Select at least one user."
+            }
             return
         }
         if (needsPost && selectedPost == null) {
@@ -651,7 +661,7 @@ private fun FeatureActionDialog(
         }
         if (needsScheduledAt) options.put("scheduled_at", scheduledAt.trim())
         when (feature.featureId) {
-            153 -> options.put("admin_id", textInput.trim())
+            153 -> options.put("admin_id", selectedUsers.firstOrNull()?.id ?: JSONObject.NULL)
             173 -> options.put("title", textInput.trim())
             174 -> options.put("image_url", textInput.trim())
             175 -> {
@@ -664,7 +674,7 @@ private fun FeatureActionDialog(
             }
             177 -> {
                 options.put("link_type", "profile")
-                options.put("link_id", linkRef.trim())
+                options.put("link_id", selectedUsers.firstOrNull()?.id ?: JSONObject.NULL)
             }
             178 -> {
                 options.put("link_type", "marketplace")
@@ -674,7 +684,7 @@ private fun FeatureActionDialog(
 
         val entityRef = when {
             needsPost -> selectedPost?.id
-            needsUser -> selectedUsers.firstOrNull()?.id
+            needsPrimaryUser -> selectedUsers.firstOrNull()?.id
             needsGenericTarget -> genericRef.trim()
             else -> null
         }
@@ -715,8 +725,15 @@ private fun FeatureActionDialog(
                 Text(feature.routeKey, color = BlinkPink, fontSize = 8.sp)
                 Spacer(Modifier.height(12.dp))
 
-                if (needsUser) {
-                    Text("Select user", fontWeight = FontWeight.Bold)
+                if (needsUserPicker) {
+                    Text(
+                        when {
+                            needsAssigneeUser -> "Select assignee"
+                            needsProfileLinkUser -> "Select profile"
+                            else -> "Select user"
+                        },
+                        fontWeight = FontWeight.Bold
+                    )
                     OutlinedTextField(
                         userQuery,
                         { userQuery = it },
@@ -737,7 +754,7 @@ private fun FeatureActionDialog(
                             user = user,
                             selected = selectedUsers.any { it.id == user.id },
                             onClick = {
-                                selectedUsers = if (isBulkUsers) {
+                                selectedUsers = if (isBulkUsers && !needsAssigneeUser && !needsProfileLinkUser) {
                                     if (selectedUsers.any { it.id == user.id }) selectedUsers.filterNot { it.id == user.id }
                                     else selectedUsers + user
                                 } else listOf(user)
@@ -811,7 +828,6 @@ private fun FeatureActionDialog(
                         "role_template" -> "Role template name"
                         "version" -> "Required app version"
                         "feature_toggle" -> "Feature key"
-                        "report_assignee" -> "Admin user ID"
                         "bonus_config" -> "Bonus name / configuration"
                         "event_config" -> "Event name / configuration"
                         "emergency" -> "Emergency command"
@@ -905,7 +921,7 @@ private fun FeatureActionDialog(
                     Spacer(Modifier.height(8.dp))
                 }
 
-                if (feature.featureId in 176..178) {
+                if (feature.featureId == 176 || feature.featureId == 178) {
                     OutlinedTextField(
                         linkRef,
                         { linkRef = it },
