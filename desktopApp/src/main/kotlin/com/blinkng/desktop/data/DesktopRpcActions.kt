@@ -12,6 +12,7 @@ import org.json.JSONObject
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 data class DesktopCall(
@@ -179,6 +180,17 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
                 .put("p_event_type", eventType.trim().uppercase())
                 .put("p_surface", surface.trim().uppercase()),
         )
+
+    suspend fun recordContentView(postId: String): JSONObject =
+        rpc(
+            "record_content_view",
+            JSONObject()
+                .put("p_post_id", postId.trim())
+                .put("p_event_id", UUID.randomUUID().toString()),
+        )
+
+    suspend fun bookmarkPost(postId: String): JSONObject =
+        rpc("bookmark_post", JSONObject().put("p_post_id", postId.trim()))
 
     suspend fun adminDashboard(): AdminDashboardSnapshot {
         requireAdmin()
