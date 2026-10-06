@@ -32,6 +32,8 @@ import com.example.notification.BlinkNotificationType
 import com.example.notification.NotificationPreferenceStore
 import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
+import com.blinkng.shared.BlinkActivityPulseDefaults
+import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.example.util.safeBoolean
 import com.example.util.safeInt
 import com.example.util.safeString
@@ -127,6 +129,7 @@ data class BlinkUiState(
     val pendingMessageCount: Int = 0,
     val blinkCoinBalance: Long = 0L,
     val economyPolicy: BlinkEconomyPolicy = BlinkEconomyDefaults.policy,
+    val activityPulsePolicy: BlinkActivityPulsePolicy = BlinkActivityPulseDefaults.policy,
     val rewardedAdsToday: Int = 0,
     val rewardedCoinsToday: Int = 0,
     val dailyMissions: List<BlinkDailyMission> = emptyList(),
@@ -1509,6 +1512,10 @@ private suspend fun restoreSupabaseSession() {
 
                 try {
                     runCatching { supabaseService.setMyPresence(true) }
+                    val activityPulsePolicyRequest = async {
+                        runCatching { supabaseService.fetchActivityPulsePolicy() }
+                            .onFailure { Log.w(TAG, "Activity pulse policy fetch failed", it) }
+                    }
                     val postsRequest = async {
                         runCatching { postRepository.fetchFeed(isReel = false) }
                             .onFailure { Log.e(TAG, "Post page fetch failed", it) }
@@ -1524,6 +1531,8 @@ private suspend fun restoreSupabaseSession() {
                     val postsResult = postsRequest.await()
                     val reelsResult = reelsRequest.await()
                     val followingResult = followingRequest.await()
+                    val activityPulsePolicy = activityPulsePolicyRequest.await()
+                        .getOrDefault(before.activityPulsePolicy)
 
                     val normalPosts = postsResult.getOrNull()
                         ?.let { reconcileRefreshedFeed(before.posts, it) }
@@ -1545,6 +1554,7 @@ private suspend fun restoreSupabaseSession() {
                         hasMoreFollowingPosts = followingResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMoreFollowingPosts,
                         hasMoreReels = reelsResult.getOrNull()?.size?.let { it >= 30 } ?: before.hasMoreReels,
                         isLiveSupabaseConnected = feedSucceeded,
+                        activityPulsePolicy = activityPulsePolicy,
                         isFeedLoading = false,
                         feedErrorMessage = if (!feedSucceeded) {
                             "Couldn't refresh live Supabase data. Check your connection and try again."
@@ -1736,6 +1746,26 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = _uiState.value.copy(leaderboardUsers = live)
                 }
                 .onFailure { Log.w(TAG, "Progress leaderboard refresh failed", it) }
+        }
+    }
+
+    fun recordActivityPulseEvent(
+        surface: String,
+        eventType: String,
+        realCount: Int,
+        displayedValue: Int?,
+        metadata: Map<String, String> = emptyMap(),
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                supabaseService.recordActivityPulseEvent(
+                    surface = surface,
+                    eventType = eventType,
+                    realCount = realCount,
+                    displayedValue = displayedValue,
+                    metadata = metadata,
+                )
+            }.onFailure { Log.w(TAG, "Activity pulse analytics failed", it) }
         }
     }
 
@@ -2879,25 +2909,56 @@ private suspend fun restoreSupabaseSession() {
         }
     }
     fun toggleRepost(postId: String) {
+        val state = _uiState.value
+        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts)
+            .firstOrNull { it.id == postId } ?: return
+        val optimisticReposted = !target.isRepostedByMe
+        val optimisticCount = (target.repostsCount + if (optimisticReposted) 1 else -1).coerceAtLeast(0)
+
+        fun update(
+            items: List<FeedPost>,
+            reposted: Boolean,
+            count: Int
+        ): List<FeedPost> = items.map { post ->
+            if (post.id == postId) {
+                post.copy(isRepostedByMe = reposted, repostsCount = count)
+            } else {
+                post
+            }
+        }
+
+        _uiState.value = state.copy(
+            posts = update(state.posts, optimisticReposted, optimisticCount),
+            followingPosts = update(state.followingPosts, optimisticReposted, optimisticCount),
+            reels = update(state.reels, optimisticReposted, optimisticCount),
+            discoverPosts = update(state.discoverPosts, optimisticReposted, optimisticCount)
+        )
+        persistCurrentFeed()
+
         viewModelScope.launch {
-            val result = postRepository.togglePostRepost(postId)
+            val result = runCatching { postRepository.togglePostRepost(postId) }.getOrNull()
             if (result == null) {
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    posts = update(latest.posts, target.isRepostedByMe, target.repostsCount),
+                    followingPosts = update(latest.followingPosts, target.isRepostedByMe, target.repostsCount),
+                    reels = update(latest.reels, target.isRepostedByMe, target.repostsCount),
+                    discoverPosts = update(latest.discoverPosts, target.isRepostedByMe, target.repostsCount)
+                )
+                persistCurrentFeed()
                 showToast("Couldn't update repost.")
                 return@launch
             }
-            val (reposted, count) = result
-            fun update(items: List<FeedPost>): List<FeedPost> = items.map { post ->
-                if (post.id == postId) post.copy(isRepostedByMe = reposted, repostsCount = count) else post
-            }
-            val state = _uiState.value
-            _uiState.value = state.copy(
-                posts = update(state.posts),
-                followingPosts = update(state.followingPosts),
-                reels = update(state.reels),
-                discoverPosts = update(state.discoverPosts)
+
+            val (serverReposted, serverCount) = result
+            val latest = _uiState.value
+            _uiState.value = latest.copy(
+                posts = update(latest.posts, serverReposted, serverCount),
+                followingPosts = update(latest.followingPosts, serverReposted, serverCount),
+                reels = update(latest.reels, serverReposted, serverCount),
+                discoverPosts = update(latest.discoverPosts, serverReposted, serverCount)
             )
             persistCurrentFeed()
-            showToast(if (reposted) "Reposted to your people." else "Repost removed.")
         }
     }
     fun toggleBookmark(postId: String) {
