@@ -3425,14 +3425,32 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun sendVideoMessage(partnerUsername: String, uri: Uri) {
+        sendAttachmentMessage(partnerUsername, uri, "video")
+    }
+
+    fun sendAttachmentMessage(partnerUsername: String, uri: Uri, kind: String) {
         val cleanPartner = partnerUsername.trim().removePrefix("@")
+        val cleanKind = kind.trim().lowercase().let {
+            when (it) {
+                "image", "video", "audio", "voice", "document" -> it
+                else -> return
+            }
+        }
         if (cleanPartner.isBlank()) return
-        val tempId = "temp_video_${UUID.randomUUID()}"
+
+        val tempId = "temp_attachment_${UUID.randomUUID()}"
         val uid = supabaseService.getCurrentUserId() ?: "local_user"
         val existingConversationId = _uiState.value.conversations
             .firstOrNull { it.partnerUsername.equals(cleanPartner, true) }
             ?.id
             ?.takeUnless { it.startsWith("local_") }
+        val label = when (cleanKind) {
+            "image" -> "Photo"
+            "video" -> "Video"
+            "voice" -> "Voice message"
+            "audio" -> "Audio"
+            else -> uri.lastPathSegment?.substringAfterLast('/')?.ifBlank { "Document" } ?: "Document"
+        }
         appendMessageToState(
             cleanPartner,
             ChatMessage(
@@ -3440,28 +3458,84 @@ private suspend fun restoreSupabaseSession() {
                 conversationId = existingConversationId,
                 senderId = uid,
                 receiverUsername = cleanPartner,
-                text = "Video",
+                text = label,
                 rawTimestamp = java.time.Instant.now().toString(),
                 timestamp = "Sending...",
                 isFromMe = true,
                 isRead = false,
-                status = MessageStatus.SENDING
+                status = MessageStatus.SENDING,
+                isVoiceNote = cleanKind == "voice",
+                attachedImageUrl = uri.toString().takeIf { cleanKind == "image" },
+                attachedVideoUrl = uri.toString().takeIf { cleanKind == "video" },
+                attachedAudioUrl = uri.toString().takeIf { cleanKind == "audio" || cleanKind == "voice" },
+                attachedDocumentUrl = uri.toString().takeIf { cleanKind == "document" },
+                attachmentName = uri.lastPathSegment?.substringAfterLast('/'),
+                messageType = cleanKind,
+                localAttachmentUri = uri.toString()
             )
         )
+
         viewModelScope.launch(Dispatchers.IO) {
-            MessageMediaService.sendVideoMessage(appContext, cleanPartner, uri).fold(
+            MessageMediaService.sendAttachmentMessage(appContext, cleanPartner, uri, cleanKind).fold(
                 onSuccess = { serverMsg ->
                     withContext(Dispatchers.Main) {
-                        replaceMessageInState(cleanPartner, tempId, serverMsg.copy(status = MessageStatus.SENT))
+                        replaceMessageInState(
+                            cleanPartner,
+                            tempId,
+                            serverMsg.copy(
+                                receiverUsername = cleanPartner,
+                                status = MessageStatus.SENT,
+                                localAttachmentUri = null
+                            )
+                        )
                     }
-                    // Confirmed media messages receive the same durable Room ordering as text.
                     persistConversationsNow()
-                    withContext(Dispatchers.Main) { fetchSupabaseData() }
+                    chatRepository.triggerMessagePushBestEffort(serverMsg.id)
                 },
-                onFailure = {
+                onFailure = { error ->
                     withContext(Dispatchers.Main) {
                         updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
-                        showToast("Failed to send video. Tap the message to retry.")
+                        showToast(error.message ?: "Attachment couldn't be sent. Tap to retry.")
+                    }
+                }
+            )
+        }
+    }
+
+    private fun retryAttachmentMessage(partnerUsername: String, failedMessage: ChatMessage) {
+        val localUri = failedMessage.localAttachmentUri?.takeIf { it.isNotBlank() } ?: run {
+            showToast("Choose the attachment again to resend it.")
+            return
+        }
+        val uri = runCatching { Uri.parse(localUri) }.getOrNull() ?: return
+        updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.SENDING)
+        persistConversations()
+        viewModelScope.launch(Dispatchers.IO) {
+            MessageMediaService.sendAttachmentMessage(
+                appContext,
+                partnerUsername.trim().removePrefix("@"),
+                uri,
+                failedMessage.messageType
+            ).fold(
+                onSuccess = { serverMsg ->
+                    withContext(Dispatchers.Main) {
+                        replaceMessageInState(
+                            partnerUsername,
+                            failedMessage.id,
+                            serverMsg.copy(
+                                receiverUsername = partnerUsername.trim().removePrefix("@"),
+                                status = MessageStatus.SENT,
+                                localAttachmentUri = null
+                            )
+                        )
+                    }
+                    persistConversationsNow()
+                    chatRepository.triggerMessagePushBestEffort(serverMsg.id)
+                },
+                onFailure = { error ->
+                    withContext(Dispatchers.Main) {
+                        updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.FAILED)
+                        showToast(error.message ?: "Attachment retry failed.")
                     }
                 }
             )
@@ -3469,6 +3543,10 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun retrySendMessage(partnerUsername: String, failedMessage: ChatMessage) {
+        if (failedMessage.messageType != "text" && !failedMessage.localAttachmentUri.isNullOrBlank()) {
+            retryAttachmentMessage(partnerUsername, failedMessage)
+            return
+        }
         if (failedMessage.text.isBlank()) return
         updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.SENDING)
         persistConversations()
