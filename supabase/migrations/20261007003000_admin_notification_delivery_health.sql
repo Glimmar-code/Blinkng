@@ -20,6 +20,8 @@ declare
   v_message_failed bigint := 0;
   v_message_sending bigint := 0;
   v_message_retried bigint := 0;
+  v_social_failures_24h bigint := 0;
+  v_message_failures_24h bigint := 0;
   v_failures_24h bigint := 0;
 begin
   v_actor := private.require_blink_admin();
@@ -42,7 +44,7 @@ begin
         count(*) filter (where attempts > 1),
         count(*) filter (where status = 'failed' and updated_at >= now() - interval '24 hours')
       from public.notification_push_dispatches
-    $q$ into v_social_sent, v_social_failed, v_social_sending, v_social_retried, v_failures_24h;
+    $q$ into v_social_sent, v_social_failed, v_social_sending, v_social_retried, v_social_failures_24h;
   end if;
 
   if to_regclass('public.message_push_dispatches') is not null then
@@ -54,26 +56,10 @@ begin
         count(*) filter (where attempts > 1),
         count(*) filter (where status = 'failed' and updated_at >= now() - interval '24 hours')
       from public.message_push_dispatches
-    $q$ into v_message_sent, v_message_failed, v_message_sending, v_message_retried, v_message_retried;
-    -- The fifth value above is immediately replaced below so retry counts remain correct.
-    execute $q$
-      select count(*)
-      from public.message_push_dispatches
-      where status = 'failed' and updated_at >= now() - interval '24 hours'
-    $q$ into v_message_retried;
+    $q$ into v_message_sent, v_message_failed, v_message_sending, v_message_retried, v_message_failures_24h;
   end if;
 
-  -- Recompute the 24h failure total without exposing raw provider errors.
-  if to_regclass('public.message_push_dispatches') is not null then
-    execute $q$
-      select
-        (select count(*) from public.notification_push_dispatches
-          where status = 'failed' and updated_at >= now() - interval '24 hours')
-        +
-        (select count(*) from public.message_push_dispatches
-          where status = 'failed' and updated_at >= now() - interval '24 hours')
-    $q$ into v_failures_24h;
-  end if;
+  v_failures_24h := coalesce(v_social_failures_24h, 0) + coalesce(v_message_failures_24h, 0);
 
   return jsonb_build_object(
     'active_devices', coalesce(v_active_devices, 0),
