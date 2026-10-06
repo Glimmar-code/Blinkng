@@ -934,13 +934,20 @@ private fun PremiumHomeFeed(
                 resumePrefs.getFloat("home_header_fraction:$laneResumeKey", 0f)
             }.getOrDefault(0f).coerceIn(0f, 1f)
 
-            if (savedIndex == 0 || homeRowKeys.isNotEmpty()) {
+            val canRestoreNow =
+                homeRowKeys.isNotEmpty() ||
+                    (savedIndex == 0 && savedOffset <= 1 && savedKey.isNullOrBlank())
+            if (canRestoreNow) {
                 restoringScroll = true
                 pendingRestoredHeaderFraction[0] = savedHeaderFraction
                 delay(16)
                 val maxIndex = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
                 val restoredIndex = if (homeRowKeys.isNotEmpty()) {
-                    resolveFeedRestoreIndex(savedKey, homeRowKeys, savedIndex)
+                    val rowStartIndex =
+                        if (!errorMessage.isNullOrBlank() && stableRankedPosts.isNotEmpty()) 1 else 0
+                    val resolvedRowIndex =
+                        resolveFeedRestoreIndex(savedKey, homeRowKeys, savedIndex - rowStartIndex)
+                    (resolvedRowIndex + rowStartIndex).coerceAtMost(maxIndex)
                 } else savedIndex.coerceAtMost(maxIndex)
                 runCatching { listState.scrollToItem(restoredIndex.coerceAtMost(maxIndex), savedOffset) }
                 restoredLaneResumeKey = laneResumeKey
@@ -1339,8 +1346,11 @@ private fun PremiumHomeFeed(
                                                     onProfileClick = onProfileClick,
                                                     onVotePoll = onVotePoll,
                                                     isAuthor =
-                                                        post.author.trim().removePrefix("@").lowercase() == currentUserKey ||
-                                                            post.authorUsername.trim().removePrefix("@").lowercase() == currentUserKey,
+                                                        currentUserKey.isNotBlank() &&
+                                                            (
+                                                                post.author.trim().removePrefix("@").lowercase() == currentUserKey ||
+                                                                    post.authorUsername.trim().removePrefix("@").lowercase() == currentUserKey
+                                                            ),
                                                     onDelete = { onDeletePost(post.id) }
                                                 )
                                             }
@@ -1434,8 +1444,12 @@ private fun PremiumHomeFeed(
 
                         androidx.compose.animation.AnimatedVisibility(
                             visible = pendingNewPostCount > 0 && !isRefreshing,
-                            enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { -it / 2 },
-                            exit = fadeOut(tween(110)) + slideOutVertically(tween(130)) { -it / 2 },
+                            enter =
+                                fadeIn(tween(if (reduceMotion) 0 else 140)) +
+                                    slideInVertically(tween(if (reduceMotion) 0 else 160)) { -it / 2 },
+                            exit =
+                                fadeOut(tween(if (reduceMotion) 0 else 110)) +
+                                    slideOutVertically(tween(if (reduceMotion) 0 else 130)) { -it / 2 },
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
                                 .padding(top = 12.dp)
