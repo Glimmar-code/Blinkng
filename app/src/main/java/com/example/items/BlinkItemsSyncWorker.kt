@@ -7,8 +7,8 @@ import androidx.work.WorkerParameters
 /**
  * Periodic, battery-conscious Item refresh.
  *
- * Steps are read only when the user enabled Steps and explicitly granted Health Connect
- * background access. Weather uses the last user-approved coarse location and never starts
+ * Steps are read only when the user enabled Steps and granted physical-activity access.
+ * Weather uses the last user-approved coarse location and never starts
  * a location request by itself.
  */
 class BlinkItemsSyncWorker(
@@ -20,7 +20,7 @@ class BlinkItemsSyncWorker(
         if (BlinkItemPreferences.stepsEnabled(applicationContext)) {
             runCatching {
                 val steps = BlinkStepRepository(applicationContext)
-                if (steps.isAvailable() && steps.hasReadPermission(requireBackground = true)) {
+                if (steps.isAvailable() && steps.hasReadPermission()) {
                     steps.readTodaySteps().getOrNull()?.let {
                         BlinkItemNotificationManager.evaluateStepMilestone(applicationContext, it)
                     }
