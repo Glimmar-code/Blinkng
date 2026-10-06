@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -85,6 +86,9 @@ import com.example.util.TimeFormatters
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import kotlin.math.min
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 
 /* ============================================================================
  * PROFILE SCREEN
@@ -2548,6 +2552,56 @@ private fun ProfileShareSheet(
                         modifier = Modifier.size(42.dp)
                     )
                 }
+            }
+
+            val profileLink = remember(username) {
+                ShareLinkManager.generateShareLink(ShareContentType.PROFILE, username)
+            }
+            val qrMatrix = remember(profileLink) {
+                runCatching {
+                    QRCodeWriter().encode(profileLink, BarcodeFormat.QR_CODE, 41, 41)
+                }.getOrNull()
+            }
+
+            qrMatrix?.let { matrix ->
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(vertical = 12.dp)
+                        .testTag("profile_share_qr"),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, Color.Black.copy(alpha = 0.12f))
+                ) {
+                    Canvas(
+                        modifier = Modifier
+                            .size(178.dp)
+                            .padding(12.dp)
+                    ) {
+                        val cell = min(size.width / matrix.width, size.height / matrix.height)
+                        val qrSize = cell * matrix.width
+                        val left = (size.width - qrSize) / 2f
+                        val top = (size.height - qrSize) / 2f
+                        for (x in 0 until matrix.width) {
+                            for (y in 0 until matrix.height) {
+                                if (matrix[x, y]) {
+                                    drawRect(
+                                        color = Color.Black,
+                                        topLeft = Offset(left + x * cell, top + y * cell),
+                                        size = androidx.compose.ui.geometry.Size(cell + 0.5f, cell + 0.5f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                Text(
+                    "Scan to open @$username on BLINK",
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
             Button(onClick = onShare, modifier = Modifier.fillMaxWidth()) {
