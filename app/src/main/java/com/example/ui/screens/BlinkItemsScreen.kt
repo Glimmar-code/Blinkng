@@ -65,7 +65,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.health.connect.client.PermissionController
 import coil.compose.AsyncImage
 import com.example.data.models.UserProfile
 import com.example.data.repository.FollowStateStore
@@ -503,16 +502,18 @@ private fun BlinkStepsItem() {
         }
     }
 
-    val healthPermissionLauncher = rememberLauncherForActivityResult(
-        PermissionController.createRequestPermissionResultContract()
+    val activityPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
     ) { granted ->
-        val canRead = BlinkStepRepository.readStepsPermission in granted
+        val canRead = granted || !repository.requiresRuntimePermission()
         BlinkItemPreferences.setStepsEnabled(context, canRead)
         enabled = canRead
         if (canRead) {
             requestStepNotificationsIfNeeded()
             refresh()
-        } else message = "Step access was not granted."
+        } else {
+            message = "Physical activity access was not granted."
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -561,16 +562,23 @@ private fun BlinkStepsItem() {
         item {
             BlinkSettingSwitch(
                 title = "Steps",
-                subtitle = if (enabled) "Reading from Health Connect" else "Off until you enable it",
+                subtitle = if (enabled) "Using your phone’s step counter" else "Off until you enable it",
                 checked = enabled,
                 onCheckedChange = { turnOn ->
                     if (!turnOn) {
                         BlinkItemPreferences.setStepsEnabled(context, false)
                         enabled = false
                     } else if (!repository.isAvailable()) {
-                        message = "Health Connect is unavailable on this device."
+                        message = "This device does not provide a hardware step counter."
                     } else {
-                        healthPermissionLauncher.launch(repository.requestedPermissions())
+                        if (repository.hasReadPermission()) {
+                            BlinkItemPreferences.setStepsEnabled(context, true)
+                            enabled = true
+                            requestStepNotificationsIfNeeded()
+                            refresh()
+                        } else {
+                            activityPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                        }
                     }
                 }
             )
