@@ -255,6 +255,11 @@ private fun BoostCampaignColumn(
     val service = remember { BlinkEconomyService() }
     val scope = rememberCoroutineScope()
     val formatter = remember { NumberFormat.getNumberInstance(Locale.US) }
+    val context = LocalContext.current
+    val networkMonitor = remember(context) { NetworkMonitor(context) }
+    val isOnline by networkMonitor.isOnline.collectAsState(initial = networkMonitor.isCurrentlyOnline())
+    val liveWalletBalance by BlinkWalletStore.balance.collectAsState()
+    val draft = remember { BoostDraftStore.value }
 
     val me = myProfile.username.trim().removePrefix("@")
     val ownPosts = remember(posts, me) {
@@ -271,39 +276,68 @@ private fun BoostCampaignColumn(
         marketItems.filter { it.sellerUsername.trim().removePrefix("@").equals(me, ignoreCase = true) }
     }
 
-    var targetType by remember { mutableStateOf(BlinkBoostTargetType.POST) }
-    var targetId by remember { mutableStateOf("") }
-    var boostPower by remember { mutableIntStateOf(25) }
-    var objective by remember { mutableStateOf(BlinkBoostObjective.VIEWS) }
-    var audience by remember { mutableStateOf(BlinkBoostAudienceScope.MY_UNIVERSITY) }
-    var durationDays by remember { mutableIntStateOf(3) }
-    var selectedUniversity by remember { mutableStateOf("") }
+    var targetType by remember { mutableStateOf(draft.targetType) }
+    var targetId by remember { mutableStateOf(draft.targetId) }
+    var boostPower by remember { mutableIntStateOf(draft.boostPower) }
+    var objective by remember { mutableStateOf(draft.objective) }
+    var audience by remember { mutableStateOf(draft.audience) }
+    var durationDays by remember { mutableIntStateOf(draft.durationDays) }
+    var selectedUniversity by remember { mutableStateOf(draft.selectedUniversity) }
     var universityMenuOpen by remember { mutableStateOf(false) }
+    var lastTargetType by remember { mutableStateOf(targetType) }
 
     var state by remember { mutableStateOf<JSONObject?>(null) }
     var quote by remember { mutableStateOf<JSONObject?>(null) }
     var quoteLoading by remember { mutableStateOf(false) }
+    var stateLoading by remember { mutableStateOf(false) }
     var working by remember { mutableStateOf(false) }
+    var budgetWorking by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var confirmStart by remember { mutableStateOf(false) }
+    var refreshNonce by remember { mutableIntStateOf(0) }
+    var pendingRequestId by remember { mutableStateOf<String?>(null) }
+    var historyFilter by remember { mutableStateOf("ALL") }
+    var historyQuery by remember { mutableStateOf("") }
 
     suspend fun reloadState() {
+        stateLoading = true
         service.boostGrowthState()
-            .onSuccess { state = it; error = null }
+            .onSuccess {
+                state = it
+                it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
+                error = null
+            }
             .onFailure { error = boostUserMessage(it, "Boost is temporarily unavailable. Please try again.") }
+        stateLoading = false
     }
 
-    LaunchedEffect(Unit) { reloadState() }
+    LaunchedEffect(refreshNonce) { reloadState() }
 
     LaunchedEffect(targetType) {
-        targetId = when (targetType) {
-            BlinkBoostTargetType.PROFILE -> myProfile.id
-            else -> ""
+        if (targetType != lastTargetType) {
+            targetId = when (targetType) {
+                BlinkBoostTargetType.PROFILE -> myProfile.id
+                else -> ""
+            }
+            objective = defaultObjectiveFor(targetType)
+            pendingRequestId = null
+            quote = null
+            error = null
         }
-        objective = defaultObjectiveFor(targetType)
-        quote = null
-        error = null
+        lastTargetType = targetType
+    }
+
+    LaunchedEffect(targetType, targetId, boostPower, objective, audience, durationDays, selectedUniversity) {
+        BoostDraftStore.value = BoostDraftSnapshot(
+            targetType = targetType,
+            targetId = targetId,
+            boostPower = boostPower,
+            objective = objective,
+            audience = audience,
+            durationDays = durationDays,
+            selectedUniversity = selectedUniversity,
+        )
     }
 
     val targetUniversity = when (audience) {
@@ -335,10 +369,22 @@ private fun BoostCampaignColumn(
         quoteLoading = false
     }
 
-    val balance = state?.takeIf { it.has("balance") }?.optLong("balance")
+    val stateBalance = state?.takeIf { it.has("balance") }?.optLong("balance")
+    val balance = liveWalletBalance ?: stateBalance
     val quoteCost = quote?.optLong("coin_cost", 0L) ?: 0L
-    val activeCampaigns = state?.optJSONArray("campaigns").objectList()
-        .filter { it.optString("status") == "ACTIVE" }
+    val campaigns = state?.optJSONArray("campaigns").objectList()
+    val activeCampaigns = campaigns.filter { it.optString("status") == "ACTIVE" }
+    val historyCampaigns = campaigns.filter { it.optString("status") != "ACTIVE" }
+        .filter { historyFilter == "ALL" || it.optString("status").equals(historyFilter, ignoreCase = true) }
+        .filter {
+            val q = historyQuery.trim()
+            q.isBlank() ||
+                it.optString("target_type").contains(q, ignoreCase = true) ||
+                it.optString("objective").contains(q, ignoreCase = true) ||
+                it.optString("status").contains(q, ignoreCase = true)
+        }
+    val receipts = state?.optJSONArray("receipts").objectList()
+    val analytics = state?.optJSONObject("analytics")
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
