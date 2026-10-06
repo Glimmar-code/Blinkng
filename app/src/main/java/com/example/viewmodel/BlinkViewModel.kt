@@ -20,6 +20,7 @@ import com.example.data.models.*
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.*
 import com.example.data.supabase.BlinkEconomyService
+import com.example.data.supabase.BlinkWalletStore
 import com.example.data.supabase.RealtimeEvent
 import com.example.data.supabase.SupabaseRealtimeManager
 import com.example.data.supabase.SupabaseService
@@ -263,6 +264,14 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                 .onFailure { Log.w(TAG, "Offline cache pruning failed", it) }
         }
         viewModelScope.launch { realtimeManager.events.collect { handleRealtimeEvent(it) } }
+        viewModelScope.launch {
+            BlinkWalletStore.balance.collectLatest { balance ->
+                if (balance != null && _uiState.value.blinkCoinBalance != balance) {
+                    _uiState.value = _uiState.value.copy(blinkCoinBalance = balance)
+                    persistExtendedCache()
+                }
+            }
+        }
         // MESSAGING_RELIABILITY_AUDIT_V3: expose real messages-channel readiness, not feed REST health.
         viewModelScope.launch {
             realtimeManager.messagesSubscribed.collectLatest { subscribed ->
@@ -1058,6 +1067,7 @@ private suspend fun restoreSupabaseSession() {
                 .getOrNull()
             val missions = missionsPayload?.let(::parseDailyMissions) ?: before.dailyMissions
 
+            BlinkWalletStore.publish(balance)
             withContext(Dispatchers.Main) {
                 val latest = _uiState.value
                 val currentMe = latest.myProfile
@@ -1197,6 +1207,7 @@ private suspend fun restoreSupabaseSession() {
                     val bonus = payload.optInt("milestone_bonus", 0)
                     val adsToday = payload.optInt("ads_today", latest.rewardedAdsToday + 1)
                     val balance = payload.optLong("balance", latest.blinkCoinBalance + reward)
+                    BlinkWalletStore.publish(balance)
                     _uiState.value = latest.copy(
                         blinkCoinBalance = balance,
                         rewardedAdsToday = adsToday.coerceIn(0, latest.economyPolicy.rewardedAdDailyLimit),
@@ -1233,6 +1244,7 @@ private suspend fun restoreSupabaseSession() {
                     val updatedMe = latest.myProfile.copy(totalXp = totalXp, xpLevel = xpLevel)
                     val coinReward = payload.optInt("coin_reward", 0)
                     val xpReward = payload.optInt("xp_reward", 0)
+                    BlinkWalletStore.publish(balance)
                     _uiState.value = latest.copy(
                         myProfile = updatedMe,
                         profiles = latest.profiles.map {
@@ -1371,6 +1383,7 @@ private suspend fun restoreSupabaseSession() {
                     val refreshed = runCatching { profileRepository.fetchById(_uiState.value.myProfile.id) }.getOrNull()
                     val latest = _uiState.value
                     val updatedMe = refreshed ?: latest.myProfile.copy(verificationBadge = VerificationBadge.BLUE)
+                    BlinkWalletStore.publish(balance)
                     _uiState.value = latest.copy(
                         myProfile = updatedMe,
                         profiles = latest.profiles.map {
@@ -3788,6 +3801,13 @@ private suspend fun restoreSupabaseSession() {
                 )
             }
             is RealtimeEvent.ConnectHubEvent -> refreshConnectHub()
+            is RealtimeEvent.WalletBalanceEvent -> {
+                if (event.userId == _uiState.value.myProfile.id) {
+                    BlinkWalletStore.publish(event.balance)
+                    _uiState.value = _uiState.value.copy(blinkCoinBalance = event.balance)
+                    persistExtendedCache()
+                }
+            }
             is RealtimeEvent.FeedPostEvent -> viewModelScope.launch {
                 val current = _uiState.value
                 if (event.eventType.equals("DELETE", ignoreCase = true)) {
