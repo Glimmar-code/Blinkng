@@ -147,6 +147,12 @@ fun ConnectSection(
     }
 
     val activeNowCount = remember(liveProfiles) { liveProfiles.count { it.onlineNow } }
+    // The current viewer is actively using Connect, so the pulse always has at least one real active unit.
+    val realOnlineCount = remember(liveProfiles) { 1 + liveProfiles.count { it.onlineNow } }
+    val communityActivity = rememberFluctuatingPulse(
+        range = communityActivityRange(realOnlineCount),
+        tickMillis = 2_800L
+    )
 
     LaunchedEffect(Unit) {
         FollowStateStore.refresh()
@@ -175,6 +181,50 @@ fun ConnectSection(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(top = 10.dp, bottom = 120.dp)
             ) {
+                item(key = "connect_community_activity", contentType = "activity_pulse") {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "Community Activity",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                                Text(
+                                    "Live activity pulse • $realOnlineCount real active",
+                                    fontSize = 10.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(100.dp),
+                                color = BlinkOnlineGreen.copy(alpha = .13f)
+                            ) {
+                                Text(
+                                    communityActivity.toString(),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                    color = BlinkOnlineGreen,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+
                 item(key = "connect_hub_and_students") {
                     ConnectHubPremiumPanel(
                         current = current,
