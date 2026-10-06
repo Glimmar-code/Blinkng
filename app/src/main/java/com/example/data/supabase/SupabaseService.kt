@@ -4183,6 +4183,34 @@ suspend fun uploadPostMedia(
         }
     }
 
+    suspend fun markActivityUnread(activityId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            val isNotification = activityId.startsWith("notification:")
+            val rowId = activityId.removePrefix("notification:")
+            if (rowId.isBlank()) return@withContext false
+
+            val table = if (isNotification) "notifications" else "activities"
+            val ownerField = if (isNotification) "user_id" else "recipient_id"
+            val body = JSONObject().put("is_read", false)
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/$table?id=eq.${encodeValue(rowId)}&$ownerField=eq.${encodeValue(uid)}",
+                    true
+                ).patch(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Could not mark notification unread."))
+                }
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "markActivityUnread failed", e)
+            false
+        }
+    }
+
     suspend fun markAllActivitiesRead(): Boolean = withContext(Dispatchers.IO) {
         try {
             val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
