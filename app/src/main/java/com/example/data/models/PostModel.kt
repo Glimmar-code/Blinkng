@@ -265,7 +265,8 @@ data class ChatMessage(
     val contactName: String? = null,
     val contactPhone: String? = null,
     val forwardedFromMessageId: String? = null,
-    val isForwarded: Boolean = false
+    val isForwarded: Boolean = false,
+    val localAttachmentUri: String? = null
 )
 
 data class ChatConversation(
