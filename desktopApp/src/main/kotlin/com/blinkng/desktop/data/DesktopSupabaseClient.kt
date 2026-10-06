@@ -451,6 +451,42 @@ class DesktopSupabaseClient(
         mode
     }
 
+    suspend fun isProfileMuted(profileId: String): Boolean = withContext(Dispatchers.IO) {
+        val response = runCatching {
+            postObject(
+                "/rest/v1/rpc/is_profile_muted",
+                JSONObject().put("p_profile_id", profileId),
+            )
+        }.getOrNull()
+        when (response) {
+            is JSONObject -> response.optString("value").equals("true", true) || response.optBoolean("value", false)
+            else -> false
+        }
+    }
+
+    suspend fun fetchProfileConnections(profileId: String, kind: String): List<DesktopProfile> =
+        withContext(Dispatchers.IO) {
+            val response = runCatching {
+                postObject(
+                    "/rest/v1/rpc/get_profile_connections",
+                    JSONObject()
+                        .put("p_profile_id", profileId)
+                        .put("p_kind", kind.uppercase())
+                        .put("p_limit", 200),
+                )
+            }.getOrNull()
+            val rows = when (response) {
+                is JSONArray -> response
+                is JSONObject -> JSONArray().put(response)
+                else -> JSONArray()
+            }
+            buildList {
+                for (index in 0 until rows.length()) {
+                    rows.optJSONObject(index)?.let(::parseProfile)?.let(::add)
+                }
+            }
+        }
+
     suspend fun setProfileMuted(profileId: String, muted: Boolean): Boolean = withContext(Dispatchers.IO) {
         val response = postObject(
             "/rest/v1/rpc/set_profile_muted",
