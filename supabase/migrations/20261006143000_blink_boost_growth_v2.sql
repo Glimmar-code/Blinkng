@@ -746,6 +746,8 @@ declare
     v_user uuid := auth.uid();
     v_limit integer := greatest(1,least(coalesce(p_limit,12),30));
     v_cap integer := private.blink_boost_growth_number('mission_daily_suggested_points',20)::integer;
+    v_earned_today integer := 0;
+    v_remaining integer := 0;
     v_offered integer := 0;
     v_items jsonb := '[]'::jsonb;
     v_actions jsonb;
@@ -756,6 +758,27 @@ declare
 begin
     if v_user is null then raise exception 'AUTH_REQUIRED'; end if;
 
+    select coalesce(sum(t.points_delta),0)::integer
+      into v_earned_today
+      from public.point_transactions t
+     where t.user_id=v_user
+       and t.created_at>=date_trunc('day',now())
+       and exists (
+           select 1
+             from public.blink_boost_delivery_events_v2 e
+             join public.blink_boost_campaigns_v2 c on c.id=e.campaign_id
+            where e.viewer_id=v_user
+              and e.surface='MISSIONS'
+              and e.created_at>=date_trunc('day',now())
+              and (
+                  (t.action_type in ('view_post','like_post','comment','save_post') and c.target_id=t.reference_id)
+                  or (t.action_type='follow_user' and c.user_id=t.reference_id)
+                  or (t.action_type='view_listing' and c.target_id=t.reference_id)
+              )
+       );
+
+    v_remaining:=greatest(0,v_cap-v_earned_today);
+
     for v_campaign in
         select c.*
         from public.blink_boost_campaigns_v2 c
@@ -763,33 +786,33 @@ begin
         order by c.boost_power desc,c.starts_at asc
         limit v_limit
     loop
-        exit when v_offered>=v_cap;
+        exit when v_offered>=v_remaining;
         select * into v_owner from public.profiles p where p.id=v_campaign.user_id;
         v_actions := '[]'::jsonb;
 
         if v_campaign.target_type in ('POST','REEL') then
-            if v_offered+1<=v_cap and not exists(
+            if v_offered+1<=v_remaining and not exists(
                 select 1 from public.point_transactions t
                 where t.user_id=v_user and t.action_type='view_post' and t.reference_id=v_campaign.target_id
             ) then
                 v_actions:=v_actions||jsonb_build_array(jsonb_build_object('key','view','label','Qualified view','points',1));
                 v_offered:=v_offered+1;
             end if;
-            if v_offered+1<=v_cap and not exists(
+            if v_offered+1<=v_remaining and not exists(
                 select 1 from public.point_transactions t
                 where t.user_id=v_user and t.action_type='like_post' and t.reference_id=v_campaign.target_id
             ) then
                 v_actions:=v_actions||jsonb_build_array(jsonb_build_object('key','like','label','Like','points',1));
                 v_offered:=v_offered+1;
             end if;
-            if v_offered+2<=v_cap and not exists(
+            if v_offered+2<=v_remaining and not exists(
                 select 1 from public.point_transactions t
                 where t.user_id=v_user and t.action_type='comment' and t.reference_id=v_campaign.target_id
             ) then
                 v_actions:=v_actions||jsonb_build_array(jsonb_build_object('key','comment','label','Comment','points',2));
                 v_offered:=v_offered+2;
             end if;
-            if v_offered+2<=v_cap and not exists(
+            if v_offered+2<=v_remaining and not exists(
                 select 1 from public.point_transactions t
                 where t.user_id=v_user and t.action_type='save_post' and t.reference_id=v_campaign.target_id
             ) then
@@ -797,7 +820,7 @@ begin
                 v_offered:=v_offered+2;
             end if;
         elsif v_campaign.target_type='LISTING' then
-            if v_offered+1<=v_cap and not exists(
+            if v_offered+1<=v_remaining and not exists(
                 select 1 from public.point_transactions t
                 where t.user_id=v_user and t.action_type='view_listing' and t.reference_id=v_campaign.target_id
             ) then
@@ -806,7 +829,7 @@ begin
             end if;
         end if;
 
-        if v_offered+3<=v_cap and not exists(
+        if v_offered+3<=v_remaining and not exists(
             select 1 from public.point_transactions t
             where t.user_id=v_user and t.action_type='follow_user' and t.reference_id=v_campaign.user_id
         ) then
@@ -850,6 +873,8 @@ begin
 
     return jsonb_build_object(
         'suggested_points_cap',v_cap,
+        'earned_from_missions_today',v_earned_today,
+        'remaining_mission_points_today',v_remaining,
         'offered_points',v_offered,
         'items',v_items,
         'note','Rewards use the existing idempotent Rank Points ledger; there is no second boost bonus.'
