@@ -1,4 +1,13 @@
 -- BLINK Drops v1
+-- destructive-change-reviewed
+-- The only DROP TABLE statements in this migration are the existing pg_temp
+-- scratch tables inside private_ranking.get_discovery_feed; no persistent
+-- BLINK/user table or column is dropped.
+-- rollback-plan: disable Drop creation/claims, refund every ACTIVE Drop's
+-- unclaimed reserve through the existing coin ledger, revoke the Drop RPCs,
+-- restore award_points/award_repost_distribution_points/capture_native_signal
+-- and get_discovery_feed from the immediately preceding migrations, and keep
+-- the Drop audit/claim tables read-only until balances and claims are reconciled.
 -- Additive, server-authoritative giveaway system.
 -- Coins are reserved from the organizer up front and rewards are deterministic:
 -- the first eligible followers who complete the required action receive the reward.
