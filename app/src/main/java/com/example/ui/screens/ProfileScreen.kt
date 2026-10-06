@@ -55,13 +55,23 @@ import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.profileRankLabel
 import com.blinkng.shared.xpProgress
+import com.blinkng.shared.canViewProfileField
 import com.example.data.models.FeedPost
 import com.example.data.models.MarketItem
+import com.example.data.models.ProfileConnectionKind
+import com.example.data.models.ProfileFollowerPoint
+import com.example.data.models.ProfileNotificationMode
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
+import com.example.data.supabase.SupabaseService
 import com.example.ui.components.FacultyBadge
 import com.example.ui.components.FollowerGrowthChart
+import com.example.ui.components.ProfileConnectionsSheet
+import com.example.ui.components.ProfileContentSearchBar
+import com.example.ui.components.ProfileNotificationPreferenceDialog
+import com.example.ui.components.ProfileOwnerInsightsCard
+import com.example.ui.components.ProfileReportDialog
 import com.example.ui.components.PostCard
 import com.example.ui.components.VerifiedMark
 import com.example.ui.components.BlinkVipMarkForUsername
@@ -139,8 +149,30 @@ fun ProfileScreen(
     var showProgressHub by rememberSaveable { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
 
+    val profileService = remember { SupabaseService() }
+    var followerHistory by remember(profile.id) { mutableStateOf<List<ProfileFollowerPoint>>(emptyList()) }
+    var connectionKind by remember(profile.id) { mutableStateOf<ProfileConnectionKind?>(null) }
+    var connectionProfiles by remember(profile.id) { mutableStateOf<List<UserProfile>>(emptyList()) }
+    var connectionLoading by remember(profile.id) { mutableStateOf(false) }
+    var profileSearchActive by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var profileSearchQuery by rememberSaveable(profile.id) { mutableStateOf("") }
+    var profileNotificationMode by remember(profile.id) { mutableStateOf(ProfileNotificationMode.OFF) }
+    var profileMuted by remember(profile.id) { mutableStateOf(false) }
+    var showNotificationDialog by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var showReportDialog by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var showBlockConfirm by rememberSaveable(profile.id) { mutableStateOf(false) }
+    var reportReason by rememberSaveable(profile.id) { mutableStateOf("") }
+    var profileActionBusy by remember(profile.id) { mutableStateOf(false) }
+
     LaunchedEffect(profile.id, isMe) {
-        if (!isMe && profile.id.isNotBlank()) FollowStateStore.refresh()
+        if (profile.id.isBlank()) return@LaunchedEffect
+        if (!isMe) {
+            FollowStateStore.refresh()
+            profileNotificationMode = profileService.getProfileNotificationPreference(profile.id)
+            profileMuted = profileService.isProfileMuted(profile.id)
+        } else {
+            followerHistory = profileService.fetchProfileFollowerHistory(profile.id, days = 30)
+        }
     }
 
     // Entrance choreography — content reveals itself once, on first composition.
@@ -152,10 +184,14 @@ fun ProfileScreen(
 
     val tabs = remember(isMe) {
         if (isMe) {
-            listOf("Posts", "Growth", "Liked", "Saved", "Market", "Skills", "About")
+            listOf("Posts", "Reels", "Market", "Skills", "About", "You")
         } else {
-            listOf("Posts", "Growth", "Liked", "Market", "Skills", "About")
+            listOf("Posts", "Reels", "Market", "Skills", "About")
         }
+    }
+
+    LaunchedEffect(tabs.size) {
+        if (selectedTab !in tabs.indices) selectedTab = 0
     }
 
     val bgColor = if (isDark) DarkBackground else LightBackground
@@ -175,6 +211,41 @@ fun ProfileScreen(
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val scrollState = rememberLazyListState()
+
+    val presenceVisible = canViewProfileField(
+        scope = profile.presenceVisibility,
+        isOwner = isMe,
+        isFollowing = isFollowing
+    )
+
+    fun openConnectionList(kind: ProfileConnectionKind) {
+        if (profile.id.isBlank()) return
+        connectionKind = kind
+        connectionProfiles = emptyList()
+        connectionLoading = true
+        overlayScope.launch {
+            connectionProfiles = profileService.fetchProfileConnections(profile.id, kind)
+            connectionLoading = false
+        }
+    }
+
+    fun matchingContent(reelsOnly: Boolean): List<FeedPost> {
+        val query = profileSearchQuery.trim()
+        return userPosts
+            .asSequence()
+            .filter { it.isReel == reelsOnly }
+            .filter { post ->
+                query.isBlank() ||
+                    post.text.contains(query, ignoreCase = true) ||
+                    post.tags.any { it.contains(query, ignoreCase = true) } ||
+                    post.category.contains(query, ignoreCase = true)
+            }
+            .sortedWith(
+                compareByDescending<FeedPost> { it.isPinned }
+                    .thenByDescending { it.createdAt }
+            )
+            .toList()
+    }
 
     val profileCompletion = remember(profile) { calculateProfileCompletion(profile) }
     val premiumIdentity by rememberBlinkPublicPremiumIdentity(
@@ -597,23 +668,25 @@ fun ProfileScreen(
                             color = BlinkPink,
                             fontWeight = FontWeight.SemiBold
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                Modifier
-                                    .size(7.dp)
-                                    .background(
-                                        if (profile.onlineNow) Color(0xFF22C55E) else Color(0xFF8B5A2B),
-                                        CircleShape
-                                    )
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = TimeFormatters.presenceStatus(profile.onlineNow, profile.lastSeenAt),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = if (profile.onlineNow) Color(0xFF22C55E) else textSecondary
-                            )
+                        if (presenceVisible) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier
+                                        .size(7.dp)
+                                        .background(
+                                            if (profile.onlineNow) Color(0xFF22C55E) else Color(0xFF8B8B8B),
+                                            CircleShape
+                                        )
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = TimeFormatters.presenceStatus(profile.onlineNow, profile.lastSeenAt),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (profile.onlineNow) Color(0xFF22C55E) else textSecondary
+                                )
+                            }
                         }
 
                         if (profile.professionalHeadline.isNotBlank()) {
@@ -683,15 +756,25 @@ fun ProfileScreen(
                                     .padding(vertical = 14.dp),
                                 horizontalArrangement = Arrangement.SpaceEvenly
                             ) {
-                                ProfileMetric(value = userPosts.size, label = "Posts", animateCount = true)
+                                ProfileMetric(
+                                    value = userPosts.count { !it.isReel },
+                                    label = "Posts",
+                                    animateCount = true
+                                )
                                 DividerMetric()
                                 ProfileMetric(
                                     value = profile.followerCount,
                                     label = "Followers",
-                                    animateCount = true
+                                    animateCount = true,
+                                    onClick = { openConnectionList(ProfileConnectionKind.FOLLOWERS) }
                                 )
                                 DividerMetric()
-                                ProfileMetric(value = profile.followingCount, label = "Following", animateCount = true)
+                                ProfileMetric(
+                                    value = profile.followingCount,
+                                    label = "Following",
+                                    animateCount = true,
+                                    onClick = { openConnectionList(ProfileConnectionKind.FOLLOWING) }
+                                )
                             }
                         }
 
@@ -863,6 +946,20 @@ fun ProfileScreen(
                 // ============================================================
                 // TABS — real sliding pill indicator
                 // ============================================================
+                if (profileSearchActive) {
+                    item(key = "profile_content_search") {
+                        ProfileContentSearchBar(
+                            query = profileSearchQuery,
+                            onQueryChange = { profileSearchQuery = it },
+                            onClose = {
+                                profileSearchActive = false
+                                profileSearchQuery = ""
+                            },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
+                        )
+                    }
+                }
+
                 item(key = "tabs") {
                     AnimatedTabRow(
                         tabs = tabs,
@@ -874,12 +971,11 @@ fun ProfileScreen(
                     )
                 }
 
-                // Keep post cards as real LazyColumn items. The old single-item Column
-                // composed every profile post at once and animated each one on entry.
-                when (selectedTab) {
-                    0 -> profilePostItems(
+                // Keep post cards as real LazyColumn items and keep private activity owner-only.
+                when (tabs.getOrNull(selectedTab)) {
+                    "Posts" -> profilePostItems(
                         keyPrefix = "posts",
-                        posts = userPosts,
+                        posts = matchingContent(reelsOnly = false),
                         profile = profile,
                         canDelete = isMe,
                         onDelete = onDeletePost,
@@ -891,49 +987,106 @@ fun ProfileScreen(
                         onBookmark = onBookmarkPost,
                         onShare = onSharePost,
                         onOptions = onOptionsClick,
-                        onProfileClick = onProfileClick
+                        onProfileClick = onProfileClick,
+                        onPin = if (isMe) { post ->
+                            overlayScope.launch {
+                                val changed = profileService.setProfilePin(post.id, !post.isPinned)
+                                if (changed) onRefreshProfile()
+                                else Toast.makeText(context, "Unable to update pin. Maximum is 3.", Toast.LENGTH_SHORT).show()
+                            }
+                        } else null
                     )
 
-                    1 -> item(key = "growth") {
-                        FollowerGrowthChart(
-                            profile = profile,
-                            isDark = isDark,
-                            onOpenGetVerified = onOpenGetVerified,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
+                    "Reels" -> profilePostItems(
+                        keyPrefix = "reels",
+                        posts = matchingContent(reelsOnly = true),
+                        profile = profile,
+                        canDelete = isMe,
+                        onDelete = onDeletePost,
+                        isDark = isDark,
+                        textPrimary = textPrimary,
+                        textSecondary = textSecondary,
+                        emptyTitle = "No reels yet",
+                        emptySubtitle = if (isMe) "Your reels will appear here." else "@${profile.username} has not posted a reel yet.",
+                        onLike = onLikePost,
+                        onComment = onCommentPost,
+                        onBookmark = onBookmarkPost,
+                        onShare = onSharePost,
+                        onOptions = onOptionsClick,
+                        onProfileClick = onProfileClick,
+                        onPin = if (isMe) { post ->
+                            overlayScope.launch {
+                                val changed = profileService.setProfilePin(post.id, !post.isPinned)
+                                if (changed) onRefreshProfile()
+                                else Toast.makeText(context, "Unable to update pin. Maximum is 3.", Toast.LENGTH_SHORT).show()
+                            }
+                        } else null
+                    )
+
+                    "Market" -> profileMarketItems(
+                        items = userMarketItems,
+                        isDark = isDark,
+                        textPrimary = textPrimary,
+                        textSecondary = textSecondary,
+                        onItemClick = onMarketItemClick
+                    )
+
+                    "Skills" -> item(key = "skills") {
+                        SkillsAndBadgesSection(
+                            profile, isMe, cardBg, borderColor, textPrimary, textSecondary,
+                            onEndorseSkill, onOpenGetVerified
                         )
                     }
 
-                    2 -> profilePostItems(
-                        keyPrefix = "liked",
-                        posts = likedPosts,
-                        profile = profile,
-                        canDelete = isMe,
-                        onDelete = onDeletePost,
-                        isDark = isDark,
-                        textPrimary = textPrimary,
-                        textSecondary = textSecondary,
-                        emptyTitle = "No liked posts yet ❤️",
-                        emptySubtitle = "Posts you like will be collected here.",
-                        onLike = onLikePost,
-                        onComment = onCommentPost,
-                        onBookmark = onBookmarkPost,
-                        onShare = onSharePost,
-                        onOptions = onOptionsClick,
-                        onProfileClick = onProfileClick
-                    )
+                    "About" -> item(key = "about") {
+                        AboutSection(
+                            profile = profile,
+                            isMe = isMe,
+                            isFollowing = isFollowing,
+                            cardBg = cardBg,
+                            borderColor = borderColor,
+                            textPrimary = textPrimary,
+                            textSecondary = textSecondary
+                        )
+                    }
 
-                    3 -> if (isMe) {
+                    "You" -> if (isMe) {
+                        item(key = "owner_insights") {
+                            ProfileOwnerInsightsCard(
+                                profile = profile,
+                                posts = userPosts,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
+                            )
+                        }
+                        item(key = "growth") {
+                            FollowerGrowthChart(
+                                profile = profile,
+                                history = followerHistory,
+                                isDark = isDark,
+                                onOpenGetVerified = onOpenGetVerified,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp)
+                            )
+                        }
+                        item(key = "saved_header") {
+                            Text(
+                                "Saved • private",
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Black,
+                                color = textPrimary
+                            )
+                        }
                         profilePostItems(
                             keyPrefix = "saved",
                             posts = savedPosts,
                             profile = profile,
-                            canDelete = true,
+                            canDelete = false,
                             onDelete = onDeletePost,
                             isDark = isDark,
                             textPrimary = textPrimary,
                             textSecondary = textSecondary,
-                            emptyTitle = "Nothing saved yet 🔖",
-                            emptySubtitle = "Save useful campus posts, tips and deals.",
+                            emptyTitle = "Nothing saved yet",
+                            emptySubtitle = "Posts you save will stay private here.",
                             onLike = onLikePost,
                             onComment = onCommentPost,
                             onBookmark = onBookmarkPost,
@@ -941,44 +1094,33 @@ fun ProfileScreen(
                             onOptions = onOptionsClick,
                             onProfileClick = onProfileClick
                         )
-                    } else {
-                        profileMarketItems(
-                            items = userMarketItems,
-                            isDark = isDark,
-                            textPrimary = textPrimary,
-                            textSecondary = textSecondary,
-                            onItemClick = onMarketItemClick
-                        )
-                    }
-
-                    4 -> if (isMe) {
-                        profileMarketItems(
-                            items = userMarketItems,
-                            isDark = isDark,
-                            textPrimary = textPrimary,
-                            textSecondary = textSecondary,
-                            onItemClick = onMarketItemClick
-                        )
-                    } else item(key = "skills") {
-                        SkillsAndBadgesSection(
-                            profile, isMe, cardBg, borderColor, textPrimary, textSecondary,
-                            onEndorseSkill, onOpenGetVerified
-                        )
-                    }
-
-                    5 -> item(key = if (isMe) "skills" else "about") {
-                        if (isMe) {
-                            SkillsAndBadgesSection(
-                                profile, isMe, cardBg, borderColor, textPrimary, textSecondary,
-                                onEndorseSkill, onOpenGetVerified
+                        item(key = "liked_header") {
+                            Text(
+                                "Liked • private",
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Black,
+                                color = textPrimary
                             )
-                        } else {
-                            AboutSection(profile, cardBg, borderColor, textPrimary, textSecondary)
                         }
-                    }
-
-                    6 -> item(key = "about") {
-                        AboutSection(profile, cardBg, borderColor, textPrimary, textSecondary)
+                        profilePostItems(
+                            keyPrefix = "liked",
+                            posts = likedPosts,
+                            profile = profile,
+                            canDelete = false,
+                            onDelete = onDeletePost,
+                            isDark = isDark,
+                            textPrimary = textPrimary,
+                            textSecondary = textSecondary,
+                            emptyTitle = "No liked posts yet",
+                            emptySubtitle = "Posts you like will stay private here.",
+                            onLike = onLikePost,
+                            onComment = onCommentPost,
+                            onBookmark = onBookmarkPost,
+                            onShare = onSharePost,
+                            onOptions = onOptionsClick,
+                            onProfileClick = onProfileClick
+                        )
                     }
                 }
             }
