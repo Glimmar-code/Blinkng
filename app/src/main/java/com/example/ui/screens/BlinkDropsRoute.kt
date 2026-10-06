@@ -203,6 +203,7 @@ fun BlinkDropsRoute(
             service.completeAction(drop.id, comment)
                 .onSuccess { result ->
                     val reward = result.optLong("reward", drop.rewardPerUser.toLong())
+                    result.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
                     message = "You earned ${formatter.format(reward)} BLINK Coins."
                     error = null
                     commentDrop = null
@@ -352,7 +353,8 @@ fun BlinkDropsRoute(
                                     busyDropId = drop.id
                                     scope.launch {
                                         service.cancelDrop(drop.id)
-                                            .onSuccess {
+                                            .onSuccess { result ->
+                                                result.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
                                                 message = "Drop cancelled. Unclaimed reserved coins were returned."
                                                 error = null
                                                 refresh()
@@ -413,9 +415,30 @@ fun BlinkDropsRoute(
             balance = balance,
             posts = postTargets,
             listings = listingTargets,
-            onDismiss = { showOrganizer = false },
+            eligibleFollowersAll = eligibleAll,
+            eligibleFollowersCampus = eligibleCampus,
+            isOnline = isOnline,
+            creating = creatingDrop,
+            onGetCoins = onGetCoins,
+            onDismiss = {
+                if (!creatingDrop) {
+                    showOrganizer = false
+                    pendingCreateRequestId = null
+                    pendingCreateFingerprint = null
+                }
+            },
             onCreate = { target, action, reward, winners, audience, duration ->
+                if (creatingDrop || !isOnline) return@OrganizeDropDialog
                 scope.launch {
+                    creatingDrop = true
+                    val fingerprint = listOf(
+                        target.type,target.id,action,reward.toString(),winners.toString(),
+                        audience,duration.toString()
+                    ).joinToString("|")
+                    if (pendingCreateRequestId == null || pendingCreateFingerprint != fingerprint) {
+                        pendingCreateRequestId = UUID.randomUUID().toString()
+                        pendingCreateFingerprint = fingerprint
+                    }
                     service.createDrop(
                         targetType = target.type,
                         targetId = target.id,
@@ -424,15 +447,20 @@ fun BlinkDropsRoute(
                         winnerCount = winners,
                         audienceScope = audience,
                         durationHours = duration,
+                        requestId = pendingCreateRequestId.orEmpty(),
                     ).onSuccess { result ->
+                        result.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
                         val notified = result.optInt("eligible_followers", 0)
                         message = "Drop started. $notified eligible follower${if (notified == 1) "" else "s"} notified."
                         error = null
+                        pendingCreateRequestId = null
+                        pendingCreateFingerprint = null
                         showOrganizer = false
                         refresh()
                     }.onFailure {
                         error = it.message ?: "Unable to create this Drop."
                     }
+                    creatingDrop = false
                 }
             }
         )
