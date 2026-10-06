@@ -215,6 +215,7 @@ fun PremiumMessagesScreen(
     onOpenConversation: (String) -> Unit,
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String, String?) -> Unit,
+    onForwardMessage: (String, ChatMessage) -> Unit = { _, _ -> },
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
     onSendAttachment: (String, Uri, String) -> Unit = { _, _, _ -> },
     onPresenceChange: (String, String) -> Unit = { _, _ -> },
@@ -324,6 +325,7 @@ fun PremiumMessagesScreen(
                         onOpenConversation = onOpenConversation,
                         onCloseConversation = onCloseConversation,
                         onSendMessage = onSendMessage,
+                        onForwardMessage = onForwardMessage,
                         onSendVideo = onSendVideo,
                         onSendAttachment = onSendAttachment,
                         onPresenceChange = onPresenceChange,
@@ -424,6 +426,7 @@ private fun PremiumMessagesMasterDetail(
     onOpenConversation: (String) -> Unit,
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String, String?) -> Unit,
+    onForwardMessage: (String, ChatMessage) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
     onSendAttachment: (String, Uri, String) -> Unit,
     onPresenceChange: (String, String) -> Unit,
@@ -480,11 +483,7 @@ private fun PremiumMessagesMasterDetail(
                     onSendMessage(displayedConversation.partnerUsername, content, replyTo)
                 },
                 onForward = { target, message ->
-                    val forwarded = message.text.takeIf { it.isNotBlank() }
-                        ?: message.attachedVideoUrl
-                        ?: message.attachedImageUrl
-                        ?: "Forwarded message"
-                    onSendMessage(target, forwarded, null)
+                    onForwardMessage(target, message)
                 },
                 interactionActions = interactionActions,
                 onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
