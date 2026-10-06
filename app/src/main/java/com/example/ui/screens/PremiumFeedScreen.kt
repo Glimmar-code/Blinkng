@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -59,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -66,6 +68,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -101,14 +104,10 @@ import coil.request.ImageRequest
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 private enum class PremiumFeedFilter { ALL, PHOTOS, POLLS }
-
-private enum class PremiumFeedChromeState {
-    EXPANDED,
-    COMPACT
-}
 
 private const val FEED_SPONSORED_INTERVAL = 8
 
@@ -532,19 +531,17 @@ private fun PremiumHomeFeed(
     var horizontalDrag by remember { mutableStateOf(0f) }
     val swipeThreshold = with(density) { 64.dp.toPx() }
 
-    // One state machine owns all feed chrome. Direction changes must travel far enough
-    // to be intentional, so fling settling and tiny finger jitter cannot make controls
-    // disappear and immediately bounce back.
-    val primaryCollapseThreshold = with(density) { 52.dp.toPx() }
-    val restoreChromeThreshold = with(density) { 40.dp.toPx() }
-    val downwardScrollAccumulator = remember { floatArrayOf(0f) }
-    val upwardScrollAccumulator = remember { floatArrayOf(0f) }
-    var chromeState by remember(laneResumeKey) {
-        mutableStateOf(PremiumFeedChromeState.EXPANDED)
-    }
-    val primaryHeaderVisible = chromeState == PremiumFeedChromeState.EXPANDED
+    // X-style feed chrome: move the header continuously with the user's vertical gesture
+    // instead of crossing a threshold and then fading/sliding it away. The offset is read
+    // during layout (not by the post list composition), keeping per-pixel motion isolated
+    // from feed cards, ranking and exposure tracking.
+    val headerDirectionDeadZone = with(density) { 12.dp.toPx() }
+    val headerHeightPx = remember(laneResumeKey) { mutableStateOf(0f) }
+    val headerOffsetPx = remember(laneResumeKey) { mutableStateOf(0f) }
+    val headerScrollDirection = remember(laneResumeKey) { intArrayOf(0) }
+    val pendingDirectionDistancePx = remember(laneResumeKey) { floatArrayOf(0f) }
+    var fabExpanded by remember(laneResumeKey) { mutableStateOf(true) }
     val secondaryChromeVisible = true
-    val fabExpanded = chromeState == PremiumFeedChromeState.EXPANDED
 
     val networkMonitor = remember(context) { NetworkMonitor(context) }
     val isOnline by networkMonitor.isOnline.collectAsState(
@@ -684,38 +681,118 @@ private fun PremiumHomeFeed(
 
     val scrollConnection = remember(
         onBottomBarVisibilityChange,
-        primaryCollapseThreshold,
-        restoreChromeThreshold
+        headerDirectionDeadZone
     ) {
         object : NestedScrollConnection {
             override fun onPreScroll(
                 available: androidx.compose.ui.geometry.Offset,
                 source: NestedScrollSource
             ): androidx.compose.ui.geometry.Offset {
-                when {
-                    available.y < -0.5f -> {
-                        upwardScrollAccumulator[0] = 0f
-                        downwardScrollAccumulator[0] += -available.y
-                        if (
-                            chromeState == PremiumFeedChromeState.EXPANDED &&
-                            downwardScrollAccumulator[0] >= primaryCollapseThreshold
-                        ) {
-                            chromeState = PremiumFeedChromeState.COMPACT
-                            downwardScrollAccumulator[0] = 0f
-                            onBottomBarVisibilityChange(true)
-                        }
+                val headerHeight = headerHeightPx.value
+                if (headerHeight <= 0f) return androidx.compose.ui.geometry.Offset.Zero
+
+                val deltaY = available.y
+                val absoluteDelta = if (deltaY < 0f) -deltaY else deltaY
+                if (absoluteDelta < 0.5f) return androidx.compose.ui.geometry.Offset.Zero
+
+                val direction = if (deltaY < 0f) -1 else 1
+                var effectiveDeltaY = deltaY
+
+                if (headerScrollDirection[0] == 0) {
+                    headerScrollDirection[0] = direction
+                    pendingDirectionDistancePx[0] = 0f
+                } else if (direction != headerScrollDirection[0]) {
+                    // Ignore tiny reversals caused by finger jitter or fling correction.
+                    // Only the distance beyond the dead-zone starts moving the header.
+                    pendingDirectionDistancePx[0] += absoluteDelta
+                    if (pendingDirectionDistancePx[0] < headerDirectionDeadZone) {
+                        return androidx.compose.ui.geometry.Offset.Zero
                     }
 
-                    available.y > 0.5f -> {
-                        downwardScrollAccumulator[0] = 0f
-                        upwardScrollAccumulator[0] =
-                            (upwardScrollAccumulator[0] + available.y)
-                                .coerceAtMost(restoreChromeThreshold)
-                    }
+                    val overflow =
+                        (pendingDirectionDistancePx[0] - headerDirectionDeadZone)
+                            .coerceAtLeast(0f)
+                    headerScrollDirection[0] = direction
+                    pendingDirectionDistancePx[0] = 0f
+                    effectiveDeltaY = if (direction < 0) -overflow else overflow
+                } else {
+                    pendingDirectionDistancePx[0] = 0f
                 }
-                return androidx.compose.ui.geometry.Offset.Zero
+
+                val previousOffset = headerOffsetPx.value
+                val nextOffset = clampFeedHeaderOffset(
+                    currentOffsetPx = previousOffset,
+                    deltaYPx = effectiveDeltaY,
+                    headerHeightPx = headerHeight
+                )
+                val consumedY = nextOffset - previousOffset
+
+                if (consumedY != 0f) {
+                    headerOffsetPx.value = nextOffset
+
+                    val collapseFraction =
+                        (-nextOffset / headerHeight).coerceIn(0f, 1f)
+                    when {
+                        fabExpanded && collapseFraction >= 0.65f -> fabExpanded = false
+                        !fabExpanded && collapseFraction <= 0.10f -> fabExpanded = true
+                    }
+
+                    // The feed header never owns the app's bottom navigation visibility.
+                    onBottomBarVisibilityChange(true)
+                }
+
+                // Consume exactly the distance used by the collapsing header. That keeps
+                // the cards moving naturally without a double-speed jump or empty gap.
+                return androidx.compose.ui.geometry.Offset(0f, consumedY)
             }
         }
+    }
+
+    LaunchedEffect(listState, laneResumeKey) {
+        var hadUserScroll = false
+        snapshotFlow { listState.isScrollInProgress }
+            .collectLatest { isScrolling ->
+                if (isScrolling) {
+                    hadUserScroll = true
+                    return@collectLatest
+                }
+                if (!hadUserScroll) return@collectLatest
+
+                // Give the final drag/fling frame time to land. A new scroll cancels this
+                // block through collectLatest before the settle animation can fight input.
+                delay(32)
+
+                val headerHeight = headerHeightPx.value
+                val currentOffset = headerOffsetPx.value
+                if (
+                    headerHeight > 0f &&
+                    currentOffset < -0.5f &&
+                    currentOffset > (-headerHeight + 0.5f)
+                ) {
+                    val atFeedTop =
+                        listState.firstVisibleItemIndex == 0 &&
+                            listState.firstVisibleItemScrollOffset <= 1
+                    val target = feedHeaderSettleTarget(
+                        currentOffsetPx = currentOffset,
+                        headerHeightPx = headerHeight,
+                        direction = headerScrollDirection[0],
+                        atFeedTop = atFeedTop
+                    )
+
+                    animate(
+                        initialValue = currentOffset,
+                        targetValue = target,
+                        animationSpec = tween(durationMillis = 140)
+                    ) { value, _ ->
+                        headerOffsetPx.value = value.coerceIn(-headerHeight, 0f)
+                    }
+
+                    fabExpanded = target >= -0.5f
+                }
+
+                pendingDirectionDistancePx[0] = 0f
+                hadUserScroll = false
+            }
     }
 
     LaunchedEffect(Unit) { screenVisible = true }
@@ -746,16 +823,13 @@ private fun PremiumHomeFeed(
             }
         }
 
-        downwardScrollAccumulator[0] = 0f
-        upwardScrollAccumulator[0] = 0f
-        chromeState = if (
+        headerScrollDirection[0] = 0
+        pendingDirectionDistancePx[0] = 0f
+        val atFeedTop =
             listState.firstVisibleItemIndex == 0 &&
-            listState.firstVisibleItemScrollOffset <= 1
-        ) {
-            PremiumFeedChromeState.EXPANDED
-        } else {
-            PremiumFeedChromeState.COMPACT
-        }
+                listState.firstVisibleItemScrollOffset <= 1
+        headerOffsetPx.value = if (atFeedTop) 0f else -headerHeightPx.value
+        fabExpanded = atFeedTop
         onBottomBarVisibilityChange(true)
     }
 
@@ -763,16 +837,13 @@ private fun PremiumHomeFeed(
         snapshotFlow {
             listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
         }.collectLatest { (index, offset) ->
-            // Reaching the real top is the only automatic route back to the fully
-            // expanded header. Reverse scrolling elsewhere stays compact.
-            if (
-                index == 0 &&
-                offset <= 1 &&
-                chromeState != PremiumFeedChromeState.EXPANDED
-            ) {
-                chromeState = PremiumFeedChromeState.EXPANDED
-                downwardScrollAccumulator[0] = 0f
-                upwardScrollAccumulator[0] = 0f
+            // The real top always restores the complete header, matching native feed
+            // behavior and keeping pull-to-refresh anchored to a stable top position.
+            if (index == 0 && offset <= 1 && headerOffsetPx.value != 0f) {
+                headerOffsetPx.value = 0f
+                headerScrollDirection[0] = 0
+                pendingDirectionDistancePx[0] = 0f
+                fabExpanded = true
                 onBottomBarVisibilityChange(true)
             }
 
@@ -801,9 +872,10 @@ private fun PremiumHomeFeed(
             } else {
                 onRefresh()
             }
-            downwardScrollAccumulator[0] = 0f
-            upwardScrollAccumulator[0] = 0f
-            chromeState = PremiumFeedChromeState.EXPANDED
+            headerOffsetPx.value = 0f
+            headerScrollDirection[0] = 0
+            pendingDirectionDistancePx[0] = 0f
+            fabExpanded = true
             onBottomBarVisibilityChange(true)
         }
     }
@@ -929,47 +1001,55 @@ private fun PremiumHomeFeed(
                     .fillMaxSize()
                     .padding(bottom = 56.dp)
             ) {
-                AnimatedVisibility(
-                    visible = primaryHeaderVisible,
-                    enter = fadeIn(tween(120)) + slideInVertically(tween(140)) { -it / 2 },
-                    exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it / 2 }
-                ) {
-                    Column {
-                        FeedTopBar(
-                            userAvatar = userAvatar,
-                            hasUnreadNotifications = hasUnreadNotifications,
-                            onSearchClick = onSearchClick,
-                            onNotificationClick = onOpenActivity,
-                            onMenuClick = onOpenMenu,
-                            onProfileClick = { onProfileClick(currentUsername) }
-                        )
-                        FeedUtilityRow(
-                            onLeaderboardClick = onLeaderboardClick,
-                            onGameClick = onGameClick,
-                            onStoreClick = onStoreClick
-                        )
-                    }
-                }
+                ScrollLinkedFeedHeader(
+                    offsetPx = headerOffsetPx,
+                    onMeasuredHeight = { measuredHeight ->
+                        if (measuredHeight > 0f && headerHeightPx.value != measuredHeight) {
+                            val previousHeight = headerHeightPx.value
+                            val previousOffset = headerOffsetPx.value
+                            val atFeedTop =
+                                listState.firstVisibleItemIndex == 0 &&
+                                    listState.firstVisibleItemScrollOffset <= 1
 
-                AnimatedVisibility(
-                    visible = secondaryChromeVisible,
-                    enter = fadeIn(tween(110)) + slideInVertically(tween(130)) { -it / 3 },
-                    exit = fadeOut(tween(90)) + slideOutVertically(tween(110)) { -it / 3 }
+                            headerHeightPx.value = measuredHeight
+                            headerOffsetPx.value = when {
+                                previousHeight > 0f -> {
+                                    val collapseFraction =
+                                        (-previousOffset / previousHeight).coerceIn(0f, 1f)
+                                    -measuredHeight * collapseFraction
+                                }
+                                atFeedTop -> 0f
+                                else -> -measuredHeight
+                            }
+                        }
+                    }
                 ) {
-                    Column {
-                        Box {
-                            FeedTabs(
-                                selectedIndex = laneIndex,
-                                onForYouClick = { onLaneChanged(0) },
-                                onFollowingClick = { onLaneChanged(1) },
-                                onFilterClick = { filterMenuVisible = true }
-                            )
-                            Box(modifier = Modifier.align(Alignment.TopEnd)) {
-                                DropdownMenu(
-                                    expanded = filterMenuVisible,
-                                    onDismissRequest = { filterMenuVisible = false },
-                                    modifier = Modifier.background(FeedElevatedSurface)
-                                ) {
+                    FeedTopBar(
+                        userAvatar = userAvatar,
+                        hasUnreadNotifications = hasUnreadNotifications,
+                        onSearchClick = onSearchClick,
+                        onNotificationClick = onOpenActivity,
+                        onMenuClick = onOpenMenu,
+                        onProfileClick = { onProfileClick(currentUsername) }
+                    )
+                    FeedUtilityRow(
+                        onLeaderboardClick = onLeaderboardClick,
+                        onGameClick = onGameClick,
+                        onStoreClick = onStoreClick
+                    )
+                    Box {
+                        FeedTabs(
+                            selectedIndex = laneIndex,
+                            onForYouClick = { onLaneChanged(0) },
+                            onFollowingClick = { onLaneChanged(1) },
+                            onFilterClick = { filterMenuVisible = true }
+                        )
+                        Box(modifier = Modifier.align(Alignment.TopEnd)) {
+                            DropdownMenu(
+                                expanded = filterMenuVisible,
+                                onDismissRequest = { filterMenuVisible = false },
+                                modifier = Modifier.background(FeedElevatedSurface)
+                            ) {
                                 PremiumFilterItem("All posts", Icons.Default.Tune, filter == PremiumFeedFilter.ALL) {
                                     filter = PremiumFeedFilter.ALL
                                     filterMenuVisible = false
@@ -982,11 +1062,10 @@ private fun PremiumHomeFeed(
                                     filter = PremiumFeedFilter.POLLS
                                     filterMenuVisible = false
                                 }
-                                }
                             }
                         }
-                        HorizontalDivider(color = FeedBorder.copy(alpha = 0.72f))
                     }
+                    HorizontalDivider(color = FeedBorder.copy(alpha = 0.72f))
                 }
 
                 PullToRefreshBox(
@@ -1159,9 +1238,10 @@ private fun PremiumHomeFeed(
                                         } else {
                                             listState.scrollToItem(0)
                                         }
-                                        chromeState = PremiumFeedChromeState.EXPANDED
-                                        downwardScrollAccumulator[0] = 0f
-                                        upwardScrollAccumulator[0] = 0f
+                                        headerOffsetPx.value = 0f
+                                        headerScrollDirection[0] = 0
+                                        pendingDirectionDistancePx[0] = 0f
+                                        fabExpanded = true
                                         onBottomBarVisibilityChange(true)
                                         onRefresh()
                                     }
@@ -1336,6 +1416,45 @@ private fun PremiumConnectHost(
  * header above the visible bounds. This keeps all existing Game/Connect logic
  * intact while removing duplicate navigation chrome.
  */
+@Composable
+private fun ScrollLinkedFeedHeader(
+    offsetPx: androidx.compose.runtime.State<Float>,
+    onMeasuredHeight: (Float) -> Unit,
+    content: @Composable () -> Unit
+) {
+    Layout(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clipToBounds(),
+        content = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { size -> onMeasuredHeight(size.height.toFloat()) }
+            ) {
+                content()
+            }
+        }
+    ) { measurables, constraints ->
+        val placeable = measurables.single().measure(
+            constraints.copy(minHeight = 0)
+        )
+        val clampedOffset =
+            offsetPx.value.coerceIn(-placeable.height.toFloat(), 0f)
+        val visibleHeight =
+            (placeable.height + clampedOffset)
+                .roundToInt()
+                .coerceIn(0, placeable.height)
+
+        layout(constraints.maxWidth, visibleHeight) {
+            placeable.placeRelative(
+                x = 0,
+                y = clampedOffset.roundToInt()
+            )
+        }
+    }
+}
+
 @Composable
 private fun LegacyChromeCrop(
     topCrop: Dp,
