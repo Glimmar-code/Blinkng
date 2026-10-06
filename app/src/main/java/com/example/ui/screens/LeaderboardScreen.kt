@@ -130,14 +130,14 @@ fun LeaderboardScreen(
         rankedScope.filter { !verifiedOnly || it.verificationBadge != VerificationBadge.NONE }
     }
 
-    // Product rule: only the Top 10 is ever rendered on the leaderboard.
-    val topTen = remember(scoped) { scoped.take(10) }
-    val visibleTopTen = remember(topTen, searchQuery) {
+    // Product rule: render a consistent scrollable Top 20 list.
+    val topTwenty = remember(scoped) { scoped.take(20) }
+    val visibleTopTwenty = remember(topTwenty, searchQuery) {
         val query = searchQuery.trim()
         if (query.isBlank()) {
-            topTen
+            topTwenty
         } else {
-            topTen.filter {
+            topTwenty.filter {
                 it.username.contains(query, ignoreCase = true) ||
                     it.fullName.contains(query, ignoreCase = true) ||
                     it.university.contains(query, ignoreCase = true) ||
@@ -168,7 +168,7 @@ fun LeaderboardScreen(
             text = {
                 Text(
                     "Blink uses Supabase's canonical leaderboard order. Higher points rank first; ties are resolved by account creation time. " +
-                        "The page intentionally shows only the Top 10 for the selected scope. Your personal rank card can still show your own position outside the Top 10."
+                        "The page shows ranks #1–#20 in one consistent scrollable list for the selected scope. Your personal rank card can still show your own position outside the Top 20."
                 )
             }
         )
@@ -195,7 +195,7 @@ fun LeaderboardScreen(
                 Column(Modifier.weight(1f)) {
                     Text("Leaderboard", fontSize = 24.sp, fontWeight = FontWeight.Black)
                     Text(
-                        "Top 10 from live Blink activity",
+                        "Top 20 from live Blink activity",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -248,7 +248,7 @@ fun LeaderboardScreen(
                 onValueChange = { searchQuery = it },
                 singleLine = true,
                 leadingIcon = { Icon(Icons.Default.Search, null) },
-                placeholder = { Text("Search the Top 10") },
+                placeholder = { Text("Search the Top 20") },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -261,11 +261,11 @@ fun LeaderboardScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SummaryPill("Top 10", "${topTen.size}/10", Modifier.weight(1f))
+                SummaryPill("Top 20", "${topTwenty.size}/10", Modifier.weight(1f))
                 SummaryPill("Scope", scope.label, Modifier.weight(1f))
                 SummaryPill(
                     "Leader",
-                    topTen.firstOrNull()?.points?.let { "$it pts" } ?: "—",
+                    topTwenty.firstOrNull()?.points?.let { "$it pts" } ?: "—",
                     Modifier.weight(1f)
                 )
             }
@@ -280,14 +280,14 @@ fun LeaderboardScreen(
             )
         }
 
-        if (visibleTopTen.isEmpty()) {
+        if (visibleTopTwenty.isEmpty()) {
             item(key = "leaderboard_empty", contentType = "empty") {
                 Box(
                     Modifier.fillMaxWidth().padding(50.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("No Top 10 result matches this view.", fontWeight = FontWeight.Bold)
+                        Text("No Top 20 result matches this view.", fontWeight = FontWeight.Bold)
                         Text(
                             "Try another scope or clear the search.",
                             fontSize = 12.sp,
@@ -303,20 +303,8 @@ fun LeaderboardScreen(
                 }
             }
         } else {
-            if (searchQuery.isBlank()) {
-                item(key = "leaderboard_podium", contentType = "podium") {
-                    Podium(
-                        topThree = visibleTopTen.take(3),
-                        isDark = isDark,
-                        onProfileClick = onProfileClick,
-                        onShare = { shareLeaderboardUser(context, it) }
-                    )
-                }
-            }
-
-            val listUsers = if (searchQuery.isBlank()) visibleTopTen.drop(3) else visibleTopTen
             itemsIndexed(
-                items = listUsers,
+                items = visibleTopTwenty,
                 key = { _, user -> user.username },
                 contentType = { _, _ -> "leaderboard_user" }
             ) { _, user ->
@@ -396,7 +384,7 @@ private fun MyRankCard(
                     color = MaterialTheme.colorScheme.surface.copy(alpha = .7f)
                 ) {
                     Text(
-                        if (currentUser != null && currentUser.rank <= 10) "TOP 10" else "KEEP CLIMBING",
+                        if (currentUser != null && currentUser.rank <= 10) "TOP 20" else "KEEP CLIMBING",
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Black
