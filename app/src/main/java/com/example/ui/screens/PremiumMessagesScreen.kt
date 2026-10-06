@@ -337,6 +337,7 @@ fun PremiumMessagesScreen(
                         onSendVideo = onSendVideo,
                         onSendAttachment = onSendAttachment,
                         onPresenceChange = onPresenceChange,
+                        allowLinkPreviews = chatPrivacySettings.allowLinkPreviews,
                         onRetryMessage = onRetryMessage,
                         hasMoreMessages = hasMoreMessages,
                         isLoadingOlder = isLoadingOlder,
@@ -451,6 +452,7 @@ private fun PremiumMessagesMasterDetail(
     onSendVideo: (String, Uri) -> Unit,
     onSendAttachment: (String, Uri, String) -> Unit,
     onPresenceChange: (String, String) -> Unit,
+    allowLinkPreviews: Boolean,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
     hasMoreMessages: (String) -> Boolean,
     isLoadingOlder: (String) -> Boolean,
@@ -514,6 +516,7 @@ private fun PremiumMessagesMasterDetail(
                 onPresenceChange = { state ->
                     onPresenceChange(displayedConversation.partnerUsername, state)
                 },
+                allowLinkPreviews = allowLinkPreviews,
                 onRetry = { message ->
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
                 },
@@ -1363,6 +1366,7 @@ private fun PremiumChatDetail(
     onSendVideo: (Uri) -> Unit,
     onSendAttachment: (Uri, String) -> Unit,
     onPresenceChange: (String) -> Unit,
+    allowLinkPreviews: Boolean,
     onRetry: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
     onAudioCall: () -> Unit,
@@ -1740,7 +1744,8 @@ private fun PremiumChatDetail(
                                 }
                             },
                             onActions = { selectedMessage = message },
-                            onRetry = { onRetry(message) }
+                            onRetry = { onRetry(message) },
+                            allowLinkPreviews = allowLinkPreviews
                         )
                     }
                 }
@@ -2432,7 +2437,8 @@ private fun MessageBubble(
     onReply: () -> Unit,
     onReplyTargetClick: () -> Unit,
     onActions: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    allowLinkPreviews: Boolean
 ) {
     val isMine = message.isFromMe
     val density = LocalDensity.current
@@ -2532,7 +2538,12 @@ private fun MessageBubble(
                             }
                         }
                     }
-                    MessageContent(message = message, isMine = isMine, palette = palette)
+                    MessageContent(
+                        message = message,
+                        isMine = isMine,
+                        palette = palette,
+                        allowLinkPreviews = allowLinkPreviews
+                    )
                 }
 
                 if (message.reactionCounts.isNotEmpty()) {
@@ -2588,7 +2599,12 @@ private fun MessageBubble(
 }
 
 @Composable
-private fun MessageContent(message: ChatMessage, isMine: Boolean, palette: MessagePalette) {
+private fun MessageContent(
+    message: ChatMessage,
+    isMine: Boolean,
+    palette: MessagePalette,
+    allowLinkPreviews: Boolean
+) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
     Column(modifier = Modifier.padding(5.dp)) {
@@ -2704,7 +2720,7 @@ private fun MessageContent(message: ChatMessage, isMine: Boolean, palette: Messa
                     lineHeight = 18.sp,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                 )
-                firstHttpUrl(message.text)?.let { url ->
+                if (allowLinkPreviews) firstHttpUrl(message.text)?.let { url ->
                     val host = runCatching { java.net.URI(url).host }.getOrNull().orEmpty()
                     Surface(
                         color = contentColor.copy(alpha = .08f),
