@@ -45,6 +45,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
@@ -759,7 +760,9 @@ private fun LivePeopleEmptyState(
                 !hasProfiles -> "No live students yet"
                 query.isNotBlank() -> "No matching students"
                 filter == LivePeopleFilter.SAME_CAMPUS -> "No campus matches yet"
+                filter == LivePeopleFilter.SAME_DEPARTMENT -> "No department matches yet"
                 filter == LivePeopleFilter.ONLINE -> "Nobody is marked online right now"
+                filter == LivePeopleFilter.VERIFIED -> "No verified students match yet"
                 else -> "No students found"
             },
             fontWeight = FontWeight.Bold,
