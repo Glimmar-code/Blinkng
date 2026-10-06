@@ -48,6 +48,16 @@ object ConversationNotificationMuteStore {
         return false
     }
 
+    fun isMutedForever(context: Context, conversationId: String): Boolean {
+        val key = conversationId.trim()
+        if (key.isBlank()) return false
+        val until = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .safeString(key, "")
+            ?.toLongOrNull()
+            ?: return false
+        return until == FOREVER
+    }
+
     fun mutedUntil(context: Context, conversationId: String): Instant? {
         val key = conversationId.trim()
         if (key.isBlank()) return null
