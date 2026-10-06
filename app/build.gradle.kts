@@ -112,6 +112,29 @@ val resolvedTurnCredential = (
     ?: providers.environmentVariable("BLINK_TURN_CREDENTIAL").orNull
 ).orEmpty().trim()
 
+fun localEnvValue(key: String): String? {
+  val file = rootProject.file(".env")
+  if (!file.exists()) return null
+  return file.useLines { lines ->
+    lines.map(String::trim)
+      .firstOrNull { line ->
+        line.isNotEmpty() &&
+          !line.startsWith("#") &&
+          line.substringBefore('=', "").trim() == key
+      }
+      ?.substringAfter('=', "")
+      ?.trim()
+      ?.takeIf { it.isNotEmpty() }
+  }
+}
+
+val resolvedMapsApiKey = (
+  providers.gradleProperty("MAPS_API_KEY").orNull
+    ?: providers.environmentVariable("MAPS_API_KEY").orNull
+    ?: localEnvValue("MAPS_API_KEY")
+    ?: "DEFAULT_API_KEY"
+).trim()
+
 val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
 val releaseStorePassword = System.getenv("STORE_PASSWORD")
 val releaseKeyAlias = System.getenv("KEY_ALIAS")
@@ -143,6 +166,7 @@ android {
     versionName = resolvedVersionName
     manifestPlaceholders["shareHost"] = resolvedShareHost
     manifestPlaceholders["sharePathPrefix"] = resolvedSharePathPrefix
+    manifestPlaceholders["MAPS_API_KEY"] = resolvedMapsApiKey
     buildConfigField("String", "SHARE_BASE_URL", "\"$resolvedShareBaseUrl\"")
     buildConfigField("String", "BLINK_TURN_URL", buildConfigString(resolvedTurnUrl))
     buildConfigField("String", "BLINK_TURN_USERNAME", buildConfigString(resolvedTurnUsername))
@@ -254,7 +278,7 @@ dependencies {
   implementation(libs.googleid)
   implementation(libs.accompanist.permissions)
   implementation(libs.play.services.location)
-  implementation("com.google.maps.android:maps-compose:8.4.0")
+  implementation("com.google.maps.android:maps-compose:6.12.0")
   implementation(libs.play.app.update)
   implementation(libs.play.app.update.ktx)
   implementation("com.google.android.gms:play-services-ads:25.5.0")
