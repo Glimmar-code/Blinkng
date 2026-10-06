@@ -114,6 +114,72 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
 
     suspend fun getBoostableContent(): JSONObject = rpc("get_my_blink_boostable_content", JSONObject())
 
+    suspend fun getBoostGrowthState(): JSONObject =
+        rpc("get_blink_boost_growth_state", JSONObject())
+
+    suspend fun getBoostMissions(limit: Int = 12): JSONObject =
+        rpc("get_blink_boost_missions", JSONObject().put("p_limit", limit.coerceIn(1, 30)))
+
+    suspend fun getPromotedBoostSlots(surface: String, limit: Int = 3): JSONObject =
+        rpc(
+            "get_blink_promoted_slots",
+            JSONObject()
+                .put("p_surface", surface.trim().uppercase())
+                .put("p_limit", limit.coerceIn(1, 10)),
+        )
+
+    suspend fun quoteBoostCampaign(
+        targetType: String,
+        targetId: String,
+        boostPower: Int,
+        objective: String,
+        audienceScope: String,
+        durationDays: Int,
+        targetUniversity: String? = null,
+    ): JSONObject = rpc(
+        "quote_blink_boost_campaign",
+        JSONObject()
+            .put("p_target_type", targetType.trim().uppercase())
+            .put("p_target_id", targetId.trim())
+            .put("p_boost_power", boostPower.coerceIn(1, 100))
+            .put("p_objective", objective.trim().uppercase())
+            .put("p_audience_scope", audienceScope.trim().uppercase())
+            .put("p_duration_days", durationDays)
+            .put("p_target_university", targetUniversity?.trim()?.takeIf(String::isNotBlank) ?: JSONObject.NULL),
+    )
+
+    suspend fun createBoostCampaign(
+        targetType: String,
+        targetId: String,
+        boostPower: Int,
+        objective: String,
+        audienceScope: String,
+        durationDays: Int,
+        targetUniversity: String? = null,
+    ): JSONObject = rpc(
+        "create_blink_boost_campaign",
+        JSONObject()
+            .put("p_target_type", targetType.trim().uppercase())
+            .put("p_target_id", targetId.trim())
+            .put("p_boost_power", boostPower.coerceIn(1, 100))
+            .put("p_objective", objective.trim().uppercase())
+            .put("p_audience_scope", audienceScope.trim().uppercase())
+            .put("p_duration_days", durationDays)
+            .put("p_target_university", targetUniversity?.trim()?.takeIf(String::isNotBlank) ?: JSONObject.NULL),
+    )
+
+    suspend fun cancelBoostCampaign(campaignId: String): JSONObject =
+        rpc("cancel_blink_boost_campaign", JSONObject().put("p_campaign_id", campaignId.trim()))
+
+    suspend fun recordBoostDelivery(campaignId: String, eventType: String, surface: String): JSONObject =
+        rpc(
+            "record_blink_boost_delivery",
+            JSONObject()
+                .put("p_campaign_id", campaignId.trim())
+                .put("p_event_type", eventType.trim().uppercase())
+                .put("p_surface", surface.trim().uppercase()),
+        )
+
     suspend fun adminDashboard(): AdminDashboardSnapshot {
         requireAdmin()
         val stats = rpc("admin_dashboard_stats", JSONObject())
