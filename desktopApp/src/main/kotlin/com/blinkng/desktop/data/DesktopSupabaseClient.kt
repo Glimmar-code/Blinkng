@@ -345,10 +345,15 @@ class DesktopSupabaseClient(
     }
 
     suspend fun fetchOnboardingSuggestions(limit: Int = 40): List<DesktopProfile> = withContext(Dispatchers.IO) {
-        val currentId = requireSession().userId
-        val rows = getArray(
-            "/rest/v1/profiles?id=neq.${encode(currentId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=${limit.coerceIn(5, 100)}",
+        val response = postObject(
+            "/rest/v1/rpc/get_profile_directory",
+            JSONObject().put("p_limit", limit.coerceIn(5, 100)),
         )
+        val rows = when (response) {
+            is JSONArray -> response
+            is JSONObject -> JSONArray().put(response)
+            else -> JSONArray()
+        }
         (0 until rows.length()).mapNotNull { index ->
             rows.optJSONObject(index)?.let(::parseProfile)
         }
@@ -656,10 +661,21 @@ class DesktopSupabaseClient(
     suspend fun search(query: String): DesktopSearchResults = withContext(Dispatchers.IO) {
         val clean = query.trim()
         if (clean.isBlank()) return@withContext DesktopSearchResults(emptyList(), emptyList())
-        val encodedPattern = encode("*$clean*")
-        val profiles = getArray(
-            "/rest/v1/profiles?or=${encode("(full_name.ilike.*$clean*,username.ilike.*$clean*,handle.ilike.*$clean*)")}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=30",
+
+        val response = postObject(
+            "/rest/v1/rpc/search_profiles_page",
+            JSONObject()
+                .put("p_query", clean)
+                .put("p_limit", 30)
+                .put("p_after_username", JSONObject.NULL)
+                .put("p_after_id", JSONObject.NULL),
         )
+        val profiles = when (response) {
+            is JSONArray -> response
+            is JSONObject -> JSONArray().put(response)
+            else -> JSONArray()
+        }
+
         DesktopSearchResults(
             profiles = (0 until profiles.length()).mapNotNull { profiles.optJSONObject(it)?.let(::parseProfile) },
             posts = fetchFeed(search = clean).take(30),
