@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var rewardedAdManager: BlinkRewardedAdManager
     private lateinit var adConsentManager: BlinkAdConsentManager
     private var presenceHeartbeatJob: Job? = null
+    private var rewardedAdShowPending = false
 
     private val inAppUpdateLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -68,20 +69,47 @@ class MainActivity : ComponentActivity() {
             viewModel.rewardedAdUnavailable("Ads are unavailable until your privacy choices are complete.")
             return
         }
-        if (!rewardedAdManager.isReady) {
-            rewardedAdManager.load()
-            viewModel.rewardedAdUnavailable("The rewarded ad is still loading. Try again in a moment.")
+        if (rewardedAdShowPending) {
+            viewModel.rewardedAdUnavailable("Your rewarded ad is already being prepared.")
             return
         }
 
-        lifecycleScope.launch {
-            val claimId = viewModel.beginRewardedAdClaim() ?: return@launch
-            val userId = viewModel.uiState.value.myProfile.id
-            rewardedAdManager.show(
-                userId = userId,
-                claimId = claimId,
-                onRewardEarned = { viewModel.completeRewardedAdClaim(claimId) },
-                onUnavailable = { viewModel.rewardedAdUnavailable(it) }
+        rewardedAdShowPending = true
+
+        fun beginClaimAndShow() {
+            lifecycleScope.launch {
+                val claimId = viewModel.beginRewardedAdClaim()
+                if (claimId == null) {
+                    rewardedAdShowPending = false
+                    return@launch
+                }
+
+                val userId = viewModel.uiState.value.myProfile.id
+                rewardedAdManager.show(
+                    userId = userId,
+                    claimId = claimId,
+                    onRewardEarned = { viewModel.completeRewardedAdClaim(claimId) },
+                    onUnavailable = { message ->
+                        rewardedAdShowPending = false
+                        viewModel.rewardedAdUnavailable(message)
+                    },
+                    onClosed = {
+                        rewardedAdShowPending = false
+                    }
+                )
+            }
+        }
+
+        if (rewardedAdManager.isReady) {
+            beginClaimAndShow()
+        } else {
+            viewModel.rewardedAdUnavailable("Preparing your rewarded ad…")
+            rewardedAdManager.load(
+                onReady = ::beginClaimAndShow,
+                onUnavailable = { message ->
+                    rewardedAdShowPending = false
+                    viewModel.rewardedAdUnavailable(message)
+                }
             )
         }
     }
@@ -265,6 +293,9 @@ class MainActivity : ComponentActivity() {
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
             viewModel.refreshIfStale()
             viewModel.verifyPendingPaystackCheckout()
+            if (BlinkAdsRuntime.canRequestAds.value && !rewardedAdManager.isReady) {
+                rewardedAdManager.load()
+            }
             startPresenceHeartbeat()
         }
     }
