@@ -712,6 +712,7 @@ private fun BoostCampaignColumn(
                                 service.cancelBoostCampaign(id)
                                     .onSuccess {
                                         val refund = it.optLong("refunded", 0L)
+                                        it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
                                         message = if (refund > 0) {
                                             "Boost cancelled. " + formatter.format(refund) + " unused coins were returned."
                                         } else {
@@ -725,6 +726,53 @@ private fun BoostCampaignColumn(
                         }
                     },
                 )
+            }
+        }
+
+        if (campaigns.isNotEmpty()) {
+            item { HorizontalDivider() }
+            item { SectionTitle("Campaign history", "Search completed and cancelled Boosts, spend, reach and refunds.") }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(listOf("ALL", "ENDED", "CANCELLED")) { status ->
+                        FilterChip(
+                            selected = historyFilter == status,
+                            onClick = { historyFilter = status },
+                            label = {
+                                Text(
+                                    when (status) {
+                                        "ENDED" -> "Completed"
+                                        "CANCELLED" -> "Cancelled"
+                                        else -> "All"
+                                    }
+                                )
+                            },
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = historyQuery,
+                    onValueChange = { historyQuery = it.take(60) },
+                    label = { Text("Search history") },
+                    placeholder = { Text("Post, Reel, objective or status") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (historyCampaigns.isEmpty()) {
+                item { EmptyTargetCard("No campaigns match this history filter.") }
+            } else {
+                items(historyCampaigns, key = { "history-" + it.optString("id") }) { campaign ->
+                    CampaignHistoryCard(campaign, formatter)
+                }
+            }
+        }
+
+        if (receipts.isNotEmpty()) {
+            item { HorizontalDivider() }
+            item { SectionTitle("Growth receipts", "Every Boost reserve/refund and Drop reserve/reward/refund remains auditable.") }
+            items(receipts.take(12), key = { "receipt-" + it.optString("id") }) { receipt ->
+                GrowthReceiptCard(receipt, formatter)
             }
         }
     }
