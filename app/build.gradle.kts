@@ -288,6 +288,7 @@ dependencies {
   implementation(libs.androidx.camera.view)
   implementation(libs.androidx.camera.core)
   implementation("io.github.webrtc-sdk:android:150.7871.01")
+  implementation("com.google.zxing:core:3.5.3")
 
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
