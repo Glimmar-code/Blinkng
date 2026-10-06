@@ -254,7 +254,6 @@ dependencies {
   implementation(libs.googleid)
   implementation(libs.accompanist.permissions)
   implementation(libs.play.services.location)
-  implementation("androidx.health.connect:connect-client:1.2.0-alpha06")
   implementation("com.google.maps.android:maps-compose:8.4.0")
   implementation(libs.play.app.update)
   implementation(libs.play.app.update.ktx)
