@@ -734,6 +734,171 @@ from public, anon;
 grant execute on function public.get_blink_promoted_slots(text,integer)
 to authenticated;
 
+
+create or replace function private.blink_boost_mission_points_today(
+    p_user uuid
+) returns integer
+language sql
+stable
+security definer
+set search_path=''
+as $
+    select coalesce(sum(t.points_delta),0)::integer
+    from public.point_transactions t
+    where t.user_id=p_user
+      and t.created_at>=date_trunc('day',now())
+      and exists (
+          select 1
+          from public.blink_boost_delivery_events_v2 e
+          join public.blink_boost_campaigns_v2 c on c.id=e.campaign_id
+          where e.viewer_id=p_user
+            and e.surface='MISSIONS'
+            and e.created_at>=date_trunc('day',now())
+            and (
+                (t.action_type in ('view_post','like_post','comment','save_post') and c.target_id=t.reference_id)
+                or (t.action_type='follow_user' and c.user_id=t.reference_id)
+                or (t.action_type='view_listing' and c.target_id=t.reference_id)
+            )
+      );
+$;
+revoke all on function private.blink_boost_mission_points_today(uuid)
+from public, anon, authenticated;
+
+create or replace function public.complete_blink_boost_mission_action(
+    p_campaign_id uuid,
+    p_action text,
+    p_comment_text text default null
+) returns jsonb
+language plpgsql
+security definer
+set search_path=''
+as $
+declare
+    v_user uuid:=auth.uid();
+    v_campaign public.blink_boost_campaigns_v2%rowtype;
+    v_action text:=lower(btrim(coalesce(p_action,'')));
+    v_cap integer:=private.blink_boost_growth_number('mission_daily_suggested_points',20)::integer;
+    v_earned integer:=0;
+    v_delta integer:=0;
+    v_reference uuid;
+    v_action_type text;
+    v_before integer:=0;
+    v_after integer:=0;
+    v_inserted boolean:=false;
+begin
+    if v_user is null then raise exception 'AUTH_REQUIRED'; end if;
+
+    select * into v_campaign
+    from public.blink_boost_campaigns_v2 c
+    where c.id=p_campaign_id
+      and private.blink_boost_viewer_matches(c,v_user);
+    if not found then raise exception 'BOOST_CAMPAIGN_NOT_AVAILABLE'; end if;
+
+    if not exists (
+        select 1 from public.blink_boost_delivery_events_v2 e
+        where e.campaign_id=v_campaign.id
+          and e.viewer_id=v_user
+          and e.surface='MISSIONS'
+    ) then
+        insert into public.blink_boost_delivery_events_v2(campaign_id,viewer_id,event_type,surface)
+        values(v_campaign.id,v_user,'IMPRESSION','MISSIONS')
+        on conflict(campaign_id,viewer_id,event_type,surface) do nothing;
+    end if;
+
+    case v_action
+        when 'view' then
+            if v_campaign.target_type not in ('POST','REEL') then raise exception 'MISSION_ACTION_NOT_AVAILABLE'; end if;
+            v_delta:=1; v_reference:=v_campaign.target_id; v_action_type:='view_post';
+        when 'like' then
+            if v_campaign.target_type not in ('POST','REEL') then raise exception 'MISSION_ACTION_NOT_AVAILABLE'; end if;
+            v_delta:=1; v_reference:=v_campaign.target_id; v_action_type:='like_post';
+        when 'comment' then
+            if v_campaign.target_type not in ('POST','REEL') then raise exception 'MISSION_ACTION_NOT_AVAILABLE'; end if;
+            if nullif(btrim(coalesce(p_comment_text,'')),'') is null then raise exception 'COMMENT_REQUIRED'; end if;
+            if char_length(btrim(p_comment_text))>2000 then raise exception 'COMMENT_TOO_LONG'; end if;
+            v_delta:=2; v_reference:=v_campaign.target_id; v_action_type:='comment';
+        when 'save' then
+            if v_campaign.target_type not in ('POST','REEL') then raise exception 'MISSION_ACTION_NOT_AVAILABLE'; end if;
+            v_delta:=2; v_reference:=v_campaign.target_id; v_action_type:='save_post';
+        when 'follow' then
+            v_delta:=3; v_reference:=v_campaign.user_id; v_action_type:='follow_user';
+        when 'listing_open' then
+            if v_campaign.target_type<>'LISTING' then raise exception 'MISSION_ACTION_NOT_AVAILABLE'; end if;
+            v_delta:=1; v_reference:=v_campaign.target_id; v_action_type:='view_listing';
+        else
+            raise exception 'INVALID_MISSION_ACTION';
+    end case;
+
+    if exists(
+        select 1 from public.point_transactions t
+        where t.user_id=v_user
+          and t.action_type=v_action_type
+          and t.reference_id=v_reference
+    ) then
+        raise exception 'BOOST_MISSION_ALREADY_COMPLETED';
+    end if;
+
+    v_earned:=private.blink_boost_mission_points_today(v_user);
+    if v_earned+v_delta>v_cap then raise exception 'BOOST_MISSION_DAILY_CAP_REACHED'; end if;
+
+    select coalesce(p.points,0) into v_before from public.profiles p where p.id=v_user;
+
+    case v_action
+        when 'view' then
+            perform public.record_content_view(v_campaign.target_id,gen_random_uuid());
+
+        when 'like' then
+            if exists(
+                select 1 from public.post_likes l
+                where l.post_id=v_campaign.target_id and l.user_id=v_user
+            ) then raise exception 'CONTENT_ALREADY_LIKED'; end if;
+            insert into public.post_likes(post_id,user_id)
+            values(v_campaign.target_id,v_user);
+
+        when 'comment' then
+            insert into public.comments(post_id,author_id,content)
+            values(v_campaign.target_id,v_user,btrim(p_comment_text));
+
+        when 'save' then
+            if exists(
+                select 1 from public.post_bookmarks b
+                where b.post_id=v_campaign.target_id and b.user_id=v_user
+            ) then raise exception 'CONTENT_ALREADY_SAVED'; end if;
+            insert into public.post_bookmarks(post_id,user_id)
+            values(v_campaign.target_id,v_user);
+
+        when 'follow' then
+            if exists(
+                select 1 from public.follows f
+                where f.follower_id=v_user and f.following_id=v_campaign.user_id
+            ) then raise exception 'CREATOR_ALREADY_FOLLOWED'; end if;
+            perform public.follow_user(v_campaign.user_id);
+
+        when 'listing_open' then
+            perform public.record_blink_boost_delivery(v_campaign.id,'LISTING_OPEN','MISSIONS');
+    end case;
+
+    select coalesce(p.points,0) into v_after from public.profiles p where p.id=v_user;
+    if v_after<=v_before then
+        raise exception 'MISSION_ACTION_DID_NOT_EARN_POINTS';
+    end if;
+
+    return jsonb_build_object(
+        'success',true,
+        'campaign_id',v_campaign.id,
+        'action',v_action,
+        'points_awarded',v_after-v_before,
+        'points_total',v_after,
+        'mission_points_today',private.blink_boost_mission_points_today(v_user),
+        'mission_points_cap',v_cap
+    );
+end;
+$;
+revoke all on function public.complete_blink_boost_mission_action(uuid,text,text)
+from public, anon;
+grant execute on function public.complete_blink_boost_mission_action(uuid,text,text)
+to authenticated;
+
 create or replace function public.get_blink_boost_missions(
     p_limit integer default 12
 ) returns jsonb
