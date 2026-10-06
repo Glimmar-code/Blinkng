@@ -550,8 +550,11 @@ private fun DesktopEarnRankPointsColumn(state: DesktopAppState) {
             runCatching { rpc.completeBoostMissionAction(campaignId, action, comment) }
                 .onSuccess { result ->
                     val awarded = result.optInt("points_awarded", 0)
-                    message = if (awarded > 0) "+" + awarded + " Rank Point" + if (awarded == 1) " earned." else "s earned."
-                    else "Action completed."
+                    message = if (awarded > 0) {
+                        "+" + awarded + if (awarded == 1) " Rank Point earned." else " Rank Points earned."
+                    } else {
+                        "Action completed."
+                    }
                     error = null
                     nonce++
                     state.refreshProfile()
