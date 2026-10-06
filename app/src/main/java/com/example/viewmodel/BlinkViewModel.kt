@@ -3154,7 +3154,9 @@ private suspend fun restoreSupabaseSession() {
                 viewingProfile = null,
                 viewingProduct = null,
                 conversations = state.conversations.map {
-                    if (it.partnerUsername.equals(clean, true)) it.copy(unreadCount = 0) else it
+                    if (it.partnerUsername.equals(clean, true)) {
+                        it.copy(unreadCount = 0, isMarkedUnread = false)
+                    } else it
                 },
                 activeConversationPartner = clean,
                 isConversationFullScreen = false
@@ -3162,6 +3164,7 @@ private suspend fun restoreSupabaseSession() {
             persistUiPreferences()
             viewModelScope.launch {
                 if (_uiState.value.isOnline && existing.id.isNotBlank() && !existing.id.startsWith("local_")) {
+                    runCatching { chatRepository.setConversationMarkedUnread(existing.id, false) }
                     loadConversationHistory(existing.id, clean, older = false)
                 }
             }
@@ -3822,6 +3825,146 @@ private suspend fun restoreSupabaseSession() {
         viewModelScope.launch {
             if (chatRepository.reportConversation(conversation.id, reason)) showToast("Conversation reported.")
             else showToast("Couldn't report conversation.")
+        }
+    }
+
+    fun setConversationArchived(conversation: ChatConversation, archived: Boolean) {
+        if (conversation.id.startsWith("local_")) return
+        val latest = _uiState.value
+        _uiState.value = latest.copy(
+            conversations = latest.conversations.map {
+                if (it.id == conversation.id) it.copy(isArchived = archived) else it
+            }
+        )
+        persistConversations()
+        viewModelScope.launch {
+            if (!chatRepository.setConversationArchived(conversation.id, archived)) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    conversations = current.conversations.map {
+                        if (it.id == conversation.id) it.copy(isArchived = !archived) else it
+                    }
+                )
+                persistConversations()
+                showToast("Couldn't update archive.")
+            }
+        }
+    }
+
+    fun setConversationPinned(conversation: ChatConversation, pinned: Boolean) {
+        if (conversation.id.startsWith("local_")) return
+        val latest = _uiState.value
+        _uiState.value = latest.copy(
+            conversations = latest.conversations.map {
+                if (it.id == conversation.id) it.copy(isConversationPinned = pinned) else it
+            }
+        )
+        persistConversations()
+        viewModelScope.launch {
+            if (!chatRepository.setConversationPinned(conversation.id, pinned)) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    conversations = current.conversations.map {
+                        if (it.id == conversation.id) it.copy(isConversationPinned = !pinned) else it
+                    }
+                )
+                persistConversations()
+                showToast("Couldn't update pinned chat.")
+            }
+        }
+    }
+
+    fun setConversationMarkedUnread(conversation: ChatConversation, unread: Boolean) {
+        if (conversation.id.startsWith("local_")) return
+        val latest = _uiState.value
+        _uiState.value = latest.copy(
+            conversations = latest.conversations.map {
+                if (it.id == conversation.id) it.copy(isMarkedUnread = unread) else it
+            }
+        )
+        persistConversations()
+        viewModelScope.launch {
+            if (!chatRepository.setConversationMarkedUnread(conversation.id, unread)) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    conversations = current.conversations.map {
+                        if (it.id == conversation.id) it.copy(isMarkedUnread = !unread) else it
+                    }
+                )
+                persistConversations()
+                showToast("Couldn't update unread state.")
+            }
+        }
+    }
+
+    fun respondToMessageRequest(conversation: ChatConversation, accept: Boolean) {
+        if (conversation.id.startsWith("local_")) return
+        viewModelScope.launch {
+            if (chatRepository.respondMessageRequest(conversation.id, accept)) {
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    conversations = latest.conversations.map {
+                        if (it.id == conversation.id) {
+                            it.copy(
+                                inboxCategory = if (accept) "primary" else "requests",
+                                isArchived = !accept
+                            )
+                        } else it
+                    },
+                    activeConversationPartner = if (!accept &&
+                        latest.activeConversationPartner.equals(conversation.partnerUsername, true)
+                    ) null else latest.activeConversationPartner
+                )
+                persistConversations()
+                showToast(if (accept) "Message request accepted." else "Message request deleted.")
+            } else {
+                showToast("Couldn't update message request.")
+            }
+        }
+    }
+
+    fun blockChatUser(conversation: ChatConversation) {
+        viewModelScope.launch {
+            if (chatRepository.blockChatUser(conversation.partnerUsername, true)) {
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    conversations = latest.conversations.filterNot {
+                        it.partnerUsername.equals(conversation.partnerUsername, true)
+                    },
+                    activeConversationPartner = if (
+                        latest.activeConversationPartner.equals(conversation.partnerUsername, true)
+                    ) null else latest.activeConversationPartner
+                )
+                persistConversations()
+                showToast("@${conversation.partnerUsername.removePrefix("@")} blocked.")
+            } else {
+                showToast("Couldn't block this user.")
+            }
+        }
+    }
+
+    fun forwardChatMessage(targetUsername: String, message: ChatMessage) {
+        if (message.id.startsWith("temp_")) {
+            showToast("Wait for the message to finish sending before forwarding.")
+            return
+        }
+        viewModelScope.launch {
+            val newMessageId = chatRepository.forwardMessage(message.id, targetUsername)
+            if (newMessageId == null) {
+                showToast("Couldn't forward message.")
+                return@launch
+            }
+            reconcileConversationSummary(targetUsername)
+            val targetConversation = _uiState.value.conversations.firstOrNull {
+                it.partnerUsername.equals(targetUsername, true)
+            }
+            if (targetConversation != null) {
+                loadConversationHistory(
+                    targetConversation.id,
+                    targetConversation.partnerUsername,
+                    older = false
+                )
+            }
         }
     }
 
