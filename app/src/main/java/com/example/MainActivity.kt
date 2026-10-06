@@ -1364,7 +1364,8 @@ fun MainAppContent(
                 isLoading = uiState.activitiesLoading,
                 errorMessage = uiState.activitiesError,
                 onRefresh = { viewModel.fetchSupabaseData() },
-                onMarkAllRead = { viewModel.markAllActivitiesRead() }
+                onMarkAllRead = { viewModel.markAllActivitiesRead() },
+                onToggleRead = { activity -> viewModel.toggleActivityReadState(activity) }
             )
         }
 
