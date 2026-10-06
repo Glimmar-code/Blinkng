@@ -282,3 +282,16 @@ Android behavior: Uses the shared server-controlled pulse policy, safe overflow-
 Windows behavior: Uses the same shared pulse policy and range/transition functions, honors the desktop Reduce Motion preference, freezes the last pulse when live fetches fail, shows real online/campus context and real rank movement summaries, and records the same server analytics events.
 Backend/shared behavior: Adds an authenticated read-only pulse configuration table and an authenticated rate-limited analytics RPC/table. Presence rows, canonical leaderboard order, points, XP, feed/reel ranking, coins, verification, auth, messages and existing user data are not modified.
 Tests/validation: Shared/Android pulse range tests, Android quality/release smoke, Windows compile/package/parity, and disposable Supabase migration safety must pass on Testlab before production promotion.
+
+
+---
+
+PARITY-EXCEPTION: android-growth-suite-wallet-ui-hardening-20261006
+Date: 2026-10-06
+Feature: Android Growth/Boost/Drops production hardening and wallet presentation
+Android behavior: Adds Android realtime Blink Coin wallet mirroring, resilient loading/retry/offline states, Boost budget presets and campaign analytics/history/receipts, Drop eligibility previews/history/receipts, spend confirmations, process-local draft preservation, and Android notification routing into Boost/Drops. Duplicate spend submissions are protected by additive server-side idempotency RPC wrappers.
+Why this is genuinely Android-specific presentation: The modified app files are Android Compose UI, Android notification/deep-link routing, and the Android Realtime adapter. They do not alter which Growth capabilities Windows is entitled to or the organic Feed/Reels ranking model.
+Windows equivalent or reason no equivalent is needed: Windows keeps its existing Boost desktop experience and the existing server-authoritative Growth contracts. The new backend RPCs are additive wrappers/analytics and the prior APIs remain compatible. Phone bottom-sheet navigation, Android notification intents, pull-to-refresh, and Android Compose layout do not map one-to-one to the desktop shell.
+Backend/shared behavior preserved: public.user_balances.spendable_coin_balance remains the single wallet authority. Boost pricing/delivery, Drop follower snapshots/reward/refund rules, Store pricing, verification, XP/Rank Points, authentication, and organic recommendation/ranking behavior remain server-authoritative. The new backend work adds idempotency, read-only analytics/receipts, lifecycle notifications, scheduled settlement, and realtime publication for the existing wallet table.
+Tests/validation: Android unit/lint/instrumentation/debug/release checks, Windows build/package/parity, and Supabase safety must pass on Testlab PR #172 before merge. The production migration is applied only after those gates pass and the Testlab PR is merged.
+Owner/reviewer note: This exception covers Android presentation/notification/realtime adapters only. It cannot waive Windows parity for future Growth business-rule, pricing, wallet, reward, or ranking changes.
