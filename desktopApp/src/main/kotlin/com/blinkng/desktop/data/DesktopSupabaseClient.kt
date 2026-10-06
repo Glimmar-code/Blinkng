@@ -415,6 +415,40 @@ class DesktopSupabaseClient(
         }
     }
 
+    suspend fun toggleBookmark(postId: String): Boolean = withContext(Dispatchers.IO) {
+        val active = requireSession()
+        val clean = postId.trim()
+        require(clean.isNotBlank()) { "Post is required." }
+        val query = "/rest/v1/post_bookmarks?post_id=eq.${encode(clean)}&user_id=eq.${encode(active.userId)}&select=id&limit=1"
+        val existing = getArray(query)
+        if (existing.length() > 0) {
+            delete("/rest/v1/post_bookmarks?post_id=eq.${encode(clean)}&user_id=eq.${encode(active.userId)}")
+            false
+        } else {
+            postArray(
+                "/rest/v1/post_bookmarks",
+                JSONObject().put("post_id", clean).put("user_id", active.userId),
+                prefer = "return=minimal",
+            )
+            true
+        }
+    }
+
+    suspend fun recordQualifiedContentView(postId: String): JSONObject = withContext(Dispatchers.IO) {
+        val clean = postId.trim()
+        require(clean.isNotBlank()) { "Post is required." }
+        val response = postObject(
+            "/rest/v1/rpc/record_content_view",
+            JSONObject()
+                .put("p_post_id", clean)
+                .put("p_event_id", UUID.randomUUID().toString()),
+        )
+        when (response) {
+            is JSONObject -> response
+            else -> JSONObject()
+        }
+    }
+
     suspend fun fetchComments(postId: String): List<DesktopComment> = withContext(Dispatchers.IO) {
         val rows = postArray(
             "/rest/v1/rpc/get_post_comments",
