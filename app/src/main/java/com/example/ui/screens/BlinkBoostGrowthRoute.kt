@@ -574,7 +574,7 @@ private fun BoostCampaignColumn(
                     Text(objectiveLabel(objective) + " • " + audienceLabel(audience))
                     Text(durationDays.toString() + " day" + if (durationDays == 1) "" else "s")
                     Text("Estimated reach: " + formatter.format(low) + "–" + formatter.format(high))
-                    Text("Cost: " + formatter.format(quoteCost) + " Blink Coins", fontWeight = FontWeight.Black)
+                    Text("Reserved budget: " + formatter.format(quoteCost) + " Blink Coins", fontWeight = FontWeight.Black)
                     Text(
                         "Reach and engagement are estimates, not guaranteed results.",
                         style = MaterialTheme.typography.bodySmall,
@@ -1142,6 +1142,9 @@ private fun ActiveCampaignCard(
     val target = campaign.optString("target_type", "BOOST")
     val power = campaign.optInt("boost_power", 0)
     val budget = campaign.optLong("coin_budget", 0L)
+    val spent = campaign.optLong("coin_spent", 0L)
+    val refunded = campaign.optLong("coin_refunded", 0L)
+    val remaining = (budget - spent - refunded).coerceAtLeast(0L)
     val impressions = campaign.optLong("promoted_impressions", 0L)
     val opens = campaign.optLong("promoted_opens", 0L)
     Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
@@ -1163,8 +1166,13 @@ private fun ActiveCampaignCard(
                 impressions.toString() + " promoted impressions • " + opens + " opens",
                 style = MaterialTheme.typography.bodySmall,
             )
+            Text(
+                "Spent " + formatter.format(spent) + " • Reserved remaining " + formatter.format(remaining) + " coins",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             OutlinedButton(onClick = onCancel, enabled = !working) {
-                Text("Cancel & refund unused time")
+                Text("Cancel & refund unused budget")
             }
         }
     }
