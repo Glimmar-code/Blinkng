@@ -57,6 +57,8 @@ import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.profileRankLabel
 import com.blinkng.shared.xpProgress
 import com.blinkng.shared.canViewProfileField
+import com.example.data.models.ChallengeGameType
+import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.FeedPost
 import com.example.data.models.MarketItem
 import com.example.data.models.ProfileConnectionKind
@@ -65,11 +67,13 @@ import com.example.data.models.ProfileNotificationMode
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
+import com.example.data.repository.UserInteractionRepository
 import com.example.data.supabase.SupabaseService
 import com.example.ui.components.FacultyBadge
 import com.example.ui.components.FollowerGrowthChart
 import com.example.ui.components.ProfileConnectionsSheet
 import com.example.ui.components.ProfileContentSearchBar
+import com.example.ui.components.ProfileFollowInteractButton
 import com.example.ui.components.ProfileNotificationPreferenceDialog
 import com.example.ui.components.ProfileOwnerInsightsCard
 import com.example.ui.components.ProfileReportDialog
@@ -130,6 +134,9 @@ fun ProfileScreen(
     onProfileClick: (String) -> Unit,
     onMarketItemClick: (MarketItem) -> Unit,
     onOpenGetVerified: () -> Unit = {},
+    connectHub: ConnectHubSnapshot = ConnectHubSnapshot(),
+    connectHubActions: ConnectHubActions = ConnectHubActions(),
+    onOpenConnectHub: () -> Unit = {},
     blinkCoinBalance: Long = 0L,
     economyPolicy: BlinkEconomyPolicy = BlinkEconomyDefaults.policy,
     rewardedAdsToday: Int = 0,
@@ -145,6 +152,16 @@ fun ProfileScreen(
     var followBusy by remember(profile.id) { mutableStateOf(false) }
     val overlayOffset = remember(profile.id) { Animatable(0f) }
     val overlayScope = rememberCoroutineScope()
+    val interactionRepository = remember { UserInteractionRepository() }
+    val mentorListingId = remember(connectHub.mentors, profile.id) {
+        connectHub.mentors.firstOrNull { it.userId == profile.id }?.id
+    }
+    val roommateListingId = remember(connectHub.roommates, profile.id) {
+        connectHub.roommates.firstOrNull { it.userId == profile.id }?.id
+    }
+    val readingListingId = remember(connectHub.readingMates, profile.id) {
+        connectHub.readingMates.firstOrNull { it.userId == profile.id }?.id
+    }
     val overlayThresholdPx = with(LocalDensity.current) { 88.dp.toPx() }
     var showShareSheet by rememberSaveable { mutableStateOf(false) }
     var showMoreSheet by rememberSaveable { mutableStateOf(false) }
@@ -594,28 +611,94 @@ fun ProfileScreen(
                                             testTag = "profile_message_btn"
                                         )
 
-                                        SmallActionButton(
-                                            icon = if (isFollowing) Icons.Default.Check else Icons.Default.PersonAdd,
-                                            title = if (followBusy) "Updating" else if (isFollowing) "Following" else "Follow",
-                                            tint = if (isFollowing) textPrimary else if (isDark) BlinkBlack else BlinkCream,
-                                            background = if (isFollowing) {
-                                                MaterialTheme.colorScheme.surfaceVariant
-                                            } else {
-                                                if (isDark) BlinkCream else BlinkBlack
-                                            },
-                                            onClick = {
+                                        ProfileFollowInteractButton(
+                                            isFollowing = isFollowing,
+                                            onFollow = {
                                                 if (!followBusy && profile.id.isNotBlank()) {
-                                                    val desired = !isFollowing
                                                     followBusy = true
                                                     overlayScope.launch {
-                                                        val saved = FollowStateStore.setFollowing(profile.id, desired)
+                                                        val saved = FollowStateStore.setFollowing(profile.id, true)
                                                         followBusy = false
-                                                        if (saved) onFollowChanged(desired)
+                                                        if (saved) {
+                                                            onFollowChanged(true)
+                                                        } else {
+                                                            Toast.makeText(context, "Unable to follow profile", Toast.LENGTH_SHORT).show()
+                                                        }
                                                     }
                                                 }
                                             },
-                                            modifier = Modifier.scale(animatedFollowScale),
-                                            testTag = "profile_follow_btn"
+                                            onUnfollow = {
+                                                if (!followBusy && profile.id.isNotBlank()) {
+                                                    followBusy = true
+                                                    overlayScope.launch {
+                                                        val saved = FollowStateStore.setFollowing(profile.id, false)
+                                                        followBusy = false
+                                                        if (saved) {
+                                                            onFollowChanged(false)
+                                                        } else {
+                                                            Toast.makeText(context, "Unable to unfollow profile", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            onMessage = { onDirectMessage(profile.username) },
+                                            onGiftCoins = {
+                                                if (profile.id.isNotBlank()) {
+                                                    overlayScope.launch {
+                                                        val sent = interactionRepository.giftCoins(profile.id, 10)
+                                                        Toast.makeText(
+                                                            context,
+                                                            if (sent) "10 Blink Coins sent" else "Unable to send Blink Coins",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                }
+                                            },
+                                            onGameChallenge = {
+                                                if (profile.id.isNotBlank()) {
+                                                    connectHubActions.challengeUser(
+                                                        profile.id,
+                                                        ChallengeGameType.GENERAL_KNOWLEDGE.apiName
+                                                    )
+                                                }
+                                            },
+                                            onMentorRequest = {
+                                                if (mentorListingId != null) {
+                                                    connectHubActions.requestMentor(mentorListingId)
+                                                } else {
+                                                    onOpenConnectHub()
+                                                }
+                                            },
+                                            onFriendRequest = {
+                                                if (profile.id.isNotBlank()) {
+                                                    overlayScope.launch {
+                                                        val sent = interactionRepository.sendFriendRequest(profile.id)
+                                                        Toast.makeText(
+                                                            context,
+                                                            if (sent) "Friend request sent" else "Unable to send friend request",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                }
+                                            },
+                                            onRoommateRequest = {
+                                                if (roommateListingId != null) {
+                                                    connectHubActions.applyRoommate(roommateListingId)
+                                                } else {
+                                                    onOpenConnectHub()
+                                                }
+                                            },
+                                            onStudyMateRequest = {
+                                                if (readingListingId != null) {
+                                                    connectHubActions.requestReadingMate(readingListingId)
+                                                } else {
+                                                    onOpenConnectHub()
+                                                }
+                                            },
+                                            onViewProfile = {},
+                                            onOpenConnectHub = onOpenConnectHub,
+                                            darkSurface = isDark,
+                                            modifier = Modifier.scale(animatedFollowScale)
                                         )
                                     }
                                 }
