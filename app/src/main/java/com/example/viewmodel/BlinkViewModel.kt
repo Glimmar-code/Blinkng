@@ -194,6 +194,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
 
     private val application = application
     private val appContext: Context = application.applicationContext
+    private var marketQuery: String = ""
+    private var marketCategory: String? = null
+    private var marketSort: String = "newest"
     private val prefs = application.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val authPrefs = application.getSharedPreferences(AUTH_PREFS, Context.MODE_PRIVATE)
     private val supabaseService = SupabaseService()
@@ -4326,6 +4329,40 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    fun searchMarketItems(query: String, category: String?, sort: String) {
+        marketQuery = query.trim()
+        marketCategory = category?.takeUnless { it.equals("All Categories", true) }
+        marketSort = sort
+        if (!_uiState.value.isOnline) return
+
+        _uiState.value = _uiState.value.copy(isMarketLoading = true, marketErrorMessage = null)
+        viewModelScope.launch {
+            runCatching {
+                supabaseService.fetchMarketItems(
+                    limit = 40,
+                    offset = 0,
+                    query = marketQuery,
+                    category = marketCategory,
+                    sort = marketSort
+                )
+            }.onSuccess { fresh ->
+                _uiState.value = _uiState.value.copy(
+                    marketItems = fresh,
+                    isMarketLoading = false,
+                    marketHasMore = fresh.size >= 40,
+                    marketErrorMessage = null
+                )
+                persistExtendedCache()
+            }.onFailure { error ->
+                Log.w(TAG, "Market search failed", error)
+                _uiState.value = _uiState.value.copy(
+                    isMarketLoading = false,
+                    marketErrorMessage = error.message ?: "Couldn't search Market."
+                )
+            }
+        }
+    }
+
     fun refreshMarketItems() {
         if (!_uiState.value.isOnline) {
             showToast("You're offline. Showing your saved Market cache.")
@@ -4333,7 +4370,14 @@ private suspend fun restoreSupabaseSession() {
         }
         _uiState.value = _uiState.value.copy(isMarketLoading = true, marketErrorMessage = null)
         viewModelScope.launch {
-            runCatching { supabaseService.fetchMarketItems(limit = 40) }
+            runCatching {
+                supabaseService.fetchMarketItems(
+                    limit = 40,
+                    query = marketQuery,
+                    category = marketCategory,
+                    sort = marketSort
+                )
+            }
                 .onSuccess { fresh ->
                     _uiState.value = _uiState.value.copy(
                         marketItems = fresh,
@@ -4361,7 +4405,10 @@ private suspend fun restoreSupabaseSession() {
             runCatching {
                 supabaseService.fetchMarketItems(
                     limit = 40,
-                    offset = _uiState.value.marketItems.size
+                    offset = _uiState.value.marketItems.size,
+                    query = marketQuery,
+                    category = marketCategory,
+                    sort = marketSort
                 )
             }.onSuccess { page ->
                 val latest = _uiState.value
