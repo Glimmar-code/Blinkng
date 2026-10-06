@@ -1175,8 +1175,16 @@ fun MainAppContent(
                 } else {
                     (uiState.posts + uiState.reels).distinctBy { it.id }.filter { it.author.equals(profile.username, ignoreCase = true) || it.author.equals(profile.fullName, ignoreCase = true) }
                 }
-                val profileLikedPosts = (uiState.posts + uiState.reels).filter { it.isLiked }
-                val profileSavedPosts = (uiState.posts + uiState.reels).filter { it.isBookmarked }
+                val profileLikedPosts = if (isMyProfile) {
+                    (uiState.posts + uiState.reels).distinctBy { it.id }.filter { it.isLiked }
+                } else {
+                    emptyList()
+                }
+                val profileSavedPosts = if (isMyProfile) {
+                    (uiState.posts + uiState.reels).distinctBy { it.id }.filter { it.isBookmarked }
+                } else {
+                    emptyList()
+                }
 
                 val userMarketItems = if (isMyProfile) {
                     uiState.marketItems.filter {
