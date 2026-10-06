@@ -295,3 +295,18 @@ data class ChatConversation(
     val muteUntil: String? = null,
     val presenceLabel: String = ""
 )
+
+data class ChatPrivacySettings(
+    val whoCanMessage: String = "everyone",
+    val whoCanCall: String = "everyone",
+    val whoCanGroupInvite: String = "everyone",
+    val showOnline: Boolean = true,
+    val showLastSeen: Boolean = true,
+    val sendReadReceipts: Boolean = true,
+    val showTyping: Boolean = true,
+    val showRecording: Boolean = true,
+    val showProfilePhotoInChat: Boolean = true,
+    val allowLinkPreviews: Boolean = true,
+    val notificationPreview: String = "full"
+)
+
