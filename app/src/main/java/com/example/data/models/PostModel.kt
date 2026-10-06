@@ -105,10 +105,13 @@ data class PostDraft(
     val linkUrl: String? = null,
     val allowComments: Boolean = true,
     val hideLikes: Boolean = false,
+    val isPinned: Boolean = false,
+    val isDisappearing: Boolean = false,
     val pollQuestion: String = "",
     val pollOptions: List<String> = emptyList(),
     val savedAtTimestamp: Long = System.currentTimeMillis(),
     val audioTrack: String? = null,
+    val altText: String? = null,
     val textStyle: String? = null
 )
 
