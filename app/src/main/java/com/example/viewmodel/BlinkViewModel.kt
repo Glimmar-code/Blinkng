@@ -2702,6 +2702,7 @@ private suspend fun restoreSupabaseSession() {
                         isCreatePostOpen = false,
                         isCreatingPost = false
                     )
+                    clearCreatePostPersistentState(profile)
                     showToast("Post scheduled for $timeFormatted")
                 }
             } catch (e: Exception) {
