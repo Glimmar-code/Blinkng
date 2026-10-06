@@ -19,11 +19,14 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -60,6 +63,7 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -88,6 +92,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -100,6 +105,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.data.models.FeedPost
 import com.example.data.models.PostPoll
 import com.example.data.models.VerificationBadge
@@ -115,6 +121,10 @@ import com.example.ui.theme.FeedPurple
 import com.example.ui.theme.FeedTextMuted
 import com.example.ui.theme.FeedTextPrimary
 import com.example.ui.theme.FeedTextSecondary
+import com.example.ui.theme.LightBorder
+import com.example.ui.theme.LightSurface
+import com.example.ui.theme.LightTextPrimary
+import com.example.ui.theme.LightTextSecondary
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -122,6 +132,7 @@ import kotlinx.coroutines.launch
  * Premium home-feed card. It renders only real post media: text-only posts never
  * allocate an empty image area and video content remains routed to Reels.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun PostCard(
     post: FeedPost,
@@ -166,11 +177,11 @@ fun PostCard(
     }
     val profileTarget = resolvedAuthorUsername.ifBlank { post.author }
     val displayedViewsCount = rememberDelayedContentViewCount(post.id, post.viewsCount)
-    val surfaceColor = if (isDark) Color(0xFF080808) else Color.White
-    val primaryText = if (isDark) Color(0xFFF2F3F5) else Color(0xFF111111)
-    val secondaryText = if (isDark) Color(0xFFB0B3B8) else Color(0xFF65676B)
-    val dividerColor = if (isDark) Color(0xFF242424) else Color(0xFFE4E6EB)
-    val socialBlue = Color(0xFF1877F2)
+    val surfaceColor = if (isDark) FeedCardSurface else LightSurface
+    val primaryText = if (isDark) FeedTextPrimary else LightTextPrimary
+    val secondaryText = if (isDark) FeedTextSecondary else LightTextSecondary
+    val dividerColor = if (isDark) FeedBorder else LightBorder
+    val socialBlue = FeedBlue
 
     val displayImages = remember(post.images) {
         post.images
@@ -181,6 +192,7 @@ fun PostCard(
     var showImageFullscreen by remember(post.id) { mutableStateOf(false) }
     var imagePage by remember(post.id) { mutableIntStateOf(0) }
     var expandedText by remember(post.id) { mutableStateOf(false) }
+    var textCanExpand by remember(post.id) { mutableStateOf(false) }
     val likeScale = remember(post.id) { Animatable(1f) }
     val scope = rememberCoroutineScope()
     val likedTint by animateColorAsState(
@@ -482,7 +494,12 @@ fun PostCard(
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
                                 maxLines = if (expandedText) Int.MAX_VALUE else 14,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                onTextLayout = { result ->
+                                    if (!expandedText && result.hasVisualOverflow) {
+                                        textCanExpand = true
+                                    }
+                                }
                             )
                         }
                     }
@@ -494,11 +511,16 @@ fun PostCard(
                             style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
                             maxLines = if (expandedText) Int.MAX_VALUE else 7,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { result ->
+                                if (!expandedText && result.hasVisualOverflow) {
+                                    textCanExpand = true
+                                }
+                            }
                         )
                     }
                 }
-                if (post.text.length > 320) {
+                if (textCanExpand || expandedText) {
                     Text(
                         text = if (expandedText) "Show less" else "See more",
                         color = socialBlue,
@@ -530,9 +552,11 @@ fun PostCard(
                         )
                     } else {
                         val mediaState = rememberLazyListState()
+                        val mediaFlingBehavior = rememberSnapFlingBehavior(mediaState)
                         LazyRow(
                             state = mediaState,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            flingBehavior = mediaFlingBehavior
                         ) {
                             itemsIndexed(
                                 items = displayImages,
@@ -573,74 +597,87 @@ fun PostCard(
                     .padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val primaryMetrics = buildList {
+                    add("${formatNumber(displayedViewsCount)} views")
+                    if (!post.hideLikes && post.likes > 0) {
+                        add("${formatNumber(post.likes)} likes")
+                    }
+                }
+                val secondaryMetrics = buildList {
+                    if (post.commentsCount > 0) {
+                        add("${formatNumber(post.commentsCount)} comments")
+                    }
+                    if (post.sharesCount > 0) {
+                        add("${formatNumber(post.sharesCount)} shares")
+                    }
+                }
                 Text(
-                    text = buildList {
-                        add("${formatNumber(displayedViewsCount)} views")
-                        if (!post.hideLikes) add("${formatNumber(post.likes)} likes")
-                    }.joinToString("  ·  "),
+                    text = primaryMetrics.joinToString("  ·  "),
                     color = secondaryText,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1
                 )
                 Spacer(Modifier.weight(1f))
-                Text(
-                    text = listOf(
-                        "${formatNumber(post.commentsCount)} comments",
-                        "${formatNumber(post.sharesCount)} shares"
-                    ).joinToString("  ·  "),
-                    color = secondaryText,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1
-                )
+                if (secondaryMetrics.isNotEmpty()) {
+                    Text(
+                        text = secondaryMetrics.joinToString("  ·  "),
+                        color = secondaryText,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1
+                    )
+                }
             }
 
             HorizontalDivider(color = dividerColor)
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 1.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                PremiumPostAction(
-                    icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    value = "Like",
-                    tint = likedTint,
-                    description = if (post.isLiked) "Unlike" else "Like",
-                    iconScale = likeScale.value,
-                    onClick = {
-                        scope.launch {
-                            likeScale.snapTo(1f)
-                            likeScale.animateTo(1.15f, tween(80))
-                            likeScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
-                        }
-                        onLike()
-                    }
-                )
-                PremiumPostAction(
-                    icon = Icons.Default.ChatBubbleOutline,
-                    value = "Comment",
-                    tint = secondaryText,
-                    description = "Comment",
-                    onClick = onComment
-                )
-                if (!isAuthor) {
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val compactActions = maxWidth < 360.dp
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     PremiumPostAction(
-                        icon = Icons.Default.Repeat,
-                        value = "Repost",
-                        tint = repostTint,
-                        description = if (post.isRepostedByMe) "Undo repost" else "Repost",
-                        onClick = onRepost
+                        icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        value = if (compactActions) null else "Like",
+                        tint = likedTint,
+                        description = if (post.isLiked) "Unlike" else "Like",
+                        iconScale = likeScale.value,
+                        onClick = {
+                            scope.launch {
+                                likeScale.snapTo(1f)
+                                likeScale.animateTo(1.15f, tween(80))
+                                likeScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+                            }
+                            onLike()
+                        }
+                    )
+                    PremiumPostAction(
+                        icon = Icons.Default.ChatBubbleOutline,
+                        value = if (compactActions) null else "Comment",
+                        tint = secondaryText,
+                        description = "Comment",
+                        onClick = onComment
+                    )
+                    if (!isAuthor) {
+                        PremiumPostAction(
+                            icon = Icons.Default.Repeat,
+                            value = if (compactActions) null else "Repost",
+                            tint = repostTint,
+                            description = if (post.isRepostedByMe) "Undo repost" else "Repost",
+                            onClick = onRepost
+                        )
+                    }
+                    PremiumPostAction(
+                        icon = Icons.Default.Share,
+                        value = if (compactActions) null else "Share",
+                        tint = secondaryText,
+                        description = "Share",
+                        onClick = onShare
                     )
                 }
-                PremiumPostAction(
-                    icon = Icons.Default.Share,
-                    value = "Share",
-                    tint = secondaryText,
-                    description = "Share",
-                    onClick = onShare
-                )
             }
 
             HorizontalDivider(color = dividerColor)
@@ -856,31 +893,87 @@ private fun NaturalAspectPostImage(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    var imageAspectRatio by remember(imageUrl) { mutableFloatStateOf(1f) }
+    val context = LocalContext.current
+    var imageAspectRatio by remember(imageUrl) { mutableFloatStateOf(4f / 5f) }
+    var isLoading by remember(imageUrl) { mutableStateOf(true) }
+    var loadFailed by remember(imageUrl) { mutableStateOf(false) }
+    var retryNonce by remember(imageUrl) { mutableIntStateOf(0) }
+    val request = remember(imageUrl, retryNonce, context) {
+        ImageRequest.Builder(context)
+            .data(imageUrl)
+            .crossfade(180)
+            .build()
+    }
 
-    AsyncImage(
-        model = imageUrl,
-        contentDescription = contentDescription,
-        contentScale = ContentScale.Fit,
-        onSuccess = { state ->
-            val drawable = state.result.drawable
-            val width = drawable.intrinsicWidth
-            val height = drawable.intrinsicHeight
-            if (width > 0 && height > 0) {
-                imageAspectRatio = width.toFloat() / height.toFloat()
-            }
-        },
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(imageAspectRatio.coerceAtLeast(0.01f))
-            .clickable(onClick = onClick)
-    )
+            .aspectRatio(imageAspectRatio.coerceIn(0.72f, 1.91f))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f))
+            .clickable(enabled = !loadFailed, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = request,
+            contentDescription = contentDescription,
+            contentScale = ContentScale.Fit,
+            onLoading = {
+                isLoading = true
+                loadFailed = false
+            },
+            onSuccess = { state ->
+                isLoading = false
+                loadFailed = false
+                val drawable = state.result.drawable
+                val width = drawable.intrinsicWidth
+                val height = drawable.intrinsicHeight
+                if (width > 0 && height > 0) {
+                    imageAspectRatio = (width.toFloat() / height.toFloat()).coerceIn(0.72f, 1.91f)
+                }
+            },
+            onError = {
+                isLoading = false
+                loadFailed = true
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(26.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        if (loadFailed) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Text(
+                    text = "Image unavailable · Tap to retry",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier
+                        .clickable {
+                            loadFailed = false
+                            isLoading = true
+                            retryNonce += 1
+                        }
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                )
+            }
+        }
+    }
 }
 
 /**
  * Tap a feed image to open it full-screen. Pinch with two fingers to zoom up to
  * 5x and pan around the enlarged image. Back or the close button exits safely.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ImageFullscreenDialog(
     images: List<String>,
@@ -926,13 +1019,31 @@ private fun ImageFullscreenDialog(
                 Box(modifier = Modifier.fillMaxSize()) {
                     LazyRow(
                         state = state,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        flingBehavior = rememberSnapFlingBehavior(state)
                     ) {
                         itemsIndexed(images, key = { index, image -> "image:$index:$image" }) { index, image ->
                             ZoomableFullscreenImage(
                                 imageUrl = image,
                                 contentDescription = "Fullscreen image ${index + 1} of ${images.size}",
                                 modifier = Modifier.fillParentMaxWidth()
+                            )
+                        }
+                    }
+
+                    if (images.size > 1) {
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 28.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.Black.copy(alpha = 0.58f)
+                        ) {
+                            Text(
+                                text = "${state.firstVisibleItemIndex + 1}/${images.size}",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                             )
                         }
                     }
@@ -978,6 +1089,19 @@ private fun ZoomableFullscreenImage(
             contentScale = ContentScale.Fit,
             modifier = Modifier
                 .fillMaxSize()
+                .pointerInput(imageUrl) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            if (scale > 1.05f) {
+                                scale = 1f
+                                offset = Offset.Zero
+                            } else {
+                                scale = 2.5f
+                                offset = Offset.Zero
+                            }
+                        }
+                    )
+                }
                 .pointerInput(imageUrl) {
                     detectTransformGestures { _, pan, zoom, _ ->
                         val newScale = (scale * zoom).coerceIn(1f, 5f)
