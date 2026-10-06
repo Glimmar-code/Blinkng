@@ -29,7 +29,15 @@ def git(*args: str) -> str:
 
 def fetch_ref(ref: str) -> None:
     try:
-        git("fetch", "origin", ref, "--depth=1")
+        # Keep the target branch as a normal remote-tracking ref with its ancestry intact.
+        # A depth=1 fetch can mark the target tip as a shallow boundary and make
+        # origin/<base>...HEAD fail with "no merge base" on otherwise related histories.
+        git(
+            "fetch",
+            "origin",
+            f"+refs/heads/{ref}:refs/remotes/origin/{ref}",
+            "--no-tags",
+        )
     except subprocess.CalledProcessError:
         # checkout uses fetch-depth: 0 in CI, so the remote ref may already be present.
         pass
