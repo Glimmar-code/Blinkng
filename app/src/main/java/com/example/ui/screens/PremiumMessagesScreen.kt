@@ -111,6 +111,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -1259,6 +1260,15 @@ private fun PremiumChatDetail(
     var pinnedOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val scrollScope = rememberCoroutineScope()
+    var newMessagesBelow by remember(conversation.id) { mutableIntStateOf(0) }
+    val isNearLatest by remember(conversation.id) {
+        derivedStateOf {
+            val layout = listState.layoutInfo
+            if (layout.totalItemsCount == 0) true
+            else (layout.visibleItemsInfo.lastOrNull()?.index ?: 0) >= layout.totalItemsCount - 2
+        }
+    }
     BackHandler(enabled = showContactProfile) { showContactProfile = false }
     // MESSAGING_RELIABILITY_AUDIT_V3: older pages load only after a real user scroll reaches the top.
     var userHasScrolled by remember(conversation.id) { mutableStateOf(false) }
@@ -1323,10 +1333,21 @@ private fun PremiumChatDetail(
     }
 
     val latestVisibleMessageId = visibleMessages.lastOrNull()?.id
+    var previousLatestVisibleMessageId by remember(conversation.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(conversation.partnerUsername, latestVisibleMessageId) {
-        if (visibleMessages.isNotEmpty()) {
+        if (visibleMessages.isEmpty()) return@LaunchedEffect
+        val changed = previousLatestVisibleMessageId != null &&
+            previousLatestVisibleMessageId != latestVisibleMessageId
+        if (!userHasScrolled || isNearLatest || previousLatestVisibleMessageId == null) {
             listState.animateScrollToItem(visibleMessages.lastIndex)
+            newMessagesBelow = 0
+        } else if (changed) {
+            newMessagesBelow = (newMessagesBelow + 1).coerceAtMost(99)
         }
+        previousLatestVisibleMessageId = latestVisibleMessageId
+    }
+    LaunchedEffect(isNearLatest) {
+        if (isNearLatest) newMessagesBelow = 0
     }
 
     MessageBackground(palette) {
@@ -1445,6 +1466,37 @@ private fun PremiumChatDetail(
                             },
                             onActions = { selectedMessage = message },
                             onRetry = { onRetry(message) }
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(visible = newMessagesBelow > 0) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Surface(
+                        color = palette.glassElevated,
+                        contentColor = palette.textPrimary,
+                        shape = RoundedCornerShape(100.dp),
+                        border = BorderStroke(1.dp, palette.border),
+                        shadowElevation = 6.dp,
+                        modifier = Modifier.clickable {
+                            scrollScope.launch {
+                                if (visibleMessages.isNotEmpty()) {
+                                    listState.animateScrollToItem(visibleMessages.lastIndex)
+                                    newMessagesBelow = 0
+                                }
+                            }
+                        }
+                    ) {
+                        Text(
+                            "↓ $newMessagesBelow new",
+                            color = palette.textPrimary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp)
                         )
                     }
                 }
