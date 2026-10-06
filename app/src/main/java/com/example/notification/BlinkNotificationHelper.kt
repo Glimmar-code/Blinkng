@@ -815,6 +815,8 @@ object BlinkNotificationHelper {
                 .setAutoCancel(
                     true
                 )
+                .setOnlyAlertOnce(!stableNotificationKey.isNullOrBlank())
+                .setNumber(notificationCount.coerceAtLeast(1))
                 .setContentIntent(
                     buildChatPendingIntent(
                         context,
@@ -848,7 +850,9 @@ object BlinkNotificationHelper {
         targetPostId: String? = null,
         targetType: String? = null,
         targetId: String? = null,
-        profileIdentifier: String? = null
+        profileIdentifier: String? = null,
+        stableNotificationKey: String? = null,
+        notificationCount: Int = 1
     ) {
 
         if (
@@ -927,7 +931,7 @@ object BlinkNotificationHelper {
             context,
             SOCIAL_ID_BASE +
                     positiveHash(
-                        "$title$body"
+                        stableNotificationKey ?: "$title$body"
                     ) % 700,
             notification
         )
@@ -944,15 +948,24 @@ object BlinkNotificationHelper {
         targetType: String = "post"
     ) {
 
+        val burstKey = "like:" + targetType.lowercase() + ":" + postId
+        val burst = SocialNotificationBurstStore.register(context, burstKey, "@$username")
         showSocialNotification(
             context = context,
-            title =
-                "❤️ @$username liked your post",
-            body =
-                "Someone interacted with your campus post.",
-            targetPostId =
-                postId,
-            targetType = targetType
+            title = if (burst.count == 1) {
+                "❤️ @$username liked your post"
+            } else {
+                "❤️ " + burst.actorSummary + " liked your post"
+            },
+            body = if (burst.count == 1) {
+                "Someone interacted with your campus post."
+            } else {
+                burst.count.toString() + " new likes on this post."
+            },
+            targetPostId = postId,
+            targetType = targetType,
+            stableNotificationKey = burstKey,
+            notificationCount = burst.count
         )
     }
 
@@ -980,6 +993,19 @@ object BlinkNotificationHelper {
             context
         )
 
+        val burstKey = "comment:" + targetType.lowercase() + ":" + postId
+        val burst = SocialNotificationBurstStore.register(context, burstKey, "@$username")
+        val notificationTitle = if (burst.count == 1) {
+            "@$username commented on your post"
+        } else {
+            burst.actorSummary + " commented on your post"
+        }
+        val notificationBody = if (burst.count == 1) {
+            comment
+        } else {
+            burst.count.toString() + " new comments. Latest: " + comment
+        }
+
         val notification =
             NotificationCompat.Builder(
                 context,
@@ -987,15 +1013,15 @@ object BlinkNotificationHelper {
             )
                 .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
-                    "@$username commented on your post"
+                    notificationTitle
                 )
                 .setContentText(
-                    comment
+                    notificationBody
                 )
                 .setStyle(
                     NotificationCompat
                         .BigTextStyle()
-                        .bigText(comment)
+                        .bigText(notificationBody)
                 )
                 .setCategory(
                     NotificationCompat
@@ -1011,6 +1037,8 @@ object BlinkNotificationHelper {
                 .setAutoCancel(
                     true
                 )
+                .setOnlyAlertOnce(true)
+                .setNumber(burst.count)
                 .setContentIntent(
                     buildPostPendingIntent(
                         context,
@@ -1027,7 +1055,7 @@ object BlinkNotificationHelper {
             context,
             COMMENT_ID_BASE +
                     positiveHash(
-                        "${username}_${postId}_${comment}"
+                        burstKey
                     ) % 700,
             notification
         )
@@ -1057,6 +1085,16 @@ object BlinkNotificationHelper {
             context
         )
 
+        val burstKey = "mention:" + targetType.lowercase() + ":" + postId
+        val burst = SocialNotificationBurstStore.register(context, burstKey, "@$username")
+        val notificationTitle = if (burst.count == 1) {
+            "@$username mentioned you"
+        } else {
+            burst.actorSummary + " mentioned you"
+        }
+        val notificationBody = if (burst.count == 1) body
+        else burst.count.toString() + " new mentions. Latest: " + body
+
         val notification =
             NotificationCompat.Builder(
                 context,
@@ -1064,15 +1102,15 @@ object BlinkNotificationHelper {
             )
                 .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
-                    "@$username mentioned you"
+                    notificationTitle
                 )
                 .setContentText(
-                    body
+                    notificationBody
                 )
                 .setStyle(
                     NotificationCompat
                         .BigTextStyle()
-                        .bigText(body)
+                        .bigText(notificationBody)
                 )
                 .setCategory(
                     NotificationCompat
@@ -1084,6 +1122,8 @@ object BlinkNotificationHelper {
                 .setAutoCancel(
                     true
                 )
+                .setOnlyAlertOnce(true)
+                .setNumber(burst.count)
                 .setContentIntent(
                     buildPostPendingIntent(
                         context,
@@ -1100,7 +1140,7 @@ object BlinkNotificationHelper {
             context,
             MENTION_ID_BASE +
                     positiveHash(
-                        "${username}_${postId}"
+                        burstKey
                     ) % 700,
             notification
         )
@@ -1127,6 +1167,9 @@ object BlinkNotificationHelper {
             context
         )
 
+        val burstKey = "follow"
+        val burst = SocialNotificationBurstStore.register(context, burstKey, "@$username")
+
         val notification =
             NotificationCompat.Builder(
                 context,
@@ -1140,7 +1183,11 @@ object BlinkNotificationHelper {
                     "New follower"
                 )
                 .setContentText(
-                    "@$username started following you"
+                    if (burst.count == 1) {
+                        "@$username started following you"
+                    } else {
+                        burst.actorSummary + " started following you"
+                    }
                 )
                 .setCategory(
                     NotificationCompat
@@ -1152,6 +1199,8 @@ object BlinkNotificationHelper {
                 .setAutoCancel(
                     true
                 )
+                .setOnlyAlertOnce(true)
+                .setNumber(burst.count)
                 .setContentIntent(
                     buildProfilePendingIntent(
                         context,
@@ -1164,7 +1213,7 @@ object BlinkNotificationHelper {
             context,
             SOCIAL_ID_BASE +
                     positiveHash(
-                        "follow_$username"
+                        burstKey
                     ) % 700,
             notification
         )
