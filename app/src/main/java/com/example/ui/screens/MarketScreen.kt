@@ -134,7 +134,7 @@ fun MarketScreen(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // Primary Action Button: "Become a Seller" (if not active) or "Create a Post" (if active)
+                    // Primary Action Button: "Become a Seller" (if not active) or "Create Listing" (if active)
                     if (!isSellerActive) {
                         Button(
                             onClick = onOpenBecomeSeller,
@@ -173,7 +173,7 @@ fun MarketScreen(
                                 tint = Color.White
                             )
                             Spacer(modifier = Modifier.width(5.dp))
-                            Text("Create a Post", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                            Text("Create Listing", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -261,7 +261,7 @@ fun MarketScreen(
             }
         }
 
-        // Seller Action Banner: Become a Seller or Create a Post
+        // Seller Action Banner: Become a Seller or Create Listing
         item {
             if (!isSellerActive) {
                 Card(
@@ -387,7 +387,7 @@ fun MarketScreen(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
-                                    Text("Create a Post", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text("Create Listing", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                 }
                             }
                         }
