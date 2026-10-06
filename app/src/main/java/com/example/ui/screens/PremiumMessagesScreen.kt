@@ -3673,6 +3673,301 @@ private fun CallControl(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun ChatPrivacySettingsSheet(
+    settings: ChatPrivacySettings,
+    palette: MessagePalette,
+    onChange: (ChatPrivacySettings) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = palette.glass,
+        contentColor = palette.textPrimary
+    ) {
+        Text(
+            "Privacy & messaging",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+        Text(
+            "Control who can reach you and what activity other people can see.",
+            color = palette.textSecondary,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+        )
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item {
+                ChatPrivacyScopeSection(
+                    title = "Who can message me",
+                    value = settings.whoCanMessage,
+                    palette = palette,
+                    onSelect = { onChange(settings.copy(whoCanMessage = it)) }
+                )
+            }
+            item {
+                ChatPrivacyScopeSection(
+                    title = "Who can call me",
+                    value = settings.whoCanCall,
+                    palette = palette,
+                    onSelect = { onChange(settings.copy(whoCanCall = it)) }
+                )
+            }
+            item {
+                ChatPrivacyScopeSection(
+                    title = "Who can add me to groups",
+                    value = settings.whoCanGroupInvite,
+                    palette = palette,
+                    onSelect = { onChange(settings.copy(whoCanGroupInvite = it)) }
+                )
+            }
+
+            item {
+                Text(
+                    "Activity",
+                    color = palette.textSecondary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                )
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Show online status",
+                    "Allow people to see when you are active.",
+                    settings.showOnline,
+                    palette
+                ) { onChange(settings.copy(showOnline = it)) }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Show last seen",
+                    "Show your most recent activity time.",
+                    settings.showLastSeen,
+                    palette
+                ) { onChange(settings.copy(showLastSeen = it)) }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Read receipts",
+                    "Send read status when you open messages.",
+                    settings.sendReadReceipts,
+                    palette
+                ) { onChange(settings.copy(sendReadReceipts = it)) }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Typing status",
+                    "Let people see when you are typing.",
+                    settings.showTyping,
+                    palette
+                ) { onChange(settings.copy(showTyping = it)) }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Recording status",
+                    "Let people see when you are recording a voice note.",
+                    settings.showRecording,
+                    palette
+                ) { onChange(settings.copy(showRecording = it)) }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Profile photo in chat",
+                    "Allow your profile photo to appear in conversations.",
+                    settings.showProfilePhotoInChat,
+                    palette
+                ) { onChange(settings.copy(showProfilePhotoInChat = it)) }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Link previews",
+                    "Show compact previews for web links in messages.",
+                    settings.allowLinkPreviews,
+                    palette
+                ) { onChange(settings.copy(allowLinkPreviews = it)) }
+            }
+
+            item {
+                Text(
+                    "Notification preview",
+                    color = palette.textSecondary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                )
+            }
+            item {
+                ChatPrivacyChoiceRow(
+                    label = "Full preview",
+                    selected = settings.notificationPreview == "full",
+                    palette = palette,
+                    onClick = { onChange(settings.copy(notificationPreview = "full")) }
+                )
+            }
+            item {
+                ChatPrivacyChoiceRow(
+                    label = "Sender only",
+                    selected = settings.notificationPreview == "sender_only",
+                    palette = palette,
+                    onClick = { onChange(settings.copy(notificationPreview = "sender_only")) }
+                )
+            }
+            item {
+                ChatPrivacyChoiceRow(
+                    label = "Hide message preview",
+                    selected = settings.notificationPreview == "hidden",
+                    palette = palette,
+                    onClick = { onChange(settings.copy(notificationPreview = "hidden")) }
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp).navigationBarsPadding())
+    }
+}
+
+@Composable
+private fun ChatPrivacyScopeSection(
+    title: String,
+    value: String,
+    palette: MessagePalette,
+    onSelect: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(palette.glassElevated)
+            .border(1.dp, palette.border, RoundedCornerShape(16.dp))
+            .padding(12.dp)
+    ) {
+        Text(
+            title,
+            color = palette.textPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        LazyRow(
+            contentPadding = PaddingValues(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            val choices = listOf(
+                "everyone" to "Everyone",
+                "followers" to "Followers",
+                "mutuals" to "Mutuals",
+                "connections" to "Connections",
+                "nobody" to "Nobody"
+            )
+            items(choices, key = { it.first }) { (key, label) ->
+                val selected = value == key
+                Surface(
+                    color = if (selected) palette.textPrimary else palette.glass,
+                    contentColor = if (selected) palette.background else palette.textPrimary,
+                    shape = RoundedCornerShape(100.dp),
+                    border = BorderStroke(
+                        1.dp,
+                        if (selected) palette.textPrimary else palette.border
+                    ),
+                    modifier = Modifier.clickable { onSelect(key) }
+                ) {
+                    Text(
+                        label,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatPrivacyToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    palette: MessagePalette,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Surface(
+        color = palette.glassElevated,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, palette.border),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    color = palette.textPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    subtitle,
+                    color = palette.textSecondary,
+                    fontSize = 9.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChatPrivacyChoiceRow(
+    label: String,
+    selected: Boolean,
+    palette: MessagePalette,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = if (selected) palette.accent.copy(alpha = .12f) else palette.glassElevated,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(
+            1.dp,
+            if (selected) palette.accent.copy(alpha = .50f) else palette.border
+        ),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                label,
+                color = palette.textPrimary,
+                fontSize = 11.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier.weight(1f)
+            )
+            if (selected) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = "Selected",
+                    tint = palette.accent,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun MessageAppearanceSheet(
     selected: MessageThemeMode,
     palette: MessagePalette,
