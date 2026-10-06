@@ -261,7 +261,7 @@ fun LeaderboardScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SummaryPill("Top 20", "${topTwenty.size}/10", Modifier.weight(1f))
+                SummaryPill("Top 20", "${topTwenty.size}/20", Modifier.weight(1f))
                 SummaryPill("Scope", scope.label, Modifier.weight(1f))
                 SummaryPill(
                     "Leader",
