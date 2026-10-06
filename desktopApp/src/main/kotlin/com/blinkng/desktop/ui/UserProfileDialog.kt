@@ -1,5 +1,6 @@
 package com.blinkng.desktop.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -63,6 +64,9 @@ import com.blinkng.desktop.data.DesktopProfile
 import com.blinkng.desktop.data.DesktopProfileNotificationMode
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import kotlinx.coroutines.launch
+import kotlin.math.min
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 
 @Composable
 fun DesktopUserProfileDialog(
@@ -243,6 +247,13 @@ fun DesktopUserProfileDialog(
                                     Text("Notify")
                                 }
                             }
+                        }
+
+                        item {
+                            DesktopProfileQr(
+                                link = DesktopShareLinkManager.generateProfile(profile.username),
+                                username = profile.username,
+                            )
                         }
 
                         statusMessage?.let { message ->
@@ -521,6 +532,50 @@ fun DesktopUserProfileDialog(
                     connectionProfiles = emptyList()
                 }) { Text("Close") }
             },
+        )
+    }
+}
+
+@Composable
+private fun DesktopProfileQr(
+    link: String,
+    username: String,
+) {
+    val matrix = remember(link) {
+        runCatching { QRCodeWriter().encode(link, BarcodeFormat.QR_CODE, 41, 41) }.getOrNull()
+    } ?: return
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = androidx.compose.ui.graphics.Color.White,
+        ) {
+            Canvas(modifier = Modifier.size(154.dp).padding(10.dp)) {
+                val cell = min(size.width / matrix.width, size.height / matrix.height)
+                val qrSize = cell * matrix.width
+                val left = (size.width - qrSize) / 2f
+                val top = (size.height - qrSize) / 2f
+                for (x in 0 until matrix.width) {
+                    for (y in 0 until matrix.height) {
+                        if (matrix[x, y]) {
+                            drawRect(
+                                color = androidx.compose.ui.graphics.Color.Black,
+                                topLeft = androidx.compose.ui.geometry.Offset(left + x * cell, top + y * cell),
+                                size = androidx.compose.ui.geometry.Size(cell + 0.5f, cell + 0.5f),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Text(
+            "Scan to open @$username on BLINK",
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
