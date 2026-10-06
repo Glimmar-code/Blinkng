@@ -3897,6 +3897,53 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    fun setChatNotificationSettings(
+        conversation: ChatConversation,
+        mode: String,
+        muteUntil: String? = null
+    ) {
+        if (conversation.id.startsWith("local_")) return
+        val cleanMode = mode.lowercase().takeIf { it in setOf("all", "mentions", "none") } ?: return
+        val beforeMode = conversation.notificationMode
+        val beforeUntil = conversation.muteUntil
+        val latest = _uiState.value
+        _uiState.value = latest.copy(
+            conversations = latest.conversations.map {
+                if (it.id == conversation.id) {
+                    it.copy(
+                        notificationMode = cleanMode,
+                        muteUntil = muteUntil,
+                        isMuted = cleanMode == "none"
+                    )
+                } else it
+            }
+        )
+        persistConversations()
+        viewModelScope.launch {
+            if (!chatRepository.setConversationNotificationSettings(
+                    conversationId = conversation.id,
+                    mode = cleanMode,
+                    muteUntil = muteUntil
+                )
+            ) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    conversations = current.conversations.map {
+                        if (it.id == conversation.id) {
+                            it.copy(
+                                notificationMode = beforeMode,
+                                muteUntil = beforeUntil,
+                                isMuted = beforeMode == "none"
+                            )
+                        } else it
+                    }
+                )
+                persistConversations()
+                showToast("Couldn't update notification settings.")
+            }
+        }
+    }
+
     fun respondToMessageRequest(conversation: ChatConversation, accept: Boolean) {
         if (conversation.id.startsWith("local_")) return
         viewModelScope.launch {
