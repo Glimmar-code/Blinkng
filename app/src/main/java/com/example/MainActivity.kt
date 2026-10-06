@@ -709,6 +709,16 @@ fun MainAppContent(
                         onOpenMenu = { viewModel.openMenu(true) },
                         onToggleTheme = { viewModel.toggleDarkMode() },
                         isServerConnected = uiState.isLiveSupabaseConnected,
+                        activityPulsePolicy = uiState.activityPulsePolicy,
+                        onActivityPulseEvent = { surface, eventType, realCount, displayedValue, metadata ->
+                            viewModel.recordActivityPulseEvent(
+                                surface = surface,
+                                eventType = eventType,
+                                realCount = realCount,
+                                displayedValue = displayedValue,
+                                metadata = metadata,
+                            )
+                        },
                         isLoading = uiState.isFeedLoading,
                         isRefreshing = uiState.isRefreshingContent,
                         errorMessage = uiState.feedErrorMessage,
@@ -776,6 +786,17 @@ fun MainAppContent(
                         userProfile = uiState.myProfile,
                         onProfileClick = { viewModel.openProfile(it) },
                         isDark = uiState.isDarkMode,
+                        isLiveDataAvailable = uiState.isOnline && uiState.isLiveSupabaseConnected,
+                        activityPulsePolicy = uiState.activityPulsePolicy,
+                        onActivityPulseEvent = { surface, eventType, realCount, displayedValue, metadata ->
+                            viewModel.recordActivityPulseEvent(
+                                surface = surface,
+                                eventType = eventType,
+                                realCount = realCount,
+                                displayedValue = displayedValue,
+                                metadata = metadata,
+                            )
+                        },
                         onRefresh = { viewModel.refreshLeaderboard() }
                     )
                 }
@@ -891,6 +912,17 @@ fun MainAppContent(
                                 dismissUtility { viewModel.openProfile(username) }
                             },
                             isDark = uiState.isDarkMode,
+                            isLiveDataAvailable = uiState.isOnline && uiState.isLiveSupabaseConnected,
+                            activityPulsePolicy = uiState.activityPulsePolicy,
+                            onActivityPulseEvent = { surface, eventType, realCount, displayedValue, metadata ->
+                                viewModel.recordActivityPulseEvent(
+                                    surface = surface,
+                                    eventType = eventType,
+                                    realCount = realCount,
+                                    displayedValue = displayedValue,
+                                    metadata = metadata,
+                                )
+                            },
                             onRefresh = { viewModel.refreshLeaderboard() }
                         )
 
