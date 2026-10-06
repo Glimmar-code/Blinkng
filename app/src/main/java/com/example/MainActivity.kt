@@ -827,6 +827,9 @@ fun MainAppContent(
                         onSendAttachment = { partner, uri, kind ->
                             viewModel.sendAttachmentMessage(partner, uri, kind)
                         },
+                        onPresenceChange = { partner, state ->
+                            viewModel.updateChatPresence(partner, state)
+                        },
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
                         },
