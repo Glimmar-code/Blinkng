@@ -138,7 +138,7 @@ begin
   insert into public.point_transactions(user_id, action_type, points_delta, reference_id) values(p_user_id,p_action_type,v_delta,p_reference_id) on conflict do nothing;
   return v_new_points::integer;
 end;
-$function$
+$function$;
 
 revoke all on function public.award_points(uuid,text,uuid) from public, anon;
 grant execute on function public.award_points(uuid,text,uuid) to authenticated;
@@ -246,7 +246,7 @@ begin
     (v_author_id, 'repost_origin_' || v_action, v_points, p_post_id),
     (v_reposter_id, 'repost_distribution_' || v_action, v_points, p_post_id);
 end;
-$function$
+$function$;
 
 revoke all on function public.award_repost_distribution_points(uuid,uuid,text)
 from public, anon, authenticated;
@@ -325,7 +325,7 @@ begin
 
   if tg_op = 'DELETE' then return old; else return new; end if;
 end;
-$function$
+$function$;
 
 revoke all on function private_ranking.capture_native_signal()
 from public, anon, authenticated;
@@ -1505,5 +1505,4 @@ begin
     and s.position <= v_offset + v_limit
   order by s.position;
 end;
-$function$
-
+$function$;
