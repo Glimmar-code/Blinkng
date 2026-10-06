@@ -418,7 +418,12 @@ private fun BoostCampaignColumn(
     val receipts = state?.optJSONArray("receipts").objectList()
     val analytics = state?.optJSONObject("analytics")
 
-    LazyColumn(
+    PullToRefreshBox(
+        isRefreshing = stateLoading,
+        onRefresh = { if (isOnline) refreshNonce++ },
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -775,6 +780,7 @@ private fun BoostCampaignColumn(
                 GrowthReceiptCard(receipt, formatter)
             }
         }
+    }
     }
 
     if (confirmStart) {
