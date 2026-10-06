@@ -1399,6 +1399,7 @@ private fun PremiumChatDetail(
     var replyingTo by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var editingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var showOverflow by remember(conversation.partnerUsername) { mutableStateOf(false) }
+    var showNotificationSettings by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var showContactProfile by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var confirmClearChat by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var searchVisible by remember(conversation.partnerUsername) { mutableStateOf(false) }
@@ -1867,7 +1868,15 @@ private fun PremiumChatDetail(
             onStarred = { showOverflow = false; starredOnly = !starredOnly; pinnedOnly = false },
             onMute = {
                 showOverflow = false
-                interactionActions.onMuteConversation(conversation, !conversation.isMuted)
+                interactionActions.onNotificationSettings(
+                    conversation,
+                    if (conversation.notificationMode == "none") "all" else "none",
+                    null
+                )
+            },
+            onNotificationSettings = {
+                showOverflow = false
+                showNotificationSettings = true
             },
             onPinConversation = {
                 showOverflow = false
@@ -1922,6 +1931,18 @@ private fun PremiumChatDetail(
                     Text("Cancel", color = palette.textSecondary)
                 }
             }
+        )
+    }
+
+    if (showNotificationSettings) {
+        ChatNotificationSettingsSheet(
+            conversation = conversation,
+            palette = palette,
+            onSelect = { mode, muteUntil ->
+                interactionActions.onNotificationSettings(conversation, mode, muteUntil)
+                showNotificationSettings = false
+            },
+            onDismiss = { showNotificationSettings = false }
         )
     }
 
