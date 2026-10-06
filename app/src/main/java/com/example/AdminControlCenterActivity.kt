@@ -283,11 +283,15 @@ private fun AdminOverviewV3(
     status: (String) -> Unit
 ) {
     var stats by remember { mutableStateOf<AdminDashboardStats?>(null) }
+    var notificationHealth by remember { mutableStateOf<AdminNotificationDeliveryHealth?>(null) }
 
     LaunchedEffect(Unit) {
         service.fetchStats()
             .onSuccess { stats = it }
             .onFailure { status(it.message ?: "Could not load admin stats.") }
+        service.fetchNotificationDeliveryHealth()
+            .onSuccess { notificationHealth = it }
+            .onFailure { status(it.message ?: "Could not load notification delivery health.") }
     }
 
     LazyColumn(
@@ -310,6 +314,20 @@ private fun AdminOverviewV3(
             item { AdminStatCard("Live posts", s.posts) }
             item { AdminStatCard("Blink owner posts", s.ownerPosts) }
         } ?: item { CircularProgressIndicator(Modifier.size(28.dp), color = BlinkPink) }
+        item {
+            notificationHealth?.let { health ->
+                AdminNotificationHealthCard(health)
+            } ?: Card(Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier.padding(13.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(Modifier.size(20.dp), color = BlinkPink, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text("Checking notification delivery health…", fontSize = 11.sp)
+                }
+            }
+        }
         item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(13.dp)) {
@@ -334,6 +352,65 @@ private fun AdminOverviewV3(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AdminNotificationHealthCard(health: AdminNotificationDeliveryHealth) {
+    val totalFailed = health.socialFailed + health.messageFailed
+    val totalSent = health.socialSent + health.messageSent
+    val totalSending = health.socialSending + health.messageSending
+    val totalRetried = health.socialRetried + health.messageRetried
+    val healthy = health.failuresLast24h == 0
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(13.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Notification delivery health", fontWeight = FontWeight.Black, fontSize = 14.sp)
+                    Text(
+                        if (healthy) "Healthy • no recorded failures in the last 24 hours"
+                        else health.failuresLast24h.toString() + " failed dispatches in the last 24 hours",
+                        fontSize = 10.sp,
+                        color = if (healthy) Color(0xFF22C55E) else BlinkPink
+                    )
+                }
+                Text(
+                    if (healthy) "HEALTHY" else "CHECK",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Black,
+                    color = if (healthy) Color(0xFF22C55E) else BlinkPink
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Active push devices: " + health.activeDevices +
+                    " • users with push: " + health.usersWithPush,
+                fontSize = 10.sp,
+                color = Color.LightGray
+            )
+            Text(
+                "Sent: " + totalSent +
+                    " • failed: " + totalFailed +
+                    " • sending: " + totalSending +
+                    " • retried: " + totalRetried,
+                fontSize = 10.sp,
+                color = Color.LightGray
+            )
+            Spacer(Modifier.height(5.dp))
+            Text(
+                "Social " + health.socialSent + " sent / " + health.socialFailed + " failed" +
+                    "   •   Messages " + health.messageSent + " sent / " + health.messageFailed + " failed",
+                fontSize = 9.sp,
+                color = Color.Gray
+            )
+            Text(
+                "Aggregates only. FCM tokens, message content and provider error payloads are never shown here.",
+                fontSize = 9.sp,
+                color = Color.Gray,
+                modifier = Modifier.padding(top = 6.dp)
+            )
         }
     }
 }
