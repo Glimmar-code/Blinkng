@@ -3071,6 +3071,218 @@ private fun MessageComposer(
     }
 }
 
+private fun firstHttpUrl(text: String): String? =
+    Regex("""https?://[^\s]+""", RegexOption.IGNORE_CASE)
+        .find(text)
+        ?.value
+        ?.trimEnd('.', ',', ')', ']', '}', ';')
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SharedChatContentSheet(
+    conversation: ChatConversation,
+    palette: MessagePalette,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var tab by rememberSaveable(conversation.id) { mutableStateOf("media") }
+    val media = remember(conversation.messages) {
+        conversation.messages.filter {
+            !it.attachedImageUrl.isNullOrBlank() ||
+                !it.attachedVideoUrl.isNullOrBlank() ||
+                !it.attachedAudioUrl.isNullOrBlank()
+        }
+    }
+    val links = remember(conversation.messages) {
+        conversation.messages.mapNotNull { message ->
+            firstHttpUrl(message.text)?.let { url -> message to url }
+        }
+    }
+    val files = remember(conversation.messages) {
+        conversation.messages.filter { !it.attachedDocumentUrl.isNullOrBlank() }
+    }
+    val starred = remember(conversation.messages) {
+        conversation.messages.filter { it.isStarred }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = palette.glass,
+        contentColor = palette.textPrimary
+    ) {
+        Text(
+            "Shared content",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            listOf(
+                "media" to "Media",
+                "links" to "Links",
+                "files" to "Files",
+                "starred" to "Starred"
+            ).forEach { (key, label) ->
+                item(key = key) {
+                    Surface(
+                        color = if (tab == key) palette.textPrimary else palette.glassElevated,
+                        contentColor = if (tab == key) palette.background else palette.textPrimary,
+                        shape = RoundedCornerShape(100.dp),
+                        border = BorderStroke(1.dp, if (tab == key) palette.textPrimary else palette.border),
+                        modifier = Modifier.clickable { tab = key }
+                    ) {
+                        Text(
+                            label,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            when (tab) {
+                "media" -> {
+                    if (media.isEmpty()) {
+                        item { SharedContentEmpty("No shared media yet", palette) }
+                    } else {
+                        items(media, key = { "media:${it.id}" }) { message ->
+                            val url = message.attachedImageUrl
+                                ?: message.attachedVideoUrl
+                                ?: message.attachedAudioUrl
+                            SharedContentRow(
+                                title = when {
+                                    !message.attachedImageUrl.isNullOrBlank() -> "Photo"
+                                    !message.attachedVideoUrl.isNullOrBlank() -> "Video"
+                                    message.isVoiceNote -> "Voice message"
+                                    else -> "Audio"
+                                },
+                                subtitle = message.timestamp,
+                                palette = palette,
+                                onClick = {
+                                    url?.let { openExternalUri(context, Uri.parse(it)) }
+                                }
+                            )
+                        }
+                    }
+                }
+                "links" -> {
+                    if (links.isEmpty()) {
+                        item { SharedContentEmpty("No shared links yet", palette) }
+                    } else {
+                        items(links, key = { "link:${it.first.id}:${it.second}" }) { (_, url) ->
+                            val host = runCatching { java.net.URI(url).host }.getOrNull().orEmpty()
+                            SharedContentRow(
+                                title = host.ifBlank { "Link" },
+                                subtitle = url,
+                                palette = palette,
+                                onClick = { openExternalUri(context, Uri.parse(url)) }
+                            )
+                        }
+                    }
+                }
+                "files" -> {
+                    if (files.isEmpty()) {
+                        item { SharedContentEmpty("No shared files yet", palette) }
+                    } else {
+                        items(files, key = { "file:${it.id}" }) { message ->
+                            SharedContentRow(
+                                title = message.attachmentName ?: message.text.ifBlank { "Document" },
+                                subtitle = message.timestamp,
+                                palette = palette,
+                                onClick = {
+                                    message.attachedDocumentUrl?.let {
+                                        openExternalUri(context, Uri.parse(it))
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+                else -> {
+                    if (starred.isEmpty()) {
+                        item { SharedContentEmpty("No starred messages yet", palette) }
+                    } else {
+                        items(starred, key = { "starred:${it.id}" }) { message ->
+                            SharedContentRow(
+                                title = message.text.ifBlank {
+                                    when {
+                                        !message.attachedImageUrl.isNullOrBlank() -> "Photo"
+                                        !message.attachedVideoUrl.isNullOrBlank() -> "Video"
+                                        !message.attachedDocumentUrl.isNullOrBlank() -> "Document"
+                                        else -> "Media message"
+                                    }
+                                },
+                                subtitle = message.timestamp,
+                                palette = palette,
+                                onClick = {}
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp).navigationBarsPadding())
+    }
+}
+
+@Composable
+private fun SharedContentRow(
+    title: String,
+    subtitle: String,
+    palette: MessagePalette,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = palette.glassElevated,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, palette.border),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Column(Modifier.padding(horizontal = 13.dp, vertical = 11.dp)) {
+            Text(
+                title,
+                color = palette.textPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                subtitle,
+                color = palette.textSecondary,
+                fontSize = 9.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SharedContentEmpty(
+    text: String,
+    palette: MessagePalette
+) {
+    Text(
+        text,
+        color = palette.textSecondary,
+        fontSize = 11.sp,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 34.dp)
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChatNotificationSettingsSheet(
