@@ -1355,7 +1355,161 @@ fun ProfileScreen(
         ProfileMoreSheet(
             isMe = isMe,
             profile = profile,
-            onDismiss = { showMoreSheet = false }
+            isMuted = profileMuted,
+            notificationMode = profileNotificationMode,
+            onDismiss = { showMoreSheet = false },
+            onSearch = {
+                showMoreSheet = false
+                profileSearchActive = true
+                selectedTab = tabs.indexOf("Posts").coerceAtLeast(0)
+            },
+            onShare = {
+                showMoreSheet = false
+                showShareSheet = true
+            },
+            onNotifications = {
+                showMoreSheet = false
+                showNotificationDialog = true
+            },
+            onMute = {
+                showMoreSheet = false
+                if (!profileActionBusy && profile.id.isNotBlank()) {
+                    overlayScope.launch {
+                        profileActionBusy = true
+                        val desired = !profileMuted
+                        val saved = profileService.setProfileMuted(profile.id, desired)
+                        if (saved) {
+                            profileMuted = desired
+                            Toast.makeText(
+                                context,
+                                if (desired) "Profile muted" else "Profile unmuted",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        } else {
+                            Toast.makeText(context, "Unable to update mute", Toast.LENGTH_SHORT).show()
+                        }
+                        profileActionBusy = false
+                    }
+                }
+            },
+            onReport = {
+                showMoreSheet = false
+                reportReason = ""
+                showReportDialog = true
+            },
+            onBlock = {
+                showMoreSheet = false
+                showBlockConfirm = true
+            }
+        )
+    }
+
+    connectionKind?.let { kind ->
+        ProfileConnectionsSheet(
+            kind = kind,
+            profiles = connectionProfiles,
+            loading = connectionLoading,
+            followingIds = followingIds,
+            onDismiss = {
+                connectionKind = null
+                connectionProfiles = emptyList()
+            },
+            onOpenProfile = { username ->
+                connectionKind = null
+                onProfileClick(username)
+            },
+            onFollowToggle = { item, desired ->
+                overlayScope.launch {
+                    val saved = FollowStateStore.setFollowing(item.id, desired)
+                    if (!saved) {
+                        Toast.makeText(context, "Unable to update follow", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        )
+    }
+
+    if (showNotificationDialog && !isMe) {
+        ProfileNotificationPreferenceDialog(
+            selected = profileNotificationMode,
+            saving = profileActionBusy,
+            onDismiss = { if (!profileActionBusy) showNotificationDialog = false },
+            onSelect = { mode ->
+                if (!profileActionBusy && profile.id.isNotBlank()) {
+                    overlayScope.launch {
+                        profileActionBusy = true
+                        val saved = profileService.setProfileNotificationPreference(profile.id, mode)
+                        if (saved) {
+                            profileNotificationMode = mode
+                        } else {
+                            Toast.makeText(context, "Unable to save notification preference", Toast.LENGTH_SHORT).show()
+                        }
+                        profileActionBusy = false
+                    }
+                }
+            }
+        )
+    }
+
+    if (showReportDialog && !isMe) {
+        ProfileReportDialog(
+            reason = reportReason,
+            saving = profileActionBusy,
+            onReasonChange = { reportReason = it },
+            onDismiss = { if (!profileActionBusy) showReportDialog = false },
+            onSubmit = {
+                if (!profileActionBusy && profile.id.isNotBlank() && reportReason.isNotBlank()) {
+                    overlayScope.launch {
+                        profileActionBusy = true
+                        val sent = profileService.reportUser(profile.id, reportReason)
+                        if (sent) {
+                            showReportDialog = false
+                            Toast.makeText(context, "Report sent", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Unable to send report", Toast.LENGTH_SHORT).show()
+                        }
+                        profileActionBusy = false
+                    }
+                }
+            }
+        )
+    }
+
+    if (showBlockConfirm && !isMe) {
+        AlertDialog(
+            onDismissRequest = { if (!profileActionBusy) showBlockConfirm = false },
+            title = { Text("Block @${profile.username}?", fontWeight = FontWeight.Black) },
+            text = {
+                Text("Blocking removes follow connections and prevents normal interaction between both accounts.")
+            },
+            confirmButton = {
+                Button(
+                    enabled = !profileActionBusy,
+                    onClick = {
+                        if (!profileActionBusy && profile.id.isNotBlank()) {
+                            overlayScope.launch {
+                                profileActionBusy = true
+                                val blocked = profileService.blockUser(profile.id)
+                                if (blocked) {
+                                    showBlockConfirm = false
+                                    FollowStateStore.refresh()
+                                    Toast.makeText(context, "Profile blocked", Toast.LENGTH_SHORT).show()
+                                    onBack()
+                                } else {
+                                    Toast.makeText(context, "Unable to block profile", Toast.LENGTH_SHORT).show()
+                                }
+                                profileActionBusy = false
+                            }
+                        }
+                    }
+                ) { Text(if (profileActionBusy) "Blocking…" else "Block") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !profileActionBusy,
+                    onClick = { showBlockConfirm = false }
+                ) { Text("Cancel") }
+            }
         )
     }
 }
@@ -1492,14 +1646,15 @@ private fun LazyListScope.profilePostItems(
     isDark: Boolean,
     textPrimary: Color,
     textSecondary: Color,
-    emptyTitle: String = "No posts yet 📝",
+    emptyTitle: String = "No posts yet",
     emptySubtitle: String = "Posts published by @${profile.username} will show up here.",
     onLike: (String) -> Unit,
     onComment: (String) -> Unit,
     onBookmark: (String) -> Unit,
     onShare: (String) -> Unit,
     onOptions: (FeedPost) -> Unit,
-    onProfileClick: (String) -> Unit
+    onProfileClick: (String) -> Unit,
+    onPin: ((FeedPost) -> Unit)? = null
 ) {
     if (posts.isEmpty()) {
         item(key = "${keyPrefix}_empty", contentType = "profile_empty") {
@@ -1513,23 +1668,54 @@ private fun LazyListScope.profilePostItems(
         return
     }
 
+    val orderedPosts = posts.sortedWith(
+        compareByDescending<FeedPost> { it.isPinned }
+            .thenByDescending { it.createdAt }
+    )
+
     items(
-        items = posts,
+        items = orderedPosts,
         key = { post -> "${keyPrefix}_${post.id}" },
         contentType = { "profile_post" }
     ) { post ->
-        PostCard(
-            post = post,
-            isDark = isDark,
-            onLike = { onLike(post.id) },
-            onComment = { onComment(post.id) },
-            onBookmark = { onBookmark(post.id) },
-            onShare = { onShare(post.id) },
-            onOptionsClick = { onOptions(post) },
-            onProfileClick = onProfileClick,
-            isAuthor = canDelete && post.author.equals(profile.username, true),
-            onDelete = { onDelete(post.id) }
-        )
+        val authoredByProfile =
+            post.authorUsername.equals(profile.username, ignoreCase = true) ||
+                post.author.equals(profile.username, ignoreCase = true) ||
+                post.author.equals(profile.fullName, ignoreCase = true)
+
+        Column {
+            PostCard(
+                post = post,
+                isDark = isDark,
+                onLike = { onLike(post.id) },
+                onComment = { onComment(post.id) },
+                onBookmark = { onBookmark(post.id) },
+                onShare = { onShare(post.id) },
+                onOptionsClick = { onOptions(post) },
+                onProfileClick = onProfileClick,
+                isAuthor = canDelete && authoredByProfile,
+                onDelete = { onDelete(post.id) }
+            )
+
+            if (canDelete && authoredByProfile && onPin != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = { onPin(post) }) {
+                        Icon(
+                            if (post.isPinned) Icons.Default.PushPin else Icons.Default.PushPin,
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(if (post.isPinned) "Unpin" else "Pin to profile", fontSize = 10.sp)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1833,11 +2019,20 @@ private fun SkillsAndBadgesSection(
 @Composable
 private fun AboutSection(
     profile: UserProfile,
+    isMe: Boolean,
+    isFollowing: Boolean,
     cardBg: Color,
     borderColor: Color,
     textPrimary: Color,
     textSecondary: Color
 ) {
+    val showEmail = profile.email.value.isNotBlank() &&
+        canViewProfileField(profile.emailVisibility, isMe, isFollowing)
+    val showPhone = profile.phone.value.isNotBlank() &&
+        canViewProfileField(profile.phoneVisibility, isMe, isFollowing)
+    val showWhatsapp = profile.whatsapp.value.isNotBlank() &&
+        canViewProfileField(profile.whatsappVisibility, isMe, isFollowing)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1845,36 +2040,99 @@ private fun AboutSection(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         InfoCard(title = "Student identity", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
-            ProfileInfoRow(Icons.Default.School, "University", profile.university, textPrimary, textSecondary)
-            ProfileInfoRow(Icons.Default.AccountBalance, "Faculty", profile.faculty, textPrimary, textSecondary)
-            ProfileInfoRow(Icons.Default.MenuBook, "Department", profile.department, textPrimary, textSecondary)
-            ProfileInfoRow(Icons.Default.TrendingUp, "Academic level", profile.academicLevel, textPrimary, textSecondary)
-        }
-
-        InfoCard(title = "Contact", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
-            if (profile.email.value.isNotBlank()) {
-                ProfileInfoRow(Icons.Default.Email, "Email", profile.email.value, textPrimary, textSecondary)
+            if (profile.university.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.School, "University", profile.university, textPrimary, textSecondary)
             }
-            if (profile.phone.value.isNotBlank()) {
-                ProfileInfoRow(Icons.Default.Phone, "Phone", profile.phone.value, textPrimary, textSecondary)
+            if (profile.faculty.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.AccountBalance, "Faculty", profile.faculty, textPrimary, textSecondary)
             }
-            if (profile.currentCityState.isNotBlank()) {
-                ProfileInfoRow(Icons.Default.LocationOn, "Location", profile.currentCityState, textPrimary, textSecondary)
+            if (profile.department.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.MenuBook, "Department", profile.department, textPrimary, textSecondary)
+            }
+            if (profile.academicLevel.isNotBlank()) {
+                ProfileInfoRow(Icons.Default.TrendingUp, "Academic level", profile.academicLevel, textPrimary, textSecondary)
             }
         }
 
-        InfoCard(title = "Links & portfolio", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
-            if (profile.links.website.isNotBlank()) {
-                ProfileLink(Icons.Default.Language, "Website", profile.links.website)
+        if (showEmail || showPhone || showWhatsapp || profile.currentCityState.isNotBlank()) {
+            InfoCard(title = "Contact", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+                if (showEmail) {
+                    ProfileInfoRow(Icons.Default.Email, "Email", profile.email.value, textPrimary, textSecondary)
+                }
+                if (showPhone) {
+                    ProfileInfoRow(Icons.Default.Phone, "Phone", profile.phone.value, textPrimary, textSecondary)
+                }
+                if (showWhatsapp) {
+                    ProfileInfoRow(Icons.Default.Chat, "WhatsApp", profile.whatsapp.value, textPrimary, textSecondary)
+                }
+                if (profile.currentCityState.isNotBlank()) {
+                    ProfileInfoRow(Icons.Default.LocationOn, "Location", profile.currentCityState, textPrimary, textSecondary)
+                }
             }
-            if (profile.links.linkedin.isNotBlank()) {
-                ProfileLink(Icons.Default.Link, "LinkedIn", profile.links.linkedin)
+        } else if (!isMe) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(15.dp),
+                color = cardBg,
+                border = BorderStroke(1.dp, borderColor)
+            ) {
+                Text(
+                    "Contact details are private.",
+                    modifier = Modifier.padding(13.dp),
+                    fontSize = 11.sp,
+                    color = textSecondary
+                )
             }
-            if (profile.links.twitter.isNotBlank()) {
-                ProfileLink(Icons.Default.Share, "X / Twitter", profile.links.twitter)
+        }
+
+        if (profile.availability != com.example.data.models.AvailabilityStatus.NONE ||
+            profile.joinedLabel.isNotBlank() ||
+            profile.createdAt.isNotBlank()
+        ) {
+            InfoCard(title = "Profile", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+                if (profile.availability != com.example.data.models.AvailabilityStatus.NONE) {
+                    ProfileInfoRow(
+                        Icons.Default.Work,
+                        "Availability",
+                        profile.availability.label,
+                        textPrimary,
+                        textSecondary
+                    )
+                }
+                val joined = profile.joinedLabel.ifBlank { profile.createdAt }
+                if (joined.isNotBlank()) {
+                    ProfileInfoRow(Icons.Default.Event, "Joined", joined, textPrimary, textSecondary)
+                }
             }
-            if (profile.links.instagram.isNotBlank()) {
-                ProfileLink(Icons.Default.CameraAlt, "Instagram", profile.links.instagram)
+        }
+
+        val hasLinks = profile.links.website.isNotBlank() ||
+            profile.links.linkedin.isNotBlank() ||
+            profile.links.twitter.isNotBlank() ||
+            profile.links.instagram.isNotBlank() ||
+            profile.links.featuredLink.isNotBlank()
+
+        if (hasLinks) {
+            InfoCard(title = "Links & portfolio", cardBg = cardBg, borderColor = borderColor, textPrimary = textPrimary) {
+                if (profile.links.featuredLink.isNotBlank()) {
+                    ProfileLink(
+                        Icons.Default.Star,
+                        profile.links.featuredLinkLabel.ifBlank { "Featured" },
+                        profile.links.featuredLink
+                    )
+                }
+                if (profile.links.website.isNotBlank()) {
+                    ProfileLink(Icons.Default.Language, "Website", profile.links.website)
+                }
+                if (profile.links.linkedin.isNotBlank()) {
+                    ProfileLink(Icons.Default.Link, "LinkedIn", profile.links.linkedin)
+                }
+                if (profile.links.twitter.isNotBlank()) {
+                    ProfileLink(Icons.Default.Share, "X / Twitter", profile.links.twitter)
+                }
+                if (profile.links.instagram.isNotBlank()) {
+                    ProfileLink(Icons.Default.CameraAlt, "Instagram", profile.links.instagram)
+                }
             }
         }
     }
@@ -2083,7 +2341,8 @@ private fun OutlinePill(
 private fun ProfileMetric(
     value: Int,
     label: String,
-    animateCount: Boolean = false
+    animateCount: Boolean = false,
+    onClick: (() -> Unit)? = null
 ) {
     val displayValue by if (animateCount) {
         val animatable = remember { Animatable(0f) }
@@ -2098,7 +2357,16 @@ private fun ProfileMetric(
         remember(value) { mutableIntStateOf(value) }
     }
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    val clickModifier = if (onClick != null) {
+        Modifier.clickable(onClick = onClick)
+    } else {
+        Modifier
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = clickModifier.padding(horizontal = 8.dp, vertical = 2.dp)
+    ) {
         Text(displayValue.toString(), fontSize = 16.sp, fontWeight = FontWeight.Black)
         Text(label, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -2313,21 +2581,64 @@ private fun ProfileShareSheet(
 private fun ProfileMoreSheet(
     isMe: Boolean,
     profile: UserProfile,
-    onDismiss: () -> Unit
+    isMuted: Boolean,
+    notificationMode: ProfileNotificationMode,
+    onDismiss: () -> Unit,
+    onSearch: () -> Unit,
+    onShare: () -> Unit,
+    onNotifications: () -> Unit,
+    onMute: () -> Unit,
+    onReport: () -> Unit,
+    onBlock: () -> Unit
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
             Text("Profile options", fontSize = 21.sp, fontWeight = FontWeight.Black)
-
             Spacer(modifier = Modifier.height(10.dp))
 
-            ProfileOption(Icons.Default.Search, "Search posts", "Find posts from @${profile.username}")
-            ProfileOption(Icons.Default.Share, "Share profile", "Share this student's Blink profile")
-            ProfileOption(Icons.Default.NotificationsNone, "Profile notifications", "Get updates when this profile posts")
+            ProfileOption(
+                Icons.Default.Search,
+                "Search posts & reels",
+                "Find content from @${profile.username}",
+                onSearch
+            )
+            ProfileOption(
+                Icons.Default.Share,
+                "Share profile",
+                "Share this Blink profile",
+                onShare
+            )
 
             if (!isMe) {
-                ProfileOption(Icons.Default.VolumeOff, "Mute user", "See fewer updates from this profile")
-                ProfileOption(Icons.Default.Flag, "Report profile", "Report suspicious or inappropriate activity")
+                ProfileOption(
+                    Icons.Default.NotificationsNone,
+                    "Profile notifications",
+                    when (notificationMode) {
+                        ProfileNotificationMode.ALL -> "All posts and reels"
+                        ProfileNotificationMode.REELS -> "Reels only"
+                        ProfileNotificationMode.IMPORTANT -> "Important updates"
+                        ProfileNotificationMode.OFF -> "Off"
+                    },
+                    onNotifications
+                )
+                ProfileOption(
+                    Icons.Default.VolumeOff,
+                    if (isMuted) "Unmute user" else "Mute user",
+                    if (isMuted) "Allow this profile back into your feed" else "See fewer updates from this profile",
+                    onMute
+                )
+                ProfileOption(
+                    Icons.Default.Flag,
+                    "Report profile",
+                    "Send this profile to moderation",
+                    onReport
+                )
+                ProfileOption(
+                    Icons.Default.Block,
+                    "Block profile",
+                    "Remove connections and prevent normal interaction",
+                    onBlock
+                )
             }
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -2339,7 +2650,8 @@ private fun ProfileMoreSheet(
 private fun ProfileOption(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
-    subtitle: String
+    subtitle: String,
+    onClick: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
     val translateX by animateDpAsState(if (pressed) 4.dp else 0.dp, tween(120), label = "optionTranslate")
@@ -2350,6 +2662,7 @@ private fun ProfileOption(
             .offset(x = translateX)
             .clickable {
                 pressed = true
+                onClick()
             }
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -2375,10 +2688,6 @@ private fun ProfileOption(
         }
     }
 }
-
-// =====================================================================
-// HELPERS
-// =====================================================================
 
 private fun calculateProfileCompletion(profile: UserProfile): Int {
     val values = listOf(
