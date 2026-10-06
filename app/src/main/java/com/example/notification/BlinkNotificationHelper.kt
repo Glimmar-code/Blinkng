@@ -73,6 +73,7 @@ object BlinkNotificationHelper {
     const val CHANNEL_COMMENTS = "blink_comments_channel"
     const val CHANNEL_FOLLOWS = "blink_follows_channel"
     const val CHANNEL_MARKET_ORDERS = "blink_market_orders_channel"
+    const val CHANNEL_SECURITY = "blink_security_channel"
 
     // ================================================================
     // NOTIFICATION ID RANGES
@@ -83,6 +84,7 @@ object BlinkNotificationHelper {
     private const val MARKET_ID_BASE = 3000
     private const val MENTION_ID_BASE = 4000
     private const val COMMENT_ID_BASE = 5000
+    private const val SECURITY_ID_BASE = 6000
 
     // ================================================================
     // GROUP KEYS
@@ -370,6 +372,25 @@ object BlinkNotificationHelper {
                 )
             }
 
+        // ------------------------------------------------------------
+        // SECURITY
+        // ------------------------------------------------------------
+
+        val securityChannel =
+            NotificationChannel(
+                CHANNEL_SECURITY,
+                "Account Security",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Important login, password and account security alerts"
+                enableLights(true)
+                lightColor = Color.parseColor("#8A2BE2")
+                enableVibration(true)
+                setShowBadge(true)
+                setGroup(GROUP_COMMUNICATION)
+                lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
+            }
+
         manager.createNotificationChannels(
             listOf(
                 messagesChannel,
@@ -378,7 +399,8 @@ object BlinkNotificationHelper {
                 mentionsChannel,
                 commentsChannel,
                 followsChannel,
-                marketOrdersChannel
+                marketOrdersChannel,
+                securityChannel
             )
         )
     }
@@ -1393,6 +1415,38 @@ object BlinkNotificationHelper {
                     positiveHash(
                         "order_$marketId"
                     ) % 700,
+            notification
+        )
+    }
+
+    // ================================================================
+    // SECURITY NOTIFICATION
+    // ================================================================
+
+    fun showSecurityNotification(
+        context: Context,
+        title: String,
+        body: String
+    ) {
+        if (!hasNotificationPermission(context)) return
+        createNotificationChannels(context)
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_SECURITY)
+            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setColor(PURPLE_COLOR)
+            .setAutoCancel(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setContentIntent(buildSocialPendingIntent(context))
+            .build()
+
+        notifySafely(
+            context,
+            SECURITY_ID_BASE + positiveHash(title + body) % 700,
             notification
         )
     }
