@@ -823,6 +823,9 @@ fun AdminProScreen(state: DesktopAppState) {
     val actions = remember(state.client) { DesktopRpcActions(state.client) }
     var stats by remember { mutableStateOf<JSONObject?>(null) }
     var sections by remember { mutableStateOf(JSONArray()) }
+    var userQuery by remember { mutableStateOf("") }
+    var userMatches by remember { mutableStateOf(JSONArray()) }
+    var userSearchLoading by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var searchResult by remember { mutableStateOf<JSONObject?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -900,6 +903,73 @@ fun AdminProScreen(state: DesktopAppState) {
                         Text(section?.optString("title")?.ifBlank { section.optString("name") } ?: "Admin section", fontWeight = FontWeight.SemiBold)
                         section?.optString("description")?.takeIf(String::isNotBlank)?.let {
                             Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Text("Find user", fontWeight = FontWeight.Black, fontSize = 19.sp)
+            Text(
+                "Use this whenever an admin action needs a person. Search by name or @username instead of copying database IDs.",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.padding(3.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = userQuery,
+                    onValueChange = { userQuery = it },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    placeholder = { Text("Name or @username") },
+                )
+                Button(
+                    onClick = {
+                        scope.launch {
+                            userSearchLoading = true
+                            runCatching { actions.adminGlobalSearch(userQuery) }
+                                .onSuccess {
+                                    userMatches = it.optJSONArray("users") ?: JSONArray()
+                                    error = null
+                                }
+                                .onFailure { error = it.message }
+                            userSearchLoading = false
+                        }
+                    },
+                    enabled = userQuery.isNotBlank() && !userSearchLoading,
+                ) {
+                    if (userSearchLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Search users")
+                    }
+                }
+            }
+        }
+
+        if (userMatches.length() > 0) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("User results", fontWeight = FontWeight.Bold)
+                    repeat(minOf(userMatches.length(), 8)) { index ->
+                        val user = userMatches.optJSONObject(index) ?: return@repeat
+                        val username = user.optString("username")
+                        val fullName = user.optString("full_name").ifBlank { username }
+                        val university = user.optString("university")
+                        Surface(shape = RoundedCornerShape(14.dp), tonalElevation = 1.dp) {
+                            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                                Text(fullName, fontWeight = FontWeight.Bold)
+                                Text(
+                                    buildList {
+                                        if (username.isNotBlank()) add("@$username")
+                                        if (university.isNotBlank()) add(university)
+                                    }.joinToString(" • "),
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
