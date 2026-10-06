@@ -1696,7 +1696,8 @@ private suspend fun restoreSupabaseSession() {
                         isFeedLoading = false,
                         isRefreshingContent = false,
                         isSyncingContent = false,
-                        isConversationsLoading = false
+                        isConversationsLoading = false,
+                        isMarketLoading = false
                     )
                     persistExtendedCache()
                 }
@@ -4612,9 +4613,15 @@ private suspend fun restoreSupabaseSession() {
             if (supabaseService.updateMarketListingStatus(item.id, status)) {
                 val live = runCatching { supabaseService.fetchMarketItems(limit = 40) }
                     .getOrDefault(_uiState.value.marketItems)
-                val updatedViewing = _uiState.value.viewingProduct?.takeIf { it.id != item.id }
-                    ?: item.copy(status = status, isSold = status == "sold")
-                _uiState.value = _uiState.value.copy(
+                val latest = _uiState.value
+                val updatedViewing = latest.viewingProduct?.let { current ->
+                    if (current.id == item.id) {
+                        current.copy(status = status, isSold = status == "sold")
+                    } else {
+                        current
+                    }
+                }
+                _uiState.value = latest.copy(
                     marketItems = live,
                     viewingProduct = updatedViewing
                 )
