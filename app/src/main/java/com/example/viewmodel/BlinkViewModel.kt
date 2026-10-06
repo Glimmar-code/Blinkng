@@ -20,6 +20,7 @@ import com.example.data.models.*
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.*
 import com.example.data.supabase.BlinkEconomyService
+import com.example.data.supabase.ReelRecommendationService
 import com.example.data.supabase.RealtimeEvent
 import com.example.data.supabase.SupabaseRealtimeManager
 import com.example.data.supabase.SupabaseService
@@ -2936,6 +2937,36 @@ private suspend fun restoreSupabaseSession() {
             }
         }
     }
+    fun markPostNotInterested(postId: String) {
+        val state = _uiState.value
+        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts)
+            .firstOrNull { it.id == postId } ?: return
+
+        _uiState.value = state.copy(
+            activePostOptionsPost = null,
+            posts = state.posts.filterNot { it.id == postId },
+            followingPosts = state.followingPosts.filterNot { it.id == postId },
+            reels = state.reels.filterNot { it.id == postId },
+            discoverPosts = state.discoverPosts.filterNot { it.id == postId }
+        )
+        persistCurrentFeed()
+        showToast(
+            if (target.isReel) "We'll show fewer reels like this."
+            else "We'll show fewer posts like this."
+        )
+
+        viewModelScope.launch {
+            val synced = ReelRecommendationService().recordRecommendationSignal(
+                postId = postId,
+                eventType = "hide",
+                surface = if (target.isReel) "reels" else "feed"
+            )
+            if (!synced) {
+                showToast("Hidden for now. Your preference couldn't sync yet.")
+            }
+        }
+    }
+
     fun reportPost(postId: String, reason: String) {
         _uiState.value = _uiState.value.copy(activePostOptionsPost = null)
         viewModelScope.launch {
