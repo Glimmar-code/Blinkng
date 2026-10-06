@@ -193,7 +193,7 @@ private fun mergeStablePremiumFeed(
  * Premium feed shell.
  *
  * For You and Following stay inside Home. Reels and Connect use the persistent
- * bottom navigation, while Rank, Game and Store remain visible Home shortcuts.
+ * bottom navigation, while Rank, Game, Store and Boost remain visible Home shortcuts.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -238,6 +238,7 @@ fun PremiumFeedScreen(
     onSearchClick: () -> Unit = {},
     onLeaderboardClick: () -> Unit = {},
     onStoreClick: () -> Unit = {},
+    onBoostClick: () -> Unit = {},
     onGameClick: () -> Unit = {},
     onMarketClick: () -> Unit = {},
     onMessageClick: () -> Unit = {},
@@ -337,6 +338,7 @@ fun PremiumFeedScreen(
             onSearchClick = onSearchClick,
             onLeaderboardClick = onLeaderboardClick,
             onStoreClick = onStoreClick,
+            onBoostClick = onBoostClick,
             onRefresh = onRefresh,
             onRetry = onRetry,
             onViewedPost = onViewedPost,
@@ -485,6 +487,7 @@ private fun PremiumHomeFeed(
     onSearchClick: () -> Unit,
     onLeaderboardClick: () -> Unit,
     onStoreClick: () -> Unit,
+    onBoostClick: () -> Unit,
     onRefresh: () -> Unit,
     onRetry: () -> Unit,
     onViewedPost: (String) -> Unit,
@@ -946,7 +949,8 @@ private fun PremiumHomeFeed(
                         FeedUtilityRow(
                             onLeaderboardClick = onLeaderboardClick,
                             onGameClick = onGameClick,
-                            onStoreClick = onStoreClick
+                            onStoreClick = onStoreClick,
+                            onBoostClick = onBoostClick
                         )
                     }
                 }
