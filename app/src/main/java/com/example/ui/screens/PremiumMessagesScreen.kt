@@ -1400,6 +1400,7 @@ private fun PremiumChatDetail(
     var editingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var showOverflow by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var showNotificationSettings by remember(conversation.partnerUsername) { mutableStateOf(false) }
+    var showSharedContent by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var showContactProfile by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var confirmClearChat by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var searchVisible by remember(conversation.partnerUsername) { mutableStateOf(false) }
@@ -1864,6 +1865,10 @@ private fun PremiumChatDetail(
             starredOnly = starredOnly,
             onProfile = { showOverflow = false; onProfileClick() },
             onSearch = { showOverflow = false; searchVisible = true },
+            onSharedMedia = {
+                showOverflow = false
+                showSharedContent = true
+            },
             onPinned = { showOverflow = false; pinnedOnly = !pinnedOnly; starredOnly = false },
             onStarred = { showOverflow = false; starredOnly = !starredOnly; pinnedOnly = false },
             onMute = {
@@ -1931,6 +1936,14 @@ private fun PremiumChatDetail(
                     Text("Cancel", color = palette.textSecondary)
                 }
             }
+        )
+    }
+
+    if (showSharedContent) {
+        SharedChatContentSheet(
+            conversation = conversation,
+            palette = palette,
+            onDismiss = { showSharedContent = false }
         )
     }
 
