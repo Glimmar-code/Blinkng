@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.blinkng.shared.ProfileVisibilityScope
+
 import com.example.data.local.rememberPersistentTextState
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -162,6 +164,22 @@ fun EditProfileScreen(
         mutableStateOf(
             profile.whatsapp.value
         )
+    }
+
+    var emailVisibility by remember {
+        mutableStateOf(profile.emailVisibility)
+    }
+
+    var phoneVisibility by remember {
+        mutableStateOf(profile.phoneVisibility)
+    }
+
+    var whatsappVisibility by remember {
+        mutableStateOf(profile.whatsappVisibility)
+    }
+
+    var presenceVisibility by remember {
+        mutableStateOf(profile.presenceVisibility)
     }
 
     var website by remember {
@@ -488,20 +506,32 @@ fun EditProfileScreen(
                                             email =
                                                 ContactField(
                                                     email.trim(),
-                                                    true
+                                                    emailVisibility == ProfileVisibilityScope.PUBLIC
                                                 ),
 
                                             phone =
                                                 ContactField(
                                                     phone.trim(),
-                                                    true
+                                                    phoneVisibility == ProfileVisibilityScope.PUBLIC
                                                 ),
 
                                             whatsapp =
                                                 ContactField(
                                                     whatsapp.trim(),
-                                                    true
+                                                    whatsappVisibility == ProfileVisibilityScope.PUBLIC
                                                 ),
+
+                                            emailVisibility =
+                                                emailVisibility,
+
+                                            phoneVisibility =
+                                                phoneVisibility,
+
+                                            whatsappVisibility =
+                                                whatsappVisibility,
+
+                                            presenceVisibility =
+                                                presenceVisibility,
 
                                             links =
                                                 profile.links.copy(
@@ -1033,6 +1063,30 @@ fun EditProfileScreen(
                         keyboardType =
                             KeyboardType.Phone
                     )
+
+                    VisibilitySelector(
+                        label = "Email visibility",
+                        value = emailVisibility,
+                        onChange = { emailVisibility = it }
+                    )
+
+                    VisibilitySelector(
+                        label = "Phone visibility",
+                        value = phoneVisibility,
+                        onChange = { phoneVisibility = it }
+                    )
+
+                    VisibilitySelector(
+                        label = "WhatsApp visibility",
+                        value = whatsappVisibility,
+                        onChange = { whatsappVisibility = it }
+                    )
+
+                    VisibilitySelector(
+                        label = "Online / last seen",
+                        value = presenceVisibility,
+                        onChange = { presenceVisibility = it }
+                    )
                 }
             }
 
@@ -1329,20 +1383,32 @@ fun EditProfileScreen(
                                         email =
                                             ContactField(
                                                 email.trim(),
-                                                true
+                                                emailVisibility == ProfileVisibilityScope.PUBLIC
                                             ),
 
                                         phone =
                                             ContactField(
                                                 phone.trim(),
-                                                true
+                                                phoneVisibility == ProfileVisibilityScope.PUBLIC
                                             ),
 
                                         whatsapp =
                                             ContactField(
                                                 whatsapp.trim(),
-                                                true
+                                                whatsappVisibility == ProfileVisibilityScope.PUBLIC
                                             ),
+
+                                        emailVisibility =
+                                            emailVisibility,
+
+                                        phoneVisibility =
+                                            phoneVisibility,
+
+                                        whatsappVisibility =
+                                            whatsappVisibility,
+
+                                        presenceVisibility =
+                                            presenceVisibility,
 
                                         links =
                                             profile.links.copy(
@@ -1728,6 +1794,45 @@ private fun ProfileField(
         modifier =
             modifier.fillMaxWidth()
     )
+}
+
+@Composable
+private fun VisibilitySelector(
+    label: String,
+    value: ProfileVisibilityScope,
+    onChange: (ProfileVisibilityScope) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            ProfileVisibilityScope.entries.forEach { scope ->
+                FilterChip(
+                    selected = value == scope,
+                    onClick = { onChange(scope) },
+                    label = {
+                        Text(
+                            when (scope) {
+                                ProfileVisibilityScope.PUBLIC -> "Public"
+                                ProfileVisibilityScope.FOLLOWERS -> "Followers"
+                                ProfileVisibilityScope.PRIVATE -> "Private"
+                            },
+                            maxLines = 1,
+                            fontSize = 10.sp
+                        )
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
 }
 
 @Composable
