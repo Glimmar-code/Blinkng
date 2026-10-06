@@ -3472,7 +3472,16 @@ suspend fun uploadPostMedia(
                 .ifBlank { obj.cleanString("time_ago") }
                 .ifBlank { formatTimeAgo(obj.cleanString("created_at")) },
             isFeatured = obj.optBoolean("is_featured", false),
-            isSold = obj.optBoolean("is_sold", false)
+            isSold = obj.optBoolean("is_sold", false),
+            quantity = obj.optInt("quantity", 1).coerceAtLeast(0),
+            currency = obj.cleanString("currency", "NGN"),
+            status = obj.cleanString("status", if (obj.optBoolean("is_sold", false)) "sold" else "active"),
+            isNegotiable = obj.optBoolean("negotiable", false),
+            deliveryMethod = obj.cleanString("delivery_method", "meetup"),
+            pickupLocation = obj.cleanString("pickup_location"),
+            viewsCount = obj.optLong("views_count", 0L).coerceAtLeast(0L),
+            savesCount = obj.optLong("saves_count", 0L).coerceAtLeast(0L),
+            createdAt = obj.cleanString("created_at")
         )
     }
 
