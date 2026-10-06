@@ -342,6 +342,11 @@ class ChatRepository(
         val requestStatus: String = "accepted"
     )
 
+    private data class NotificationState(
+        val mode: String = "all",
+        val muteUntil: String? = null
+    )
+
     private fun isServerUuid(value: String?): Boolean =
         !value.isNullOrBlank() && runCatching { java.util.UUID.fromString(value) }.isSuccess
 
@@ -515,6 +520,25 @@ class ChatRepository(
         return raw.trim().trim('"').takeIf(::isServerUuid)
     }
 
+    suspend fun setConversationNotificationSettings(
+        conversationId: String,
+        mode: String,
+        muteUntil: String? = null,
+        previewMode: String = "inherit",
+        vibrationEnabled: Boolean = true
+    ): Boolean {
+        if (!isServerUuid(conversationId)) return false
+        val cleanMode = mode.lowercase().takeIf { it in setOf("all", "mentions", "none") }
+            ?: return false
+        val body = JSONObject()
+            .put("p_conversation_id", conversationId)
+            .put("p_notification_mode", cleanMode)
+            .put("p_preview_mode", previewMode)
+            .put("p_vibration_enabled", vibrationEnabled)
+        body.put("p_mute_until", muteUntil ?: JSONObject.NULL)
+        return booleanRpc("set_conversation_notification_settings", body)
+    }
+
     private suspend fun enrichMessageActions(messages: List<ChatMessage>): List<ChatMessage> {
         val serverIds = messages.map { it.id }.filter(::isServerUuid)
         if (serverIds.isEmpty()) return messages
@@ -621,15 +645,47 @@ class ChatRepository(
         }
     }
 
+    private suspend fun fetchNotificationStates(
+        conversationIds: List<String>
+    ): Map<String, NotificationState> {
+        val ids = conversationIds.filter(::isServerUuid)
+        if (ids.isEmpty()) return emptyMap()
+        val raw = runCatching {
+            postAuthenticatedRpc(
+                "get_conversation_notification_settings",
+                JSONObject().put("p_conversation_ids", org.json.JSONArray(ids))
+            )
+        }.getOrNull() ?: return emptyMap()
+        val array = runCatching { org.json.JSONArray(if (raw.isBlank()) "[]" else raw) }.getOrNull()
+            ?: return emptyMap()
+        return buildMap {
+            for (i in 0 until array.length()) {
+                val o = array.optJSONObject(i) ?: continue
+                val id = o.optString("conversation_id")
+                if (id.isBlank()) continue
+                put(
+                    id,
+                    NotificationState(
+                        mode = o.optString("notification_mode").ifBlank { "all" },
+                        muteUntil = o.optString("mute_until")
+                            .takeIf { it.isNotBlank() && !it.equals("null", true) }
+                    )
+                )
+            }
+        }
+    }
+
     private suspend fun applyConversationState(conversations: List<ChatConversation>): List<ChatConversation> {
         val conversationIds = conversations.map { it.id }
         val states = fetchConversationStates(conversationIds)
         val inboxStates = fetchInboxStates(conversationIds)
-        if (states.isEmpty() && inboxStates.isEmpty()) return conversations
+        val notificationStates = fetchNotificationStates(conversationIds)
+        if (states.isEmpty() && inboxStates.isEmpty() && notificationStates.isEmpty()) return conversations
 
         return conversations.mapNotNull { conversation ->
             val state = states[conversation.id] ?: ConversationUserState()
             val inbox = inboxStates[conversation.id] ?: InboxState()
+            val notifications = notificationStates[conversation.id] ?: NotificationState()
             val cleared = state.clearedAt
             val lastAt = conversation.lastMessageRawTime.takeIf { it.isNotBlank() }?.let { raw ->
                 runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }.getOrNull()
@@ -638,11 +694,13 @@ class ChatRepository(
                 null
             } else {
                 conversation.copy(
-                    isMuted = state.isMuted,
+                    isMuted = state.isMuted || notifications.mode == "none",
                     isArchived = inbox.isArchived,
                     isConversationPinned = inbox.isPinned,
                     isMarkedUnread = inbox.markedUnread,
-                    inboxCategory = if (inbox.requestStatus == "pending") "requests" else "primary"
+                    inboxCategory = if (inbox.requestStatus == "pending") "requests" else "primary",
+                    notificationMode = notifications.mode,
+                    muteUntil = notifications.muteUntil
                 )
             }
         }
