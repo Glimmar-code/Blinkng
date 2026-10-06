@@ -736,6 +736,81 @@ private fun PremiumMessagesHome(
 }
 
 @Composable
+private fun MessageInboxTabs(
+    selected: MessageInboxTab,
+    requestCount: Int,
+    archivedCount: Int,
+    palette: MessagePalette,
+    onSelect: (MessageInboxTab) -> Unit
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            MessageInboxTabChip(
+                label = "Primary",
+                selected = selected == MessageInboxTab.PRIMARY,
+                count = null,
+                palette = palette,
+                onClick = { onSelect(MessageInboxTab.PRIMARY) }
+            )
+        }
+        item {
+            MessageInboxTabChip(
+                label = "Requests",
+                selected = selected == MessageInboxTab.REQUESTS,
+                count = requestCount.takeIf { it > 0 },
+                palette = palette,
+                onClick = { onSelect(MessageInboxTab.REQUESTS) }
+            )
+        }
+        item {
+            MessageInboxTabChip(
+                label = "Archived",
+                selected = selected == MessageInboxTab.ARCHIVED,
+                count = archivedCount.takeIf { it > 0 },
+                palette = palette,
+                onClick = { onSelect(MessageInboxTab.ARCHIVED) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun MessageInboxTabChip(
+    label: String,
+    selected: Boolean,
+    count: Int?,
+    palette: MessagePalette,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = if (selected) palette.textPrimary else palette.glassElevated,
+        contentColor = if (selected) palette.background else palette.textPrimary,
+        shape = RoundedCornerShape(100.dp),
+        border = BorderStroke(1.dp, if (selected) palette.textPrimary else palette.border),
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            if (count != null) {
+                Badge(
+                    containerColor = if (selected) palette.background else palette.accent,
+                    contentColor = if (selected) palette.textPrimary else Color.White
+                ) {
+                    Text(count.coerceAtMost(99).toString(), fontSize = 8.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun MessageBackground(
     palette: MessagePalette,
     content: @Composable () -> Unit
