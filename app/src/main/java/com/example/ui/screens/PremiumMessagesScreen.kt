@@ -1464,6 +1464,13 @@ private fun PremiumChatDetail(
                                 replyingTo = message
                                 editingMessage = null
                             },
+                            onReplyTargetClick = {
+                                val targetId = message.replyToMessageId
+                                val targetIndex = visibleMessages.indexOfFirst { it.id == targetId }
+                                if (targetIndex >= 0) {
+                                    scrollScope.launch { listState.animateScrollToItem(targetIndex) }
+                                }
+                            },
                             onActions = { selectedMessage = message },
                             onRetry = { onRetry(message) }
                         )
@@ -2100,6 +2107,7 @@ private fun MessageBubble(
     partnerName: String,
     palette: MessagePalette,
     onReply: () -> Unit,
+    onReplyTargetClick: () -> Unit,
     onActions: () -> Unit,
     onRetry: () -> Unit
 ) {
@@ -2170,7 +2178,10 @@ private fun MessageBubble(
                             color = palette.glass.copy(alpha = .45f),
                             shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(1.dp, palette.border.copy(alpha = .55f)),
-                            modifier = Modifier.fillMaxWidth().padding(start = 5.dp, end = 5.dp, top = 5.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 5.dp, end = 5.dp, top = 5.dp)
+                                .clickable(onClick = onReplyTargetClick)
                         ) {
                             Column(Modifier.padding(horizontal = 9.dp, vertical = 6.dp)) {
                                 Text(
