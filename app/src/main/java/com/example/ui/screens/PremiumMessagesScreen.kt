@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.Manifest
+import com.example.data.local.PersistentTextDraftStore
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
@@ -1239,6 +1240,16 @@ private fun ConversationCard(
     onOpen: () -> Unit,
     onAvatarClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val draftScope = conversation.id.ifBlank { conversation.partnerUsername.lowercase() }
+    val draft = remember(conversation.id, conversation.partnerUsername, conversation.lastMessageRawTime) {
+        PersistentTextDraftStore.readDraft(
+            context = context,
+            key = "chat_composer_text",
+            scope = draftScope
+        )
+    }
+
     Surface(
         color = palette.glassElevated.copy(alpha = if (palette.isLight) .88f else .66f),
         contentColor = palette.textPrimary,
@@ -1283,18 +1294,24 @@ private fun ConversationCard(
                 }
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    conversation.presenceLabel.ifBlank {
-                        conversation.lastMessage.ifBlank { "Start the conversation" }
+                    when {
+                        conversation.presenceLabel.isNotBlank() -> conversation.presenceLabel
+                        !draft.isNullOrBlank() -> "Draft: $draft"
+                        else -> conversation.lastMessage.ifBlank { "Start the conversation" }
                     },
-                    color = if (conversation.presenceLabel.isNotBlank()) {
-                        palette.accent
-                    } else if (conversation.unreadCount > 0) {
-                        palette.textSecondary
-                    } else {
-                        palette.textMuted
+                    color = when {
+                        conversation.presenceLabel.isNotBlank() -> palette.accent
+                        !draft.isNullOrBlank() -> palette.accent
+                        conversation.unreadCount > 0 || conversation.isMarkedUnread -> palette.textSecondary
+                        else -> palette.textMuted
                     },
                     fontSize = 11.sp,
-                    fontWeight = if (conversation.presenceLabel.isNotBlank() || conversation.unreadCount > 0) {
+                    fontWeight = if (
+                        conversation.presenceLabel.isNotBlank() ||
+                        !draft.isNullOrBlank() ||
+                        conversation.unreadCount > 0 ||
+                        conversation.isMarkedUnread
+                    ) {
                         FontWeight.Medium
                     } else {
                         FontWeight.Normal
@@ -1311,10 +1328,17 @@ private fun ConversationCard(
                     fontSize = 9.sp,
                     maxLines = 1
                 )
-                if (conversation.unreadCount > 0) {
+                if (conversation.unreadCount > 0 || conversation.isMarkedUnread) {
                     Spacer(Modifier.height(7.dp))
                     Badge(containerColor = palette.accent, contentColor = Color.White) {
-                        Text(conversation.unreadCount.coerceAtMost(99).toString(), fontSize = 9.sp)
+                        Text(
+                            if (conversation.unreadCount > 0) {
+                                conversation.unreadCount.coerceAtMost(99).toString()
+                            } else {
+                                "•"
+                            },
+                            fontSize = 9.sp
+                        )
                     }
                 }
             }
