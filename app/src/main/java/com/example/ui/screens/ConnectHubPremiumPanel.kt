@@ -86,6 +86,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -118,6 +119,7 @@ import com.example.data.models.MatchSpinPreferences
 import com.example.data.models.NigerianUniversities
 import com.example.data.models.UserProfile
 import com.example.data.repository.ConnectHubRepository
+import com.example.data.repository.FollowStateStore
 import com.example.data.repository.ConnectCategoryCatalogRepository
 import com.example.data.repository.ConnectDirectoryCategory
 import com.example.ui.components.shimmerBackground
@@ -195,7 +197,7 @@ fun ConnectHubPremiumPanel(
     var savedMatchPreferences by remember { mutableStateOf<MatchSpinPreferences?>(null) }
     var recentMatches by remember { mutableStateOf<List<Pair<UserProfile, Int>>>(emptyList()) }
     var challengeTarget by remember { mutableStateOf<UserProfile?>(null) }
-    var followingIds by remember { mutableStateOf(setOf<String>()) }
+    val followingIds by FollowStateStore.followingIds.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     val matchRepository = remember { ConnectHubRepository() }
     val categoryCatalogRepository = remember { ConnectCategoryCatalogRepository() }
@@ -205,9 +207,17 @@ fun ConnectHubPremiumPanel(
         directoryCategories = categoryCatalogRepository.fetchCategories()
     }
 
+    LaunchedEffect(Unit) {
+        FollowStateStore.refresh()
+    }
+
     val toggleFollow: (String) -> Unit = { id ->
-        followingIds = if (id in followingIds) followingIds - id else followingIds + id
-        actions.followUser(id)
+        if (id.isNotBlank()) {
+            val shouldFollow = id !in FollowStateStore.followingIds.value
+            coroutineScope.launch {
+                FollowStateStore.setFollowing(id, shouldFollow)
+            }
+        }
     }
 
     val candidates = remember(hub.smartMatches, profiles, current) {
@@ -382,10 +392,9 @@ fun ConnectHubPremiumPanel(
             directoryCategories = directoryCategories,
             badgeCounts = badgeCounts,
             onOpenCategory = { targetIndex ->
-                coroutineScope.launch {
-                    pagerState.scrollToPage(targetIndex)
-                    openCategoryIndex = targetIndex
-                }
+                // Open first. Scrolling an uncomposed Pager can suspend forever,
+                // which previously left only the purple selected state visible.
+                openCategoryIndex = targetIndex
             }
         )
 
@@ -404,6 +413,7 @@ fun ConnectHubPremiumPanel(
         var panelVisible by remember(targetIndex) { mutableStateOf(false) }
 
         LaunchedEffect(targetIndex) {
+            pagerState.scrollToPage(targetIndex)
             panelVisible = true
         }
 
