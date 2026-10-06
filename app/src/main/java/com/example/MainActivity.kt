@@ -824,6 +824,9 @@ fun MainAppContent(
                             onReportMessage = { message, reason -> viewModel.reportChatMessage(message, reason) },
                             onClearConversation = { conversation -> viewModel.clearConversationForMe(conversation) },
                             onMuteConversation = { conversation, muted -> viewModel.setConversationMuted(conversation, muted) },
+                            onNotificationSettings = { conversation, mode, muteUntil ->
+                                viewModel.setChatNotificationSettings(conversation, mode, muteUntil)
+                            },
                             onArchiveConversation = { conversation, archived -> viewModel.setConversationArchived(conversation, archived) },
                             onPinConversation = { conversation, pinned -> viewModel.setConversationPinned(conversation, pinned) },
                             onMarkConversationUnread = { conversation, unread -> viewModel.setConversationMarkedUnread(conversation, unread) },
