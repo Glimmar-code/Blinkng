@@ -622,15 +622,20 @@ begin
     return new;
   end if;
 
-  if old.status is distinct from new.status and new.status in ('EXPIRED','CANCELLED') then
+  if old.status is distinct from new.status and new.status in ('EXPIRED','CANCELLED','COMPLETED') then
     insert into public.notifications(
       user_id,actor_id,type,target_type,target_id,text,sub_text,is_read,metadata
     ) values (
       new.creator_id,null,'system'::public.notification_type_enum,
       'giveaway',new.id,
-      case when new.status='CANCELLED' then 'BLINK Drop cancelled' else 'BLINK Drop ended' end,
+      case
+        when new.status='CANCELLED' then 'BLINK Drop cancelled'
+        when new.status='COMPLETED' then 'BLINK Drop completed'
+        else 'BLINK Drop ended'
+      end,
       case
         when new.coin_refunded>0 then new.coin_refunded::text||' unused Blink Coins were returned.'
+        when new.status='COMPLETED' then 'All '||new.claimed_count::text||' rewards were claimed.'
         else new.claimed_count::text||' reward'||
           case when new.claimed_count=1 then '' else 's' end||' claimed.'
       end,
