@@ -264,6 +264,7 @@ internal fun ChatOverflowSheet(
     starredOnly: Boolean,
     onProfile: () -> Unit,
     onSearch: () -> Unit,
+    onSharedMedia: () -> Unit,
     onPinned: () -> Unit,
     onStarred: () -> Unit,
     onMute: () -> Unit,
@@ -285,6 +286,7 @@ internal fun ChatOverflowSheet(
         Text(conversation.partnerName, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp))
         OverflowRow("View profile", Icons.Default.Person, palette, onProfile)
         OverflowRow("Search in chat", Icons.Default.Search, palette, onSearch)
+        OverflowRow("Media, links & files", Icons.Default.Share, palette, onSharedMedia)
         OverflowRow(
             label = "Call history",
             icon = Icons.Default.Phone,
