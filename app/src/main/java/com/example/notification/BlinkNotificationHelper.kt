@@ -1224,11 +1224,13 @@ object BlinkNotificationHelper {
                 .setOnlyAlertOnce(true)
                 .setNumber(burst.count)
                 .setContentIntent(
-                    buildProfilePendingIntent(
-                        context,
-                        username
-                    )
+                    if (burst.count == 1) {
+                        buildProfilePendingIntent(context, username)
+                    } else {
+                        buildSocialPendingIntent(context)
+                    }
                 )
+                .setGroup(GROUP_KEY_SOCIAL)
                 .build()
 
         notifySafely(
