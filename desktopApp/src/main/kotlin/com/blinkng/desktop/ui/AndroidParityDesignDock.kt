@@ -65,7 +65,7 @@ private val androidParityModules = listOf(
     AndroidParityModule("blink-store", "Blink Store", "BlinkStoreActivity.kt", "store", "Economy", "Premium catalog, ownership states, Vault actions, use/apply flows and VIP presentation"),
     AndroidParityModule("vault", "Vault / Inventory", "BlinkEconomyModels.kt", "store", "Economy", "Owned inventory, expiry, activation, apply/remove and content-target selection"),
     AndroidParityModule("vip", "Blink VIP", "BlinkVipMark.kt", "profile", "Economy", "VIP identity, premium marks, collection presentation and profile cosmetics"),
-    AndroidParityModule("boosts", "Boosts", "BlinkEconomyService.kt", "store", "Creator", "Post/Reel boosts, strength, durations, target selection and active status"),
+    AndroidParityModule("boosts", "Boosts", "BlinkBoostGrowthRoute.kt", "boost", "Creator", "Switchable Boost/Earn columns, Post/Reel/Profile/Listing campaigns, Rank Point missions, anti-cheat states and campaign status"),
     AndroidParityModule("digital-gifts", "Digital gifts", "BlinkEconomyService.kt", "store", "Economy", "Recipient selection, optional message, gift status and premium delivery feedback"),
     AndroidParityModule("account-switcher", "Account switcher", "AccountSwitcherActivity.kt", "settings", "Account", "Saved accounts, current identity, secure switching and session state"),
     AndroidParityModule("google-signin", "Google sign-in", "AuthScreens.kt", "settings", "Account", "Premium sign-in button, loading state, fallback and account continuity"),
