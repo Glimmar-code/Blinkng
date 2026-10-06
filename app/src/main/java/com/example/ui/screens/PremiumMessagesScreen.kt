@@ -211,6 +211,7 @@ fun PremiumMessagesScreen(
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
+    onSendAttachment: (String, Uri, String) -> Unit = { _, _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
     hasMoreMessages: (String) -> Boolean = { false },
     isLoadingOlder: (String) -> Boolean = { false },
@@ -318,6 +319,7 @@ fun PremiumMessagesScreen(
                         onCloseConversation = onCloseConversation,
                         onSendMessage = onSendMessage,
                         onSendVideo = onSendVideo,
+                        onSendAttachment = onSendAttachment,
                         onRetryMessage = onRetryMessage,
                         hasMoreMessages = hasMoreMessages,
                         isLoadingOlder = isLoadingOlder,
@@ -416,6 +418,7 @@ private fun PremiumMessagesMasterDetail(
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String, String?) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
+    onSendAttachment: (String, Uri, String) -> Unit,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
     hasMoreMessages: (String) -> Boolean,
     isLoadingOlder: (String) -> Boolean,
@@ -477,6 +480,9 @@ private fun PremiumMessagesMasterDetail(
                 },
                 interactionActions = interactionActions,
                 onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
+                onSendAttachment = { uri, kind ->
+                    onSendAttachment(displayedConversation.partnerUsername, uri, kind)
+                },
                 onRetry = { message ->
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
                 },
@@ -1200,6 +1206,7 @@ private fun PremiumChatDetail(
     onForward: (String, ChatMessage) -> Unit,
     interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
+    onSendAttachment: (Uri, String) -> Unit,
     onRetry: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
     onAudioCall: () -> Unit,
@@ -1209,7 +1216,10 @@ private fun PremiumChatDetail(
     onToggleFullScreen: () -> Unit
 ) {
     val context = LocalContext.current
-    var text by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:text:2")
+    var text by rememberPersistentTextState(
+        key = "chat_composer_text",
+        scope = conversation.id.ifBlank { conversation.partnerUsername.lowercase() }
+    )
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
@@ -1220,7 +1230,10 @@ private fun PremiumChatDetail(
     var showContactProfile by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var confirmClearChat by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var searchVisible by remember(conversation.partnerUsername) { mutableStateOf(false) }
-    var searchQuery by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:searchQuery:3")
+    var searchQuery by rememberPersistentTextState(
+        key = "chat_search_query",
+        scope = conversation.id.ifBlank { conversation.partnerUsername.lowercase() }
+    )
     var pinnedOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -1235,8 +1248,17 @@ private fun PremiumChatDetail(
             onLoadOlder()
         }
     }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) onSendAttachment(uri, "image")
+    }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onSendVideo(uri)
+    }
+    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) onSendAttachment(uri, "audio")
+    }
+    val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onSendAttachment(uri, "document")
     }
     val startDictation = rememberSpeechInput { spoken ->
         text = listOf(text.trim(), spoken.trim()).filter { it.isNotBlank() }.joinToString(" ")
@@ -1564,9 +1586,21 @@ private fun PremiumChatDetail(
     if (showAttachmentSheet) {
         AttachmentSheet(
             palette = palette,
+            onImage = {
+                showAttachmentSheet = false
+                imagePicker.launch("image/*")
+            },
             onVideo = {
                 showAttachmentSheet = false
                 videoPicker.launch("video/*")
+            },
+            onAudio = {
+                showAttachmentSheet = false
+                audioPicker.launch("audio/*")
+            },
+            onDocument = {
+                showAttachmentSheet = false
+                documentPicker.launch(arrayOf("*/*"))
             },
             onDismiss = { showAttachmentSheet = false }
         )
