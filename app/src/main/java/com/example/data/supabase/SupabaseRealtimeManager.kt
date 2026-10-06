@@ -34,6 +34,13 @@ import org.json.JSONObject
 sealed class RealtimeEvent {
     data class MessageEvent(val eventType: String, val message: ChatMessage) : RealtimeEvent()
     data class ConversationEvent(val eventType: String, val conversationId: String, val lastMessage: String, val updatedAt: String) : RealtimeEvent()
+    data class ConversationPresenceEvent(
+        val eventType: String,
+        val conversationId: String,
+        val userId: String,
+        val state: String,
+        val expiresAt: String
+    ) : RealtimeEvent()
     data class NotificationEvent(
         val eventType: String,
         val id: String,
@@ -174,7 +181,7 @@ class SupabaseRealtimeManager private constructor() {
         if (sent) lastAccessTokenSent = token
     }
     private fun subscribeToTables() {
-        val tables = listOf("messages","conversations","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","calls","roommate_profiles","roommate_applications","mentor_profiles","mentor_requests","reading_mate_profiles","reading_mate_requests","housing_agent_profiles","housing_requests","housing_request_applications","game_challenges","skill_endorsements","poll_votes")
+        val tables = listOf("messages","conversations","conversation_presence","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","calls","roommate_profiles","roommate_applications","mentor_profiles","mentor_requests","reading_mate_profiles","reading_mate_requests","housing_agent_profiles","housing_requests","housing_request_applications","game_challenges","skill_endorsements","poll_votes")
         tables.forEach { table -> val join = JSONObject().apply { put("topic", "realtime:public:$table"); put("event", "phx_join"); put("payload", JSONObject().apply { put("config", JSONObject().apply { put("postgres_changes", org.json.JSONArray().apply { put(JSONObject().apply { put("event", "*"); put("schema", "public"); put("table", table) }) }) }) }); put("ref", refCounter.getAndIncrement().toString()) }; webSocket?.send(join.toString()) }
     }
     private fun handleIncomingMessage(text: String) {
@@ -244,12 +251,39 @@ class SupabaseRealtimeManager private constructor() {
                                     record.optBoolean("is_read", false) || record.optString("read_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.READ
                                     record.optString("delivered_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.DELIVERED
                                     else -> MessageStatus.SENT
-                                }
+                                },
+                                messageType = record.optString("message_type").ifBlank { "text" },
+                                isVoiceNote = record.optString("message_type").equals("voice", true),
+                                attachedImageUrl = record.optString("media_url")
+                                    .takeIf { record.optString("message_type").equals("image", true) && it.isNotBlank() },
+                                attachedVideoUrl = record.optString("media_url")
+                                    .takeIf { record.optString("message_type").equals("video", true) && it.isNotBlank() },
+                                attachedAudioUrl = record.optString("media_url")
+                                    .takeIf {
+                                        (record.optString("message_type").equals("audio", true) ||
+                                            record.optString("message_type").equals("voice", true)) &&
+                                            it.isNotBlank()
+                                    },
+                                attachedDocumentUrl = record.optString("media_url")
+                                    .takeIf { record.optString("message_type").equals("document", true) && it.isNotBlank() },
+                                forwardedFromMessageId = record.optString("forwarded_from_message_id")
+                                    .takeIf { it.isNotBlank() && !it.equals("null", true) },
+                                isForwarded = record.optString("forwarded_from_message_id")
+                                    .let { it.isNotBlank() && !it.equals("null", true) }
                             )
                         )
                     )
                 }
                 "conversations" -> publishEvent(RealtimeEvent.ConversationEvent(type, record.optString("id"), record.optString("last_message"), record.optString("updated_at", record.optString("last_message_at"))))
+                "conversation_presence" -> publishEvent(
+                    RealtimeEvent.ConversationPresenceEvent(
+                        eventType = type,
+                        conversationId = record.optString("conversation_id"),
+                        userId = record.optString("user_id"),
+                        state = record.optString("state"),
+                        expiresAt = record.optString("expires_at")
+                    )
+                )
                 "notifications" -> {
                     if (type.equals("INSERT", ignoreCase = true)) {
                         publishEvent(
