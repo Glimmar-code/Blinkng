@@ -59,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -92,8 +93,10 @@ import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import com.blinkng.shared.xpProgress
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 import java.awt.Desktop
 import java.net.URI
 import java.time.Instant
@@ -598,6 +601,11 @@ fun ConnectScreen(state: DesktopAppState) {
             matchesQuery && matchesFilter
         }
     }
+    val realOnlineCount = remember(students) { 1 + students.count { it.isOnline } }
+    val communityActivity = rememberDesktopFluctuatingPulse(
+        range = desktopCommunityActivityRange(realOnlineCount),
+        tickMillis = 2_800L,
+    )
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -614,6 +622,40 @@ fun ConnectScreen(state: DesktopAppState) {
                     ScreenHeader("Connect", "Connect Hub and student discovery")
                     if (selectedPane == 0) {
                         Button(onClick = { showCreate = true }) { Text("Create") }
+                    }
+                }
+            }
+
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    tonalElevation = 1.dp,
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Community Activity", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                            Text(
+                                "Live activity pulse • $realOnlineCount real active",
+                                fontSize = 10.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(100.dp),
+                            color = Color(0xFF22C55E).copy(alpha = 0.13f),
+                        ) {
+                            Text(
+                                communityActivity.toString(),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                color = Color(0xFF22C55E),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Black,
+                            )
+                        }
                     }
                 }
             }
@@ -864,12 +906,70 @@ fun StoreScreen(state: DesktopAppState) {
 fun LeaderboardScreen(state: DesktopAppState) {
     var entries by remember { mutableStateOf<List<DesktopLeaderboardEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var previousRanks by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var rankUpsInWindow by remember { mutableIntStateOf(0) }
+
     LaunchedEffect(Unit) {
-        entries = runCatching { state.client.fetchLeaderboard() }.getOrDefault(emptyList())
-        loading = false
+        while (true) {
+            val loaded = runCatching { state.client.fetchLeaderboard() }.getOrDefault(entries)
+            val currentRanks = loaded.mapNotNull { entry ->
+                entry.worldRank?.let { rank -> entry.userId to rank }
+            }.toMap()
+            rankUpsInWindow = if (previousRanks.isEmpty()) {
+                0
+            } else {
+                currentRanks.count { (userId, rank) ->
+                    val previous = previousRanks[userId]
+                    previous != null && rank < previous
+                }
+            }
+            entries = loaded
+            previousRanks = currentRanks
+            loading = false
+            delay(20_000L)
+        }
     }
+
+    val rankPulse = rememberDesktopFluctuatingPulse(
+        range = desktopRankPulseRange(rankUpsInWindow),
+        tickMillis = 2_400L,
+    )
+
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { ScreenHeader("Leaderboard", "Ranks #1–#20 from live Blink activity") }
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                tonalElevation = 1.dp,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Rank Pulse", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                        Text(
+                            "20-second activity window • reacts to real rank-ups",
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(100.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    ) {
+                        Text(
+                            rankPulse.toString(),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black,
+                        )
+                    }
+                }
+            }
+        }
         if (loading) item { LoadingRow() }
         items(
             entries.sortedBy { it.worldRank ?: Int.MAX_VALUE }.take(20),
@@ -1531,6 +1631,43 @@ private fun parseDesktopEconomyPolicy(payload: JSONObject?): BlinkEconomyPolicy 
         coinPacks = packs,
         cashCheckoutEnabled = payload.optBoolean("cash_checkout_enabled", fallback.cashCheckoutEnabled),
     )
+}
+
+private fun desktopCommunityActivityRange(realOnlineCount: Int): IntRange {
+    val units = realOnlineCount.coerceAtLeast(1).coerceAtMost(100_000)
+    return (units * 30)..(units * 50)
+}
+
+private fun desktopRankPulseRange(rankUpsInWindow: Int): IntRange {
+    val units = rankUpsInWindow.coerceAtLeast(1).coerceAtMost(100_000)
+    return (units * 10)..(units * 15)
+}
+
+@Composable
+private fun rememberDesktopFluctuatingPulse(
+    range: IntRange,
+    tickMillis: Long,
+): Int {
+    val min = minOf(range.first, range.last)
+    val max = maxOf(range.first, range.last)
+    var value by remember(min, max) {
+        mutableIntStateOf(if (min == max) min else Random.nextInt(min, max + 1))
+    }
+
+    LaunchedEffect(min, max, tickMillis) {
+        while (true) {
+            delay(tickMillis)
+            val magnitude = Random.nextInt(1, 5)
+            val direction = if (Random.nextBoolean()) 1 else -1
+            var next = (value + (magnitude * direction)).coerceIn(min, max)
+            if (next == value && min < max) {
+                next = if (value <= min) value + 1 else value - 1
+            }
+            value = next.coerceIn(min, max)
+        }
+    }
+
+    return value
 }
 
 private fun formatTime(value: String): String = runCatching {
