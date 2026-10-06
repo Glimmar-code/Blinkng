@@ -1,6 +1,11 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.weight
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
 
@@ -30,23 +35,32 @@ fun SearchScreen(
     onBackToHome: () -> Unit = {},
     isDark: Boolean
 ) {
-    UnifiedPremiumSearchHost(
-        profiles = profiles,
-        posts = posts,
-        currentUsername = currentUsername,
-        serverProfiles = serverProfiles,
-        serverPosts = serverPosts,
-        isSearching = isSearching,
-        onSearchQueryChange = onSearchQueryChange,
-        onProfileClick = onProfileClick,
-        onPostClick = onPostClick,
-        onLikePost = onLikePost,
-        onCommentPost = onCommentPost,
-        onBookmarkPost = onBookmarkPost,
-        onSharePost = onSharePost,
-        onOptionsClick = onOptionsClick,
-        onDeletePost = onDeletePost,
-        onBackToHome = onBackToHome,
-        isDark = isDark,
-    )
+    Column(modifier = Modifier.fillMaxSize()) {
+        BlinkPromotedDiscoveryRail(
+            surface = "SEARCH",
+            onProfileClick = onProfileClick,
+            onPostClick = onPostClick,
+        )
+        Box(modifier = Modifier.weight(1f)) {
+            UnifiedPremiumSearchHost(
+                profiles = profiles,
+                posts = posts,
+                currentUsername = currentUsername,
+                serverProfiles = serverProfiles,
+                serverPosts = serverPosts,
+                isSearching = isSearching,
+                onSearchQueryChange = onSearchQueryChange,
+                onProfileClick = onProfileClick,
+                onPostClick = onPostClick,
+                onLikePost = onLikePost,
+                onCommentPost = onCommentPost,
+                onBookmarkPost = onBookmarkPost,
+                onSharePost = onSharePost,
+                onOptionsClick = onOptionsClick,
+                onDeletePost = onDeletePost,
+                onBackToHome = onBackToHome,
+                isDark = isDark,
+            )
+        }
+    }
 }
