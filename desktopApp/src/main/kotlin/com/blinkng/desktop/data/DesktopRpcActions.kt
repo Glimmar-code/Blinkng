@@ -181,6 +181,19 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
                 .put("p_surface", surface.trim().uppercase()),
         )
 
+    suspend fun completeBoostMissionAction(
+        campaignId: String,
+        action: String,
+        commentText: String? = null,
+    ): JSONObject =
+        rpc(
+            "complete_blink_boost_mission_action",
+            JSONObject()
+                .put("p_campaign_id", campaignId.trim())
+                .put("p_action", action.trim().lowercase())
+                .put("p_comment_text", commentText?.trim()?.takeIf(String::isNotBlank) ?: JSONObject.NULL),
+        )
+
     suspend fun recordContentView(postId: String): JSONObject =
         rpc(
             "record_content_view",
