@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import com.example.R
 import com.example.data.models.LeaderboardUser
 import com.example.data.models.UserProfile
@@ -65,6 +66,7 @@ fun LeaderboardScreen(
     var showInfo by remember { mutableStateOf(false) }
     var previousWorldRanks by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var worldRankMovement by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var rankUpsInWindow by remember { mutableIntStateOf(0) }
 
     val campusName = userProfile.university.cleanLabel()
     val facultyName = userProfile.faculty.cleanLabel()
@@ -89,13 +91,27 @@ fun LeaderboardScreen(
     LaunchedEffect(world.map { it.username to it.rank }) {
         val current = world.associate { it.username.lowercase() to it.rank }
         if (previousWorldRanks.isNotEmpty()) {
-            worldRankMovement = current.mapValues { (username, rank) ->
+            val movement = current.mapValues { (username, rank) ->
                 val oldRank = previousWorldRanks[username]
                 if (oldRank == null) 0 else oldRank - rank
             }
+            worldRankMovement = movement
+            rankUpsInWindow += movement.values.count { it > 0 }
         }
         previousWorldRanks = current
     }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(20_000L)
+            rankUpsInWindow = 0
+        }
+    }
+
+    val rankPulse = rememberFluctuatingPulse(
+        range = rankPulseRange(rankUpsInWindow),
+        tickMillis = 2_400L
+    )
 
     val scoped = remember(world, scope, campusName, facultyName, levelName, verifiedOnly) {
         fun rankWithinScope(source: List<LeaderboardUser>): List<LeaderboardUser> {
@@ -205,6 +221,49 @@ fun LeaderboardScreen(
                 }
                 IconButton(onClick = onRefresh) {
                     Icon(Icons.Default.Refresh, "Refresh live leaderboard")
+                }
+            }
+        }
+
+        item(key = "leaderboard_rank_pulse", contentType = "activity_pulse") {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Rank Pulse",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                        Text(
+                            "20-second activity window • reacts to real rank-ups",
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(100.dp),
+                        color = BlinkGold.copy(alpha = .14f)
+                    ) {
+                        Text(
+                            rankPulse.toString(),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                            color = BlinkGold,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
                 }
             }
         }
