@@ -45,23 +45,7 @@ for all to authenticated
 using (subscriber_id = (select auth.uid()))
 with check (subscriber_id = (select auth.uid()));
 
-create table if not exists public.profile_mutes (
-    muter_id uuid not null references public.profiles(id) on delete cascade,
-    muted_id uuid not null references public.profiles(id) on delete cascade,
-    created_at timestamptz not null default now(),
-    primary key (muter_id, muted_id),
-    check (muter_id <> muted_id)
-);
-alter table public.profile_mutes enable row level security;
-revoke all on public.profile_mutes from anon;
-revoke all on public.profile_mutes from authenticated;
-grant select, insert, delete on public.profile_mutes to authenticated;
-drop policy if exists profile_mutes_own on public.profile_mutes;
-create policy profile_mutes_own
-on public.profile_mutes
-for all to authenticated
-using (muter_id = (select auth.uid()))
-with check (muter_id = (select auth.uid()));
+-- Reuse the existing public.muted_users table; do not create a second mute system.
 
 create table if not exists public.profile_follower_daily_snapshots (
     profile_id uuid not null references public.profiles(id) on delete cascade,
@@ -187,12 +171,12 @@ begin
   if auth.uid() is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
   if p_profile_id = auth.uid() then raise exception 'CANNOT_MUTE_SELF'; end if;
   if coalesce(p_muted,false) then
-    insert into public.profile_mutes(muter_id, muted_id)
+    insert into public.muted_users(user_id, muted_id)
     values(auth.uid(), p_profile_id)
     on conflict do nothing;
   else
-    delete from public.profile_mutes
-    where muter_id = auth.uid() and muted_id = p_profile_id;
+    delete from public.muted_users
+    where user_id = auth.uid() and muted_id = p_profile_id;
   end if;
   return coalesce(p_muted,false);
 end;
@@ -208,8 +192,8 @@ security invoker
 set search_path = public, pg_temp
 as $$
   select exists(
-    select 1 from public.profile_mutes
-    where muter_id = auth.uid() and muted_id = p_profile_id
+    select 1 from public.muted_users
+    where user_id = auth.uid() and muted_id = p_profile_id
   );
 $$;
 revoke all on function public.is_profile_muted(uuid) from public, anon;
