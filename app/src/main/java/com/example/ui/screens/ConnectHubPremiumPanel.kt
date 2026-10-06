@@ -86,6 +86,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -118,6 +119,7 @@ import com.example.data.models.MatchSpinPreferences
 import com.example.data.models.NigerianUniversities
 import com.example.data.models.UserProfile
 import com.example.data.repository.ConnectHubRepository
+import com.example.data.repository.FollowStateStore
 import com.example.data.repository.ConnectCategoryCatalogRepository
 import com.example.data.repository.ConnectDirectoryCategory
 import com.example.ui.components.shimmerBackground
@@ -182,7 +184,8 @@ fun ConnectHubPremiumPanel(
     actions: ConnectHubActions,
     isLoading: Boolean,
     onProfileClick: (String) -> Unit,
-    onMessageUser: (String, String?, String?) -> Unit
+    onMessageUser: (String, String?, String?) -> Unit,
+    discoveryContent: @Composable () -> Unit = {}
 ) {
     var match by remember { mutableStateOf<Pair<UserProfile, Int>?>(null) }
     var form by rememberSaveable { mutableStateOf(HubForm.NONE) }
@@ -195,7 +198,7 @@ fun ConnectHubPremiumPanel(
     var savedMatchPreferences by remember { mutableStateOf<MatchSpinPreferences?>(null) }
     var recentMatches by remember { mutableStateOf<List<Pair<UserProfile, Int>>>(emptyList()) }
     var challengeTarget by remember { mutableStateOf<UserProfile?>(null) }
-    var followingIds by remember { mutableStateOf(setOf<String>()) }
+    val followingIds by FollowStateStore.followingIds.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     val matchRepository = remember { ConnectHubRepository() }
     val categoryCatalogRepository = remember { ConnectCategoryCatalogRepository() }
@@ -205,9 +208,17 @@ fun ConnectHubPremiumPanel(
         directoryCategories = categoryCatalogRepository.fetchCategories()
     }
 
+    LaunchedEffect(Unit) {
+        FollowStateStore.refresh()
+    }
+
     val toggleFollow: (String) -> Unit = { id ->
-        followingIds = if (id in followingIds) followingIds - id else followingIds + id
-        actions.followUser(id)
+        if (id.isNotBlank()) {
+            val shouldFollow = id !in FollowStateStore.followingIds.value
+            coroutineScope.launch {
+                FollowStateStore.setFollowing(id, shouldFollow)
+            }
+        }
     }
 
     val candidates = remember(hub.smartMatches, profiles, current) {
@@ -316,6 +327,7 @@ fun ConnectHubPremiumPanel(
         )
     }
     val pagerState = rememberPagerState(pageCount = { categories.size })
+    val connectSurfacePager = rememberPagerState(pageCount = { 2 })
     var openCategoryIndex by rememberSaveable { mutableStateOf<Int?>(null) }
 
     Column(
@@ -343,58 +355,111 @@ fun ConnectHubPremiumPanel(
 
         Spacer(Modifier.height(18.dp))
 
-        Text("Connect Hub", fontSize = 18.sp, fontWeight = FontWeight.Black)
-        Text(
-            "Choose from 20 professional ways to connect. Every option opens a live Connect workflow.",
-            fontSize = 11.5.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Spacer(Modifier.height(10.dp))
-        OutlinedTextField(
-            value = hubQuery,
-            onValueChange = { hubQuery = it },
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search roommates, mentors, courses or areas") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            singleLine = true,
-            shape = RoundedCornerShape(18.dp)
-        )
-
-        if (isLoading) {
-            Spacer(Modifier.height(10.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(42.dp)
-                    .shimmerBackground(
-                        shape = RoundedCornerShape(16.dp),
-                        baseColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f),
-                        highlightColor = MaterialTheme.colorScheme.surface.copy(alpha = .95f)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            listOf("Connect Hub", "Students").forEachIndexed { index, label ->
+                val selected = connectSurfacePager.currentPage == index
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            coroutineScope.launch {
+                                connectSurfacePager.animateScrollToPage(index)
+                            }
+                        },
+                    shape = RoundedCornerShape(18.dp),
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f)
+                    },
+                    border = BorderStroke(
+                        1.dp,
+                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .45f)
+                        else MaterialTheme.colorScheme.outlineVariant
                     )
-            )
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        CategoryTabBar(
-            categories = categories,
-            directoryCategories = directoryCategories,
-            badgeCounts = badgeCounts,
-            onOpenCategory = { targetIndex ->
-                coroutineScope.launch {
-                    pagerState.scrollToPage(targetIndex)
-                    openCategoryIndex = targetIndex
+                ) {
+                    Text(
+                        text = label,
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        textAlign = TextAlign.Center,
+                        fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+                        color = if (selected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
-        )
+        }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
 
+        HorizontalPager(
+            state = connectSurfacePager,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(PagerHeight),
+            pageSpacing = 12.dp
+        ) { page ->
+            if (page == 0) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text("Connect Hub", fontSize = 18.sp, fontWeight = FontWeight.Black)
+                    Text(
+                        "Choose from 20 professional ways to connect. Every option opens a live Connect workflow.",
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-        Spacer(Modifier.height(4.dp))
-        TextButton(onClick = actions.refresh, modifier = Modifier.align(Alignment.End)) {
-            Text("Refresh Connect Hub")
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = hubQuery,
+                        onValueChange = { hubQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Search roommates, mentors, courses or areas") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(18.dp)
+                    )
+
+                    if (isLoading) {
+                        Spacer(Modifier.height(10.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .shimmerBackground(
+                                    shape = RoundedCornerShape(16.dp),
+                                    baseColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f),
+                                    highlightColor = MaterialTheme.colorScheme.surface.copy(alpha = .95f)
+                                )
+                        )
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    CategoryTabBar(
+                        categories = categories,
+                        directoryCategories = directoryCategories,
+                        badgeCounts = badgeCounts,
+                        onOpenCategory = { targetIndex ->
+                            openCategoryIndex = targetIndex
+                        }
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(onClick = actions.refresh, modifier = Modifier.align(Alignment.End)) {
+                        Text("Refresh Connect Hub")
+                    }
+                    Spacer(Modifier.height(18.dp))
+                }
+            } else {
+                discoveryContent()
+            }
         }
     }
 
@@ -404,6 +469,7 @@ fun ConnectHubPremiumPanel(
         var panelVisible by remember(targetIndex) { mutableStateOf(false) }
 
         LaunchedEffect(targetIndex) {
+            pagerState.scrollToPage(targetIndex)
             panelVisible = true
         }
 

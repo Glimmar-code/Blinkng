@@ -1,3 +1,9 @@
+## 2026-10-06 — Leaderboard Top 20 + Connect Hub/Students split
+
+- Android: Leaderboard now renders ranks #1–#20 as one consistent scrollable list, including ranks #1–#3 in the same row design as everyone else. Connect keeps Smart Match first, then exposes two equal swipeable columns: Connect Hub and Students. Roommate/Mentor/Reading/Housing/Challenge rows now open the existing left-slide workflow reliably by opening the panel before paging its content. Student Discovery keeps Search + All/Same campus/Online filters and adds real Follow/Following actions backed by the canonical follow RPC state.
+- Windows: Leaderboard is capped to the same #1–#20 live ranking. Connect exposes matching Connect Hub / Students sections, student search and All/Same campus/Online filters, and uses the same follow/unfollow backend contract with a desktop-native tab interaction.
+- Backend/safety: no leaderboard formula, points/XP algorithm, Connect request rules, ranking order, auth, wallet, Store, notification or Supabase schema changes. Existing live Connect Hub and follow RPCs remain authoritative.
+
 ## 2026-10-06 — BLINK Store grouped visual gallery Testlab
 
 - Android: replaces the long 70-row Store catalog with 25 shared visual collections in a two-column preview gallery. Opening a collection reveals the existing purchasable variants with live preview, ownership/active state, VIP gating and the existing purchase confirmation flow.

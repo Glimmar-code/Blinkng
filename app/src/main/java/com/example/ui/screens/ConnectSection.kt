@@ -28,6 +28,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.OpenInNew
@@ -46,9 +48,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -64,9 +69,11 @@ import coil.compose.AsyncImage
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
+import com.example.data.repository.FollowStateStore
 import com.example.ui.components.VerifiedMark
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.theme.BlinkOnlineGreen
+import kotlinx.coroutines.launch
 
 private enum class LivePeopleFilter(val label: String) {
     ALL("All"),
@@ -98,6 +105,8 @@ fun ConnectSection(
     var query by rememberPersistentTextState(key = "com/example/ui/screens/ConnectSection.kt:query:1")
     var filter by rememberSaveable { mutableStateOf(LivePeopleFilter.ALL) }
     val pullToRefreshState = rememberPullToRefreshState()
+    val followScope = rememberCoroutineScope()
+    val followingIds by FollowStateStore.followingIds.collectAsState()
 
     val current = remember(profiles, currentUsername) {
         profiles.firstOrNull { it.username.equals(currentUsername, ignoreCase = true) }
@@ -136,7 +145,12 @@ fun ConnectSection(
             matchesQuery && matchesFilter
         }
     }
+
     val activeNowCount = remember(liveProfiles) { liveProfiles.count { it.onlineNow } }
+
+    LaunchedEffect(Unit) {
+        FollowStateStore.refresh()
+    }
 
     Column(
         modifier = modifier
@@ -153,122 +167,142 @@ fun ConnectSection(
                     state = pullToRefreshState,
                     isRefreshing = isConnectHubLoading,
                     modifier = Modifier.align(Alignment.TopCenter),
-                    refreshingLabel = "Updating Connect Hub"
+                    refreshingLabel = "Updating Connect"
                 )
             }
         ) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 120.dp)
+                contentPadding = PaddingValues(top = 10.dp, bottom = 120.dp)
             ) {
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "Discover students",
-                            fontSize = 21.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                        Text(
-                            "Real profiles loaded directly from Supabase",
-                            fontSize = 11.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                item(key = "connect_hub_and_students") {
+                    ConnectHubPremiumPanel(
+                        current = current,
+                        profiles = liveProfiles,
+                        hub = connectHub,
+                        actions = connectHubActions,
+                        isLoading = isConnectHubLoading,
+                        onProfileClick = onProfileClick,
+                        onMessageUser = onDirectMessage,
+                        discoveryContent = {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            "Discover students",
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                        Text(
+                                            "Search everyone on Blink or narrow to your campus and people online now.",
+                                            fontSize = 10.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
 
-                    Surface(
-                        shape = RoundedCornerShape(100.dp),
-                        color = BlinkOnlineGreen.copy(alpha = .13f)
-                    ) {
-                        Text(
-                            "$activeNowCount active",
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            color = BlinkOnlineGreen,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
+                                    Surface(
+                                        shape = RoundedCornerShape(100.dp),
+                                        color = BlinkOnlineGreen.copy(alpha = .13f)
+                                    ) {
+                                        Text(
+                                            "$activeNowCount active",
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            color = BlinkOnlineGreen,
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
 
-            item {
-                ConnectHubPremiumPanel(
-                    current = current,
-                    profiles = liveProfiles,
-                    hub = connectHub,
-                    actions = connectHubActions,
-                    isLoading = isConnectHubLoading,
-                    onProfileClick = onProfileClick,
-                    onMessageUser = onDirectMessage
-                )
-                Spacer(Modifier.height(8.dp))
-            }
+                                OutlinedTextField(
+                                    value = query,
+                                    onValueChange = { query = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    placeholder = { Text("Search students") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Search, contentDescription = null)
+                                    },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(18.dp)
+                                )
 
-            item {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    placeholder = { Text("Search real students") },
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = null)
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(18.dp)
-                )
-            }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    LivePeopleFilter.values().forEach { option ->
+                                        FilterChip(
+                                            selected = filter == option,
+                                            onClick = { filter = option },
+                                            label = { Text(option.label) }
+                                        )
+                                    }
+                                }
 
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    LivePeopleFilter.values().forEach { option ->
-                        FilterChip(
-                            selected = filter == option,
-                            onClick = { filter = option },
-                            label = { Text(option.label) }
-                        )
-                    }
-                }
-            }
-
-            if (visible.isEmpty()) {
-                item {
-                    LivePeopleEmptyState(
-                        hasProfiles = liveProfiles.isNotEmpty(),
-                        query = query,
-                        filter = filter
-                    )
-                }
-            } else {
-                items(
-                    items = visible,
-                    key = { it.id.ifBlank { it.username } }
-                ) { profile ->
-                    LiveProfileCard(
-                        profile = profile,
-                        onProfileClick = { onProfileClick(profile.username) },
-                        onMessage = {
-                            onDirectMessage(
-                                profile.username,
-                                profile.fullName,
-                                profile.avatarUrl
-                            )
+                                if (visible.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        LivePeopleEmptyState(
+                                            hasProfiles = liveProfiles.isNotEmpty(),
+                                            query = query,
+                                            filter = filter
+                                        )
+                                    }
+                                } else {
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f),
+                                        contentPadding = PaddingValues(bottom = 18.dp)
+                                    ) {
+                                        items(
+                                            items = visible,
+                                            key = { it.id.ifBlank { it.username } }
+                                        ) { profile ->
+                                            val profileId = profile.id
+                                            val isFollowing = profileId.isNotBlank() && profileId in followingIds
+                                            LiveProfileCard(
+                                                profile = profile,
+                                                isFollowing = isFollowing,
+                                                onFollow = {
+                                                    if (profileId.isNotBlank()) {
+                                                        followScope.launch {
+                                                            FollowStateStore.setFollowing(
+                                                                profileId,
+                                                                !FollowStateStore.isFollowing(profileId)
+                                                            )
+                                                        }
+                                                    }
+                                                },
+                                                onProfileClick = { onProfileClick(profile.username) },
+                                                onMessage = {
+                                                    onDirectMessage(
+                                                        profile.username,
+                                                        profile.fullName,
+                                                        profile.avatarUrl
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     )
+                    Spacer(Modifier.height(8.dp))
                 }
-            }
             }
         }
     }
@@ -390,6 +424,8 @@ private fun ConnectTopTab(
 @Composable
 private fun LiveProfileCard(
     profile: UserProfile,
+    isFollowing: Boolean,
+    onFollow: () -> Unit,
     onProfileClick: () -> Unit,
     onMessage: () -> Unit
 ) {
@@ -510,26 +546,43 @@ private fun LiveProfileCard(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(9.dp)
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 OutlinedButton(
                     onClick = onProfileClick,
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(100.dp)
+                    shape = RoundedCornerShape(100.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                 ) {
                     Icon(
                         Icons.Outlined.OpenInNew,
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(15.dp)
                     )
-                    Spacer(Modifier.width(6.dp))
-                    Text("View profile")
+                    Spacer(Modifier.width(4.dp))
+                    Text("Profile", fontSize = 11.sp)
+                }
+
+                OutlinedButton(
+                    onClick = onFollow,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(100.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        if (isFollowing) Icons.Default.Check else Icons.Default.PersonAdd,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (isFollowing) "Following" else "Follow", fontSize = 11.sp)
                 }
 
                 Button(
                     onClick = onMessage,
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(100.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
@@ -537,10 +590,10 @@ private fun LiveProfileCard(
                     Icon(
                         Icons.Outlined.ChatBubbleOutline,
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(15.dp)
                     )
-                    Spacer(Modifier.width(6.dp))
-                    Text("Message")
+                    Spacer(Modifier.width(4.dp))
+                    Text("Message", fontSize = 11.sp)
                 }
             }
         }
