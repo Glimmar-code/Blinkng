@@ -574,16 +574,23 @@ fun ConnectScreen(state: DesktopAppState) {
     var type by remember { mutableStateOf("community") }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var pulsePolicy by remember { mutableStateOf(BlinkActivityPulseDefaults.policy) }
+    var liveActivityAvailable by remember { mutableStateOf(false) }
+    var pulseImpressionRecorded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     suspend fun reload() {
         loading = true
-        val loadedListings = runCatching { state.client.fetchConnectListings() }.getOrDefault(emptyList())
-        val loadedStudents = runCatching { state.client.fetchOnboardingSuggestions(100) }.getOrDefault(emptyList())
-        val loadedFollowing = runCatching { state.client.fetchFollowingIds() }.getOrDefault(emptySet())
-        listings = loadedListings
-        students = loadedStudents.filterNot { it.id == state.profile?.id }
-        followingIds = loadedFollowing
+        val listingsResult = runCatching { state.client.fetchConnectListings() }
+        val studentsResult = runCatching { state.client.fetchOnboardingSuggestions(100) }
+        val followingResult = runCatching { state.client.fetchFollowingIds() }
+        val policyResult = runCatching { state.client.fetchActivityPulsePolicy() }
+
+        listings = listingsResult.getOrDefault(listings)
+        students = studentsResult.getOrDefault(students).filterNot { it.id == state.profile?.id }
+        followingIds = followingResult.getOrDefault(followingIds)
+        pulsePolicy = policyResult.getOrDefault(pulsePolicy).normalized()
+        liveActivityAvailable = studentsResult.isSuccess
         loading = false
     }
 
@@ -610,11 +617,48 @@ fun ConnectScreen(state: DesktopAppState) {
             matchesQuery && matchesFilter
         }
     }
+    val policy = remember(pulsePolicy) { pulsePolicy.normalized() }
     val realOnlineCount = remember(students) { 1 + students.count { it.isOnline } }
-    val communityActivity = rememberDesktopFluctuatingPulse(
-        range = desktopCommunityActivityRange(realOnlineCount),
-        tickMillis = 2_800L,
+    val reduceMotion = state.settings?.reduceMotion == true
+    val communityActivity = rememberDesktopManagedPulse(
+        key = "desktop-connect:" + state.profile?.username.orEmpty().lowercase(),
+        range = communityActivityRange(realOnlineCount, policy),
+        tickMillis = policy.connectTickMillis,
+        policy = policy,
+        liveDataAvailable = liveActivityAvailable,
+        reduceMotion = reduceMotion,
     )
+    var previousRealOnline by remember { mutableIntStateOf(realOnlineCount) }
+    var activityTrend by remember { mutableStateOf(BlinkPulseTrend.STABLE) }
+    LaunchedEffect(realOnlineCount) {
+        activityTrend = pulseTrend(previousRealOnline, realOnlineCount)
+        previousRealOnline = realOnlineCount
+    }
+
+    val realCampusOnline = remember(students, myCampus) {
+        students.count {
+            it.isOnline && myCampus.isNotBlank() && it.university.orEmpty().equals(myCampus, ignoreCase = true)
+        } + if (myCampus.isNotBlank()) 1 else 0
+    }
+    val campusLabel = remember(realCampusOnline, policy) {
+        campusActivityLabel(realCampusOnline, policy)
+    }
+    val onlinePreview = remember(students, policy.onlinePreviewLimit) {
+        students.filter { it.isOnline }.take(policy.onlinePreviewLimit)
+    }
+
+    LaunchedEffect(communityActivity, liveActivityAvailable, pulseImpressionRecorded) {
+        if (communityActivity != null && liveActivityAvailable && !pulseImpressionRecorded) {
+            state.client.recordActivityPulseEvent(
+                surface = "connect",
+                eventType = "impression",
+                realCount = realOnlineCount,
+                displayedValue = communityActivity,
+                metadata = mapOf("trend" to activityTrend.label),
+            )
+            pulseImpressionRecorded = true
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -635,35 +679,91 @@ fun ConnectScreen(state: DesktopAppState) {
                 }
             }
 
-            item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    tonalElevation = 1.dp,
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+            if (policy.enabled) {
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        tonalElevation = 1.dp,
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Community Activity", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalArrangement = Arrangement.spacedBy(9.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Community Activity", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                                    Text(
+                                        if (liveActivityAvailable) "Activity Pulse • ${activityTrend.label}"
+                                        else "Last known activity • offline",
+                                        fontSize = 10.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(100.dp),
+                                    color = Color(0xFF22C55E).copy(alpha = 0.13f),
+                                ) {
+                                    Text(
+                                        communityActivity?.toString() ?: "—",
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                        color = Color(0xFF22C55E),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black,
+                                    )
+                                }
+                            }
+
                             Text(
-                                "Live activity pulse • $realOnlineCount real active",
-                                fontSize = 10.5.sp,
+                                "Confirmed online now: $realOnlineCount",
+                                fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(100.dp),
-                            color = Color(0xFF22C55E).copy(alpha = 0.13f),
-                        ) {
-                            Text(
-                                communityActivity.toString(),
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                                color = Color(0xFF22C55E),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Black,
-                            )
+                            if (myCampus.isNotBlank()) {
+                                Text(
+                                    "$myCampus activity: $campusLabel • $realCampusOnline confirmed online",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+
+                            if (onlinePreview.isNotEmpty()) {
+                                HorizontalDivider()
+                                Text(
+                                    "Actually online",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    onlinePreview.forEach { profile ->
+                                        Column(
+                                            modifier = Modifier
+                                                .width(76.dp)
+                                                .clickable {
+                                                    scope.launch {
+                                                        state.client.recordActivityPulseEvent(
+                                                            surface = "connect",
+                                                            eventType = "online_preview_open",
+                                                            realCount = realOnlineCount,
+                                                            displayedValue = communityActivity,
+                                                            metadata = mapOf("username" to profile.username),
+                                                        )
+                                                    }
+                                                },
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                        ) {
+                                            AvatarInitial(profile.fullName.ifBlank { profile.username }, 34.dp)
+                                            Text(
+                                                "@${profile.username}",
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                fontSize = 9.5.sp,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
