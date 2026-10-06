@@ -157,6 +157,7 @@ fun PostCard(
     onStudyMateRequestAuthor: (String) -> Unit = {},
     onConnectHubAuthor: () -> Unit = {},
     authorOnline: Boolean? = null,
+    trackExposure: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val resolvedAuthorName = authorName.trim().ifBlank { post.author.trim() }
@@ -198,9 +199,15 @@ fun PostCard(
         label = "simplePostSavedTint"
     )
 
+    val exposureModifier = if (trackExposure) {
+        Modifier.trackContentExposure(post.id, displayedViewsCount)
+    } else {
+        Modifier
+    }
+
     Surface(
         modifier = modifier
-            .trackContentExposure(post.id, displayedViewsCount)
+            .then(exposureModifier)
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp),
         shape = RoundedCornerShape(16.dp),
