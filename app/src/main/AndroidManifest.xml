@@ -22,6 +22,7 @@
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-9152580730716304~4430294008" />
         <activity android:name=".BlinkStoreActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
+        <activity android:name=".BlinkDropsActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".ProfessionalCenterActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".AdminControlCenterActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".auth.AccountSwitcherActivity" android:exported="false" />
