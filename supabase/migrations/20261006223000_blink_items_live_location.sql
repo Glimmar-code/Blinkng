@@ -1,4 +1,6 @@
 -- BLINK Items: private, explicitly shared live location.
+-- destructive-change-reviewed: direct client access is intentionally revoked; location access is mediated by owner-scoped RPCs.
+-- rollback-plan: drop the five live-location RPCs, then drop live_location_positions, live_location_recipients and live_location_sessions. No existing BLINK tables are modified.
 -- Stores only the current position for an active session; no movement history is retained.
 
 create table if not exists public.live_location_sessions (
