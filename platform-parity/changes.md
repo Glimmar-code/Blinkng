@@ -272,3 +272,15 @@ Windows equivalent or reason no equivalent is needed: Windows does not use the A
 Backend/shared behavior preserved: Existing Connect Hub repository calls, roommate/mentor/reading/housing/challenge actions, follow state and Supabase behavior remain unchanged.
 Tests/validation: Android quality/release-smoke, Windows build/parity and Supabase safety gates must pass on Testlab before merge.
 Owner/reviewer note: This exception is limited to the Android category-panel rendering lifecycle and cannot waive parity for future Connect capabilities or business logic.
+
+
+---
+
+PARITY-CHANGE: profile-user-profile-hardening-20261007
+Date: 2026-10-07
+Feature: BLINK own-profile and public user-profile hardening
+Shared/backend behavior: Adds explicit PUBLIC/FOLLOWERS/PRIVATE contact and presence visibility policy, server-redacted authenticated profile-detail reads, real daily follower snapshots for owner analytics, profile-specific notification modes, reusable mute/report/block contracts, follower/following lists, and a server-enforced maximum of three pinned profile posts/reels. Profile notification delivery reuses the existing notifications table and push pipeline: ALL receives public posts/reels, REELS receives public reels only, and IMPORTANT receives newly pinned public updates.
+Android behavior: Public profiles now separate Posts and Reels, keep Liked/Saved activity owner-only, show real rather than fabricated follower analytics, expose searchable follower/following lists, scope search to the viewed profile, wire Share/Notifications/Mute/Report/Block menu actions, enforce contact/presence visibility, show private owner insights, and allow owners to pin/unpin content through the server limit. Edit Profile exposes privacy selectors for email, phone, WhatsApp and online/last-seen visibility.
+Windows behavior: Other-user profile detail is now reachable from Search and Connect and uses the same server-redacted profile contract. The Windows profile dialog supports Posts/Reels/About, profile-local content search, follow state, profile sharing, notification mode, mute/report/block, and follower/following lists. External desktop profile reads no longer rely on the private owner projection.
+Backend safety: Existing follow, block, report, mute, ranking, XP, Blink Coin, verification, feed/reel ranking and qualified-view algorithms are not rewritten. New contracts are additive; Android profile updates include a compatibility fallback while Testlab may still point at the pre-migration production schema. The migration is not applied to production from this branch.
+Tests/validation required before promotion: shared tests, Android unit/lint/instrumentation compile/debug/release-smoke, Windows build/tests/package, Supabase safety, parity gates, and domain integration. Because this Supabase project currently has no preview database branch, the migration must not be applied to production merely to test this PR.
