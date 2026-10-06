@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Chat
+import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Leaderboard
@@ -94,6 +95,7 @@ import com.blinkng.desktop.ui.BlinkAuthScreen
 import com.blinkng.desktop.ui.BlinkDesktopOnboardingScreen
 import com.blinkng.desktop.ui.BlinkDesktopLogo
 import com.blinkng.desktop.ui.ConnectScreen
+import com.blinkng.desktop.ui.DesktopBoostGrowthScreen
 import com.blinkng.desktop.ui.GamesScreen
 import com.blinkng.desktop.ui.HomeScreen
 import com.blinkng.desktop.ui.LeaderboardScreen
@@ -137,6 +139,7 @@ private val desktopDestinations = listOf(
     DesktopDestination("games", "Games", Icons.Rounded.SportsEsports),
     DesktopDestination("leaderboard", "Leaderboard", Icons.Rounded.Leaderboard),
     DesktopDestination("store", "Blink Store", Icons.Rounded.ShoppingBag),
+    DesktopDestination("boost", "Boost", Icons.Rounded.Campaign),
     DesktopDestination("notifications", "Notifications", Icons.Rounded.Notifications),
     DesktopDestination("profile", "Profile", Icons.Rounded.Person),
     DesktopDestination("admin", "Admin", Icons.Rounded.AdminPanelSettings, adminOnly = true),
@@ -480,6 +483,7 @@ private fun AuthenticatedShell(state: DesktopAppState) {
                         "games" -> GamesScreen(state)
                         "notifications" -> NotificationsScreen(state)
                         "store" -> StoreProScreen(state)
+                        "boost" -> DesktopBoostGrowthScreen(state)
                         "leaderboard" -> LeaderboardScreen(state)
                         "profile" -> ProfileScreen(state)
                         "admin" -> AdminProScreen(state)

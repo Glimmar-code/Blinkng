@@ -665,6 +665,7 @@ fun MainAppContent(
                         onSearchClick = { viewModel.setTab(MainTab.SEARCH) },
                         onLeaderboardClick = { feedUtilitySheet = "leaderboard" },
                         onStoreClick = { feedUtilitySheet = "store" },
+                        onBoostClick = { feedUtilitySheet = "boost" },
                         onGameClick = { feedUtilitySheet = "game" },
                         onMarketClick = { viewModel.setTab(MainTab.MARKET) },
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
@@ -859,6 +860,47 @@ fun MainAppContent(
                         )
 
                         "store" -> BlinkStoreRoute(onClose = { dismissUtility() })
+
+                        "boost" -> BlinkBoostGrowthRoute(
+                            posts = uiState.posts,
+                            reels = uiState.reels,
+                            marketItems = uiState.marketItems,
+                            myProfile = uiState.myProfile,
+                            isDark = uiState.isDarkMode,
+                            onLikePost = { viewModel.togglePostLike(it) },
+                            onCommentPost = { viewModel.openCommentsForPost(it) },
+                            onBookmarkPost = { viewModel.toggleBookmark(it) },
+                            onProfileClick = { username ->
+                                dismissUtility { viewModel.openProfile(username) }
+                            },
+                            onListingClick = { listing ->
+                                dismissUtility {
+                                    viewModel.setTab(MainTab.MARKET)
+                                    viewModel.openProductDetail(listing)
+                                }
+                            },
+                            onClose = { dismissUtility() },
+                        )
+
+                        "boost" -> BlinkBoostGrowthRoute(
+                            posts = uiState.posts,
+                            reels = uiState.reels,
+                            marketItems = uiState.marketItems,
+                            myProfile = uiState.myProfile,
+                            isDark = uiState.isDarkMode,
+                            onLikePost = { postId -> viewModel.togglePostLike(postId) },
+                            onCommentPost = { postId ->
+                                dismissUtility { viewModel.openCommentsForPost(postId) }
+                            },
+                            onBookmarkPost = { postId -> viewModel.toggleBookmark(postId) },
+                            onProfileClick = { username ->
+                                dismissUtility { viewModel.openProfile(username) }
+                            },
+                            onListingClick = { listing ->
+                                dismissUtility { viewModel.openProductDetail(listing) }
+                            },
+                            onClose = { dismissUtility() },
+                        )
                     }
                 }
             }

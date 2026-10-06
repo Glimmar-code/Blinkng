@@ -5,6 +5,7 @@ import com.example.BuildConfig
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -57,6 +58,7 @@ import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.repository.FollowStateStore
 import com.example.data.repository.UserInteractionRepository
+import com.example.data.supabase.BlinkEconomyService
 import com.example.data.supabase.ReelRecommendationService
 import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
@@ -186,19 +188,39 @@ private const val REELS_SPONSORED_INTERVAL = 7
 
 private sealed interface ReelPagerItem {
     data class ReelItem(val reel: FeedPost, val sourceIndex: Int) : ReelPagerItem
+    data class Boosted(val placement: BlinkPromotedDiscoveryPlacement, val slot: Int) : ReelPagerItem
     data class Sponsored(val slot: Int) : ReelPagerItem
 }
 
-private fun buildReelPagerItems(reels: List<FeedPost>): List<ReelPagerItem> {
+private fun buildReelPagerItems(
+    reels: List<FeedPost>,
+    promotedReels: List<BlinkPromotedDiscoveryPlacement>,
+): List<ReelPagerItem> {
     if (reels.isEmpty()) return emptyList()
 
-    val result = ArrayList<ReelPagerItem>(reels.size + (reels.size / REELS_SPONSORED_INTERVAL))
+    val result = ArrayList<ReelPagerItem>(
+        reels.size + (reels.size / REELS_SPONSORED_INTERVAL) + promotedReels.size
+    )
     var sponsoredSlot = 0
+    var promotedSlot = 0
 
     reels.forEachIndexed { index, reel ->
         result += ReelPagerItem.ReelItem(reel = reel, sourceIndex = index)
-        if (
-            (index + 1) % REELS_SPONSORED_INTERVAL == 0 &&
+        val organicPosition = index + 1
+        val shouldInsertBoosted =
+            promotedSlot < promotedReels.size &&
+                organicPosition >= 4 &&
+                (organicPosition - 4) % 9 == 0 &&
+                index < reels.lastIndex
+
+        if (shouldInsertBoosted) {
+            result += ReelPagerItem.Boosted(
+                placement = promotedReels[promotedSlot],
+                slot = promotedSlot,
+            )
+            promotedSlot += 1
+        } else if (
+            organicPosition % REELS_SPONSORED_INTERVAL == 0 &&
             index < reels.lastIndex
         ) {
             result += ReelPagerItem.Sponsored(slot = sponsoredSlot++)
@@ -244,7 +266,23 @@ private fun ReelsContent(
     val resumeUserKey = remember(currentUsername) {
         currentUsername.trim().removePrefix("@").lowercase().ifBlank { "anonymous" }
     }
-    val pagerItems = remember(reels) { buildReelPagerItems(reels) }
+    val boostGrowthService = remember { BlinkEconomyService() }
+    var promotedReels by remember(resumeUserKey) {
+        mutableStateOf<List<BlinkPromotedDiscoveryPlacement>>(emptyList())
+    }
+
+    LaunchedEffect(resumeUserKey) {
+        boostGrowthService.promotedBoostSlots("REELS", 3)
+            .onSuccess { payload ->
+                promotedReels = parseBlinkPromotedPlacements(payload)
+                    .filter { it.targetType == "REEL" && it.post?.isReel == true }
+            }
+            .onFailure { promotedReels = emptyList() }
+    }
+
+    val pagerItems = remember(reels, promotedReels) {
+        buildReelPagerItems(reels, promotedReels)
+    }
     val initialPage = remember(pagerItems, reels, resumeUserKey, initialReelId) {
         val requestedPage = reelPageIndex(pagerItems, initialReelId)
         val savedId = resumePrefs.safeString("reel_id:$resumeUserKey", null)
@@ -296,7 +334,7 @@ private fun ReelsContent(
     LaunchedEffect(pager.currentPage, pagerItems, reels.size, hasMore, isLoadingMore) {
         val currentSourceIndex = when (val item = pagerItems.getOrNull(pager.currentPage)) {
             is ReelPagerItem.ReelItem -> item.sourceIndex
-            is ReelPagerItem.Sponsored, null -> {
+            is ReelPagerItem.Boosted, is ReelPagerItem.Sponsored, null -> {
                 pagerItems
                     .take(pager.currentPage + 1)
                     .asReversed()
@@ -318,6 +356,7 @@ private fun ReelsContent(
             key = { index ->
                 when (val item = pagerItems.getOrNull(index)) {
                     is ReelPagerItem.ReelItem -> "reel:${item.sourceIndex}:${item.reel.id}"
+                    is ReelPagerItem.Boosted -> "boosted_reel:${item.placement.campaignId}:${item.slot}"
                     is ReelPagerItem.Sponsored -> "sponsored:${item.slot}"
                     null -> "reel_missing:$index"
                 }
@@ -357,6 +396,44 @@ private fun ReelsContent(
                                 pendingLaunchPositionMs = 0L
                             }
                         }
+                    )
+                }
+
+                is ReelPagerItem.Boosted -> {
+                    val placement = item.placement
+                    val reel = placement.post ?: return@VerticalPager
+                    LaunchedEffect(index == pager.currentPage, placement.campaignId) {
+                        if (index == pager.currentPage) {
+                            boostGrowthService.recordBoostDelivery(
+                                placement.campaignId,
+                                "IMPRESSION",
+                                "REELS"
+                            )
+                        }
+                    }
+                    ReelPage(
+                        reel = reel,
+                        pageOffset = pageOffset,
+                        isActive = index == pager.currentPage,
+                        isAuthor = false,
+                        onLike = onLike,
+                        onComment = onComment,
+                        onBookmark = onBookmark,
+                        onShare = onShare,
+                        onDelete = {},
+                        onProfileClick = onProfileClick,
+                        profiles = profiles,
+                        connectHub = connectHub,
+                        connectHubActions = connectHubActions,
+                        onDirectMessage = onDirectMessage,
+                        onOpenConnectHub = onOpenConnectHub,
+                        onSwipeToHome = onBackToPosts,
+                        onSwipeToProfile = {
+                            onProfileClick(reel.authorUsername.ifBlank { reel.author }.removePrefix("@"))
+                        },
+                        initialPositionMs = 0L,
+                        onInitialPositionConsumed = {},
+                        trackExposure = false,
                     )
                 }
 
@@ -576,7 +653,8 @@ private fun ReelPage(
     onSwipeToHome: () -> Unit,
     onSwipeToProfile: () -> Unit,
     initialPositionMs: Long,
-    onInitialPositionConsumed: () -> Unit
+    onInitialPositionConsumed: () -> Unit,
+    trackExposure: Boolean = true,
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -619,10 +697,16 @@ private fun ReelPage(
         }
     }
 
+    val exposureModifier = if (trackExposure) {
+        Modifier.trackContentExposure(reel.id, displayedViewsCount)
+    } else {
+        Modifier
+    }
+
     Box(
         Modifier
             .fillMaxSize()
-            .trackContentExposure(reel.id, displayedViewsCount)
+            .then(exposureModifier)
             .graphicsLayer {
                 val distance = abs(pageOffset.coerceIn(-1f, 1f))
                 scaleX = lerp(1f, 0.94f, distance)
@@ -692,6 +776,37 @@ private fun ReelPage(
                 contentAlignment = Alignment.Center
             ) {
                 Text("Video unavailable", color = Color.White)
+            }
+        }
+
+        if (reel.isSponsored) {
+            Surface(
+                color = Color.Black.copy(alpha = .58f),
+                shape = RoundedCornerShape(50),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = .22f)),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(start = 12.dp, top = 58.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Campaign,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        text = reel.adLabel?.takeIf(String::isNotBlank) ?: "Promoted",
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
             }
         }
 
