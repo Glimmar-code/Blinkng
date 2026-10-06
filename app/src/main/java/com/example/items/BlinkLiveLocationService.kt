@@ -125,7 +125,7 @@ class BlinkLiveLocationService : Service() {
                 )
             )
             .addAction(
-                0,
+                R.drawable.ic_stat_blink,
                 "Stop sharing",
                 PendingIntent.getService(
                     this,
