@@ -2161,7 +2161,7 @@ fun getCurrentUserId(): String? {
                 ?.trim()
                 ?.takeIf { isValidUuid(it) }
 
-            fun existingByRequestId(requestId: String): FeedPost? {
+            fun existingRowByRequestId(requestId: String): JSONObject? {
                 val path = "/rest/v1/feed_posts" +
                     "?select=*&user_id=eq.$uid&client_request_id=eq.$requestId&limit=1"
                 return executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
@@ -2169,14 +2169,50 @@ fun getCurrentUserId(): String? {
                     if (!response.isSuccessful || raw.isBlank() || raw == "[]") {
                         null
                     } else {
-                        runCatching { parseFeedPost(JSONArray(raw).getJSONObject(0)) }.getOrNull()
+                        runCatching { JSONArray(raw).getJSONObject(0) }.getOrNull()
                     }
                 }
             }
 
-            cleanClientRequestId?.let { requestId ->
-                existingByRequestId(requestId)?.let { return@withContext it }
+            fun existingPollId(postId: String): String? {
+                val path = "/rest/v1/polls?select=id&post_id=eq.$postId&limit=1"
+                return executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful || raw.isBlank() || raw == "[]") {
+                        null
+                    } else {
+                        runCatching { JSONArray(raw).getJSONObject(0).optString("id") }
+                            .getOrNull()
+                            ?.takeIf { isValidUuid(it) }
+                    }
+                }
             }
+
+            fun existingPollOptions(pollId: String): Set<String> {
+                val path = "/rest/v1/poll_options?select=option_text&poll_id=eq.$pollId"
+                return executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful || raw.isBlank() || raw == "[]") {
+                        emptySet()
+                    } else {
+                        runCatching {
+                            val array = JSONArray(raw)
+                            buildSet {
+                                for (index in 0 until array.length()) {
+                                    array.optJSONObject(index)
+                                        ?.optString("option_text")
+                                        ?.trim()
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?.lowercase(Locale.US)
+                                        ?.let(::add)
+                                }
+                            }
+                        }.getOrDefault(emptySet())
+                    }
+                }
+            }
+
+            val existingCreatedRow = cleanClientRequestId?.let(::existingRowByRequestId)
 
             val mentionIds = JSONArray()
             for (mention in mentions) {
@@ -2244,13 +2280,17 @@ fun getCurrentUserId(): String? {
                     put("gradient", JSONObject().put("key", style.trim().lowercase(Locale.US)))
                 }
             }
-            val created = executeRequest(newRequestBuilder("/rest/v1/feed_posts", true).addHeader("Prefer", "return=representation")
-                .post(body.toString().toRequestBody(jsonMediaType)).build()).use { resp ->
+            val created = existingCreatedRow ?: executeRequest(
+                newRequestBuilder("/rest/v1/feed_posts", true)
+                    .addHeader("Prefer", "return=representation")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { resp ->
                 val raw = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful || raw.isBlank() || raw == "[]") {
                     if (resp.code == 409 && cleanClientRequestId != null) {
-                        existingByRequestId(cleanClientRequestId)?.let { existing ->
-                            return@withContext existing
+                        existingRowByRequestId(cleanClientRequestId)?.let { existing ->
+                            return@use existing
                         }
                     }
                     throw IllegalStateException(parseSupabaseError(raw, "Could not create post."))
@@ -2259,20 +2299,85 @@ fun getCurrentUserId(): String? {
             }
             val postId = created.optString("id").takeIf { isValidUuid(it) } ?: throw IllegalStateException("Invalid post ID returned by Supabase.")
             if (poll != null) {
-                val p = JSONObject().apply { put("post_id", postId); put("question", poll.question); put("allows_multiple", false) }
-                val pollRow = executeRequest(newRequestBuilder("/rest/v1/polls", true).addHeader("Prefer", "return=representation")
-                    .post(p.toString().toRequestBody(jsonMediaType)).build()).use { resp ->
-                    val raw = resp.body?.string().orEmpty(); if (!resp.isSuccessful || raw.isBlank() || raw == "[]") throw IllegalStateException(parseSupabaseError(raw, "Could not create poll.")); JSONArray(raw).getJSONObject(0)
-                }
-                val pollId = pollRow.optString("id")
-                for ((index, option) in poll.options.withIndex()) {
-                    val o = JSONObject().apply { put("poll_id", pollId); put("option_text", option.text); put("position", index) }
-                    executeRequest(newRequestBuilder("/rest/v1/poll_options", true).post(o.toString().toRequestBody(jsonMediaType)).build()).use { resp ->
-                        if (!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(resp.body?.string().orEmpty(), "Could not create poll option."))
+                val alreadyAttachedPollId = created.optString("poll_id")
+                    .takeIf { isValidUuid(it) }
+
+                val pollId = alreadyAttachedPollId
+                    ?: existingPollId(postId)
+                    ?: run {
+                        val p = JSONObject().apply {
+                            put("post_id", postId)
+                            put("question", poll.question)
+                            put("allows_multiple", false)
+                        }
+                        executeRequest(
+                            newRequestBuilder("/rest/v1/polls", true)
+                                .addHeader("Prefer", "return=representation")
+                                .post(p.toString().toRequestBody(jsonMediaType))
+                                .build()
+                        ).use { resp ->
+                            val raw = resp.body?.string().orEmpty()
+                            if (!resp.isSuccessful || raw.isBlank() || raw == "[]") {
+                                throw IllegalStateException(
+                                    parseSupabaseError(raw, "Could not create poll.")
+                                )
+                            }
+                            JSONArray(raw).getJSONObject(0).optString("id")
+                        }
                     }
+
+                if (!isValidUuid(pollId)) {
+                    throw IllegalStateException("Invalid poll ID returned by Supabase.")
                 }
-                executeRequest(newRequestBuilder("/rest/v1/feed_posts?id=eq.$postId", true).patch(JSONObject().put("poll_id", pollId).toString().toRequestBody(jsonMediaType)).build()).use { resp ->
-                    if (!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(resp.body?.string().orEmpty(), "Could not attach poll."))
+
+                val existingOptions = existingPollOptions(pollId).toMutableSet()
+                for ((index, option) in poll.options.withIndex()) {
+                    val cleanOption = option.text.trim()
+                    val optionKey = cleanOption.lowercase(Locale.US)
+                    if (cleanOption.isBlank() || optionKey in existingOptions) continue
+
+                    val o = JSONObject().apply {
+                        put("poll_id", pollId)
+                        put("option_text", cleanOption)
+                        put("position", index)
+                    }
+                    executeRequest(
+                        newRequestBuilder("/rest/v1/poll_options", true)
+                            .post(o.toString().toRequestBody(jsonMediaType))
+                            .build()
+                    ).use { resp ->
+                        if (!resp.isSuccessful) {
+                            throw IllegalStateException(
+                                parseSupabaseError(
+                                    resp.body?.string().orEmpty(),
+                                    "Could not create poll option."
+                                )
+                            )
+                        }
+                    }
+                    existingOptions += optionKey
+                }
+
+                if (alreadyAttachedPollId == null) {
+                    executeRequest(
+                        newRequestBuilder("/rest/v1/feed_posts?id=eq.$postId", true)
+                            .patch(
+                                JSONObject()
+                                    .put("poll_id", pollId)
+                                    .toString()
+                                    .toRequestBody(jsonMediaType)
+                            )
+                            .build()
+                    ).use { resp ->
+                        if (!resp.isSuccessful) {
+                            throw IllegalStateException(
+                                parseSupabaseError(
+                                    resp.body?.string().orEmpty(),
+                                    "Could not attach poll."
+                                )
+                            )
+                        }
+                    }
                 }
             }
             fetchFeedPosts().firstOrNull { it.id == postId } ?: parseFeedPost(created)
