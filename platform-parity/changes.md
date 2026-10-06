@@ -260,6 +260,20 @@ Backend/shared behavior preserved: Feed ranking, Following/For You ordering, qua
 Tests/validation: Android unit/lint/instrumentation/debug/release checks, Supabase migration-safety, domain integration and the Windows build/parity gate must pass on Testlab before promotion. Real MAPS_API_KEY and server-side OPENWEATHER_API_KEY configuration must also be validated before production rollout.
 Owner/reviewer note: This exception is limited to phone-sensor collection, Android location publishing, and their Android permission/foreground-service UI. It cannot be reused to waive Windows parity for ordinary cross-platform BLINK product features.
 
+
+---
+
+PARITY-EXCEPTION: android-connect-category-dialog-lifecycle-20261006
+Date: 2026-10-06
+Feature: Android Connect category panel visibility repair
+Android behavior: Fixes Roommates, Mentors, Reading Mates, Housing Agents, Housing and Challenges opening into only a dark scrim by composing the Android side panel before moving its nested pager.
+Why this is genuinely Android-specific presentation: The failure is caused by the Android Compose Dialog + AnimatedVisibility + HorizontalPager lifecycle. No Connect data model, matching rule, request action, backend contract, ranking rule, or shared business behavior changes.
+Windows equivalent or reason no equivalent is needed: Windows does not use the Android Compose modal/pager lifecycle that can deadlock in this state, so no Windows behavior change is required.
+Backend/shared behavior preserved: Existing Connect Hub repository calls, roommate/mentor/reading/housing/challenge actions, follow state and Supabase behavior remain unchanged.
+Tests/validation: Android quality/release-smoke, Windows build/parity and Supabase safety gates must pass on Testlab before merge.
+Owner/reviewer note: This exception is limited to the Android category-panel rendering lifecycle and cannot waive parity for future Connect capabilities or business logic.
+
+
 ---
 
 PARITY-EXCEPTION: android-growth-suite-wallet-ui-hardening-20261006
@@ -271,4 +285,3 @@ Windows equivalent or reason no equivalent is needed: Windows keeps its existing
 Backend/shared behavior preserved: public.user_balances.spendable_coin_balance remains the single wallet authority. Boost pricing/delivery, Drop follower snapshots/reward/refund rules, Store pricing, verification, XP/Rank Points, authentication, and organic recommendation/ranking behavior remain server-authoritative. The new backend work adds idempotency, read-only analytics/receipts, lifecycle notifications, scheduled settlement, and realtime publication for the existing wallet table.
 Tests/validation: Android unit/lint/instrumentation/debug/release checks, Windows build/package/parity, and Supabase safety must pass on Testlab PR #172 before merge. The production migration is applied only after those gates pass and the Testlab PR is merged.
 Owner/reviewer note: This exception covers Android presentation/notification/realtime adapters only. It cannot waive Windows parity for future Growth business-rule, pricing, wallet, reward, or ranking changes.
-
