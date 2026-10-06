@@ -24,6 +24,11 @@ object BlinkItemPreferences {
     private const val LAST_STEP_COUNT = "last_step_count"
     private const val LAST_STEP_DATE = "last_step_date"
     private const val LAST_STEP_MILESTONE = "last_step_milestone"
+    private const val LAST_STEP_MILESTONE_DATE = "last_step_milestone_date"
+    private const val STEP_SENSOR_DATE = "step_sensor_date"
+    private const val STEP_SENSOR_BASE = "step_sensor_base"
+    private const val STEP_SENSOR_LAST_RAW = "step_sensor_last_raw"
+    private const val STEP_SENSOR_OFFSET = "step_sensor_offset"
     private const val LAST_WEATHER_ALERT_ID = "last_weather_alert_id"
     private const val LAST_RAIN_EVENT = "last_rain_event"
 
@@ -121,13 +126,73 @@ object BlinkItemPreferences {
     }
 
     fun resetDailyMilestoneIfNeeded(context: Context, date: String) {
-        if (lastStepDate(context) != date) {
-            prefs(context).edit()
+        val p = prefs(context)
+        if (p.safeString(LAST_STEP_MILESTONE_DATE, "").orEmpty() != date) {
+            p.edit()
                 .putInt(LAST_STEP_MILESTONE, 0)
-                .putLong(LAST_STEP_COUNT, 0L)
-                .putString(LAST_STEP_DATE, date)
+                .putString(LAST_STEP_MILESTONE_DATE, date)
                 .apply()
         }
+    }
+
+    @Synchronized
+    fun stepsFromSensorCounter(
+        context: Context,
+        date: String,
+        cumulativeCounter: Long
+    ): Long {
+        val p = prefs(context)
+        val raw = cumulativeCounter.coerceAtLeast(0L)
+        val sensorDate = p.safeString(STEP_SENSOR_DATE, "").orEmpty()
+        val previousBase = p.safeLong(STEP_SENSOR_BASE, raw)
+        val previousRaw = p.safeLong(STEP_SENSOR_LAST_RAW, raw)
+        val previousOffset = p.safeLong(STEP_SENSOR_OFFSET, 0L).coerceAtLeast(0L)
+
+        val base: Long
+        val offset: Long
+        val steps: Long
+
+        when {
+            sensorDate.isBlank() -> {
+                base = raw
+                offset = 0L
+                steps = 0L
+            }
+
+            sensorDate != date -> {
+                // The periodic worker normally samples within about 15 minutes of midnight.
+                // Using the previous sample as the new baseline avoids discarding all steps
+                // taken just after midnight while keeping the estimate bounded.
+                base = if (raw >= previousRaw) previousRaw else raw
+                offset = 0L
+                steps = (raw - base).coerceAtLeast(0L)
+            }
+
+            raw < previousRaw -> {
+                // TYPE_STEP_COUNTER resets after reboot. Preserve today's already-counted
+                // steps, then continue from the new boot's counter.
+                base = raw
+                offset = p.safeLong(LAST_STEP_COUNT, 0L).coerceAtLeast(0L)
+                steps = offset
+            }
+
+            else -> {
+                base = previousBase.coerceAtMost(raw)
+                offset = previousOffset
+                steps = (offset + (raw - base)).coerceAtLeast(0L)
+            }
+        }
+
+        p.edit()
+            .putString(STEP_SENSOR_DATE, date)
+            .putLong(STEP_SENSOR_BASE, base)
+            .putLong(STEP_SENSOR_LAST_RAW, raw)
+            .putLong(STEP_SENSOR_OFFSET, offset)
+            .putString(LAST_STEP_DATE, date)
+            .putLong(LAST_STEP_COUNT, steps)
+            .apply()
+
+        return steps
     }
 
     fun lastWeatherAlertId(context: Context): String =
