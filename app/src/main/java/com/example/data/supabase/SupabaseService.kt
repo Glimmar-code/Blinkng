@@ -2163,7 +2163,7 @@ fun getCurrentUserId(): String? {
 
             fun existingRowByRequestId(requestId: String): JSONObject? {
                 val path = "/rest/v1/feed_posts" +
-                    "?select=*&user_id=eq.$uid&client_request_id=eq.$requestId&limit=1"
+                    "?select=*&id=eq.$requestId&user_id=eq.$uid&limit=1"
                 return executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
                     val raw = response.body?.string().orEmpty()
                     if (!response.isSuccessful || raw.isBlank() || raw == "[]") {
@@ -2246,7 +2246,7 @@ fun getCurrentUserId(): String? {
 
             val body = JSONObject().apply {
                 put("user_id", uid)
-                cleanClientRequestId?.let { put("client_request_id", it) }
+                cleanClientRequestId?.let { put("id", it) }
                 put(
                     "type",
                     when {
