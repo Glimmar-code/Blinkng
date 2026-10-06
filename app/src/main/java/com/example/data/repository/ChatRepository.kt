@@ -148,9 +148,21 @@ class ChatRepository(
                             o.optString("delivered_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.DELIVERED
                             else -> MessageStatus.SENT
                         },
-                        isVoiceNote = mediaType.equals("voice", true) || mediaType.equals("audio", true),
+                        isVoiceNote = mediaType.equals("voice", true),
                         attachedImageUrl = mediaUrl.takeIf { mediaType.equals("image", true) },
                         attachedVideoUrl = mediaUrl.takeIf { mediaType.equals("video", true) },
+                        attachedAudioUrl = mediaUrl.takeIf {
+                            mediaType.equals("voice", true) || mediaType.equals("audio", true)
+                        },
+                        attachedDocumentUrl = mediaUrl.takeIf { mediaType.equals("document", true) },
+                        attachmentName = o.optString("content").takeIf {
+                            mediaType.equals("document", true) && it.isNotBlank()
+                        },
+                        messageType = mediaType.ifBlank { "text" },
+                        forwardedFromMessageId = o.optString("forwarded_from_message_id")
+                            .takeIf { it.isNotBlank() && !it.equals("null", true) },
+                        isForwarded = o.optString("forwarded_from_message_id")
+                            .let { it.isNotBlank() && !it.equals("null", true) },
                         replyToMessageId = o.optString("reply_to_message_id")
                             .takeIf { it.isNotBlank() && !it.equals("null", true) },
                         editedAt = o.optString("edited_at")
