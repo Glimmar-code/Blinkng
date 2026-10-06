@@ -478,7 +478,7 @@ private fun PlayPane(
 
         val progress = if (totalQuestions == 0) 0f else questionNumber.toFloat() / totalQuestions
         LinearProgressIndicator(
-            progress = { progress },
+            progress = progress,
             modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
         )
         Text(
