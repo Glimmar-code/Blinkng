@@ -10,6 +10,7 @@ enum class BlinkInAppNotificationDestination {
     POST,
     PROFILE,
     MARKET,
+    DROPS,
     NOTIFICATIONS
 }
 
