@@ -1311,7 +1311,8 @@ fun MainAppContent(
                 onShare = { sharePostOrReel(post.id) },
                 onDelete = { viewModel.deletePost(post.id) },
                 onReport = { reason -> viewModel.reportPost(post.id, reason) },
-                onMuteUser = { username -> viewModel.muteUser(username) }
+                onMuteUser = { username -> viewModel.muteUser(username) },
+                onNotInterested = { viewModel.markPostNotInterested(post.id) }
             )
         }
 
