@@ -47,6 +47,8 @@ import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.models.MarketItem
 import com.example.data.models.VerificationBadge
+import com.example.sharing.ShareContentType
+import com.example.sharing.ShareLinkManager
 import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.BlinkPink
 import com.example.util.startActivitySafely
@@ -154,17 +156,13 @@ fun ProductDetailScreen(
 
                             IconButton(
                                 onClick = {
-                                    val link = "https://www.blink.com.ng/market/${item.id}"
-                                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(
-                                            Intent.EXTRA_TEXT,
-                                            "Check out ${item.title} on BLINK Market for ₦${nairaFormat.format(item.price)}\n$link"
-                                        )
-                                    }
-                                    context.startActivitySafely(
-                                        Intent.createChooser(sendIntent, "Share listing"),
-                                        "No compatible app is available to share this listing."
+                                    ShareLinkManager.share(
+                                        context = context,
+                                        type = ShareContentType.MARKET,
+                                        id = item.id,
+                                        title = "Share Market listing",
+                                        message = "Check out ${item.title} on BLINK Market for ₦${nairaFormat.format(item.price)}",
+                                        previewImageUrl = item.images.firstOrNull()
                                     )
                                 },
                                 modifier = Modifier
