@@ -195,7 +195,7 @@ select coalesce(
   0::numeric
 )
 from parts;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.creator_badge_distribution_factor(p_post_id uuid)
  RETURNS numeric
@@ -217,7 +217,7 @@ AS $function$
   from public.feed_posts fp
   join public.get_blink_ranking_profiles() pr on pr.id=fp.user_id
   where fp.id=p_post_id;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.creator_organic_distribution_factor(p_post_id uuid, p_at timestamp with time zone DEFAULT now())
  RETURNS numeric
@@ -277,7 +277,7 @@ select coalesce(round(
   6
 ),1::numeric)
 from calc;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.get_connect_matches(p_limit integer DEFAULT 24)
  RETURNS TABLE(id uuid, username text, full_name text, avatar_url text, university text, faculty text, department text, academic_level text, relationship_status text, online_now boolean, last_seen_at timestamp with time zone, compatibility_score integer, common_skills text[], common_hobbies text[])
@@ -400,7 +400,7 @@ from ranked r
 order by r.score desc,coalesce(r.online_now,r.is_online,false) desc,
   coalesce(r.last_seen_at,r.last_seen) desc nulls last,r.id
 limit greatest(1,least(coalesce(p_limit,24),50));
-$function$
+$function$;
 
 -- The legacy chat list delegates to the authenticated membership and presence
 -- contract; the old participant RLS cannot join a partner's raw membership row.
@@ -438,7 +438,7 @@ AS $function$
     AND r.status='pending'
   ORDER BY r.created_at ASC
   LIMIT greatest(1,least(coalesce(p_limit,100),200));
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.get_ranked_connect_opportunities(p_mode text DEFAULT 'all'::text, p_limit integer DEFAULT 30, p_cursor_score numeric DEFAULT NULL::numeric, p_cursor_kind text DEFAULT NULL::text, p_cursor_id uuid DEFAULT NULL::uuid, p_as_of timestamp with time zone DEFAULT now())
  RETURNS TABLE(kind text, target_id uuid, payload jsonb, ranking_score numeric, ranking_reason text, as_of timestamp with time zone)
@@ -679,7 +679,7 @@ where p_cursor_score is null
    ))
 order by r.final_score desc,r.kind,r.target_id
 limit greatest(1,least(coalesce(p_limit,30),60));
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.get_ranked_feed_page(p_surface text DEFAULT 'feed'::text, p_limit integer DEFAULT 30, p_cursor_score numeric DEFAULT NULL::numeric, p_cursor_created_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_cursor_id uuid DEFAULT NULL::uuid, p_as_of timestamp with time zone DEFAULT now())
  RETURNS TABLE(item jsonb, ranking_score numeric, ranking_reason text, as_of timestamp with time zone)
@@ -921,7 +921,7 @@ where p_cursor_score is null
    )
 order by r.final_score desc,r.created_at desc,r.id desc
 limit greatest(1,least(coalesce(p_limit,30),60));
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.get_ranked_game_opponents(p_game_type text DEFAULT 'brain_mix'::text, p_limit integer DEFAULT 20)
  RETURNS TABLE(id uuid, username text, full_name text, avatar_url text, university text, academic_level text, game_score bigint, match_score integer, ranking_reason text)
@@ -989,7 +989,7 @@ select
 from ranked r cross join me
 order by r.opponent_score desc,coalesce(r.online_now,r.is_online,false) desc,r.id
 limit greatest(1,least(coalesce(p_limit,20),50));
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.search_discovery(p_query text, p_types text[] DEFAULT ARRAY['post'::text, 'profile'::text, 'market_item'::text, 'connect_listing'::text], p_limit integer DEFAULT 30, p_cursor_score numeric DEFAULT NULL::numeric, p_cursor_type text DEFAULT NULL::text, p_cursor_id uuid DEFAULT NULL::uuid, p_as_of timestamp with time zone DEFAULT now())
  RETURNS TABLE(result_type text, result_id uuid, payload jsonb, relevance_score numeric, ranking_reason text, as_of timestamp with time zone)
@@ -1266,7 +1266,7 @@ where p_cursor_score is null
    ))
 order by r.final_score desc,r.result_type,r.result_id
 limit greatest(1,least(coalesce(p_limit,30),60));
-$function$
+$function$;
 
 
 notify pgrst, 'reload schema';
