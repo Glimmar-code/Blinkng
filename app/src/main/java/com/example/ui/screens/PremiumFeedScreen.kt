@@ -46,6 +46,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -72,6 +73,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import com.example.BuildConfig
 import com.example.data.models.ConnectHubSnapshot
@@ -81,6 +83,8 @@ import com.example.data.models.Story
 import com.example.data.models.UserProfile
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.FollowStateStore
+import com.example.performance.FeedScrollPerformanceMonitor
+import com.example.performance.rememberBlinkReduceMotion
 import com.example.data.supabase.BlinkEconomyService
 import com.example.data.supabase.BlinkDropDiscovery
 import com.example.data.supabase.BlinkDropsService
@@ -122,6 +126,15 @@ private sealed interface PremiumHomeRow {
     data class SponsoredRow(val slot: Int) : PremiumHomeRow
     data class DropDiscoveryRow(val item: BlinkDropDiscovery, val slot: Int) : PremiumHomeRow
 }
+
+private fun premiumHomeRowKey(row: PremiumHomeRow): String =
+    when (row) {
+        is PremiumHomeRow.PostRow -> "post:${row.post.id}"
+        is PremiumHomeRow.BoostedPostRow -> "boosted:${row.placement.campaignId}:${row.slot}"
+        is PremiumHomeRow.ReelPreviewRow -> "reel_preview:${row.slot}:${row.reel.id}"
+        is PremiumHomeRow.SponsoredRow -> "sponsored:${row.slot}"
+        is PremiumHomeRow.DropDiscoveryRow -> "drop_discovery:${row.item.dropId}:${row.slot}"
+    }
 
 private fun buildPremiumHomeRows(
     posts: List<FeedPost>,
@@ -566,8 +579,17 @@ private fun PremiumHomeFeed(
     var restoringScroll by remember { mutableStateOf(false) }
     val pullState = rememberPullToRefreshState()
     val density = LocalDensity.current
+    val reduceMotion = rememberBlinkReduceMotion()
     val latestViewed by rememberUpdatedState(onViewedPost)
+    val latestRefresh by rememberUpdatedState(onRefresh)
+    val refreshingNow by rememberUpdatedState(isRefreshing)
     val impressionTracker = remember { PostImpressionTracker() }
+    val performanceMonitor = remember(context, laneResumeKey) {
+        FeedScrollPerformanceMonitor(context.applicationContext)
+    }
+    DisposableEffect(performanceMonitor) {
+        onDispose { performanceMonitor.stop() }
+    }
     var filter by remember(laneResumeKey) {
         mutableStateOf(
             runCatching {
@@ -599,6 +621,8 @@ private fun PremiumHomeFeed(
     val headerOffsetPx = remember(laneResumeKey) { mutableStateOf(0f) }
     val headerScrollDirection = remember(laneResumeKey) { intArrayOf(0) }
     val pendingDirectionDistancePx = remember(laneResumeKey) { floatArrayOf(0f) }
+    val lastFlingVelocityY = remember(laneResumeKey) { floatArrayOf(0f) }
+    val pendingRestoredHeaderFraction = remember(laneResumeKey) { floatArrayOf(0f) }
     var fabExpanded by remember(laneResumeKey) { mutableStateOf(true) }
     val secondaryChromeVisible = true
 
@@ -722,6 +746,10 @@ private fun PremiumHomeFeed(
             reelMixSeed
         )
     }
+    val homeRowKeys = remember(homeRows) { homeRows.map(::premiumHomeRowKey) }
+    val currentUserKey = remember(currentUsername) {
+        currentUsername.trim().removePrefix("@").lowercase()
+    }
     val pendingNewPostCount = remember(
         posts,
         stableRankedPosts,
@@ -748,7 +776,8 @@ private fun PremiumHomeFeed(
         }
     }
     var activeInlineReelKey by remember(laneResumeKey) { mutableStateOf<String?>(null) }
-    val prefetchedMediaUrls = remember(laneResumeKey) { mutableSetOf<String>() }
+    var preloadedInlineReelKey by remember(laneResumeKey) { mutableStateOf<String?>(null) }
+    val prefetchedMediaUrls = remember(laneResumeKey) { linkedSetOf<String>() }
 
     LaunchedEffect(isOnline, isLoading, stableRankedPosts.isEmpty(), filteredPosts.isEmpty(), filter, laneIndex) {
         offlineEmptyConfirmed = false
@@ -783,6 +812,7 @@ private fun PremiumHomeFeed(
                 available: androidx.compose.ui.geometry.Offset,
                 source: NestedScrollSource
             ): androidx.compose.ui.geometry.Offset {
+                if (refreshingNow) return androidx.compose.ui.geometry.Offset.Zero
                 val headerHeight = headerHeightPx.value
                 if (headerHeight <= 0f) return androidx.compose.ui.geometry.Offset.Zero
 
@@ -792,21 +822,16 @@ private fun PremiumHomeFeed(
 
                 val direction = if (deltaY < 0f) -1 else 1
                 var effectiveDeltaY = deltaY
-
                 if (headerScrollDirection[0] == 0) {
                     headerScrollDirection[0] = direction
                     pendingDirectionDistancePx[0] = 0f
                 } else if (direction != headerScrollDirection[0]) {
-                    // Ignore tiny reversals caused by finger jitter or fling correction.
-                    // Only the distance beyond the dead-zone starts moving the header.
                     pendingDirectionDistancePx[0] += absoluteDelta
                     if (pendingDirectionDistancePx[0] < headerDirectionDeadZone) {
                         return androidx.compose.ui.geometry.Offset.Zero
                     }
-
                     val overflow =
-                        (pendingDirectionDistancePx[0] - headerDirectionDeadZone)
-                            .coerceAtLeast(0f)
+                        (pendingDirectionDistancePx[0] - headerDirectionDeadZone).coerceAtLeast(0f)
                     headerScrollDirection[0] = direction
                     pendingDirectionDistancePx[0] = 0f
                     effectiveDeltaY = if (direction < 0) -overflow else overflow
@@ -821,40 +846,30 @@ private fun PremiumHomeFeed(
                     headerHeightPx = headerHeight
                 )
                 val consumedY = nextOffset - previousOffset
-
                 if (consumedY != 0f) {
                     headerOffsetPx.value = nextOffset
-
-                    val collapseFraction =
-                        (-nextOffset / headerHeight).coerceIn(0f, 1f)
-                    when {
-                        fabExpanded && collapseFraction >= 0.65f -> fabExpanded = false
-                        !fabExpanded && collapseFraction <= 0.10f -> fabExpanded = true
-                    }
-
-                    // The feed header never owns the app's bottom navigation visibility.
+                    fabExpanded = direction > 0
                     onBottomBarVisibilityChange(true)
                 }
-
-                // Consume exactly the distance used by the collapsing header. That keeps
-                // the cards moving naturally without a double-speed jump or empty gap.
                 return androidx.compose.ui.geometry.Offset(0f, consumedY)
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                lastFlingVelocityY[0] = available.y
+                return Velocity.Zero
             }
         }
     }
 
-    LaunchedEffect(listState, laneResumeKey) {
-        var hadUserScroll = false
+    LaunchedEffect(listState, laneResumeKey, reduceMotion) {
+        var hadScroll = false
         snapshotFlow { listState.isScrollInProgress }
             .collectLatest { isScrolling ->
                 if (isScrolling) {
-                    hadUserScroll = true
+                    hadScroll = true
                     return@collectLatest
                 }
-                if (!hadUserScroll) return@collectLatest
-
-                // Give the final drag/fling frame time to land. A new scroll cancels this
-                // block through collectLatest before the settle animation can fight input.
+                if (!hadScroll) return@collectLatest
                 delay(32)
 
                 val headerHeight = headerHeightPx.value
@@ -871,47 +886,78 @@ private fun PremiumHomeFeed(
                         currentOffsetPx = currentOffset,
                         headerHeightPx = headerHeight,
                         direction = headerScrollDirection[0],
-                        atFeedTop = atFeedTop
+                        atFeedTop = atFeedTop,
+                        velocityYPxPerSecond = lastFlingVelocityY[0]
                     )
-
-                    animate(
-                        initialValue = currentOffset,
-                        targetValue = target,
-                        animationSpec = tween(durationMillis = 140)
-                    ) { value, _ ->
-                        headerOffsetPx.value = value.coerceIn(-headerHeight, 0f)
+                    if (reduceMotion) {
+                        headerOffsetPx.value = target
+                    } else {
+                        animate(
+                            initialValue = currentOffset,
+                            targetValue = target,
+                            animationSpec = tween(durationMillis = 140)
+                        ) { value, _ ->
+                            headerOffsetPx.value = value.coerceIn(-headerHeight, 0f)
+                        }
                     }
-
-                    fabExpanded = target >= -0.5f
                 }
 
+                delay(if (reduceMotion) 0 else 120)
+                fabExpanded = true
                 pendingDirectionDistancePx[0] = 0f
-                hadUserScroll = false
+                lastFlingVelocityY[0] = 0f
+                hadScroll = false
             }
+    }
+
+    LaunchedEffect(listState, laneResumeKey) {
+        snapshotFlow { listState.isScrollInProgress }
+            .collectLatest { scrolling ->
+                if (scrolling) performanceMonitor.start() else performanceMonitor.stop()
+            }
+    }
+
+    LaunchedEffect(isRefreshing) {
+        if (isRefreshing) {
+            headerOffsetPx.value = 0f
+            headerScrollDirection[0] = 0
+            pendingDirectionDistancePx[0] = 0f
+            lastFlingVelocityY[0] = 0f
+            fabExpanded = true
+            onBottomBarVisibilityChange(true)
+        }
     }
 
     LaunchedEffect(Unit) { screenVisible = true }
 
-    LaunchedEffect(laneResumeKey, filteredPosts.isNotEmpty()) {
+    LaunchedEffect(laneResumeKey, homeRowKeys) {
         if (restoredLaneResumeKey != laneResumeKey) {
-            val savedIndex = resumePrefs
-                .safeInt("home_scroll_index:$laneResumeKey", 0)
-                .coerceAtLeast(0)
-            val savedOffset = resumePrefs
-                .safeInt("home_scroll_offset:$laneResumeKey", 0)
-                .coerceAtLeast(0)
+            val savedIndex = resumePrefs.safeInt("home_scroll_index:$laneResumeKey", 0).coerceAtLeast(0)
+            val savedOffset = resumePrefs.safeInt("home_scroll_offset:$laneResumeKey", 0).coerceAtLeast(0)
+            val savedKey = resumePrefs.safeString("home_scroll_key:$laneResumeKey", null)
+            val savedHeaderFraction = runCatching {
+                resumePrefs.getFloat("home_header_fraction:$laneResumeKey", 0f)
+            }.getOrDefault(0f).coerceIn(0f, 1f)
 
-            // Wait until the cached/ranked rows have had one frame to enter the LazyColumn.
-            // A saved non-zero position is only restored once content exists.
-            if (savedIndex == 0 || filteredPosts.isNotEmpty()) {
+            val canRestoreNow =
+                homeRowKeys.isNotEmpty() ||
+                    (savedIndex == 0 && savedOffset <= 1 && savedKey.isNullOrBlank())
+            if (canRestoreNow) {
                 restoringScroll = true
+                pendingRestoredHeaderFraction[0] = savedHeaderFraction
                 delay(16)
                 val maxIndex = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
-                runCatching {
-                    listState.scrollToItem(
-                        savedIndex.coerceAtMost(maxIndex),
-                        savedOffset
-                    )
+                val restoredIndex = if (homeRowKeys.isNotEmpty()) {
+                    val rowStartIndex =
+                        if (!errorMessage.isNullOrBlank() && stableRankedPosts.isNotEmpty()) 1 else 0
+                    val resolvedRowIndex =
+                        resolveFeedRestoreIndex(savedKey, homeRowKeys, savedIndex - rowStartIndex)
+                    (resolvedRowIndex + rowStartIndex).coerceAtMost(maxIndex)
+                } else savedIndex.coerceAtMost(maxIndex)
+                runCatching { listState.scrollToItem(restoredIndex.coerceAtMost(maxIndex), savedOffset) }
+                if (headerHeightPx.value > 0f) {
+                    headerOffsetPx.value =
+                        -headerHeightPx.value * pendingRestoredHeaderFraction[0]
                 }
                 restoredLaneResumeKey = laneResumeKey
                 restoringScroll = false
@@ -920,35 +966,56 @@ private fun PremiumHomeFeed(
 
         headerScrollDirection[0] = 0
         pendingDirectionDistancePx[0] = 0f
+        lastFlingVelocityY[0] = 0f
         val atFeedTop =
             listState.firstVisibleItemIndex == 0 &&
                 listState.firstVisibleItemScrollOffset <= 1
-        headerOffsetPx.value = if (atFeedTop) 0f else -headerHeightPx.value
+        if (atFeedTop) {
+            pendingRestoredHeaderFraction[0] = 0f
+            headerOffsetPx.value = 0f
+        }
         fabExpanded = atFeedTop
         onBottomBarVisibilityChange(true)
     }
 
     LaunchedEffect(listState, laneResumeKey) {
         snapshotFlow {
-            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
-        }.collectLatest { (index, offset) ->
-            // The real top always restores the complete header, matching native feed
-            // behavior and keeping pull-to-refresh anchored to a stable top position.
-            if (index == 0 && offset <= 1 && headerOffsetPx.value != 0f) {
+            Triple(
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset,
+                headerOffsetPx.value
+            )
+        }.collectLatest { (index, offset, headerOffset) ->
+            if (index == 0 && offset <= 1 && headerOffset != 0f) {
                 headerOffsetPx.value = 0f
                 headerScrollDirection[0] = 0
                 pendingDirectionDistancePx[0] = 0f
+                lastFlingVelocityY[0] = 0f
                 fabExpanded = true
                 onBottomBarVisibilityChange(true)
             }
 
-            // Debounce resume-position writes so SharedPreferences is not updated on
-            // every scroll frame. collectLatest cancels this delay while motion continues.
             if (!restoringScroll && restoredLaneResumeKey == laneResumeKey) {
                 delay(300)
+                val anchorItem = listState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { item ->
+                        (item.key as? String)?.let(homeRowKeys::contains) == true
+                    }
+                val visibleKey = anchorItem?.key as? String
+                val savedIndex = anchorItem?.index ?: index
+                val savedOffset = anchorItem?.offset ?: offset
+                val headerHeight = headerHeightPx.value
+                val collapseFraction =
+                    if (headerHeight > 0f) (-headerOffsetPx.value / headerHeight).coerceIn(0f, 1f)
+                    else 0f
                 resumePrefs.edit()
-                    .putInt("home_scroll_index:$laneResumeKey", index)
-                    .putInt("home_scroll_offset:$laneResumeKey", offset)
+                    .putInt("home_scroll_index:$laneResumeKey", savedIndex)
+                    .putInt("home_scroll_offset:$laneResumeKey", savedOffset)
+                    .putFloat("home_header_fraction:$laneResumeKey", collapseFraction)
+                    .apply {
+                        if (visibleKey.isNullOrBlank()) remove("home_scroll_key:$laneResumeKey")
+                        else putString("home_scroll_key:$laneResumeKey", visibleKey)
+                    }
                     .apply()
             }
         }
@@ -965,11 +1032,12 @@ private fun PremiumHomeFeed(
                     listState.scrollToItem(0)
                 }
             } else {
-                onRefresh()
+                latestRefresh()
             }
             headerOffsetPx.value = 0f
             headerScrollDirection[0] = 0
             pendingDirectionDistancePx[0] = 0f
+            lastFlingVelocityY[0] = 0f
             fabExpanded = true
             onBottomBarVisibilityChange(true)
         }
@@ -1008,27 +1076,36 @@ private fun PremiumHomeFeed(
             }
     }
 
-    // Prefetch only visual media for the next few post cards. This never touches the
-    // exposure tracker, qualified-view callbacks, ranking data, or reel playback state.
+    // Prefetch depth grows only when scrolling quickly. Keep the retained URL set bounded.
     LaunchedEffect(listState, homeRows, laneResumeKey) {
+        var previousLastVisible = -1
+        var previousSampleMs = 0L
         snapshotFlow {
             listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
         }.collectLatest { lastVisibleIndex ->
             if (lastVisibleIndex < 0) return@collectLatest
+            val nowMs = android.os.SystemClock.elapsedRealtime()
+            val elapsedMs =
+                if (previousSampleMs > 0L) (nowMs - previousSampleMs).coerceAtLeast(1L) else 0L
+            val itemDelta =
+                if (previousLastVisible >= 0) lastVisibleIndex - previousLastVisible else 0
+            val lookahead = feedPrefetchLookahead(itemDelta, elapsedMs)
+            previousLastVisible = lastVisibleIndex
+            previousSampleMs = nowMs
 
             homeRows.asSequence()
                 .drop(lastVisibleIndex + 1)
                 .filterIsInstance<PremiumHomeRow.PostRow>()
-                .take(3)
-                .flatMap { row ->
-                    sequenceOf(row.post.authorAvatar) +
-                        row.post.images.asSequence().take(1)
-                }
+                .take(lookahead)
+                .flatMap { row -> sequenceOf(row.post.authorAvatar) + row.post.images.asSequence().take(1) }
                 .map(String::trim)
                 .filter { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
                 .distinct()
                 .forEach { mediaUrl ->
                     if (prefetchedMediaUrls.add(mediaUrl)) {
+                        while (prefetchedMediaUrls.size > 128) {
+                            prefetchedMediaUrls.remove(prefetchedMediaUrls.first())
+                        }
                         imageLoader.enqueue(
                             ImageRequest.Builder(context)
                                 .data(mediaUrl)
@@ -1038,6 +1115,13 @@ private fun PremiumHomeFeed(
                         )
                     }
                 }
+
+            preloadedInlineReelKey = homeRows.asSequence()
+                .drop(lastVisibleIndex + 1)
+                .take(12)
+                .filterIsInstance<PremiumHomeRow.ReelPreviewRow>()
+                .firstOrNull()
+                ?.let(::premiumHomeRowKey)
         }
     }
 
@@ -1049,7 +1133,7 @@ private fun PremiumHomeFeed(
             val layout = listState.layoutInfo
             layout.visibleItemsInfo.firstOrNull { item ->
                 val key = item.key as? String ?: return@firstOrNull false
-                key.startsWith("reel_preview:") && qualifiesForPostImpression(
+                key.startsWith("reel_preview:") && feedAutoplayEligible(
                     itemOffset = item.offset,
                     itemSize = item.size,
                     viewportStart = layout.viewportStartOffset,
@@ -1065,8 +1149,8 @@ private fun PremiumHomeFeed(
 
     AnimatedVisibility(
         visible = screenVisible,
-        enter = fadeIn(tween(140)),
-        exit = fadeOut(tween(100)),
+        enter = fadeIn(tween(if (reduceMotion) 0 else 140)),
+        exit = fadeOut(tween(if (reduceMotion) 0 else 100)),
         modifier = Modifier.fillMaxSize()
     ) {
         Box(
@@ -1105,7 +1189,6 @@ private fun PremiumHomeFeed(
                             val atFeedTop =
                                 listState.firstVisibleItemIndex == 0 &&
                                     listState.firstVisibleItemScrollOffset <= 1
-
                             headerHeightPx.value = measuredHeight
                             headerOffsetPx.value = when {
                                 previousHeight > 0f -> {
@@ -1114,7 +1197,7 @@ private fun PremiumHomeFeed(
                                     -measuredHeight * collapseFraction
                                 }
                                 atFeedTop -> 0f
-                                else -> -measuredHeight
+                                else -> -measuredHeight * pendingRestoredHeaderFraction[0]
                             }
                         }
                     }
@@ -1135,40 +1218,54 @@ private fun PremiumHomeFeed(
                         onBoostClick = onBoostClick,
                         onDropsClick = onDropsClick
                     )
-                    Box {
-                        FeedTabs(
-                            selectedIndex = laneIndex,
-                            onForYouClick = { onLaneChanged(0) },
-                            onFollowingClick = { onLaneChanged(1) },
-                            onFilterClick = { filterMenuVisible = true }
-                        )
-                        Box(modifier = Modifier.align(Alignment.TopEnd)) {
-                            DropdownMenu(
-                                expanded = filterMenuVisible,
-                                onDismissRequest = { filterMenuVisible = false },
-                                modifier = Modifier.background(FeedElevatedSurface)
-                            ) {
-                                PremiumFilterItem("All posts", Icons.Default.Tune, filter == PremiumFeedFilter.ALL) {
-                                    filter = PremiumFeedFilter.ALL
-                                    filterMenuVisible = false
-                                }
-                                PremiumFilterItem("Photos", Icons.Default.Image, filter == PremiumFeedFilter.PHOTOS) {
-                                    filter = PremiumFeedFilter.PHOTOS
-                                    filterMenuVisible = false
-                                }
-                                PremiumFilterItem("Polls", Icons.Default.Poll, filter == PremiumFeedFilter.POLLS) {
-                                    filter = PremiumFeedFilter.POLLS
-                                    filterMenuVisible = false
-                                }
+                }
+
+                // X-style lane tabs stay pinned while only the upper BLINK chrome collapses.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(FeedBackground)
+                ) {
+                    FeedTabs(
+                        selectedIndex = laneIndex,
+                        onForYouClick = { onLaneChanged(0) },
+                        onFollowingClick = { onLaneChanged(1) },
+                        onFilterClick = { filterMenuVisible = true }
+                    )
+                    Box(modifier = Modifier.align(Alignment.TopEnd)) {
+                        DropdownMenu(
+                            expanded = filterMenuVisible,
+                            onDismissRequest = { filterMenuVisible = false },
+                            modifier = Modifier.background(FeedElevatedSurface)
+                        ) {
+                            PremiumFilterItem("All posts", Icons.Default.Tune, filter == PremiumFeedFilter.ALL) {
+                                filter = PremiumFeedFilter.ALL
+                                filterMenuVisible = false
+                            }
+                            PremiumFilterItem("Photos", Icons.Default.Image, filter == PremiumFeedFilter.PHOTOS) {
+                                filter = PremiumFeedFilter.PHOTOS
+                                filterMenuVisible = false
+                            }
+                            PremiumFilterItem("Polls", Icons.Default.Poll, filter == PremiumFeedFilter.POLLS) {
+                                filter = PremiumFeedFilter.POLLS
+                                filterMenuVisible = false
                             }
                         }
                     }
-                    HorizontalDivider(color = FeedBorder.copy(alpha = 0.72f))
                 }
+                HorizontalDivider(color = FeedBorder.copy(alpha = 0.72f))
 
                 PullToRefreshBox(
                     isRefreshing = isRefreshing,
-                    onRefresh = onRefresh,
+                    onRefresh = {
+                        headerOffsetPx.value = 0f
+                        headerScrollDirection[0] = 0
+                        pendingDirectionDistancePx[0] = 0f
+                        lastFlingVelocityY[0] = 0f
+                        fabExpanded = true
+                        onBottomBarVisibilityChange(true)
+                        latestRefresh()
+                    },
                     state = pullState,
                     modifier = Modifier.weight(1f),
                     indicator = {
@@ -1237,15 +1334,7 @@ private fun PremiumHomeFeed(
                             else -> {
                                 items(
                                     count = homeRows.size,
-                                    key = { index ->
-                                        when (val row = homeRows[index]) {
-                                            is PremiumHomeRow.PostRow -> "post:${row.post.id}"
-                                            is PremiumHomeRow.BoostedPostRow -> "boosted:${row.placement.campaignId}:${row.slot}"
-                                            is PremiumHomeRow.ReelPreviewRow -> "reel_preview:${row.slot}:${row.reel.id}"
-                                            is PremiumHomeRow.SponsoredRow -> "sponsored:${row.slot}"
-                                            is PremiumHomeRow.DropDiscoveryRow -> "drop_discovery:${row.item.dropId}:${row.slot}"
-                                        }
-                                    },
+                                    key = { index -> homeRowKeys[index] },
                                     contentType = { index ->
                                         when (val row = homeRows[index]) {
                                             is PremiumHomeRow.PostRow -> premiumPostContentType(row.post)
@@ -1259,7 +1348,7 @@ private fun PremiumHomeFeed(
                                     when (val row = homeRows[index]) {
                                         is PremiumHomeRow.PostRow -> {
                                             val post = row.post
-                                            PremiumPostEntrance(index = row.sourceIndex) {
+                                            PremiumPostEntrance(index = row.sourceIndex, reduceMotion = reduceMotion) {
                                                 PostCard(
                                                     post = post,
                                                     isDark = true,
@@ -1271,8 +1360,12 @@ private fun PremiumHomeFeed(
                                                     onOptionsClick = { onOptionsClick(post) },
                                                     onProfileClick = onProfileClick,
                                                     onVotePoll = onVotePoll,
-                                                    isAuthor = post.author.equals(currentUsername.removePrefix("@"), ignoreCase = true) ||
-                                                            post.authorUsername.removePrefix("@").equals(currentUsername.removePrefix("@"), ignoreCase = true),
+                                                    isAuthor =
+                                                        currentUserKey.isNotBlank() &&
+                                                            (
+                                                                post.author.trim().removePrefix("@").lowercase() == currentUserKey ||
+                                                                    post.authorUsername.trim().removePrefix("@").lowercase() == currentUserKey
+                                                            ),
                                                     onDelete = { onDeletePost(post.id) }
                                                 )
                                             }
@@ -1308,6 +1401,7 @@ private fun PremiumHomeFeed(
                                             InlineReelPreviewCard(
                                                 reel = row.reel,
                                                 isActive = activeInlineReelKey == previewKey,
+                                                shouldPreload = preloadedInlineReelKey == previewKey,
                                                 onContinue = { positionMs ->
                                                     onOpenInlineReel(row.reel.id, positionMs)
                                                 },
@@ -1365,8 +1459,12 @@ private fun PremiumHomeFeed(
 
                         androidx.compose.animation.AnimatedVisibility(
                             visible = pendingNewPostCount > 0 && !isRefreshing,
-                            enter = fadeIn(tween(140)) + slideInVertically(tween(160)) { -it / 2 },
-                            exit = fadeOut(tween(110)) + slideOutVertically(tween(130)) { -it / 2 },
+                            enter =
+                                fadeIn(tween(if (reduceMotion) 0 else 140)) +
+                                    slideInVertically(tween(if (reduceMotion) 0 else 160)) { -it / 2 },
+                            exit =
+                                fadeOut(tween(if (reduceMotion) 0 else 110)) +
+                                    slideOutVertically(tween(if (reduceMotion) 0 else 130)) { -it / 2 },
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
                                 .padding(top = 12.dp)
@@ -1387,9 +1485,10 @@ private fun PremiumHomeFeed(
                                         headerOffsetPx.value = 0f
                                         headerScrollDirection[0] = 0
                                         pendingDirectionDistancePx[0] = 0f
+                                        lastFlingVelocityY[0] = 0f
                                         fabExpanded = true
                                         onBottomBarVisibilityChange(true)
-                                        onRefresh()
+                                        latestRefresh()
                                     }
                                 }
                             )
@@ -1630,10 +1729,14 @@ private fun LegacyChromeCrop(
 }
 
 @Composable
-private fun PremiumPostEntrance(index: Int, content: @Composable () -> Unit) {
-    // Only the first few rows get a very small initial fade. Rows composed during normal
-    // scrolling render immediately, avoiding the delayed website-like card animation.
-    if (index > 2) {
+private fun PremiumPostEntrance(
+    index: Int,
+    reduceMotion: Boolean,
+    content: @Composable () -> Unit
+) {
+    // Only the first few rows get a very small initial fade. Reduced-motion users and
+    // rows composed during normal scrolling render immediately.
+    if (index > 2 || reduceMotion) {
         content()
         return
     }
