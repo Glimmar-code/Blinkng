@@ -7,7 +7,7 @@ begin;
 -- Ranking formulas, weights, audience checks and all other table RLS stay intact.
 -- Rollback: restore the prior function definitions with the prior profile-read
 -- policy only as a coordinated rollback; never reopen private raw rows alone.
-create or replace function public.get_blink_ranking_profiles()
+create or replace function public.get_blink_ranking_profiles(p_ids uuid[] default null)
 returns table(
   id uuid,
   username text,
@@ -70,10 +70,16 @@ as $projection$
     case when private.blink_profile_presence_visible(p.id) then coalesce(p.online_now,false) else false end as online_now,
     case when private.blink_profile_presence_visible(p.id) then p.last_seen_at else null end as last_seen_at
   from public.profiles p
-  where auth.uid() is not null;
+  where auth.uid() is not null
+    and (p_ids is null or p.id=any(p_ids))
+    and not exists (
+      select 1 from public.blocks b
+      where (b.blocker_id=auth.uid() and b.blocked_id=p.id)
+         or (b.blocker_id=p.id and b.blocked_id=auth.uid())
+    );
 $projection$;
-revoke all on function public.get_blink_ranking_profiles() from public, anon;
-grant execute on function public.get_blink_ranking_profiles() to authenticated;
+revoke all on function public.get_blink_ranking_profiles(uuid[]) from public, anon;
+grant execute on function public.get_blink_ranking_profiles(uuid[]) to authenticated;
 
 CREATE OR REPLACE FUNCTION private_ranking.viewer_personalization_bonus(p_viewer uuid, p_post uuid, p_creator uuid, p_as_of timestamp with time zone)
  RETURNS numeric
@@ -83,12 +89,12 @@ CREATE OR REPLACE FUNCTION private_ranking.viewer_personalization_bonus(p_viewer
 AS $function$
 with viewer as (
   select id, university, faculty, department
-  from public.get_blink_ranking_profiles()
+  from public.get_blink_ranking_profiles(array[p_viewer])
   where id = p_viewer
 ),
 creator as (
   select id, university, faculty, department
-  from public.get_blink_ranking_profiles()
+  from public.get_blink_ranking_profiles(array[p_creator])
   where id = p_creator
 ),
 post as (
@@ -215,7 +221,7 @@ AS $function$
     1::numeric
   )
   from public.feed_posts fp
-  join public.get_blink_ranking_profiles() pr on pr.id=fp.user_id
+  join lateral public.get_blink_ranking_profiles(array[fp.user_id]) pr on pr.id=fp.user_id
   where fp.id=p_post_id;
 $function$;
 
@@ -231,7 +237,7 @@ with target as (
     fp.created_at as post_created_at,
     greatest(coalesce(pr.follower_count,0),0)::numeric as follower_count
   from public.feed_posts fp
-  join public.get_blink_ranking_profiles() pr on pr.id=fp.user_id
+  join lateral public.get_blink_ranking_profiles(array[fp.user_id]) pr on pr.id=fp.user_id
   where fp.id=p_post_id
 ), early as (
   select count(*)::numeric as unique_viewers
@@ -289,7 +295,7 @@ with cfg as (
   select auth.uid() as caller_id, now() as rank_as_of
 ),
 me as (
-  select p.* from public.get_blink_ranking_profiles() p cross join cfg where p.id=cfg.caller_id
+  select p.* from public.get_blink_ranking_profiles(array[auth.uid()]) p cross join cfg where p.id=cfg.caller_id
 ),
 exposure as (
   select e.target_key,
@@ -452,7 +458,7 @@ with cfg as (
     least(coalesce(p_as_of,now()),now()+interval '1 minute') as rank_as_of
 ),
 me as (
-  select p.* from public.get_blink_ranking_profiles() p cross join cfg where p.id=cfg.caller_id
+  select p.* from public.get_blink_ranking_profiles(array[auth.uid()]) p cross join cfg where p.id=cfg.caller_id
 ),
 listing_results as (
   select
@@ -699,7 +705,7 @@ with cfg as (
 ),
 me as (
   select p.*
-  from public.get_blink_ranking_profiles() p cross join cfg
+  from public.get_blink_ranking_profiles(array[auth.uid()]) p cross join cfg
   where p.id=cfg.caller_id
 ),
 native_signals as (
@@ -934,7 +940,7 @@ with cfg as (
 ),
 me as (
   select p.*,coalesce(gp.score,0)::bigint as game_score
-  from public.get_blink_ranking_profiles() p cross join cfg
+  from public.get_blink_ranking_profiles(array[auth.uid()]) p cross join cfg
   left join public.game_profiles gp on gp.user_id=p.id
   where p.id=cfg.caller_id
 ),
@@ -1017,7 +1023,7 @@ cfg as (
   from requested_types rt
 ),
 me as (
-  select p.* from public.get_blink_ranking_profiles() p cross join cfg where p.id=cfg.caller_id
+  select p.* from public.get_blink_ranking_profiles(array[auth.uid()]) p cross join cfg where p.id=cfg.caller_id
 ),
 post_results as (
   select

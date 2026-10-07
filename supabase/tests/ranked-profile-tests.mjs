@@ -16,6 +16,8 @@ export async function rankedProfileTests(db) {
   const profiles=(await db.query('select * from public.get_blink_ranking_profiles()')).rows;
   const other=profiles.find(row=>row.id===B);
   assert.ok(other);
+  assert.equal(profiles.some(row=>row.id==='00000000-0000-4000-8000-000000000003'),false,'blocked accounts stay outside the public projection');
+  assert.equal((await db.query(`select * from public.get_blink_ranking_profiles(array['${B}']::uuid[])`)).rows.length,1);
   for(const key of ['email','phone','whatsapp','fcm_token','coin_balance','total_earned_coin']) assert.equal(key in other,false);
   assert.equal(other.online_now,false);
   assert.equal(other.last_seen_at,null);
