@@ -55,16 +55,23 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
         run: |
           set -euo pipefail
           missing=0
-          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD MAPS_API_KEY; do
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD MAPS_API_KEY GOOGLE_SERVICES_JSON_BASE64; do
             if [ -z "${!name:-}" ]; then
               echo "::error::$name is not configured. Add the production value in GitHub Actions secrets."
               missing=1
             fi
           done
           exit "$missing"
+
+      - name: Restore production Firebase client configuration
+        shell: bash
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: bash .github/scripts/restore_google_services.sh production
 
       - name: Restore permanent release keystore
         shell: bash
