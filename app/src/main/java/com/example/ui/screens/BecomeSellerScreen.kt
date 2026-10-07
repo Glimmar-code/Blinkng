@@ -1,51 +1,69 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.models.kNigerianStatesList
 import com.example.ui.theme.BlinkGold
 import com.example.ui.theme.BlinkPink
-import com.example.ui.theme.BlinkPurple
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BecomeSellerScreen(
     onBack: () -> Unit,
     onSuccess: (storeName: String, phone: String, whatsapp: String, state: String, city: String) -> Unit,
+    initialStoreName: String = "",
+    initialPhone: String = "",
+    initialWhatsapp: String = "",
+    cashCheckoutEnabled: Boolean = false,
+    isSubmitting: Boolean = false,
     isDark: Boolean
 ) {
-    var storeName by remember { mutableStateOf("Efe Tech Hub & Gadgets") }
-    var phone by remember { mutableStateOf("+234 809 123 4567") }
-    var whatsapp by remember { mutableStateOf("+234 809 123 4567") }
-    var selectedState by remember { mutableStateOf("Lagos") }
-    var city by remember { mutableStateOf("Akoka, Yaba") }
-    var agreedToTerms by remember { mutableStateOf(true) }
+    var storeName by remember(initialStoreName) { mutableStateOf(initialStoreName) }
+    var phone by remember(initialPhone) { mutableStateOf(initialPhone) }
+    var whatsapp by remember(initialWhatsapp) { mutableStateOf(initialWhatsapp) }
+    var selectedState by remember { mutableStateOf("") }
+    var city by remember { mutableStateOf("") }
+    var agreedToTerms by remember { mutableStateOf(false) }
     var stateDropdownOpen by remember { mutableStateOf(false) }
+
+    val phoneDigits = phone.filter(Char::isDigit)
+    val whatsappDigits = whatsapp.filter(Char::isDigit)
+    val detailsValid = storeName.trim().length >= 2 &&
+        phoneDigits.length in 10..15 &&
+        whatsappDigits.length in 10..15 &&
+        selectedState.isNotBlank() &&
+        city.trim().length >= 2 &&
+        agreedToTerms
+    val canSubmit = detailsValid && cashCheckoutEnabled && !isSubmitting
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Become a Verified Merchant", fontWeight = FontWeight.Bold) },
+                title = { Text("Become a Market Seller", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, enabled = !isSubmitting) {
                         Icon(Icons.Default.Close, contentDescription = "Close")
                     }
                 },
@@ -56,11 +74,10 @@ fun BecomeSellerScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
+                .padding(padding),
+            contentPadding = PaddingValues(16.dp, 12.dp, 16.dp, 100.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header Hero
             item {
                 Card(
                     shape = RoundedCornerShape(20.dp),
@@ -71,7 +88,7 @@ fun BecomeSellerScreen(
                             .fillMaxWidth()
                             .background(
                                 Brush.linearGradient(
-                                    listOf(Color(0xFF2C103D), Color(0xFF140822))
+                                    listOf(Color(0xFF171717), Color(0xFF050505))
                                 )
                             )
                             .padding(20.dp)
@@ -81,9 +98,9 @@ fun BecomeSellerScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Default.Verified, contentDescription = null, tint = BlinkGold, modifier = Modifier.size(24.dp))
+                                Icon(Icons.Default.Storefront, contentDescription = null, tint = Color.White)
                                 Text(
-                                    text = "ALUTA MERCHANT PRO",
+                                    "BLINK MARKET SELLER",
                                     fontSize = 17.sp,
                                     fontWeight = FontWeight.Black,
                                     color = Color.White
@@ -91,9 +108,9 @@ fun BecomeSellerScreen(
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Join verified student entrepreneurs on Blink. Enjoy trusted Gold checkmarks, unlimited listings, and direct WhatsApp conversions.",
+                                "Create a trusted storefront, upload real listing photos, manage stock and receive purchase requests from students.",
                                 fontSize = 13.sp,
-                                color = Color.White.copy(alpha = 0.85f),
+                                color = Color.White.copy(alpha = 0.82f),
                                 lineHeight = 19.sp
                             )
                         }
@@ -101,53 +118,89 @@ fun BecomeSellerScreen(
                 }
             }
 
-            // Store Name
+            item {
+                Surface(
+                    color = if (cashCheckoutEnabled) BlinkGold.copy(alpha = 0.12f) else MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            if (cashCheckoutEnabled) Icons.Default.Lock else Icons.Default.Verified,
+                            contentDescription = null,
+                            tint = if (cashCheckoutEnabled) BlinkGold else MaterialTheme.colorScheme.error
+                        )
+                        Column {
+                            Text(
+                                if (cashCheckoutEnabled) "Secure Paystack activation • ₦5,000" else "Seller payments are not live yet",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                            Text(
+                                if (cashCheckoutEnabled)
+                                    "Activation happens only after BLINK verifies the Paystack transaction on the server."
+                                else
+                                    "BLINK will not activate a paid seller account until secure cash checkout is enabled on the backend.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
             item {
                 OutlinedTextField(
                     value = storeName,
-                    onValueChange = { storeName = it },
-                    label = { Text("Business / Store Name") },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Words,
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Next,
+                    onValueChange = { if (it.length <= 80) storeName = it },
+                    label = { Text("Business / Store name") },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Next,
                         autoCorrectEnabled = true
                     ),
+                    singleLine = true,
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
-            // Phone
             item {
                 OutlinedTextField(
                     value = phone,
-                    onValueChange = { phone = it },
-                    label = { Text("Contact Phone Number") },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone,
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Next
+                    onValueChange = { if (it.length <= 20) phone = it },
+                    label = { Text("Contact phone number") },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Phone,
+                        imeAction = ImeAction.Next
                     ),
+                    singleLine = true,
+                    isError = phone.isNotBlank() && phoneDigits.length !in 10..15,
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
-            // WhatsApp
             item {
                 OutlinedTextField(
                     value = whatsapp,
-                    onValueChange = { whatsapp = it },
-                    label = { Text("WhatsApp Business Number") },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone,
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Next
+                    onValueChange = { if (it.length <= 20) whatsapp = it },
+                    label = { Text("WhatsApp number") },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Phone,
+                        imeAction = ImeAction.Next
                     ),
+                    singleLine = true,
+                    isError = whatsapp.isNotBlank() && whatsappDigits.length !in 10..15,
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
-            // State Selector
             item {
                 ExposedDropdownMenuBox(
                     expanded = stateDropdownOpen,
@@ -157,7 +210,8 @@ fun BecomeSellerScreen(
                         value = selectedState,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("State of Residence") },
+                        label = { Text("State") },
+                        placeholder = { Text("Choose state") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = stateDropdownOpen) },
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
@@ -168,11 +222,11 @@ fun BecomeSellerScreen(
                         expanded = stateDropdownOpen,
                         onDismissRequest = { stateDropdownOpen = false }
                     ) {
-                        kNigerianStatesList.forEach { st ->
+                        kNigerianStatesList.forEach { state ->
                             DropdownMenuItem(
-                                text = { Text(st) },
+                                text = { Text(state) },
                                 onClick = {
-                                    selectedState = st
+                                    selectedState = state
                                     stateDropdownOpen = false
                                 }
                             )
@@ -181,69 +235,83 @@ fun BecomeSellerScreen(
                 }
             }
 
-            // City / Hostel Address
             item {
                 OutlinedTextField(
                     value = city,
-                    onValueChange = { city = it },
-                    label = { Text("Campus / City / Hostel Location") },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Words,
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                    onValueChange = { if (it.length <= 120) city = it },
+                    label = { Text("Campus / City / Hostel area") },
+                    placeholder = { Text("e.g. FUTA South Gate") },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Done,
                         autoCorrectEnabled = true
                     ),
+                    singleLine = true,
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
-            // Terms Checkbox
             item {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.Top,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { agreedToTerms = !agreedToTerms }
+                        .clickable(enabled = !isSubmitting) { agreedToTerms = !agreedToTerms }
                 ) {
                     Checkbox(
                         checked = agreedToTerms,
                         onCheckedChange = { agreedToTerms = it },
+                        enabled = !isSubmitting,
                         colors = CheckboxDefaults.colors(checkedColor = BlinkPink)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "I agree to the Aluta Market Seller Trust & Safety policies.",
+                        "I agree to BLINK Market seller, prohibited-item, trust and safety policies.",
                         fontSize = 12.5.sp,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 12.dp)
                     )
                 }
             }
 
-            // Pay ₦5,000 Paystack activation
             item {
-                Spacer(modifier = Modifier.height(12.dp))
                 Button(
                     onClick = {
-                        if (storeName.isNotBlank() && phone.isNotBlank() && agreedToTerms) {
-                            onSuccess(storeName, phone, whatsapp, selectedState, city)
-                        }
+                        onSuccess(
+                            storeName.trim(),
+                            phone.trim(),
+                            whatsapp.trim(),
+                            selectedState,
+                            city.trim()
+                        )
                     },
-                    enabled = storeName.isNotBlank() && phone.isNotBlank() && agreedToTerms,
+                    enabled = canSubmit,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = BlinkGold,
+                        containerColor = Color.White,
                         contentColor = Color.Black
                     ),
                     shape = RoundedCornerShape(100.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
+                        .height(54.dp)
                         .testTag("become_seller_pay_btn")
                 ) {
-                    Text(
-                        "Pay ₦5,000 with Paystack & Activate",
-                        fontSize = 14.5.sp,
-                        fontWeight = FontWeight.Black
-                    )
+                    if (isSubmitting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.Black
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Starting secure checkout…", fontWeight = FontWeight.Black)
+                    } else {
+                        Text(
+                            if (cashCheckoutEnabled) "Pay ₦5,000 securely with Paystack" else "Paystack activation unavailable",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
                 }
             }
         }
