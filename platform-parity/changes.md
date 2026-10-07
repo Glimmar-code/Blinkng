@@ -304,3 +304,16 @@ Windows equivalent or reason no equivalent is needed: Windows keeps desktop-nati
 Backend/shared behavior preserved: Ranking, qualified views, repeat-view limits, posts/reels data, wallet, verification, authentication, notifications, moderation and all Supabase contracts are unchanged.
 Tests/validation: Pure JVM tests cover velocity settling, viewport autoplay threshold, adaptive prefetch depth and keyed restore resolution. Android unit/lint/instrumentation/debug/release gates plus Windows parity/build/package and Supabase safety must pass before promotion to main.
 Owner/reviewer note: This exception covers presentation/performance adapters only and cannot waive Windows parity for future feed features, ranking semantics or backend behavior.
+
+
+---
+
+PARITY-EXCEPTION: market-duplicate-lookup-compile-hotfix-20261007
+Date: 2026-10-07
+Feature: Market duplicate lookup compile regression hotfix
+Android behavior: Removes one duplicate `fetchMarketItemById(String)` declaration from the Android Supabase service so the already-merged Market implementation compiles again. The retained implementation keeps the existing authenticated lookup, UUID validation, wishlist state, and Market behavior.
+Why this is genuinely Android-specific: This PR only repairs a duplicate Kotlin declaration in the Android service layer that was created during the Market merge. It does not introduce or change a product feature, backend contract, ranking rule, user data behavior, or Windows UI.
+Windows equivalent or reason no equivalent is needed: Windows does not contain the duplicated Android Kotlin declaration and already builds successfully, so there is no equivalent code change to make there.
+Backend/shared behavior preserved: Supabase schema, Market rows, authentication, wallet, feed/reels, messaging, ranking and shared contracts are unchanged.
+Tests/validation: Android validate, runtime-smoke, release-smoke, Windows build, parity and migration-safety must pass in Testlab before this hotfix is merged to main.
+Owner/reviewer note: This exception is limited to this compile-only duplicate declaration removal and cannot be reused for future Market feature changes.
