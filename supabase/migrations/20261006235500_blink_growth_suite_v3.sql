@@ -1,6 +1,8 @@
 begin;
 
 -- BLINK Growth Suite v3
+-- destructive-change-reviewed
+-- rollback-plan: restore the prior trigger definitions from the preceding Growth migrations, remove the Growth v3 triggers/functions/tables introduced here, remove user_balances from supabase_realtime only if this migration added it, and unschedule blink-growth-settlement-v1 if created by this migration.
 -- Adds realtime wallet sync, richer quotes/analytics/receipts, idempotent spend wrappers,
 -- lifecycle notifications and scheduled settlement without changing organic ranking.
 
