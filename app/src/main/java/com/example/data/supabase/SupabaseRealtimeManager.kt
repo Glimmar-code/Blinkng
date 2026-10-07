@@ -148,8 +148,8 @@ class SupabaseRealtimeManager private constructor() {
         if (uid.isBlank()) return
         scope.launch {
             try {
-                val body = JSONObject().apply { put("is_online", online); put("online_now", online); put("last_seen", nowIso()); put("last_seen_at", nowIso()) }
-                val request = Request.Builder().url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/profiles?id=eq.$uid").addHeader("apikey", SupabaseConfig.anonKey).addHeader("Authorization", "Bearer ${SupabaseService.accessToken() ?: SupabaseConfig.anonKey}").addHeader("Content-Type", "application/json").patch(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString())).build()
+                val body = JSONObject().put("p_online", online)
+                val request = Request.Builder().url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/set_my_presence").addHeader("apikey", SupabaseConfig.anonKey).addHeader("Authorization", "Bearer ${SupabaseService.accessToken() ?: SupabaseConfig.anonKey}").addHeader("Content-Type", "application/json").post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString())).build()
                 client.newCall(request).execute().use { response -> if (!response.isSuccessful) Log.w(TAG, "Presence update failed: ${response.code}") }
             } catch (e: Exception) { Log.w(TAG, "Presence update exception", e) }
         }

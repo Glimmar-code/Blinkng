@@ -812,10 +812,10 @@ private fun BoostCampaignColumn(
                     onClick = {
                         scope.launch {
                             working = true
-                            val fingerprint = listOf(
-                                targetType.name,targetId,boostPower.toString(),objective.name,
-                                audience.name,durationDays.toString(),targetUniversity.orEmpty()
-                            ).joinToString("|")
+                            val fingerprint = com.blinkng.shared.BlinkBoostCampaignRequest(
+                                targetType.name, targetId, boostPower, objective.name,
+                                audience.name, durationDays, targetUniversity
+                            ).fingerprint()
                             if (pendingRequestId == null || pendingRequestFingerprint != fingerprint) {
                                 pendingRequestId = UUID.randomUUID().toString()
                                 pendingRequestFingerprint = fingerprint

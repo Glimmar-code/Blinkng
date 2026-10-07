@@ -41,6 +41,16 @@ jobs:
       - name: Validate migration SQL syntax
         run: python3 scripts/check_supabase_sql_syntax.py
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install isolated PostgreSQL regression runtime
+        run: npm ci --prefix supabase/tests --no-audit --no-fund
+
+      - name: Check Testlab migrations and account boundaries
+        run: npm test --prefix supabase/tests
+
       - name: Detect complete local schema baseline
         id: baseline
         shell: bash
