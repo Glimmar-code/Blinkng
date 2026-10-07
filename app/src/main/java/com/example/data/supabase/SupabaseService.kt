@@ -4,6 +4,8 @@ import com.blinkng.shared.ProfileRankSnapshot
 import com.example.auth.AccountSessionStore
 import com.example.auth.SupabaseSessionRefresher
 import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Base64
 import android.util.Log
 import com.example.data.models.AchievementBadge
@@ -43,7 +45,9 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -2150,10 +2154,72 @@ fun getCurrentUserId(): String? {
         tags: List<String> = emptyList(), mentions: List<String> = emptyList(), poll: PostPoll? = null, isReel: Boolean = false,
         audience: String = "Everyone", category: String = "Campus Life", location: String? = null, linkUrl: String? = null,
         allowComments: Boolean = true, hideLikes: Boolean = false, isPinned: Boolean = false, isDisappearing: Boolean = false,
-        audioTitle: String? = null, altText: String? = null, textStyle: String? = null
+        audioTitle: String? = null, altText: String? = null, textStyle: String? = null,
+        clientRequestId: String? = null
     ): FeedPost? = withContext(Dispatchers.IO) {
         try {
             val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            val cleanClientRequestId = clientRequestId
+                ?.trim()
+                ?.takeIf { isValidUuid(it) }
+
+            suspend fun existingRowByRequestId(requestId: String): JSONObject? {
+                val path = "/rest/v1/feed_posts" +
+                    "?select=*&id=eq.$requestId&user_id=eq.$uid&limit=1"
+                return executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful || raw.isBlank() || raw == "[]") {
+                        null
+                    } else {
+                        runCatching { JSONArray(raw).getJSONObject(0) }.getOrNull()
+                    }
+                }
+            }
+
+            suspend fun existingPollId(postId: String): String? {
+                val path = "/rest/v1/polls?select=id&post_id=eq.$postId&limit=1"
+                return executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful || raw.isBlank() || raw == "[]") {
+                        null
+                    } else {
+                        runCatching { JSONArray(raw).getJSONObject(0).optString("id") }
+                            .getOrNull()
+                            ?.takeIf { isValidUuid(it) }
+                    }
+                }
+            }
+
+            suspend fun existingPollOptions(pollId: String): Set<String> {
+                val path = "/rest/v1/poll_options?select=option_text&poll_id=eq.$pollId"
+                return executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful || raw.isBlank() || raw == "[]") {
+                        emptySet()
+                    } else {
+                        runCatching {
+                            val array = JSONArray(raw)
+                            buildSet {
+                                for (index in 0 until array.length()) {
+                                    array.optJSONObject(index)
+                                        ?.optString("option_text")
+                                        ?.trim()
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?.lowercase(Locale.US)
+                                        ?.let(::add)
+                                }
+                            }
+                        }.getOrDefault(emptySet())
+                    }
+                }
+            }
+
+            val existingCreatedRow = if (cleanClientRequestId != null) {
+                existingRowByRequestId(cleanClientRequestId)
+            } else {
+                null
+            }
+
             val mentionIds = JSONArray()
             for (mention in mentions) {
                 val mid = if (isValidUuid(mention)) mention else fetchProfileByUsername(mention.removePrefix("@"))?.id
@@ -2186,6 +2252,7 @@ fun getCurrentUserId(): String? {
 
             val body = JSONObject().apply {
                 put("user_id", uid)
+                cleanClientRequestId?.let { put("id", it) }
                 put(
                     "type",
                     when {
@@ -2219,28 +2286,104 @@ fun getCurrentUserId(): String? {
                     put("gradient", JSONObject().put("key", style.trim().lowercase(Locale.US)))
                 }
             }
-            val created = executeRequest(newRequestBuilder("/rest/v1/feed_posts", true).addHeader("Prefer", "return=representation")
-                .post(body.toString().toRequestBody(jsonMediaType)).build()).use { resp ->
+            val created = existingCreatedRow ?: executeRequest(
+                newRequestBuilder("/rest/v1/feed_posts", true)
+                    .addHeader("Prefer", "return=representation")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { resp ->
                 val raw = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful || raw.isBlank() || raw == "[]") throw IllegalStateException(parseSupabaseError(raw, "Could not create post."))
+                if (!resp.isSuccessful || raw.isBlank() || raw == "[]") {
+                    if (resp.code == 409 && cleanClientRequestId != null) {
+                        existingRowByRequestId(cleanClientRequestId)?.let { existing ->
+                            return@use existing
+                        }
+                    }
+                    throw IllegalStateException(parseSupabaseError(raw, "Could not create post."))
+                }
                 JSONArray(raw).getJSONObject(0)
             }
             val postId = created.optString("id").takeIf { isValidUuid(it) } ?: throw IllegalStateException("Invalid post ID returned by Supabase.")
             if (poll != null) {
-                val p = JSONObject().apply { put("post_id", postId); put("question", poll.question); put("allows_multiple", false) }
-                val pollRow = executeRequest(newRequestBuilder("/rest/v1/polls", true).addHeader("Prefer", "return=representation")
-                    .post(p.toString().toRequestBody(jsonMediaType)).build()).use { resp ->
-                    val raw = resp.body?.string().orEmpty(); if (!resp.isSuccessful || raw.isBlank() || raw == "[]") throw IllegalStateException(parseSupabaseError(raw, "Could not create poll.")); JSONArray(raw).getJSONObject(0)
-                }
-                val pollId = pollRow.optString("id")
-                for ((index, option) in poll.options.withIndex()) {
-                    val o = JSONObject().apply { put("poll_id", pollId); put("option_text", option.text); put("position", index) }
-                    executeRequest(newRequestBuilder("/rest/v1/poll_options", true).post(o.toString().toRequestBody(jsonMediaType)).build()).use { resp ->
-                        if (!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(resp.body?.string().orEmpty(), "Could not create poll option."))
+                val alreadyAttachedPollId = created.optString("poll_id")
+                    .takeIf { isValidUuid(it) }
+
+                val pollId = alreadyAttachedPollId
+                    ?: existingPollId(postId)
+                    ?: run {
+                        val p = JSONObject().apply {
+                            put("post_id", postId)
+                            put("question", poll.question)
+                            put("allows_multiple", false)
+                        }
+                        executeRequest(
+                            newRequestBuilder("/rest/v1/polls", true)
+                                .addHeader("Prefer", "return=representation")
+                                .post(p.toString().toRequestBody(jsonMediaType))
+                                .build()
+                        ).use { resp ->
+                            val raw = resp.body?.string().orEmpty()
+                            if (!resp.isSuccessful || raw.isBlank() || raw == "[]") {
+                                throw IllegalStateException(
+                                    parseSupabaseError(raw, "Could not create poll.")
+                                )
+                            }
+                            JSONArray(raw).getJSONObject(0).optString("id")
+                        }
                     }
+
+                if (!isValidUuid(pollId)) {
+                    throw IllegalStateException("Invalid poll ID returned by Supabase.")
                 }
-                executeRequest(newRequestBuilder("/rest/v1/feed_posts?id=eq.$postId", true).patch(JSONObject().put("poll_id", pollId).toString().toRequestBody(jsonMediaType)).build()).use { resp ->
-                    if (!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(resp.body?.string().orEmpty(), "Could not attach poll."))
+
+                val existingOptions = existingPollOptions(pollId).toMutableSet()
+                for ((index, option) in poll.options.withIndex()) {
+                    val cleanOption = option.text.trim()
+                    val optionKey = cleanOption.lowercase(Locale.US)
+                    if (cleanOption.isBlank() || optionKey in existingOptions) continue
+
+                    val o = JSONObject().apply {
+                        put("poll_id", pollId)
+                        put("option_text", cleanOption)
+                        put("position", index)
+                    }
+                    executeRequest(
+                        newRequestBuilder("/rest/v1/poll_options", true)
+                            .post(o.toString().toRequestBody(jsonMediaType))
+                            .build()
+                    ).use { resp ->
+                        if (!resp.isSuccessful) {
+                            throw IllegalStateException(
+                                parseSupabaseError(
+                                    resp.body?.string().orEmpty(),
+                                    "Could not create poll option."
+                                )
+                            )
+                        }
+                    }
+                    existingOptions += optionKey
+                }
+
+                if (alreadyAttachedPollId == null) {
+                    executeRequest(
+                        newRequestBuilder("/rest/v1/feed_posts?id=eq.$postId", true)
+                            .patch(
+                                JSONObject()
+                                    .put("poll_id", pollId)
+                                    .toString()
+                                    .toRequestBody(jsonMediaType)
+                            )
+                            .build()
+                    ).use { resp ->
+                        if (!resp.isSuccessful) {
+                            throw IllegalStateException(
+                                parseSupabaseError(
+                                    resp.body?.string().orEmpty(),
+                                    "Could not attach poll."
+                                )
+                            )
+                        }
+                    }
                 }
             }
             fetchFeedPosts().firstOrNull { it.id == postId } ?: parseFeedPost(created)
@@ -2360,6 +2503,222 @@ suspend fun uploadPostMedia(
                 null
             }
         }
+
+
+    suspend fun uploadPostMediaUri(
+        userId: String,
+        uriString: String,
+        mimeType: String,
+        isVideo: Boolean
+    ): String? = withContext(Dispatchers.IO) {
+        val context = appContext ?: return@withContext null
+        val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return@withContext null
+        val length = contentLength(context, uri)
+        if (userId.isBlank() || length == 0L) return@withContext null
+
+        if (length > 6L * 1024L * 1024L) {
+            uploadPostMediaResumable(
+                context = context,
+                userId = userId,
+                uri = uri,
+                mimeType = mimeType,
+                isVideo = isVideo,
+                contentLength = length
+            )
+        } else {
+            uploadPostMediaStreaming(
+                context = context,
+                userId = userId,
+                uri = uri,
+                mimeType = mimeType,
+                isVideo = isVideo,
+                contentLength = length
+            )
+        }
+    }
+
+    private fun contentLength(context: Context, uri: Uri): Long {
+        context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+            if (descriptor.length >= 0L) return descriptor.length
+        }
+        return runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.SIZE),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getLong(0) else -1L
+            } ?: -1L
+        }.getOrDefault(-1L)
+    }
+
+    private fun postMediaTarget(userId: String, mimeType: String, isVideo: Boolean): Pair<String, String> {
+        val extension = when {
+            mimeType.contains("mp4", true) -> "mp4"
+            mimeType.contains("webm", true) -> "webm"
+            mimeType.contains("png", true) -> "png"
+            mimeType.contains("webp", true) -> "webp"
+            mimeType.contains("gif", true) -> "gif"
+            else -> if (isVideo) "mp4" else "jpg"
+        }
+        val folder = if (isVideo) "users/$userId/posts/videos" else "users/$userId/posts/images"
+        val path = "$folder/" + UUID.randomUUID() + "." + extension
+        return path to "$baseUrl/storage/v1/object/public/post-media/$path"
+    }
+
+    private suspend fun uploadPostMediaStreaming(
+        context: Context,
+        userId: String,
+        uri: Uri,
+        mimeType: String,
+        isVideo: Boolean,
+        contentLength: Long
+    ): String? {
+        val (path, publicUrl) = postMediaTarget(userId, mimeType, isVideo)
+        val body = object : RequestBody() {
+            override fun contentType() = mimeType.toMediaType()
+            override fun contentLength(): Long = contentLength
+            override fun writeTo(sink: BufferedSink) {
+                val input = context.contentResolver.openInputStream(uri)
+                    ?: throw IllegalStateException("Could not open selected media.")
+                input.use {
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val read = it.read(buffer)
+                        if (read < 0) break
+                        if (read > 0) sink.write(buffer, 0, read)
+                    }
+                }
+            }
+        }
+        val request = newRequestBuilder(
+            "/storage/v1/object/post-media/$path",
+            authenticated = true
+        )
+            .addHeader("Content-Type", mimeType)
+            .post(body)
+            .build()
+
+        return executeRequest(request).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                Log.e(TAG, "POST_MEDIA_STREAM_UPLOAD failed status=" + response.code + " body=" + raw)
+                null
+            } else {
+                publicUrl
+            }
+        }
+    }
+
+    private suspend fun uploadPostMediaResumable(
+        context: Context,
+        userId: String,
+        uri: Uri,
+        mimeType: String,
+        isVideo: Boolean,
+        contentLength: Long
+    ): String? {
+        if (contentLength <= 0L) {
+            return uploadPostMediaStreaming(
+                context,
+                userId,
+                uri,
+                mimeType,
+                isVideo,
+                contentLength
+            )
+        }
+
+        val token = accessToken() ?: return null
+        val (path, publicUrl) = postMediaTarget(userId, mimeType, isVideo)
+        val storageBase = baseUrl
+            .replace(".supabase.co", ".storage.supabase.co")
+            .trimEnd('/')
+        val endpoint = "$storageBase/storage/v1/upload/resumable"
+
+        fun metadata(value: String): String =
+            Base64.encodeToString(value.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP)
+
+        val createRequest = Request.Builder()
+            .url(endpoint)
+            .addHeader("apikey", anonKey)
+            .addHeader("Authorization", "Bearer $token")
+            .addHeader("Tus-Resumable", "1.0.0")
+            .addHeader("Upload-Length", contentLength.toString())
+            .addHeader(
+                "Upload-Metadata",
+                "bucketName " + metadata("post-media") + "," +
+                    "objectName " + metadata(path) + "," +
+                    "contentType " + metadata(mimeType) + "," +
+                    "cacheControl " + metadata("3600")
+            )
+            .post(ByteArray(0).toRequestBody(null))
+            .build()
+
+        val location = executeRequest(createRequest).use { response ->
+            if (!response.isSuccessful) {
+                Log.e(
+                    TAG,
+                    "POST_MEDIA_TUS_CREATE failed status=" + response.code +
+                        " body=" + response.body?.string().orEmpty()
+                )
+                return null
+            }
+            response.header("Location")?.takeIf { it.isNotBlank() } ?: return null
+        }
+        val uploadUrl = if (location.startsWith("http://") || location.startsWith("https://")) {
+            location
+        } else {
+            storageBase + "/" + location.trimStart('/')
+        }
+
+        val chunkSize = 6 * 1024 * 1024
+        val input = context.contentResolver.openInputStream(uri) ?: return null
+        input.use { stream ->
+            var offset = 0L
+            val buffer = ByteArray(chunkSize)
+            while (offset < contentLength) {
+                val wanted = minOf(chunkSize.toLong(), contentLength - offset).toInt()
+                var count = 0
+                while (count < wanted) {
+                    val read = stream.read(buffer, count, wanted - count)
+                    if (read < 0) break
+                    count += read
+                }
+                if (count <= 0) return null
+
+                val patch = Request.Builder()
+                    .url(uploadUrl)
+                    .addHeader("apikey", anonKey)
+                    .addHeader("Authorization", "Bearer $token")
+                    .addHeader("Tus-Resumable", "1.0.0")
+                    .addHeader("Upload-Offset", offset.toString())
+                    .addHeader("Content-Type", "application/offset+octet-stream")
+                    .patch(
+                        buffer.copyOf(count)
+                            .toRequestBody("application/offset+octet-stream".toMediaType())
+                    )
+                    .build()
+
+                val nextOffset = executeRequest(patch).use { response ->
+                    if (!response.isSuccessful) {
+                        Log.e(
+                            TAG,
+                            "POST_MEDIA_TUS_PATCH failed status=" + response.code +
+                                " body=" + response.body?.string().orEmpty()
+                        )
+                        return null
+                    }
+                    response.header("Upload-Offset")?.toLongOrNull() ?: (offset + count)
+                }
+                if (nextOffset <= offset) return null
+                offset = nextOffset
+            }
+        }
+        return publicUrl
+    }
 
     // ============================================================
     // POST VIEW
@@ -2902,241 +3261,361 @@ suspend fun uploadPostMedia(
     // MARKET
     // ============================================================
 
-    suspend fun fetchMarketItems():
-        List<MarketItem> =
-        withContext(Dispatchers.IO) {
+    suspend fun fetchMarketItems(
+        limit: Int = 40,
+        offset: Int = 0,
+        query: String = "",
+        category: String? = null,
+        university: String? = null,
+        minPrice: Long? = null,
+        maxPrice: Long? = null,
+        sort: String = "newest"
+    ): List<MarketItem> = withContext(Dispatchers.IO) {
+        try {
+            val safeLimit = limit.coerceIn(1, 60)
+            val safeOffset = offset.coerceAtLeast(0)
+            val order = when (sort.lowercase(Locale.US)) {
+                "price_low" -> "price.asc,created_at.desc"
+                "price_high" -> "price.desc,created_at.desc"
+                "popular" -> "views_count.desc,created_at.desc"
+                else -> "created_at.desc"
+            }
 
-            try {
+            val url = buildString {
+                append("/rest/v1/market_items?select=*")
+                append("&status=eq.active")
+                append("&is_sold=eq.false")
+                category?.trim()?.takeIf { it.isNotBlank() && !it.equals("All Categories", true) }?.let {
+                    append("&category=eq.").append(encodeValue(it))
+                }
+                university?.trim()?.takeIf(String::isNotBlank)?.let {
+                    append("&university=eq.").append(encodeValue(it))
+                }
+                minPrice?.takeIf { it > 0L }?.let { append("&price=gte.").append(it) }
+                maxPrice?.takeIf { it > 0L }?.let { append("&price=lte.").append(it) }
+                query.trim().takeIf(String::isNotBlank)?.let { q ->
+                    val pattern = "*${q.take(80)}*"
+                    val expression = "(title.ilike.$pattern,description.ilike.$pattern,category.ilike.$pattern,seller_name.ilike.$pattern,seller_username.ilike.$pattern,location.ilike.$pattern,university.ilike.$pattern)"
+                    append("&or=").append(encodeValue(expression))
+                }
+                append("&order=").append(encodeValue(order))
+                append("&offset=").append(safeOffset)
+                append("&limit=").append(safeLimit)
+            }
 
-                val request =
-                    newRequestBuilder(
-                        "/rest/v1/market_items" +
-                                "?select=*" +
-                                "&order=created_at.desc" +
-                                "&limit=100"
-                    )
-                        .get()
-                        .build()
+            val raw = executeRequest(
+                newRequestBuilder(url, authenticated = true).get().build()
+            ).use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(body, "Market listings could not be loaded."))
+                }
+                body
+            }
 
-                executeRequest(request).use { response ->
-
-                    val body =
-                        response.body
-                            ?.string()
-                            .orEmpty()
-
-                    if (!response.isSuccessful) {
-                        return@withContext emptyList()
+            val savedIds = fetchMyMarketWishlistIds()
+            val array = JSONArray(if (raw.isBlank()) "[]" else raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    parseMarketItem(array.getJSONObject(i))?.let { item ->
+                        add(item.copy(isSaved = item.id in savedIds))
                     }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "MARKET_FETCH exception", e)
+            throw e
+        }
+    }
 
-                    if (
-                        body.isBlank() ||
-                        body == "[]"
-                    ) {
-                        return@withContext emptyList()
-                    }
+    suspend fun fetchMarketItemById(itemId: String): MarketItem? = withContext(Dispatchers.IO) {
+        if (!isValidUuid(itemId)) return@withContext null
+        try {
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/market_items?select=*&id=eq.${encodeValue(itemId)}&limit=1",
+                    authenticated = true
+                ).get().build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "This Market listing could not be loaded."))
+                }
+                val array = JSONArray(if (raw.isBlank()) "[]" else raw)
+                if (array.length() == 0) return@use null
+                val item = parseMarketItem(array.getJSONObject(0))
+                val saved = fetchMyMarketWishlistIds()
+                item.copy(isSaved = item.id in saved)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "MARKET_FETCH_BY_ID exception", e)
+            null
+        }
+    }
 
-                    val array =
-                        JSONArray(body)
-
-                    buildList {
-
-                        for (
-                            i in 0 until array.length()
-                        ) {
-
-                            parseMarketItem(
-                                array.getJSONObject(i)
-                            )?.let {
-                                add(it)
-                            }
+    suspend fun fetchMyMarketItems(limit: Int = 100): List<MarketItem> = withContext(Dispatchers.IO) {
+        val uid = getCurrentUserId() ?: return@withContext emptyList()
+        try {
+            val request = newRequestBuilder(
+                "/rest/v1/market_items?select=*&seller_id=eq.${encodeValue(uid)}&order=created_at.desc&limit=${limit.coerceIn(1,200)}",
+                authenticated = true
+            ).get().build()
+            executeRequest(request).use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(parseSupabaseError(body, "Your listings could not be loaded."))
+                val savedIds = fetchMyMarketWishlistIds()
+                val array = JSONArray(if (body.isBlank()) "[]" else body)
+                buildList {
+                    for (i in 0 until array.length()) {
+                        parseMarketItem(array.getJSONObject(i))?.let { item ->
+                            add(item.copy(isSaved = item.id in savedIds))
                         }
                     }
                 }
-
-            } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "MARKET_FETCH exception",
-                    e
-                )
-
-                emptyList()
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "MARKET_MINE exception", e)
+            emptyList()
         }
+    }
 
-    suspend fun fetchMarketItemById(marketId: String): MarketItem? =
-        withContext(Dispatchers.IO) {
-            val cleanId = marketId.trim()
-            if (cleanId.isBlank()) return@withContext null
+    private suspend fun fetchMyMarketWishlistIds(): Set<String> = withContext(Dispatchers.IO) {
+        if (getCurrentUserId().isNullOrBlank()) return@withContext emptySet()
+        runCatching {
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/marketplace_wishlist?select=item_id&order=created_at.desc&limit=1000",
+                    authenticated = true
+                ).get().build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@use emptySet<String>()
+                val arr = JSONArray(if (raw.isBlank()) "[]" else raw)
+                buildSet {
+                    for (i in 0 until arr.length()) {
+                        arr.optJSONObject(i)?.optString("item_id")?.takeIf(String::isNotBlank)?.let(::add)
+                    }
+                }
+            }
+        }.getOrDefault(emptySet())
+    }
 
-            try {
-                val request = newRequestBuilder(
-                    "/rest/v1/market_items" +
-                        "?id=eq.${encodeValue(cleanId)}" +
-                        "&select=*" +
-                        "&limit=1"
-                )
-                    .get()
+    suspend fun uploadMarketMedia(
+        userId: String,
+        bytes: ByteArray,
+        mimeType: String
+    ): String? = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || bytes.isEmpty() || bytes.size > 10 * 1024 * 1024) return@withContext null
+        try {
+            val normalizedMime = mimeType.ifBlank { "image/jpeg" }
+            val extension = when {
+                normalizedMime.contains("png", true) -> "png"
+                normalizedMime.contains("webp", true) -> "webp"
+                normalizedMime.contains("heic", true) -> "heic"
+                normalizedMime.contains("heif", true) -> "heif"
+                else -> "jpg"
+            }
+            val objectPath = "users/$userId/listings/${UUID.randomUUID()}.$extension"
+            val request = newRequestBuilder(
+                "/storage/v1/object/market-media/$objectPath",
+                authenticated = true
+            )
+                .addHeader("Content-Type", normalizedMime)
+                .addHeader("x-upsert", "false")
+                .post(bytes.toRequestBody(normalizedMime.toMediaType()))
+                .build()
+
+            executeRequest(request).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Listing photo upload failed."))
+                }
+            }
+            "$baseUrl/storage/v1/object/public/market-media/$objectPath"
+        } catch (e: Exception) {
+            Log.e(TAG, "MARKET_MEDIA_UPLOAD exception", e)
+            null
+        }
+    }
+
+    suspend fun createMarketItem(item: MarketItem): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val userId = getCurrentUserId() ?: return@withContext false
+            val cleanImages = item.images.map(String::trim).filter(String::isNotBlank).distinct().take(8)
+            if (cleanImages.isEmpty()) return@withContext false
+
+            val json = JSONObject().apply {
+                put("seller_id", userId)
+                put("title", item.title.trim().take(120))
+                put("price", item.price)
+                put("category", item.category)
+                put("condition", item.condition)
+                put("description", item.description.trim().take(4000))
+                put("image_url", cleanImages.first())
+                put("image_urls", JSONArray(cleanImages))
+                put("seller_username", item.sellerUsername)
+                put("seller_name", item.sellerName)
+                put("seller_avatar", item.sellerAvatar)
+                put("seller_phone", item.sellerPhone)
+                put("seller_whatsapp", item.sellerWhatsapp)
+                put("university", item.university)
+                put("location", item.location)
+                put("quantity", item.quantity.coerceIn(1, 9999))
+                put("currency", "NGN")
+                put("status", "active")
+                put("negotiable", item.isNegotiable)
+                put("delivery_method", item.deliveryMethod)
+                put("pickup_location", item.pickupLocation)
+            }
+
+            executeRequest(
+                newRequestBuilder("/rest/v1/market_items", authenticated = true)
+                    .addHeader("Prefer", "return=representation")
+                    .post(json.toString().toRequestBody(jsonMediaType))
                     .build()
-
-                executeRequest(request).use { response ->
-                    val body = response.body?.string().orEmpty()
-                    if (!response.isSuccessful || body.isBlank() || body == "[]") {
-                        return@withContext null
-                    }
-                    val array = JSONArray(body)
-                    if (array.length() == 0) null else parseMarketItem(array.getJSONObject(0))
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "MARKET_CREATE failed: ${response.code} $raw")
+                    return@use false
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "MARKET_FETCH_BY_ID exception", e)
-                null
+                true
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "MARKET_CREATE exception", e)
+            false
         }
+    }
 
-    suspend fun createMarketItem(
-        item: MarketItem
-    ): Boolean =
-        withContext(Dispatchers.IO) {
-
-            try {
-
-                val userId =
-                    getCurrentUserId()
-                        ?: return@withContext false
-
-                val json =
-                    JSONObject().apply {
-
-                        put(
-                            "seller_id",
-                            userId
-                        )
-
-                        put(
-                            "title",
-                            item.title
-                        )
-
-                        put(
-                            "price",
-                            item.price
-                        )
-
-                        put(
-                            "category",
-                            item.category
-                        )
-
-                        put(
-                            "condition",
-                            item.condition
-                        )
-
-                        put(
-                            "description",
-                            item.description
-                        )
-
-                        put(
-                            "image_url",
-                            item.images.firstOrNull()
-                                ?: ""
-                        )
-
-                        put(
-                            "image_urls",
-                            JSONArray().apply {
-                                item.images
-                                    .map { it.trim() }
-                                    .filter { it.isNotBlank() }
-                                    .distinct()
-                                    .forEach { put(it) }
-                            }
-                        )
-
-                        put(
-                            "seller_username",
-                            item.sellerUsername
-                        )
-
-                        put(
-                            "seller_name",
-                            item.sellerName
-                        )
-
-                        put(
-                            "seller_avatar",
-                            item.sellerAvatar
-                        )
-
-                        put(
-                            "seller_phone",
-                            item.sellerPhone
-                        )
-
-                        put(
-                            "seller_whatsapp",
-                            item.sellerWhatsapp
-                        )
-
-                        put(
-                            "university",
-                            item.university
-                        )
-
-                        put(
-                            "location",
-                            item.location
-                        )
-                    }
-
-                val request =
-                    newRequestBuilder(
-                        "/rest/v1/market_items",
-                        authenticated = true
-                    )
-                        .addHeader(
-                            "Prefer",
-                            "return=representation"
-                        )
-                        .post(
-                            json.toString()
-                                .toRequestBody(
-                                    jsonMediaType
-                                )
-                        )
-                        .build()
-
-                executeRequest(request).use { response ->
-
-                    if (!response.isSuccessful) {
-
-                        Log.e(
-                            TAG,
-                            "MARKET_CREATE failed: " +
-                                    "${response.code} " +
-                                    response.body
-                                        ?.string()
-                                        .orEmpty()
-                        )
-                    }
-
-                    response.isSuccessful
-                }
-
-            } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "MARKET_CREATE exception",
-                    e
-                )
-
-                false
+    suspend fun toggleMarketWishlist(itemId: String): Boolean? = withContext(Dispatchers.IO) {
+        if (!isValidUuid(itemId)) return@withContext null
+        try {
+            val body = JSONObject().put("p_item_id", itemId)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/toggle_marketplace_wishlist", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Could not update saved listing."))
+                raw.trim().trim('"').toBooleanStrictOrNull()
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "MARKET_WISHLIST exception", e)
+            null
         }
+    }
+
+    suspend fun recordMarketView(itemId: String): Long? = withContext(Dispatchers.IO) {
+        if (!isValidUuid(itemId)) return@withContext null
+        runCatching {
+            val body = JSONObject().put("p_item_id", itemId)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/record_marketplace_view", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Could not record listing view."))
+                raw.trim().trim('"').toLongOrNull()
+            }
+        }.getOrNull()
+    }
+
+    suspend fun reportMarketItem(itemId: String, reason: String, details: String = ""): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidUuid(itemId) || reason.trim().length < 3) return@withContext false
+        try {
+            val body = JSONObject()
+                .put("p_item_id", itemId)
+                .put("p_reason", reason.trim())
+                .put("p_details", details.trim().take(1000))
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/report_marketplace_item", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Report could not be submitted."))
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "MARKET_REPORT exception", e)
+            false
+        }
+    }
+
+    suspend fun updateMarketListingStatus(itemId: String, status: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidUuid(itemId)) return@withContext false
+        try {
+            val body = JSONObject().put("p_item_id", itemId).put("p_status", status.trim().lowercase(Locale.US))
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/update_marketplace_listing_status", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Listing status could not be updated."))
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "MARKET_STATUS exception", e)
+            false
+        }
+    }
+
+    suspend fun deleteMarketListing(itemId: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidUuid(itemId)) return@withContext false
+        try {
+            val body = JSONObject().put("p_item_id", itemId)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/delete_marketplace_listing", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Listing could not be removed."))
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "MARKET_DELETE exception", e)
+            false
+        }
+    }
+
+    suspend fun createMarketplaceOrder(itemId: String, quantity: Int = 1): String? = withContext(Dispatchers.IO) {
+        if (!isValidUuid(itemId)) return@withContext null
+        try {
+            val body = JSONObject()
+                .put("p_item_id", itemId)
+                .put("p_quantity", quantity.coerceIn(1,20))
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/create_marketplace_order", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Purchase request could not be created."))
+                raw.trim().trim('"').takeIf { isValidUuid(it) }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "MARKET_ORDER_CREATE exception", e)
+            null
+        }
+    }
+
+    suspend fun updateMarketplaceOrderStatus(orderId: String, status: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidUuid(orderId)) return@withContext false
+        try {
+            val body = JSONObject()
+                .put("p_order_id", orderId)
+                .put("p_status", status.trim().lowercase(Locale.US))
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/update_marketplace_order_status", true)
+                    .post(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Order status could not be updated."))
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "MARKET_ORDER_STATUS exception", e)
+            false
+        }
+    }
 
     // ============================================================
     // MESSAGES
@@ -3456,7 +3935,16 @@ suspend fun uploadPostMedia(
                 .ifBlank { obj.cleanString("time_ago") }
                 .ifBlank { formatTimeAgo(obj.cleanString("created_at")) },
             isFeatured = obj.optBoolean("is_featured", false),
-            isSold = obj.optBoolean("is_sold", false)
+            isSold = obj.optBoolean("is_sold", false),
+            quantity = obj.optInt("quantity", 1).coerceAtLeast(0),
+            currency = obj.cleanString("currency", "NGN"),
+            status = obj.cleanString("status", if (obj.optBoolean("is_sold", false)) "sold" else "active"),
+            isNegotiable = obj.optBoolean("negotiable", false),
+            deliveryMethod = obj.cleanString("delivery_method", "meetup"),
+            pickupLocation = obj.cleanString("pickup_location"),
+            viewsCount = obj.optLong("views_count", 0L).coerceAtLeast(0L),
+            savesCount = obj.optLong("saves_count", 0L).coerceAtLeast(0L),
+            createdAt = obj.cleanString("created_at")
         )
     }
 

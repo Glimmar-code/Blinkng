@@ -804,6 +804,16 @@ fun MainAppContent(
                         onOpenPostItem = { viewModel.openPostItem(true) },
                         onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
                         onOpenGetVerified = { viewModel.openGetVerified(true) },
+                        onToggleSave = { viewModel.toggleMarketSaved(it) },
+                        onSearch = { query, category, sort ->
+                            viewModel.searchMarketItems(query, category, sort)
+                        },
+                        onRefresh = { viewModel.refreshMarketItems() },
+                        onLoadMore = { viewModel.loadMoreMarketItems() },
+                        isLoading = uiState.isMarketLoading,
+                        isLoadingMore = uiState.isLoadingMoreMarket,
+                        hasMore = uiState.marketHasMore,
+                        errorMessage = uiState.marketErrorMessage,
                         isDark = uiState.isDarkMode
                     )
                 }
@@ -1161,6 +1171,18 @@ fun MainAppContent(
                         viewModel.openChatWithUser(partner, sellerName, sellerAvatar)
                     },
                     onSellerProfileClick = { viewModel.openProfile(it) },
+                    onToggleSave = { viewModel.toggleMarketSaved(it) },
+                    onRequestOrder = { listing, quantity ->
+                        viewModel.requestMarketplaceOrder(listing, quantity)
+                    },
+                    onReport = { listing, reason, details ->
+                        viewModel.reportMarketItem(listing, reason, details)
+                    },
+                    isOwner = viewModel.isMe(product.sellerUsername) || viewModel.isMe(product.sellerName),
+                    onUpdateListingStatus = { listing, status ->
+                        viewModel.updateMarketListingStatus(listing, status)
+                    },
+                    onDeleteListing = { viewModel.deleteMarketListing(it) },
                     isDark = uiState.isDarkMode
                 )
             }
@@ -1255,9 +1277,21 @@ fun MainAppContent(
         ) {
             PostItemScreen(
                 onBack = { viewModel.openPostItem(false) },
-                onSubmit = { title, price, category, condition, description, imageUrl ->
-                    viewModel.addMarketItem(title, price, category, condition, description, imageUrl)
+                onSubmit = { title, price, category, condition, description, images, quantity, negotiable, deliveryMethod, pickupLocation ->
+                    viewModel.addMarketItem(
+                        title = title,
+                        price = price,
+                        category = category,
+                        condition = condition,
+                        description = description,
+                        imageSources = images,
+                        quantity = quantity,
+                        negotiable = negotiable,
+                        deliveryMethod = deliveryMethod,
+                        pickupLocation = pickupLocation
+                    )
                 },
+                isPublishing = uiState.isPublishingMarketItem,
                 isDark = uiState.isDarkMode
             )
         }
@@ -1273,6 +1307,11 @@ fun MainAppContent(
                 onSuccess = { storeName, phone, whatsapp, state, city ->
                     viewModel.activateSellerAccount(storeName, phone, whatsapp, state, city)
                 },
+                initialStoreName = uiState.myProfile.sellerStoreName,
+                initialPhone = uiState.myProfile.phone.value,
+                initialWhatsapp = uiState.myProfile.whatsapp.value,
+                cashCheckoutEnabled = uiState.economyPolicy.cashCheckoutEnabled,
+                isSubmitting = uiState.isSellerActivationLoading,
                 isDark = uiState.isDarkMode
             )
         }
@@ -1491,7 +1530,7 @@ fun MainAppContent(
                 savedDrafts = uiState.savedDrafts,
                 scheduledPosts = uiState.scheduledPosts,
                 onDismiss = { viewModel.openCreatePost(false) },
-                onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText, textStyle ->
+                onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText, textStyle, clientRequestId ->
                     // Keep the composer alive until Supabase confirms the save. The ViewModel
                     // closes it only after success, so a failed publish keeps the user's draft.
                     viewModel.addPost(
@@ -1513,7 +1552,8 @@ fun MainAppContent(
                         isDisappearing = isDisappearing,
                         audioTitle = audioTitle,
                         altText = altText,
-                        textStyle = textStyle
+                        textStyle = textStyle,
+                        clientRequestId = clientRequestId
                     )
                 },
                 onSaveDraft = { draft ->
@@ -1524,6 +1564,12 @@ fun MainAppContent(
                 },
                 onSchedulePost = { post, timeMillis, timeFormatted ->
                     viewModel.schedulePost(post, timeMillis, timeFormatted)
+                },
+                onPublishScheduledPostNow = { scheduleId ->
+                    viewModel.publishScheduledPostNow(scheduleId)
+                },
+                onCancelScheduledPost = { scheduleId ->
+                    viewModel.deleteScheduledPost(scheduleId)
                 },
                 isDark = uiState.isDarkMode,
                 isSubmitting = uiState.isCreatingPost

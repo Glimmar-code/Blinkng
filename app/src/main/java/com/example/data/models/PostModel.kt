@@ -21,6 +21,29 @@ data class PostPoll(
     val hasVoted: Boolean = false
 )
 
+data class CreatePostRequest(
+    val clientRequestId: String,
+    val text: String,
+    val faculty: String,
+    val imageUris: List<String> = emptyList(),
+    val videoUri: String? = null,
+    val tags: List<String> = emptyList(),
+    val mentions: List<String> = emptyList(),
+    val poll: PostPoll? = null,
+    val isReel: Boolean = false,
+    val audience: String = "Everyone",
+    val category: String = "Campus Life",
+    val location: String? = null,
+    val linkUrl: String? = null,
+    val allowComments: Boolean = true,
+    val hideLikes: Boolean = false,
+    val isPinned: Boolean = false,
+    val isDisappearing: Boolean = false,
+    val audioTitle: String? = null,
+    val altText: String? = null,
+    val textStyle: String? = null
+)
+
 data class FeedPost(
     val id: String,
     val author: String,
@@ -82,10 +105,13 @@ data class PostDraft(
     val linkUrl: String? = null,
     val allowComments: Boolean = true,
     val hideLikes: Boolean = false,
+    val isPinned: Boolean = false,
+    val isDisappearing: Boolean = false,
     val pollQuestion: String = "",
     val pollOptions: List<String> = emptyList(),
     val savedAtTimestamp: Long = System.currentTimeMillis(),
     val audioTrack: String? = null,
+    val altText: String? = null,
     val textStyle: String? = null
 )
 
@@ -160,7 +186,17 @@ data class MarketItem(
     val description: String,
     val postedTime: String = "Recently",
     val isFeatured: Boolean = false,
-    val isSold: Boolean = false
+    val isSold: Boolean = false,
+    val quantity: Int = 1,
+    val currency: String = "NGN",
+    val status: String = "active",
+    val isNegotiable: Boolean = false,
+    val deliveryMethod: String = "meetup",
+    val pickupLocation: String = "",
+    val viewsCount: Long = 0L,
+    val savesCount: Long = 0L,
+    val isSaved: Boolean = false,
+    val createdAt: String = ""
 )
 
 data class LeaderboardUser(
