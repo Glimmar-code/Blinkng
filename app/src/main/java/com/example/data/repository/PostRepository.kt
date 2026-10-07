@@ -116,7 +116,8 @@ class PostRepository(
         isPinned: Boolean = false,
         isDisappearing: Boolean = false,
         audioTitle: String? = null,
-        altText: String? = null
+        altText: String? = null,
+        clientRequestId: String? = null
     ): FeedPost? = withContext(Dispatchers.IO) {
         supabaseService.createFeedPost(
             author = author,
@@ -138,7 +139,8 @@ class PostRepository(
             isPinned = isPinned,
             isDisappearing = isDisappearing,
             audioTitle = audioTitle,
-            altText = altText
+            altText = altText,
+            clientRequestId = clientRequestId
         )
     }
 
@@ -151,6 +153,20 @@ class PostRepository(
         supabaseService.uploadPostMedia(
             userId = userId,
             bytes = bytes,
+            mimeType = mimeType,
+            isVideo = isVideo
+        )
+    }
+
+    suspend fun uploadPostMediaUri(
+        userId: String,
+        uriString: String,
+        isVideo: Boolean,
+        mimeType: String
+    ): String? = withContext(Dispatchers.IO) {
+        supabaseService.uploadPostMediaUri(
+            userId = userId,
+            uriString = uriString,
             mimeType = mimeType,
             isVideo = isVideo
         )

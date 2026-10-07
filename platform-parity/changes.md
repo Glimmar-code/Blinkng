@@ -1,3 +1,11 @@
+## 2026-10-07 — Connect reliability, discovery and unified inbox overhaul
+
+- Android: Connect now uses a coordinated full-height scroll surface instead of nesting the main LazyColumn around a fixed-height pager; student discovery adds Same Department and Verified filters plus Recommended/Recently Active/Campus First/A–Z sorting and resettable empty states. The 20 Connect directory entries are grouped into Housing, Study, Career & Skills, People & Community and Games. A profile-aware For You rail and unified Connect Inbox surface requests/challenges without changing the authoritative request RPCs. Pending badges ignore completed request history.
+- Windows: Connect adds the same grouped discovery concepts, enhanced student filters/sorting, For You summaries and a real Inbox backed by the existing `get_connect_request_inbox`, `respond_connect_request` and `respond_game_challenge` contracts. No mock request state is introduced.
+- Reliability/backend: Android Connect snapshot loading now isolates Roommate, Mentor, Reading Mate, Housing Agent, Housing Request, Challenge, Smart Match, Inbox and game-stat failures so one unavailable dataset cannot blank the whole Hub. No production Supabase schema, ranking, coins, auth, messaging, moderation or notification rules are changed.
+- Safety: implemented on `Testlab-connect-overhaul-20261007`; production `main` remains unchanged until Android and Windows checks pass.
+
+
 ## 2026-10-07 — X-style feed polish, restoration and performance hardening
 
 - Android Home: the BLINK branding/action chrome now collapses continuously while For You / Following remain pinned; fling velocity participates in settle decisions; 12dp direction hysteresis still suppresses jitter; pull-to-refresh forces a stable fully-open chrome state; the Create Post action compacts on downward intent and expands after deliberate upward movement or when scrolling settles.

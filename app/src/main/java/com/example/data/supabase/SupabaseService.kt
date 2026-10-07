@@ -4,6 +4,8 @@ import com.blinkng.shared.ProfileRankSnapshot
 import com.example.auth.AccountSessionStore
 import com.example.auth.SupabaseSessionRefresher
 import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.Base64
 import android.util.Log
 import com.example.data.models.AchievementBadge
@@ -43,7 +45,9 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -2152,10 +2156,72 @@ fun getCurrentUserId(): String? {
         tags: List<String> = emptyList(), mentions: List<String> = emptyList(), poll: PostPoll? = null, isReel: Boolean = false,
         audience: String = "Everyone", category: String = "Campus Life", location: String? = null, linkUrl: String? = null,
         allowComments: Boolean = true, hideLikes: Boolean = false, isPinned: Boolean = false, isDisappearing: Boolean = false,
-        audioTitle: String? = null, altText: String? = null, textStyle: String? = null
+        audioTitle: String? = null, altText: String? = null, textStyle: String? = null,
+        clientRequestId: String? = null
     ): FeedPost? = withContext(Dispatchers.IO) {
         try {
             val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            val cleanClientRequestId = clientRequestId
+                ?.trim()
+                ?.takeIf { isValidUuid(it) }
+
+            suspend fun existingRowByRequestId(requestId: String): JSONObject? {
+                val path = "/rest/v1/feed_posts" +
+                    "?select=*&id=eq.$requestId&user_id=eq.$uid&limit=1"
+                return executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful || raw.isBlank() || raw == "[]") {
+                        null
+                    } else {
+                        runCatching { JSONArray(raw).getJSONObject(0) }.getOrNull()
+                    }
+                }
+            }
+
+            suspend fun existingPollId(postId: String): String? {
+                val path = "/rest/v1/polls?select=id&post_id=eq.$postId&limit=1"
+                return executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful || raw.isBlank() || raw == "[]") {
+                        null
+                    } else {
+                        runCatching { JSONArray(raw).getJSONObject(0).optString("id") }
+                            .getOrNull()
+                            ?.takeIf { isValidUuid(it) }
+                    }
+                }
+            }
+
+            suspend fun existingPollOptions(pollId: String): Set<String> {
+                val path = "/rest/v1/poll_options?select=option_text&poll_id=eq.$pollId"
+                return executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful || raw.isBlank() || raw == "[]") {
+                        emptySet()
+                    } else {
+                        runCatching {
+                            val array = JSONArray(raw)
+                            buildSet {
+                                for (index in 0 until array.length()) {
+                                    array.optJSONObject(index)
+                                        ?.optString("option_text")
+                                        ?.trim()
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?.lowercase(Locale.US)
+                                        ?.let(::add)
+                                }
+                            }
+                        }.getOrDefault(emptySet())
+                    }
+                }
+            }
+
+            val existingCreatedRow = if (cleanClientRequestId != null) {
+                existingRowByRequestId(cleanClientRequestId)
+            } else {
+                null
+            }
+
             val mentionIds = JSONArray()
             for (mention in mentions) {
                 val mid = if (isValidUuid(mention)) mention else fetchProfileByUsername(mention.removePrefix("@"))?.id
@@ -2188,6 +2254,7 @@ fun getCurrentUserId(): String? {
 
             val body = JSONObject().apply {
                 put("user_id", uid)
+                cleanClientRequestId?.let { put("id", it) }
                 put(
                     "type",
                     when {
@@ -2221,28 +2288,104 @@ fun getCurrentUserId(): String? {
                     put("gradient", JSONObject().put("key", style.trim().lowercase(Locale.US)))
                 }
             }
-            val created = executeRequest(newRequestBuilder("/rest/v1/feed_posts", true).addHeader("Prefer", "return=representation")
-                .post(body.toString().toRequestBody(jsonMediaType)).build()).use { resp ->
+            val created = existingCreatedRow ?: executeRequest(
+                newRequestBuilder("/rest/v1/feed_posts", true)
+                    .addHeader("Prefer", "return=representation")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { resp ->
                 val raw = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful || raw.isBlank() || raw == "[]") throw IllegalStateException(parseSupabaseError(raw, "Could not create post."))
+                if (!resp.isSuccessful || raw.isBlank() || raw == "[]") {
+                    if (resp.code == 409 && cleanClientRequestId != null) {
+                        existingRowByRequestId(cleanClientRequestId)?.let { existing ->
+                            return@use existing
+                        }
+                    }
+                    throw IllegalStateException(parseSupabaseError(raw, "Could not create post."))
+                }
                 JSONArray(raw).getJSONObject(0)
             }
             val postId = created.optString("id").takeIf { isValidUuid(it) } ?: throw IllegalStateException("Invalid post ID returned by Supabase.")
             if (poll != null) {
-                val p = JSONObject().apply { put("post_id", postId); put("question", poll.question); put("allows_multiple", false) }
-                val pollRow = executeRequest(newRequestBuilder("/rest/v1/polls", true).addHeader("Prefer", "return=representation")
-                    .post(p.toString().toRequestBody(jsonMediaType)).build()).use { resp ->
-                    val raw = resp.body?.string().orEmpty(); if (!resp.isSuccessful || raw.isBlank() || raw == "[]") throw IllegalStateException(parseSupabaseError(raw, "Could not create poll.")); JSONArray(raw).getJSONObject(0)
-                }
-                val pollId = pollRow.optString("id")
-                for ((index, option) in poll.options.withIndex()) {
-                    val o = JSONObject().apply { put("poll_id", pollId); put("option_text", option.text); put("position", index) }
-                    executeRequest(newRequestBuilder("/rest/v1/poll_options", true).post(o.toString().toRequestBody(jsonMediaType)).build()).use { resp ->
-                        if (!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(resp.body?.string().orEmpty(), "Could not create poll option."))
+                val alreadyAttachedPollId = created.optString("poll_id")
+                    .takeIf { isValidUuid(it) }
+
+                val pollId = alreadyAttachedPollId
+                    ?: existingPollId(postId)
+                    ?: run {
+                        val p = JSONObject().apply {
+                            put("post_id", postId)
+                            put("question", poll.question)
+                            put("allows_multiple", false)
+                        }
+                        executeRequest(
+                            newRequestBuilder("/rest/v1/polls", true)
+                                .addHeader("Prefer", "return=representation")
+                                .post(p.toString().toRequestBody(jsonMediaType))
+                                .build()
+                        ).use { resp ->
+                            val raw = resp.body?.string().orEmpty()
+                            if (!resp.isSuccessful || raw.isBlank() || raw == "[]") {
+                                throw IllegalStateException(
+                                    parseSupabaseError(raw, "Could not create poll.")
+                                )
+                            }
+                            JSONArray(raw).getJSONObject(0).optString("id")
+                        }
                     }
+
+                if (!isValidUuid(pollId)) {
+                    throw IllegalStateException("Invalid poll ID returned by Supabase.")
                 }
-                executeRequest(newRequestBuilder("/rest/v1/feed_posts?id=eq.$postId", true).patch(JSONObject().put("poll_id", pollId).toString().toRequestBody(jsonMediaType)).build()).use { resp ->
-                    if (!resp.isSuccessful) throw IllegalStateException(parseSupabaseError(resp.body?.string().orEmpty(), "Could not attach poll."))
+
+                val existingOptions = existingPollOptions(pollId).toMutableSet()
+                for ((index, option) in poll.options.withIndex()) {
+                    val cleanOption = option.text.trim()
+                    val optionKey = cleanOption.lowercase(Locale.US)
+                    if (cleanOption.isBlank() || optionKey in existingOptions) continue
+
+                    val o = JSONObject().apply {
+                        put("poll_id", pollId)
+                        put("option_text", cleanOption)
+                        put("position", index)
+                    }
+                    executeRequest(
+                        newRequestBuilder("/rest/v1/poll_options", true)
+                            .post(o.toString().toRequestBody(jsonMediaType))
+                            .build()
+                    ).use { resp ->
+                        if (!resp.isSuccessful) {
+                            throw IllegalStateException(
+                                parseSupabaseError(
+                                    resp.body?.string().orEmpty(),
+                                    "Could not create poll option."
+                                )
+                            )
+                        }
+                    }
+                    existingOptions += optionKey
+                }
+
+                if (alreadyAttachedPollId == null) {
+                    executeRequest(
+                        newRequestBuilder("/rest/v1/feed_posts?id=eq.$postId", true)
+                            .patch(
+                                JSONObject()
+                                    .put("poll_id", pollId)
+                                    .toString()
+                                    .toRequestBody(jsonMediaType)
+                            )
+                            .build()
+                    ).use { resp ->
+                        if (!resp.isSuccessful) {
+                            throw IllegalStateException(
+                                parseSupabaseError(
+                                    resp.body?.string().orEmpty(),
+                                    "Could not attach poll."
+                                )
+                            )
+                        }
+                    }
                 }
             }
             fetchFeedPosts().firstOrNull { it.id == postId } ?: parseFeedPost(created)
@@ -2362,6 +2505,222 @@ suspend fun uploadPostMedia(
                 null
             }
         }
+
+
+    suspend fun uploadPostMediaUri(
+        userId: String,
+        uriString: String,
+        mimeType: String,
+        isVideo: Boolean
+    ): String? = withContext(Dispatchers.IO) {
+        val context = appContext ?: return@withContext null
+        val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return@withContext null
+        val length = contentLength(context, uri)
+        if (userId.isBlank() || length == 0L) return@withContext null
+
+        if (length > 6L * 1024L * 1024L) {
+            uploadPostMediaResumable(
+                context = context,
+                userId = userId,
+                uri = uri,
+                mimeType = mimeType,
+                isVideo = isVideo,
+                contentLength = length
+            )
+        } else {
+            uploadPostMediaStreaming(
+                context = context,
+                userId = userId,
+                uri = uri,
+                mimeType = mimeType,
+                isVideo = isVideo,
+                contentLength = length
+            )
+        }
+    }
+
+    private fun contentLength(context: Context, uri: Uri): Long {
+        context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+            if (descriptor.length >= 0L) return descriptor.length
+        }
+        return runCatching {
+            context.contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.SIZE),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getLong(0) else -1L
+            } ?: -1L
+        }.getOrDefault(-1L)
+    }
+
+    private fun postMediaTarget(userId: String, mimeType: String, isVideo: Boolean): Pair<String, String> {
+        val extension = when {
+            mimeType.contains("mp4", true) -> "mp4"
+            mimeType.contains("webm", true) -> "webm"
+            mimeType.contains("png", true) -> "png"
+            mimeType.contains("webp", true) -> "webp"
+            mimeType.contains("gif", true) -> "gif"
+            else -> if (isVideo) "mp4" else "jpg"
+        }
+        val folder = if (isVideo) "users/$userId/posts/videos" else "users/$userId/posts/images"
+        val path = "$folder/" + UUID.randomUUID() + "." + extension
+        return path to "$baseUrl/storage/v1/object/public/post-media/$path"
+    }
+
+    private suspend fun uploadPostMediaStreaming(
+        context: Context,
+        userId: String,
+        uri: Uri,
+        mimeType: String,
+        isVideo: Boolean,
+        contentLength: Long
+    ): String? {
+        val (path, publicUrl) = postMediaTarget(userId, mimeType, isVideo)
+        val body = object : RequestBody() {
+            override fun contentType() = mimeType.toMediaType()
+            override fun contentLength(): Long = contentLength
+            override fun writeTo(sink: BufferedSink) {
+                val input = context.contentResolver.openInputStream(uri)
+                    ?: throw IllegalStateException("Could not open selected media.")
+                input.use {
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val read = it.read(buffer)
+                        if (read < 0) break
+                        if (read > 0) sink.write(buffer, 0, read)
+                    }
+                }
+            }
+        }
+        val request = newRequestBuilder(
+            "/storage/v1/object/post-media/$path",
+            authenticated = true
+        )
+            .addHeader("Content-Type", mimeType)
+            .post(body)
+            .build()
+
+        return executeRequest(request).use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                Log.e(TAG, "POST_MEDIA_STREAM_UPLOAD failed status=" + response.code + " body=" + raw)
+                null
+            } else {
+                publicUrl
+            }
+        }
+    }
+
+    private suspend fun uploadPostMediaResumable(
+        context: Context,
+        userId: String,
+        uri: Uri,
+        mimeType: String,
+        isVideo: Boolean,
+        contentLength: Long
+    ): String? {
+        if (contentLength <= 0L) {
+            return uploadPostMediaStreaming(
+                context,
+                userId,
+                uri,
+                mimeType,
+                isVideo,
+                contentLength
+            )
+        }
+
+        val token = accessToken() ?: return null
+        val (path, publicUrl) = postMediaTarget(userId, mimeType, isVideo)
+        val storageBase = baseUrl
+            .replace(".supabase.co", ".storage.supabase.co")
+            .trimEnd('/')
+        val endpoint = "$storageBase/storage/v1/upload/resumable"
+
+        fun metadata(value: String): String =
+            Base64.encodeToString(value.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP)
+
+        val createRequest = Request.Builder()
+            .url(endpoint)
+            .addHeader("apikey", anonKey)
+            .addHeader("Authorization", "Bearer $token")
+            .addHeader("Tus-Resumable", "1.0.0")
+            .addHeader("Upload-Length", contentLength.toString())
+            .addHeader(
+                "Upload-Metadata",
+                "bucketName " + metadata("post-media") + "," +
+                    "objectName " + metadata(path) + "," +
+                    "contentType " + metadata(mimeType) + "," +
+                    "cacheControl " + metadata("3600")
+            )
+            .post(ByteArray(0).toRequestBody(null))
+            .build()
+
+        val location = executeRequest(createRequest).use { response ->
+            if (!response.isSuccessful) {
+                Log.e(
+                    TAG,
+                    "POST_MEDIA_TUS_CREATE failed status=" + response.code +
+                        " body=" + response.body?.string().orEmpty()
+                )
+                return null
+            }
+            response.header("Location")?.takeIf { it.isNotBlank() } ?: return null
+        }
+        val uploadUrl = if (location.startsWith("http://") || location.startsWith("https://")) {
+            location
+        } else {
+            storageBase + "/" + location.trimStart('/')
+        }
+
+        val chunkSize = 6 * 1024 * 1024
+        val input = context.contentResolver.openInputStream(uri) ?: return null
+        input.use { stream ->
+            var offset = 0L
+            val buffer = ByteArray(chunkSize)
+            while (offset < contentLength) {
+                val wanted = minOf(chunkSize.toLong(), contentLength - offset).toInt()
+                var count = 0
+                while (count < wanted) {
+                    val read = stream.read(buffer, count, wanted - count)
+                    if (read < 0) break
+                    count += read
+                }
+                if (count <= 0) return null
+
+                val patch = Request.Builder()
+                    .url(uploadUrl)
+                    .addHeader("apikey", anonKey)
+                    .addHeader("Authorization", "Bearer $token")
+                    .addHeader("Tus-Resumable", "1.0.0")
+                    .addHeader("Upload-Offset", offset.toString())
+                    .addHeader("Content-Type", "application/offset+octet-stream")
+                    .patch(
+                        buffer.copyOf(count)
+                            .toRequestBody("application/offset+octet-stream".toMediaType())
+                    )
+                    .build()
+
+                val nextOffset = executeRequest(patch).use { response ->
+                    if (!response.isSuccessful) {
+                        Log.e(
+                            TAG,
+                            "POST_MEDIA_TUS_PATCH failed status=" + response.code +
+                                " body=" + response.body?.string().orEmpty()
+                        )
+                        return null
+                    }
+                    response.header("Upload-Offset")?.toLongOrNull() ?: (offset + count)
+                }
+                if (nextOffset <= offset) return null
+                offset = nextOffset
+            }
+        }
+        return publicUrl
+    }
 
     // ============================================================
     // POST VIEW
