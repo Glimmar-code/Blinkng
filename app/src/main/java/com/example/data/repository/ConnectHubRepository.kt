@@ -38,31 +38,59 @@ class ConnectHubRepository(
     private val baseUrl = SupabaseConfig.url.trimEnd('/')
 
     suspend fun fetchSnapshot(): ConnectHubSnapshot = withContext(Dispatchers.IO) {
-        val roommates = getArray("/rest/v1/roommate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
-            .mapObjects(::parseRoommate)
-        val mentors = getArray("/rest/v1/mentor_profiles?select=*&is_active=eq.true&mode=in.(mentor,both)&order=created_at.desc&limit=30")
-            .mapObjects(::parseMentor)
-        val reading = getArray("/rest/v1/reading_mate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
-            .mapObjects(::parseReadingMate)
-        val agents = getArray("/rest/v1/housing_agent_profiles?select=*&is_active=eq.true&is_verified=eq.true&order=created_at.desc&limit=30")
-            .mapObjects(::parseHousingAgent)
-        val housingRequests = getArray("/rest/v1/housing_requests?select=*&status=eq.open&order=created_at.desc&limit=40")
-            .mapObjects(::parseHousingRequest)
-        val challenges = getArray("/rest/v1/game_challenges?select=*&order=created_at.desc&limit=30")
-            .mapObjects(::parseChallenge)
+        // Keep Connect useful when one backend surface is temporarily unavailable.
+        // Each section is isolated so a Housing/Challenge/RPC failure cannot blank
+        // Roommates, Mentors, Reading Mates, student discovery or the rest of the hub.
+        val roommates = runCatching {
+            getArray("/rest/v1/roommate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
+                .mapObjects(::parseRoommate)
+        }.getOrDefault(emptyList())
+
+        val mentors = runCatching {
+            getArray("/rest/v1/mentor_profiles?select=*&is_active=eq.true&mode=in.(mentor,both)&order=created_at.desc&limit=30")
+                .mapObjects(::parseMentor)
+        }.getOrDefault(emptyList())
+
+        val reading = runCatching {
+            getArray("/rest/v1/reading_mate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
+                .mapObjects(::parseReadingMate)
+        }.getOrDefault(emptyList())
+
+        val agents = runCatching {
+            getArray("/rest/v1/housing_agent_profiles?select=*&is_active=eq.true&is_verified=eq.true&order=created_at.desc&limit=30")
+                .mapObjects(::parseHousingAgent)
+        }.getOrDefault(emptyList())
+
+        val housingRequests = runCatching {
+            getArray("/rest/v1/housing_requests?select=*&status=eq.open&order=created_at.desc&limit=40")
+                .mapObjects(::parseHousingRequest)
+        }.getOrDefault(emptyList())
+
+        val challenges = runCatching {
+            getArray("/rest/v1/game_challenges?select=*&order=created_at.desc&limit=30")
+                .mapObjects(::parseChallenge)
+        }.getOrDefault(emptyList())
+
         val smartMatches = runCatching {
             JSONArray(rpc("get_connect_matches", JSONObject().put("p_limit", 30)))
                 .mapObjects(::parseSmartMatch)
         }.getOrDefault(emptyList())
+
         val requests = runCatching {
             JSONArray(rpc("get_connect_request_inbox", JSONObject().put("p_limit", 120)))
                 .mapObjects(::parseConnectRequest)
         }.getOrDefault(emptyList())
 
         val uid = supabaseService.getCurrentUserId().orEmpty()
-        val gameStats = if (uid.isBlank()) GameProfileStats() else {
-            val arr = getArray("/rest/v1/game_profiles?select=score,coins,streak,best_streak&user_id=eq.${encode(uid)}&limit=1")
-            if (arr.length() == 0) GameProfileStats() else parseGameStats(arr.getJSONObject(0))
+        val gameStats = if (uid.isBlank()) {
+            GameProfileStats()
+        } else {
+            runCatching {
+                val arr = getArray(
+                    "/rest/v1/game_profiles?select=score,coins,streak,best_streak&user_id=eq.${encode(uid)}&limit=1"
+                )
+                if (arr.length() == 0) GameProfileStats() else parseGameStats(arr.getJSONObject(0))
+            }.getOrDefault(GameProfileStats())
         }
 
         ConnectHubSnapshot(

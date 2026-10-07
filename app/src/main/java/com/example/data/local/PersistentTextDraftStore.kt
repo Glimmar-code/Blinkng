@@ -118,6 +118,21 @@ object PersistentTextDraftStore {
                 .onSuccess { encrypted -> editor.putString(storageKey, encrypted).apply() }
         }
     }
+
+    fun readValue(context: Context, key: String, scope: String = ""): String? =
+        readStorageKey(
+            context.applicationContext,
+            storageKey(context.applicationContext, key, scope)
+        )
+
+    fun writeValue(context: Context, key: String, scope: String = "", value: String) {
+        val appContext = context.applicationContext
+        writeStorageKey(appContext, storageKey(appContext, key, scope), value)
+    }
+
+    fun clearValue(context: Context, key: String, scope: String = "") {
+        writeValue(context, key, scope, "")
+    }
 }
 
 @Composable

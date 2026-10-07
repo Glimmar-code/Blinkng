@@ -20,6 +20,7 @@ import com.example.call.CallType
 import com.example.call.IncomingCallNotification
 import com.example.data.local.CachedAppSnapshot
 import com.example.data.local.OfflineContentStore
+import com.example.data.local.PersistentTextDraftStore
 import com.example.data.models.*
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.*
@@ -2614,19 +2615,120 @@ private suspend fun restoreSupabaseSession() {
 
     private fun loadDraftsFromPrefs() {
         try {
-            val json = prefs.safeString("blink_saved_drafts_data", null)
-            if (!json.isNullOrBlank()) {
-                val drafts = mutableListOf<PostDraft>()
-                for (item in json.split(";;;DRAFT_DELIM;;;")) {
-                    if (item.isBlank()) continue
-                    val parts = item.split(":::FIELD:::")
-                    if (parts.size >= 8) drafts.add(PostDraft(id = parts.getOrNull(0) ?: "draft_${System.currentTimeMillis()}", text = parts.getOrNull(1) ?: "", faculty = parts.getOrNull(2) ?: "SIMME", imageUri = parts.getOrNull(3)?.takeIf { it.isNotBlank() }, videoUri = parts.getOrNull(4)?.takeIf { it.isNotBlank() }, isReel = parts.getOrNull(5)?.toBoolean() ?: false, category = parts.getOrNull(6) ?: "Campus Life", audience = parts.getOrNull(7) ?: "Everyone", tags = parts.getOrNull(8)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(), mentions = parts.getOrNull(9)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(), savedAtTimestamp = parts.getOrNull(10)?.toLongOrNull() ?: System.currentTimeMillis(), textStyle = parts.getOrNull(11)?.takeIf { it.isNotBlank() }))
+            val raw = prefs.safeString("blink_saved_drafts_data", null).orEmpty()
+            if (raw.isBlank()) return
+
+            val drafts = if (raw.trimStart().startsWith("[")) {
+                val array = JSONArray(raw)
+                buildList {
+                    for (index in 0 until array.length()) {
+                        array.optJSONObject(index)?.let { objectValue ->
+                            runCatching { postDraftFromJson(objectValue) }.getOrNull()?.let(::add)
+                        }
+                    }
                 }
-                _uiState.value = _uiState.value.copy(savedDrafts = drafts)
+            } else {
+                // One-time migration from the legacy delimiter format.
+                buildList {
+                    for (item in raw.split(";;;DRAFT_DELIM;;;")) {
+                        if (item.isBlank()) continue
+                        val parts = item.split(":::FIELD:::")
+                        if (parts.size < 8) continue
+                        add(
+                            PostDraft(
+                                id = parts.getOrNull(0) ?: "draft_${System.currentTimeMillis()}",
+                                text = parts.getOrNull(1) ?: "",
+                                faculty = parts.getOrNull(2) ?: "SIMME",
+                                imageUri = parts.getOrNull(3)?.takeIf { it.isNotBlank() },
+                                videoUri = parts.getOrNull(4)?.takeIf { it.isNotBlank() },
+                                isReel = parts.getOrNull(5)?.toBoolean() ?: false,
+                                category = parts.getOrNull(6) ?: "Campus Life",
+                                audience = parts.getOrNull(7) ?: "Everyone",
+                                tags = parts.getOrNull(8)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
+                                mentions = parts.getOrNull(9)?.split(",")?.filter { it.isNotBlank() } ?: emptyList(),
+                                savedAtTimestamp = parts.getOrNull(10)?.toLongOrNull() ?: System.currentTimeMillis(),
+                                textStyle = parts.getOrNull(11)?.takeIf { it.isNotBlank() }
+                            )
+                        )
+                    }
+                }.also(::saveDraftsToPrefs)
             }
-        } catch (e: Exception) { Log.e(TAG, "Failed to load drafts", e) }
+
+            _uiState.value = _uiState.value.copy(savedDrafts = drafts)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load drafts", e)
+        }
     }
-    private fun saveDraftsToPrefs(drafts: List<PostDraft>) { try { val serialized = drafts.joinToString(";;;DRAFT_DELIM;;;") { d -> listOf(d.id, d.text, d.faculty, d.imageUri ?: "", d.videoUri ?: "", d.isReel.toString(), d.category, d.audience, d.tags.joinToString(","), d.mentions.joinToString(","), d.savedAtTimestamp.toString(), d.textStyle ?: "").joinToString(":::FIELD:::") }; prefs.edit().putString("blink_saved_drafts_data", serialized).apply() } catch (e: Exception) { Log.e(TAG, "Failed to save drafts", e) } }
+
+    private fun postDraftToJson(draft: PostDraft): JSONObject = JSONObject().apply {
+        put("id", draft.id)
+        put("text", draft.text)
+        put("faculty", draft.faculty)
+        put("image_uri", draft.imageUri ?: JSONObject.NULL)
+        put("video_uri", draft.videoUri ?: JSONObject.NULL)
+        put("is_reel", draft.isReel)
+        put("tags", JSONArray(draft.tags))
+        put("mentions", JSONArray(draft.mentions))
+        put("category", draft.category)
+        put("audience", draft.audience)
+        put("location", draft.location ?: JSONObject.NULL)
+        put("link_url", draft.linkUrl ?: JSONObject.NULL)
+        put("allow_comments", draft.allowComments)
+        put("hide_likes", draft.hideLikes)
+        put("is_pinned", draft.isPinned)
+        put("is_disappearing", draft.isDisappearing)
+        put("poll_question", draft.pollQuestion)
+        put("poll_options", JSONArray(draft.pollOptions))
+        put("saved_at", draft.savedAtTimestamp)
+        put("audio_track", draft.audioTrack ?: JSONObject.NULL)
+        put("alt_text", draft.altText ?: JSONObject.NULL)
+        put("text_style", draft.textStyle ?: JSONObject.NULL)
+    }
+
+    private fun postDraftFromJson(value: JSONObject): PostDraft = PostDraft(
+        id = value.optString("id").ifBlank { "draft_${System.currentTimeMillis()}" },
+        text = value.optString("text"),
+        faculty = value.optString("faculty", "SIMME"),
+        imageUri = value.optString("image_uri").takeIf { it.isNotBlank() && it != "null" },
+        videoUri = value.optString("video_uri").takeIf { it.isNotBlank() && it != "null" },
+        isReel = value.optBoolean("is_reel", false),
+        tags = value.optJSONArray("tags").toStringList(),
+        mentions = value.optJSONArray("mentions").toStringList(),
+        category = value.optString("category", "Campus Life"),
+        audience = value.optString("audience", "Everyone"),
+        location = value.optString("location").takeIf { it.isNotBlank() && it != "null" },
+        linkUrl = value.optString("link_url").takeIf { it.isNotBlank() && it != "null" },
+        allowComments = value.optBoolean("allow_comments", true),
+        hideLikes = value.optBoolean("hide_likes", false),
+        isPinned = value.optBoolean("is_pinned", false),
+        isDisappearing = value.optBoolean("is_disappearing", false),
+        pollQuestion = value.optString("poll_question"),
+        pollOptions = value.optJSONArray("poll_options").toStringList(),
+        savedAtTimestamp = value.optLong("saved_at", System.currentTimeMillis()),
+        audioTrack = value.optString("audio_track").takeIf { it.isNotBlank() && it != "null" },
+        altText = value.optString("alt_text").takeIf { it.isNotBlank() && it != "null" },
+        textStyle = value.optString("text_style").takeIf { it.isNotBlank() && it != "null" }
+    )
+
+    private fun JSONArray?.toStringList(): List<String> {
+        if (this == null) return emptyList()
+        return buildList {
+            for (index in 0 until length()) {
+                optString(index).takeIf { it.isNotBlank() }?.let(::add)
+            }
+        }
+    }
+
+    private fun saveDraftsToPrefs(drafts: List<PostDraft>) {
+        try {
+            val serialized = JSONArray().apply {
+                drafts.forEach { put(postDraftToJson(it)) }
+            }.toString()
+            prefs.edit().putString("blink_saved_drafts_data", serialized).apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save drafts", e)
+        }
+    }
     fun saveDraft(draft: PostDraft) { val updated = listOf(draft) + _uiState.value.savedDrafts.filter { it.id != draft.id }; _uiState.value = _uiState.value.copy(savedDrafts = updated); saveDraftsToPrefs(updated); showToast("💾 Draft saved to phone storage") }
     fun deleteDraft(draftId: String) { val updated = _uiState.value.savedDrafts.filter { it.id != draftId }; _uiState.value = _uiState.value.copy(savedDrafts = updated); saveDraftsToPrefs(updated); showToast("🗑️ Draft deleted") }
 
@@ -2697,6 +2799,7 @@ private suspend fun restoreSupabaseSession() {
                         isCreatePostOpen = false,
                         isCreatingPost = false
                     )
+                    clearCreatePostPersistentState(profile)
                     showToast("Post scheduled for $timeFormatted")
                 }
             } catch (e: Exception) {
@@ -2764,7 +2867,8 @@ private suspend fun restoreSupabaseSession() {
         isDisappearing: Boolean = false,
         audioTitle: String? = null,
         altText: String? = null,
-        textStyle: String? = null
+        textStyle: String? = null,
+        clientRequestId: String? = null
     ) {
         if (_uiState.value.isCreatingPost) return
 
@@ -2829,7 +2933,8 @@ private suspend fun restoreSupabaseSession() {
                     isDisappearing,
                     audioTitle,
                     altText,
-                    textStyle
+                    textStyle,
+                    clientRequestId
                 ) ?: throw IllegalStateException("The server did not save the post.")
 
                 withContext(Dispatchers.Main) {
@@ -2841,6 +2946,7 @@ private suspend fun restoreSupabaseSession() {
                         isCreatingPost = false
                     )
                     persistCurrentFeed()
+                    clearCreatePostPersistentState(profile)
                     showToast(if (finalIsReel) "Reel published." else "Post published.")
                 }
             } catch (e: Exception) {
@@ -2849,6 +2955,18 @@ private suspend fun restoreSupabaseSession() {
             } finally {
                 _uiState.value = _uiState.value.copy(isCreatingPost = false)
             }
+        }
+    }
+
+    private fun clearCreatePostPersistentState(profile: UserProfile) {
+        val scope = profile.id.ifBlank { profile.username }
+        listOf(
+            "create_post_text",
+            "create_post_poll_question",
+            "create_post_poll_options",
+            "create_post_autosave_v2"
+        ).forEach { key ->
+            PersistentTextDraftStore.clearValue(appContext, key, scope)
         }
     }
 
@@ -2870,14 +2988,25 @@ private suspend fun restoreSupabaseSession() {
         }.getOrElse { listOf(value) }
     }
 
-    private suspend fun uploadPostUri(userId: String, uriString: String, isVideo: Boolean): String? = withContext(Dispatchers.IO) {
+    private suspend fun uploadPostUri(
+        userId: String,
+        uriString: String,
+        isVideo: Boolean
+    ): String? = withContext(Dispatchers.IO) {
         try {
             val uri = Uri.parse(uriString)
-            val mimeType = appContext.contentResolver.getType(uri) ?: if (isVideo) "video/mp4" else "image/jpeg"
-            val bytes = appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@withContext null
-            if (bytes.isEmpty()) return@withContext null
-            supabaseService.uploadPostMedia(userId, bytes, mimeType, isVideo)
-        } catch (e: Exception) { Log.e(TAG, "uploadPostUri failed", e); null }
+            val mimeType = appContext.contentResolver.getType(uri)
+                ?: if (isVideo) "video/mp4" else "image/jpeg"
+            supabaseService.uploadPostMediaUri(
+                userId = userId,
+                uriString = uriString,
+                mimeType = mimeType,
+                isVideo = isVideo
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "uploadPostUri failed", e)
+            null
+        }
     }
 
     fun togglePostLike(postId: String) {
