@@ -1,22 +1,74 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# BLINK
 
-# Run and deploy your AI Studio app
+BLINK is a social and campus platform with Android, Windows, web, and Supabase-backed services.
 
-This contains everything you need to run your app locally.
+## Supported clients
 
-View your app in AI Studio: https://ai.studio/apps/688eb2b2-ca6d-45ef-b178-19cfc4ae3512
+- Android: `app/`
+- Windows desktop: `desktopApp/`
+- Web/PWA: `web/`
+- Shared product rules and models: `shared/`
+- Supabase migrations and Edge Functions: `supabase/`
 
-## Run Locally
+Android and Windows use the same BLINK account, Supabase backend, ranking rules, coins, verification, messaging, moderation, and permissions.
 
-**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
+## Development workflow
 
+`main` is the production / known-good branch.
 
-1. Open Android Studio
-2. Select **Open** and choose the directory containing this project
-3. Allow Android Studio to fix any incompatibilities as it imports the project.
-4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
-5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
-6. Run the app on an emulator or physical device
-7. If you have already published your app in AI Studio, please [request upload key reset](https://support.google.com/googleplay/android-developer/answer/9842756#zippy=%2Crequest-an-upload-key-reset) in Google Play Console.
+Risky, large, database-affecting, or potentially breaking work must be validated in `Testlab` (or a feature branch targeting Testlab) before promotion to `main`. Supabase changes should be tested in a preview/staging environment before production whenever one is available.
+
+See `AGENTS.md` for the complete engineering and platform-parity rules.
+
+## Android development
+
+Requirements:
+
+- Android Studio / JDK 17
+- Android SDK required by the Gradle project
+- A local `.env` for developer-only configuration
+- A local `app/google-services.json` when testing the real Firebase project
+
+Useful checks:
+
+```bash
+./gradlew testDebugUnitTest lintDebug assembleDebug
+```
+
+Production APK/AAB files should be produced by the signed GitHub Actions release workflow, not with an ad-hoc local signing key.
+
+## Production configuration
+
+Never commit production secrets or signing material.
+
+Protected CI/backend configuration includes, as applicable:
+
+- Android release keystore values
+- `MAPS_API_KEY`
+- production Firebase client configuration
+- Supabase/backend service credentials
+- Paystack secret credentials
+- weather/provider server keys
+- Firebase service-account credentials
+
+Client-safe identifiers and server secrets are not interchangeable. Backend-only secrets must never be bundled in Android, Windows, or web clients.
+
+## Supabase
+
+Database changes live in `supabase/migrations/` and must remain versioned. Edge Functions live in `supabase/functions/`.
+
+Run the repository Supabase safety gate for every backend change. Production must not be the first environment used to experiment with a risky schema, RLS, Auth, Storage, Realtime, RPC, cron, webhook, or Edge Function change.
+
+## Release gates
+
+A production promotion should keep the relevant gates green:
+
+- Android quality gate
+- Android runtime smoke
+- Android release smoke
+- Windows desktop build/parity
+- Supabase migration safety
+- web/domain checks when affected
+- secret-leak guard when enabled
+
+A failed required gate is a release blocker.
