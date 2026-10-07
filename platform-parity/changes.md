@@ -282,3 +282,16 @@ Android behavior: Uses the shared server-controlled pulse policy, safe overflow-
 Windows behavior: Uses the same shared pulse policy and range/transition functions, honors the desktop Reduce Motion preference, freezes the last pulse when live fetches fail, shows real online/campus context and real rank movement summaries, and records the same server analytics events.
 Backend/shared behavior: Adds an authenticated read-only pulse configuration table and an authenticated rate-limited analytics RPC/table. Presence rows, canonical leaderboard order, points, XP, feed/reel ranking, coins, verification, auth, messages and existing user data are not modified.
 Tests/validation: Shared/Android pulse range tests, Android quality/release smoke, Windows compile/package/parity, and disposable Supabase migration safety must pass on Testlab before production promotion.
+
+
+---
+
+PARITY-EXCEPTION: android-reels-interaction-hardening-20261007
+Date: 2026-10-07
+Feature: Android Reels playback and interaction hardening
+Android behavior: Hardens the existing Android vertical Reels experience with adjacent media preloading, persistent sound state, tap-to-pause, seekable playback progress, privacy-aware action availability, interaction-sheet playback pausing, retry handling, and actionable Not Interested feedback through the existing recommendation path. Existing For You/Following routing and server-authoritative Reel data remain in place.
+Why this is genuinely Android-specific presentation: The changed playback lifecycle, VerticalPager behavior, gesture handling, Compose sheets, ExoPlayer preparation/retry state, and mobile media controls are Android UI/media-adapter concerns. They do not change the cross-platform Reel ranking formula, qualified-view rules, visibility/privacy rules, or shared content model.
+Windows equivalent or reason no equivalent is needed: Windows keeps its desktop-native Reel/video playback and navigation controls rather than copying Android touch gestures, VerticalPager lifecycle, or ExoPlayer state handling. No Windows user capability, shared recommendation rule, or server contract is removed or changed by this Android reliability/presentation patch.
+Backend/shared behavior preserved: Feed/Reels ranking, qualified-view timing and multipliers, points/XP, coins, verification, authentication, notifications, moderation, Supabase schema/RLS, and existing user data are unchanged. Not Interested uses the existing recommendation feedback path and does not redefine ranking weights or shared recommendation policy.
+Tests/validation: Android quality, Android runtime smoke, Android release smoke, Supabase safety, BLINK domain integration, and Windows desktop build/parity gates must pass on the Testlab head before promotion to main.
+Owner/reviewer note: This exception is limited to Android Reels UI/media lifecycle and touch presentation. Any future cross-platform Reel capability, recommendation algorithm, backend contract, or business-rule change still requires Windows/shared parity.
