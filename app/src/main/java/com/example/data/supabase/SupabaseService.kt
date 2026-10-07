@@ -1654,7 +1654,7 @@ fun getCurrentUserId(): String? {
                 put("updated_at", nowIso())
             }
 
-            fun send(body: JSONObject): Pair<Boolean, String> =
+            suspend fun send(body: JSONObject): Pair<Boolean, String> =
                 executeRequest(
                     newRequestBuilder("/rest/v1/profiles?id=eq.${encodeValue(uid)}", true)
                         .addHeader("Prefer", "return=representation")
