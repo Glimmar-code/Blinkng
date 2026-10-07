@@ -2,8 +2,8 @@
 
 Run `npm ci --prefix supabase/tests` and `npm test --prefix supabase/tests`.
 
-This suite uses an isolated embedded PostgreSQL database. It has no production connection or credentials. The schema-only fixture captures the relevant legacy shape and profile/chat policies from October 7, 2026, with synthetic account and content rows.
+This suite uses isolated embedded PostgreSQL. It has no production connection or credentials. The fixture captures schema metadata, existing function definitions and all legacy RLS policies from October 7, 2026. Account and content rows are synthetic.
 
-Checks cover migration dependencies, reapplication, private profile projection, username uniqueness, legacy presence privacy, inbox membership and state, immutable request identities, mute expiry, forwarding permissions, one-charge Boost/Drop retries, account-scoped receipts, and the three-pin limit.
+All six promotion migrations run and reapply. Checks cover private profile projection, username uniqueness, legacy presence privacy, inbox membership and state, immutable request identities, mute expiry, forwarding permissions, one-charge Boost/Drop retries, account-scoped receipts, the three-pin limit, compatibility-message isolation, token ownership, policy commands and disabled client-authoritative rewards.
 
-This fixture is not a complete recovery baseline. Spatial columns, unrelated policies and legacy triggers are outside its scope. The local cron adapter checks job registration and reapplication; execution by the hosted scheduler and full application behavior remain separate integration checks.
+This is not a complete recovery baseline. Spatial columns, legacy triggers and privileges beyond the authenticated grants modeled here are outside its scope. The local cron adapter checks job registration; maintenance calls with no expiring inventory check SQL compatibility. Hosted scheduler execution, notification delivery and full application behavior remain separate integration checks.
