@@ -41,6 +41,7 @@ data class BlinkInAppNotification(
 object BlinkInAppNotificationCenter {
     private const val FALLBACK_DEDUPE_WINDOW_MS = 15_000L
     private const val CANONICAL_DEDUPE_WINDOW_MS = 6 * 60 * 60 * 1_000L
+    private const val SOCIAL_BURST_WINDOW_MS = 3_500L
     private const val MAX_RECENT_KEYS = 512
 
     private val mutableEvents = MutableSharedFlow<BlinkInAppNotification>(
@@ -50,6 +51,7 @@ object BlinkInAppNotificationCenter {
     val events = mutableEvents.asSharedFlow()
 
     private val recentKeys = LinkedHashMap<String, Long>()
+    private val recentBurstKeys = LinkedHashMap<String, Long>()
 
     /**
      * Returns true when an active foreground host handled (or already handled) the event.
@@ -58,13 +60,35 @@ object BlinkInAppNotificationCenter {
     fun publish(event: BlinkInAppNotification): Boolean {
         if (mutableEvents.subscriptionCount.value <= 0) return false
 
+        val now = SystemClock.elapsedRealtime()
+        val eventType = event.key.substringAfter("social:", "").substringBefore(':').lowercase()
+        val burstTarget = event.postId ?: event.targetId ?: event.marketId
+        val burstKey = when {
+            eventType in setOf("like", "comment", "reply") && !burstTarget.isNullOrBlank() ->
+                "social-burst:" + eventType + ":" + burstTarget
+            eventType == "follow" -> "social-burst:follow"
+            else -> ""
+        }
+        if (burstKey.isNotBlank()) {
+            synchronized(recentBurstKeys) {
+                val iterator = recentBurstKeys.entries.iterator()
+                while (iterator.hasNext()) {
+                    if (now - iterator.next().value > SOCIAL_BURST_WINDOW_MS) iterator.remove()
+                }
+                val previous = recentBurstKeys[burstKey]
+                if (previous != null && now - previous <= SOCIAL_BURST_WINDOW_MS) {
+                    return true
+                }
+                recentBurstKeys[burstKey] = now
+            }
+        }
+
         val canonicalKey = event.notificationId
             .trim()
             .takeIf { it.isNotBlank() }
             ?.let { "notification:$it" }
             ?: event.key.trim()
         if (canonicalKey.isNotBlank()) {
-            val now = SystemClock.elapsedRealtime()
             val dedupeWindow = if (event.notificationId.isNotBlank()) {
                 CANONICAL_DEDUPE_WINDOW_MS
             } else {

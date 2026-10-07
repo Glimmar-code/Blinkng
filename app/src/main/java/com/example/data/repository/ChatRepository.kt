@@ -409,6 +409,16 @@ class ChatRepository(
         )
     }
 
+    suspend fun setConversationMutedUntil(conversationId: String, mutedUntil: String): Boolean {
+        if (!isServerUuid(conversationId) || mutedUntil.isBlank()) return false
+        return booleanRpc(
+            "set_conversation_muted_until",
+            JSONObject()
+                .put("p_conversation_id", conversationId)
+                .put("p_muted_until", mutedUntil)
+        )
+    }
+
     suspend fun reportConversation(conversationId: String, reason: String): Boolean {
         if (!isServerUuid(conversationId) || reason.isBlank()) return false
         return booleanRpc(
