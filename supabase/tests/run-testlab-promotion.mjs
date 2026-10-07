@@ -9,7 +9,6 @@ const migrations = [
   '20261007011000_complete_professional_chat_controls.sql',
   '20261007113500_fix_stale_notification_writers.sql',
   '20261007114500_correct_legacy_rls_policy_commands.sql',
-  '20261007115500_optimize_flagged_rls_auth_initplans.sql',
 ];
 const db = new PGlite();
 try {
