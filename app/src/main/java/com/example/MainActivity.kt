@@ -212,12 +212,7 @@ class MainActivity : ComponentActivity() {
 
             BlinkNotificationHelper.ACTION_OPEN_MARKET -> {
                 val marketId = intent.getStringExtra(BlinkNotificationHelper.EXTRA_MARKET_ID)
-                viewModel.setTab(MainTab.MARKET)
-                if (!marketId.isNullOrBlank()) {
-                    viewModel.uiState.value.marketItems
-                        .firstOrNull { it.id == marketId }
-                        ?.let(viewModel::openProductDetail)
-                }
+                viewModel.openMarketFromNotification(marketId)
             }
 
             BlinkNotificationHelper.ACTION_OPEN_SOCIAL -> {
@@ -280,12 +275,7 @@ class MainActivity : ComponentActivity() {
             }
 
             BlinkInAppNotificationDestination.MARKET -> {
-                viewModel.setTab(MainTab.MARKET)
-                (event.marketId ?: event.targetId)?.let { marketId ->
-                    viewModel.uiState.value.marketItems
-                        .firstOrNull { it.id == marketId }
-                        ?.let(viewModel::openProductDetail)
-                }
+                viewModel.openMarketFromNotification(event.marketId ?: event.targetId)
             }
 
             BlinkInAppNotificationDestination.DROPS -> {
@@ -709,6 +699,16 @@ fun MainAppContent(
                         onOpenMenu = { viewModel.openMenu(true) },
                         onToggleTheme = { viewModel.toggleDarkMode() },
                         isServerConnected = uiState.isLiveSupabaseConnected,
+                        activityPulsePolicy = uiState.activityPulsePolicy,
+                        onActivityPulseEvent = { surface, eventType, realCount, displayedValue, metadata ->
+                            viewModel.recordActivityPulseEvent(
+                                surface = surface,
+                                eventType = eventType,
+                                realCount = realCount,
+                                displayedValue = displayedValue,
+                                metadata = metadata,
+                            )
+                        },
                         isLoading = uiState.isFeedLoading,
                         isRefreshing = uiState.isRefreshingContent,
                         errorMessage = uiState.feedErrorMessage,
@@ -729,6 +729,7 @@ fun MainAppContent(
                         onMarketClick = { viewModel.setTab(MainTab.MARKET) },
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
+                        unreadNotificationCount = uiState.activities.count { it.isUnread },
                         hasMorePosts = uiState.hasMorePosts,
                         hasMoreFollowingPosts = uiState.hasMoreFollowingPosts,
                         hasMoreReels = uiState.hasMoreReels,
@@ -776,6 +777,17 @@ fun MainAppContent(
                         userProfile = uiState.myProfile,
                         onProfileClick = { viewModel.openProfile(it) },
                         isDark = uiState.isDarkMode,
+                        isLiveDataAvailable = uiState.isOnline && uiState.isLiveSupabaseConnected,
+                        activityPulsePolicy = uiState.activityPulsePolicy,
+                        onActivityPulseEvent = { surface, eventType, realCount, displayedValue, metadata ->
+                            viewModel.recordActivityPulseEvent(
+                                surface = surface,
+                                eventType = eventType,
+                                realCount = realCount,
+                                displayedValue = displayedValue,
+                                metadata = metadata,
+                            )
+                        },
                         onRefresh = { viewModel.refreshLeaderboard() }
                     )
                 }
@@ -825,6 +837,7 @@ fun MainAppContent(
                             onReportMessage = { message, reason -> viewModel.reportChatMessage(message, reason) },
                             onClearConversation = { conversation -> viewModel.clearConversationForMe(conversation) },
                             onMuteConversation = { conversation, muted -> viewModel.setConversationMuted(conversation, muted) },
+                            onMuteConversationFor = { conversation, duration -> viewModel.muteConversationFor(conversation, duration) },
                             onNotificationSettings = { conversation, mode, muteUntil ->
                                 viewModel.setChatNotificationSettings(conversation, mode, muteUntil)
                             },
@@ -835,13 +848,13 @@ fun MainAppContent(
                             onBlockConversation = { conversation -> viewModel.blockChatUser(conversation) },
                             onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
                         ),
-                        onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
                         onSendAttachment = { partner, uri, kind ->
                             viewModel.sendAttachmentMessage(partner, uri, kind)
                         },
                         onPresenceChange = { partner, state ->
                             viewModel.updateChatPresence(partner, state)
                         },
+                        onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
                         },
@@ -902,6 +915,17 @@ fun MainAppContent(
                                 dismissUtility { viewModel.openProfile(username) }
                             },
                             isDark = uiState.isDarkMode,
+                            isLiveDataAvailable = uiState.isOnline && uiState.isLiveSupabaseConnected,
+                            activityPulsePolicy = uiState.activityPulsePolicy,
+                            onActivityPulseEvent = { surface, eventType, realCount, displayedValue, metadata ->
+                                viewModel.recordActivityPulseEvent(
+                                    surface = surface,
+                                    eventType = eventType,
+                                    realCount = realCount,
+                                    displayedValue = displayedValue,
+                                    metadata = metadata,
+                                )
+                            },
                             onRefresh = { viewModel.refreshLeaderboard() }
                         )
 
@@ -1393,7 +1417,8 @@ fun MainAppContent(
                 isLoading = uiState.activitiesLoading,
                 errorMessage = uiState.activitiesError,
                 onRefresh = { viewModel.fetchSupabaseData() },
-                onMarkAllRead = { viewModel.markAllActivitiesRead() }
+                onMarkAllRead = { viewModel.markAllActivitiesRead() },
+                onToggleRead = { activity -> viewModel.toggleActivityReadState(activity) }
             )
         }
 

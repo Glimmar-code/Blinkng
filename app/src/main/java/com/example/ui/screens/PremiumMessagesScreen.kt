@@ -1445,6 +1445,7 @@ private fun PremiumChatDetail(
     var replyingTo by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var editingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var showOverflow by remember(conversation.partnerUsername) { mutableStateOf(false) }
+    var showMuteOptions by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var showNotificationSettings by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var showSharedContent by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var showContactProfile by remember(conversation.partnerUsername) { mutableStateOf(false) }
@@ -1920,11 +1921,11 @@ private fun PremiumChatDetail(
             onStarred = { showOverflow = false; starredOnly = !starredOnly; pinnedOnly = false },
             onMute = {
                 showOverflow = false
-                interactionActions.onNotificationSettings(
-                    conversation,
-                    if (conversation.notificationMode == "none") "all" else "none",
-                    null
-                )
+                if (conversation.isMuted) {
+                    interactionActions.onMuteConversation(conversation, false)
+                } else {
+                    showMuteOptions = true
+                }
             },
             onNotificationSettings = {
                 showOverflow = false
@@ -1957,6 +1958,52 @@ private fun PremiumChatDetail(
                 interactionActions.onReportConversation(conversation, "Reported from conversation menu")
             },
             onDismiss = { showOverflow = false }
+        )
+    }
+
+    if (showMuteOptions) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showMuteOptions = false },
+            title = { Text("Mute notifications", color = palette.textPrimary) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "Choose how long to mute alerts from " + conversation.partnerName + ". Messages will still arrive in the chat.",
+                        color = palette.textSecondary,
+                        fontSize = 12.sp
+                    )
+                    listOf(
+                        "1 hour" to 60L * 60L * 1_000L,
+                        "8 hours" to 8L * 60L * 60L * 1_000L,
+                        "24 hours" to 24L * 60L * 60L * 1_000L
+                    ).forEach { (label, duration) ->
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                showMuteOptions = false
+                                interactionActions.onMuteConversationFor(conversation, duration)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(label, color = palette.textPrimary)
+                        }
+                    }
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            showMuteOptions = false
+                            interactionActions.onMuteConversationFor(conversation, null)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Until I turn it back on", color = palette.textPrimary)
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { showMuteOptions = false }) {
+                    Text("Cancel", color = palette.textSecondary)
+                }
+            }
         )
     }
 
@@ -2051,7 +2098,12 @@ private fun PremiumChatDetail(
                 onVideoCall()
             },
             onMute = {
-                interactionActions.onMuteConversation(conversation, !conversation.isMuted)
+                if (conversation.isMuted) {
+                    interactionActions.onMuteConversation(conversation, false)
+                } else {
+                    showContactProfile = false
+                    showMuteOptions = true
+                }
             },
             onSearch = {
                 showContactProfile = false

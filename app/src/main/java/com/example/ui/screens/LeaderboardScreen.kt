@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.content.Intent
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,6 +44,9 @@ import com.example.ui.components.VerifiedMark
 import com.example.ui.theme.BlinkGold
 import com.example.ui.theme.BlinkPink
 import com.example.util.startActivitySafely
+import com.blinkng.shared.BlinkActivityPulseDefaults
+import com.blinkng.shared.BlinkActivityPulsePolicy
+import com.blinkng.shared.rankPulseRange
 
 private enum class LeaderboardScope(val label: String) {
     WORLD("World"),
@@ -57,6 +61,9 @@ fun LeaderboardScreen(
     userProfile: UserProfile = UserProfile(),
     onProfileClick: (String) -> Unit,
     isDark: Boolean,
+    isLiveDataAvailable: Boolean = true,
+    activityPulsePolicy: BlinkActivityPulsePolicy = BlinkActivityPulseDefaults.policy,
+    onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit = { _, _, _, _, _ -> },
     onRefresh: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -101,17 +108,61 @@ fun LeaderboardScreen(
         previousWorldRanks = current
     }
 
-    LaunchedEffect(Unit) {
+    val policy = remember(activityPulsePolicy) { activityPulsePolicy.normalized() }
+    val reduceMotion = rememberReducedMotionEnabled()
+    val windowActive = rememberWindowActive()
+
+    LaunchedEffect(windowActive, policy.rankWindowMillis) {
+        if (!windowActive) return@LaunchedEffect
         while (true) {
-            delay(20_000L)
+            delay(policy.rankWindowMillis)
             rankUpsInWindow = 0
+            worldRankMovement = emptyMap()
         }
     }
 
-    val rankPulse = rememberFluctuatingPulse(
-        range = rankPulseRange(rankUpsInWindow),
-        tickMillis = 2_400L
+    val rankPulse = rememberManagedPulse(
+        key = "leaderboard:" + userProfile.username.trim().lowercase(),
+        range = rankPulseRange(rankUpsInWindow, policy),
+        tickMillis = policy.rankTickMillis,
+        policy = policy,
+        liveDataAvailable = isLiveDataAvailable,
+        windowActive = windowActive,
+        reduceMotion = reduceMotion,
     )
+
+    val rankStatus = remember(rankUpsInWindow, policy.hotRankUpsThreshold) {
+        when {
+            rankUpsInWindow >= policy.hotRankUpsThreshold -> "Heating up"
+            rankUpsInWindow > 0 -> "Active"
+            else -> "Stable"
+        }
+    }
+
+    val recentMovers = remember(worldRankMovement, world) {
+        worldRankMovement
+            .filterValues { it > 0 }
+            .entries
+            .sortedByDescending { it.value }
+            .take(3)
+            .mapNotNull { movement ->
+                world.firstOrNull { it.username.equals(movement.key, ignoreCase = true) }
+                    ?.let { it to movement.value }
+            }
+    }
+
+    LaunchedEffect(rankPulse.value != null, userProfile.username, isLiveDataAvailable) {
+        val shown = rankPulse.value
+        if (shown != null && isLiveDataAvailable) {
+            onActivityPulseEvent(
+                "leaderboard",
+                "impression",
+                rankUpsInWindow,
+                shown,
+                mapOf("status" to rankStatus)
+            )
+        }
+    }
 
     val scoped = remember(world, scope, campusName, facultyName, levelName, verifiedOnly) {
         fun rankWithinScope(source: List<LeaderboardUser>): List<LeaderboardUser> {
@@ -219,50 +270,99 @@ fun LeaderboardScreen(
                 IconButton(onClick = { showInfo = true }) {
                     Icon(Icons.Default.Info, "How leaderboard works")
                 }
-                IconButton(onClick = onRefresh) {
+                IconButton(
+                    onClick = {
+                        onActivityPulseEvent(
+                            "leaderboard",
+                            "manual_refresh",
+                            rankUpsInWindow,
+                            rankPulse.value,
+                            mapOf("scope" to scope.label)
+                        )
+                        onRefresh()
+                    }
+                ) {
                     Icon(Icons.Default.Refresh, "Refresh live leaderboard")
                 }
             }
         }
 
-        item(key = "leaderboard_rank_pulse", contentType = "activity_pulse") {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 2.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            ) {
-                Row(
+        if (policy.enabled) {
+            item(key = "leaderboard_rank_pulse", contentType = "activity_pulse") {
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                 ) {
-                    Column(Modifier.weight(1f)) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Rank Pulse", fontSize = 15.sp, fontWeight = FontWeight.Black)
+                                Text(
+                                    when {
+                                        rankPulse.isStale -> "Last known rank activity • offline"
+                                        else -> (policy.rankWindowMillis / 1000).toString() + "-second activity window • " + rankStatus
+                                    },
+                                    fontSize = 10.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(100.dp),
+                                color = BlinkGold.copy(alpha = .14f)
+                            ) {
+                                if (reduceMotion) {
+                                    Text(
+                                        rankPulse.value?.toString() ?: "—",
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                        color = BlinkGold,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                } else {
+                                    Crossfade(
+                                        targetState = rankPulse.value,
+                                        label = "leaderboardRankPulse"
+                                    ) { pulseValue ->
+                                        Text(
+                                            pulseValue?.toString() ?: "—",
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                            color = BlinkGold,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         Text(
-                            "Rank Pulse",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                        Text(
-                            "20-second activity window • reacts to real rank-ups",
-                            fontSize = 10.5.sp,
+                            "Confirmed rank-ups in this window: " + rankUpsInWindow,
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(100.dp),
-                        color = BlinkGold.copy(alpha = .14f)
-                    ) {
-                        Text(
-                            rankPulse.toString(),
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                            color = BlinkGold,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Black
-                        )
+
+                        if (recentMovers.isNotEmpty()) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            recentMovers.forEach { (mover, places) ->
+                                Text(
+                                    "@" + mover.username + " moved up " + places + " place" + if (places == 1) "" else "s",
+                                    fontSize = 10.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -375,7 +475,16 @@ fun LeaderboardScreen(
                     } else {
                         0
                     },
-                    onProfileClick = onProfileClick,
+                    onProfileClick = { username ->
+                        onActivityPulseEvent(
+                            "leaderboard",
+                            "profile_open",
+                            rankUpsInWindow,
+                            rankPulse.value,
+                            mapOf("username" to username, "scope" to scope.label)
+                        )
+                        onProfileClick(username)
+                    },
                     onShare = { shareLeaderboardUser(context, it) }
                 )
             }

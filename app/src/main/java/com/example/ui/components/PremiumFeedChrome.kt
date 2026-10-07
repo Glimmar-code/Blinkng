@@ -92,6 +92,7 @@ import com.example.ui.theme.feedAccentBrush
 fun FeedTopBar(
     userAvatar: String,
     hasUnreadNotifications: Boolean,
+    unreadNotificationCount: Int = 0,
     onSearchClick: () -> Unit,
     onItemsClick: () -> Unit,
     onNotificationClick: () -> Unit,
@@ -140,6 +141,7 @@ fun FeedTopBar(
             )
             FeedHeaderActions(
                 hasUnreadNotifications = hasUnreadNotifications,
+                unreadNotificationCount = unreadNotificationCount,
                 onSearchClick = onSearchClick,
                 onItemsClick = onItemsClick,
                 onNotificationClick = onNotificationClick,
@@ -205,6 +207,7 @@ private fun FeedProfileAvatar(
 @Composable
 private fun FeedHeaderActions(
     hasUnreadNotifications: Boolean,
+    unreadNotificationCount: Int,
     onSearchClick: () -> Unit,
     onItemsClick: () -> Unit,
     onNotificationClick: () -> Unit,
@@ -233,15 +236,25 @@ private fun FeedHeaderActions(
                 onClick = onNotificationClick,
                 modifier = Modifier.align(Alignment.Center).testTag("feed_notification_action")
             )
-            if (hasUnreadNotifications) {
+            val visibleUnreadCount = maxOf(unreadNotificationCount, if (hasUnreadNotifications) 1 else 0)
+            if (visibleUnreadCount > 0) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = (-1).dp, y = 1.dp)
-                        .size(9.dp)
+                        .offset(x = 2.dp, y = (-2).dp)
+                        .size(if (visibleUnreadCount < 10) 18.dp else 22.dp)
                         .background(feedAccentBrush(), CircleShape)
-                        .border(1.dp, FeedBackground, CircleShape)
-                )
+                        .border(1.dp, FeedBackground, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (visibleUnreadCount > 99) "99+" else visibleUnreadCount.toString(),
+                        color = Color.White,
+                        fontSize = if (visibleUnreadCount > 99) 7.sp else 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+                }
             }
         }
         FeedRadialHeaderAction(

@@ -1,5 +1,7 @@
 package com.blinkng.desktop.data
 
+import com.blinkng.shared.BlinkActivityPulseDefaults
+import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkBackendDefaults
 import com.blinkng.shared.BlinkOnboardingPolicy
 import com.sun.net.httpserver.HttpServer
@@ -232,6 +234,61 @@ class DesktopSupabaseClient(
         clearSession()
     }
 
+    suspend fun fetchActivityPulsePolicy(): BlinkActivityPulsePolicy = withContext(Dispatchers.IO) {
+        val fallback = BlinkActivityPulseDefaults.policy
+        runCatching {
+            val rows = getArray(
+                "/rest/v1/blink_activity_pulse_config?select=*&id=eq.true&limit=1",
+            )
+            val row = rows.optJSONObject(0) ?: return@runCatching fallback
+            BlinkActivityPulsePolicy(
+                enabled = row.optBoolean("enabled", fallback.enabled),
+                communityMinPerActive = row.optInt("community_min_per_active", fallback.communityMinPerActive),
+                communityMaxPerActive = row.optInt("community_max_per_active", fallback.communityMaxPerActive),
+                rankMinPerEvent = row.optInt("rank_min_per_event", fallback.rankMinPerEvent),
+                rankMaxPerEvent = row.optInt("rank_max_per_event", fallback.rankMaxPerEvent),
+                connectTickMillis = row.optLong("connect_tick_ms", fallback.connectTickMillis),
+                rankTickMillis = row.optLong("rank_tick_ms", fallback.rankTickMillis),
+                minHoldMillis = row.optLong("min_hold_ms", fallback.minHoldMillis),
+                rankWindowMillis = row.optLong("rank_window_ms", fallback.rankWindowMillis),
+                maxStep = row.optInt("max_step", fallback.maxStep),
+                transitionStepMultiplier = row.optInt("transition_step_multiplier", fallback.transitionStepMultiplier),
+                onlinePreviewLimit = row.optInt("online_preview_limit", fallback.onlinePreviewLimit),
+                campusActiveThreshold = row.optInt("campus_active_threshold", fallback.campusActiveThreshold),
+                campusHotThreshold = row.optInt("campus_hot_threshold", fallback.campusHotThreshold),
+                hotRankUpsThreshold = row.optInt("hot_rank_ups_threshold", fallback.hotRankUpsThreshold),
+                maxUnits = row.optInt("max_units", fallback.maxUnits),
+                maxDisplayValue = row.optInt("max_display_value", fallback.maxDisplayValue),
+            ).normalized()
+        }.getOrDefault(fallback)
+    }
+
+    suspend fun recordActivityPulseEvent(
+        surface: String,
+        eventType: String,
+        realCount: Int,
+        displayedValue: Int?,
+        metadata: Map<String, String> = emptyMap(),
+    ): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val metadataJson = JSONObject().apply {
+                metadata.forEach { (key, value) ->
+                    if (key.isNotBlank()) put(key.take(80), value.take(240))
+                }
+            }
+            postObject(
+                "/rest/v1/rpc/record_blink_activity_pulse_event",
+                JSONObject()
+                    .put("p_surface", surface)
+                    .put("p_event_type", eventType)
+                    .put("p_real_count", realCount.coerceAtLeast(0))
+                    .put("p_displayed_value", displayedValue ?: JSONObject.NULL)
+                    .put("p_metadata", metadataJson),
+            )
+            true
+        }.getOrDefault(false)
+    }
+
     suspend fun fetchProfile(userId: String = requireSession().userId): DesktopProfile = withContext(Dispatchers.IO) {
         profileCache[userId]?.let { return@withContext it }
         val rows = getArray(
@@ -359,7 +416,7 @@ class DesktopSupabaseClient(
 
     suspend fun fetchFeed(reelsOnly: Boolean = false, search: String? = null): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
         val filter = buildString {
-            append("/rest/v1/feed_posts?select=id,user_id,text,caption,image_url,video_url,images,hashtags,like_count,comment_count,share_count,view_count,is_reel,created_at")
+            append("/rest/v1/feed_posts?select=id,user_id,text,caption,image_url,video_url,images,hashtags,like_count,comment_count,share_count,repost_count,view_count,is_reel,created_at")
             append("&is_active=eq.true")
             if (reelsOnly) append("&is_reel=eq.true")
             search?.trim()?.takeIf { it.isNotBlank() }?.let { q ->
@@ -369,11 +426,20 @@ class DesktopSupabaseClient(
         }
         val rows = getArray(filter)
         val likedIds = fetchMyLikedPostIds()
+        val bookmarkedIds = fetchMyBookmarkedPostIds()
+        val repostedIds = fetchMyRepostedPostIds()
         (0 until rows.length()).mapNotNull { index ->
             val row = rows.optJSONObject(index) ?: return@mapNotNull null
+            val postId = row.optString("id")
             val userId = row.optString("user_id")
             val profile = runCatching { fetchProfile(userId) }.getOrNull()
-            parseFeedPost(row, profile, likedIds.contains(row.optString("id")))
+            parseFeedPost(
+                row = row,
+                profile = profile,
+                liked = postId in likedIds,
+                bookmarked = postId in bookmarkedIds,
+                reposted = postId in repostedIds,
+            )
         }
     }
 
@@ -432,6 +498,18 @@ class DesktopSupabaseClient(
             )
             true
         }
+    }
+
+    suspend fun toggleRepost(postId: String): Pair<Boolean, Int> = withContext(Dispatchers.IO) {
+        val clean = postId.trim()
+        require(clean.isNotBlank()) { "Post is required." }
+        val response = postObject(
+            "/rest/v1/rpc/toggle_post_repost",
+            JSONObject().put("p_post_id", clean),
+        )
+        val obj = response as? JSONObject
+            ?: throw IllegalStateException("Repost update returned an invalid response.")
+        obj.optBoolean("reposted", false) to obj.optInt("repostCount", 0)
     }
 
     suspend fun recordQualifiedContentView(postId: String): JSONObject = withContext(Dispatchers.IO) {
@@ -906,6 +984,34 @@ class DesktopSupabaseClient(
         }
     }
 
+    private suspend fun fetchMyBookmarkedPostIds(): Set<String> = withContext(Dispatchers.IO) {
+        val active = session ?: return@withContext emptySet()
+        val rows = runCatching {
+            getArray("/rest/v1/post_bookmarks?user_id=eq.${encode(active.userId)}&select=post_id&limit=1000")
+        }.getOrNull() ?: return@withContext emptySet()
+        buildSet {
+            for (i in 0 until rows.length()) {
+                rows.optJSONObject(i)?.optString("post_id")
+                    ?.takeIf(String::isNotBlank)
+                    ?.let(::add)
+            }
+        }
+    }
+
+    private suspend fun fetchMyRepostedPostIds(): Set<String> = withContext(Dispatchers.IO) {
+        val active = session ?: return@withContext emptySet()
+        val rows = runCatching {
+            getArray("/rest/v1/post_reposts?user_id=eq.${encode(active.userId)}&select=post_id&limit=1000")
+        }.getOrNull() ?: return@withContext emptySet()
+        buildSet {
+            for (i in 0 until rows.length()) {
+                rows.optJSONObject(i)?.optString("post_id")
+                    ?.takeIf(String::isNotBlank)
+                    ?.let(::add)
+            }
+        }
+    }
+
     private fun parseProfile(row: JSONObject): DesktopProfile = DesktopProfile(
         id = row.optString("id"),
         fullName = row.optString("full_name").ifBlank { row.optString("name").ifBlank { row.optString("username") } },
@@ -941,7 +1047,13 @@ class DesktopSupabaseClient(
         profileViewsThisWeek = row.optInt("profile_views_this_week"),
     )
 
-    private fun parseFeedPost(row: JSONObject, profile: DesktopProfile?, liked: Boolean) = DesktopFeedPost(
+    private fun parseFeedPost(
+        row: JSONObject,
+        profile: DesktopProfile?,
+        liked: Boolean,
+        bookmarked: Boolean = false,
+        reposted: Boolean = false,
+    ) = DesktopFeedPost(
         id = row.optString("id"),
         userId = row.optString("user_id"),
         authorName = profile?.fullName ?: profile?.username ?: "Blink user",
@@ -962,6 +1074,9 @@ class DesktopSupabaseClient(
         isReel = row.optBoolean("is_reel"),
         createdAt = row.optString("created_at"),
         isLiked = liked,
+        isBookmarked = bookmarked,
+        isRepostedByMe = reposted,
+        repostCount = row.optInt("repost_count"),
     )
 
     private fun parseMessage(row: JSONObject) = DesktopMessage(
