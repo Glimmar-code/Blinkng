@@ -7,6 +7,9 @@ const migrations = [
   '20261006235500_blink_growth_suite_v3.sql',
   '20261007005500_profile_user_profile_hardening.sql',
   '20261007011000_complete_professional_chat_controls.sql',
+  '20261007113500_fix_stale_notification_writers.sql',
+  '20261007114500_correct_legacy_rls_policy_commands.sql',
+  '20261007115500_optimize_flagged_rls_auth_initplans.sql',
 ];
 const db = new PGlite();
 try {
@@ -29,6 +32,11 @@ try {
     }
     if (!created) throw new Error('Unresolved fixture functions: ' + pending.map(row => row.proname + ': ' + row.lastError).join('; '));
   }
+  await db.exec(`
+    create or replace function public.record_game_session(p_game_type text, p_score integer, p_coins_earned integer)
+    returns jsonb language sql as $select jsonb_build_object('score',p_score,'coins',p_coins_earned)$;
+    grant execute on function public.record_game_session(text,integer,integer) to authenticated;
+  `);
   await db.exec('grant select,insert,update,delete on all tables in schema public to authenticated;');
   for (const sql of fixture.policies) await db.exec(sql);
   for (const name of migrations) {
