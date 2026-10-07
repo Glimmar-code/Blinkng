@@ -9,8 +9,8 @@ export async function legacyHardeningTests(db) {
   await db.exec(`select set_config('request.jwt.claim.sub','${A}',false); set role authenticated;`);
   await assert.rejects(db.query("select public.record_game_session('fixture',999999,999999)"),/permission denied/);
   await assert.rejects(db.query('truncate public.user_devices'),/permission denied/);
-  await db.query(`insert into public.fcm_tokens(id,user_id,token) values (101,'${A}','synthetic-owner-token')`);
-  await assert.rejects(db.query(`insert into public.fcm_tokens(user_id,token) values (102,'${B}','synthetic-other-token')`),/row-level security/);
+  await db.query(`insert into public.fcm_tokens(user_id,token) values ('${A}','synthetic-owner-token')`);
+  await assert.rejects(db.query(`insert into public.fcm_tokens(user_id,token) values ('${B}','synthetic-other-token')`),/row-level security/);
   assert.equal((await db.query(`select count(*)::int as count from public.fcm_tokens where user_id='${A}'`)).rows[0].count,1);
   await db.exec('reset role;');
   console.log('PASS legacy: policy commands, owner token writes and disabled client rewards');
