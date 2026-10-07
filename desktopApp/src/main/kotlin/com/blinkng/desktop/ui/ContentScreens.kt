@@ -164,11 +164,10 @@ fun HomeScreen(
     fun normalizedComposerLink(): String? {
         val raw = composerLink.trim()
         if (raw.isBlank()) return null
-        val candidate = if (raw.startsWith("https://", true) || raw.startsWith("http://", true)) {
-            raw
-        } else {
-            "https://$raw"
-        }
+        val hasExplicitScheme = raw.contains("://")
+        val isHttpScheme = raw.startsWith("https://", true) || raw.startsWith("http://", true)
+        if (hasExplicitScheme && !isHttpScheme) return null
+        val candidate = if (isHttpScheme) raw else "https://$raw"
         val uri = runCatching { URI(candidate) }.getOrNull() ?: return null
         return candidate.takeIf {
             (uri.scheme.equals("https", true) || uri.scheme.equals("http", true)) &&
