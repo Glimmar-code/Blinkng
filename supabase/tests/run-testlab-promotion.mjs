@@ -37,6 +37,14 @@ try {
     grant execute on function public.record_game_session(text,integer,integer) to authenticated;
   `);
   await db.exec('grant select,insert,update,delete on all tables in schema public to authenticated;');
+  await db.exec(`
+    alter table public.fcm_tokens enable row level security;
+    alter table public.interactions enable row level security;
+    alter table public.messages_compat enable row level security;
+    alter table public.statuses enable row level security;
+    alter table public.story_interactions enable row level security;
+    alter table public.user_devices enable row level security;
+  `);
   for (const sql of fixture.policies) await db.exec(sql);
   for (const name of migrations) {
     await db.exec(fs.readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
