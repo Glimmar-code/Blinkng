@@ -11,10 +11,13 @@ internal object PostComposerRules {
         val trimmed = raw.trim()
         if (trimmed.isBlank()) return null
 
-        val candidate = if (
+        val hasExplicitScheme = trimmed.contains("://")
+        val isHttpScheme =
             trimmed.startsWith("https://", ignoreCase = true) ||
-            trimmed.startsWith("http://", ignoreCase = true)
-        ) {
+                trimmed.startsWith("http://", ignoreCase = true)
+        if (hasExplicitScheme && !isHttpScheme) return null
+
+        val candidate = if (isHttpScheme) {
             trimmed
         } else {
             "https://$trimmed"
