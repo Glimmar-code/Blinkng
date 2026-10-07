@@ -12,7 +12,12 @@
           "package_name": "com.aistudio.blink.appvtwo"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "YOUR_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "YOUR_FIREBASE_WEB_API_KEY"
@@ -21,7 +26,12 @@
       "services": {
         "appinvite_service": {
           "status": 2,
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "YOUR_GOOGLE_WEB_CLIENT_ID.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
