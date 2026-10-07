@@ -76,7 +76,10 @@ fun DesktopUserProfileDialog(
 ) {
     val scope = rememberCoroutineScope()
     var profile by remember(initialProfile.id) { mutableStateOf(initialProfile) }
+    val isMe = initialProfile.id == state.session?.userId
     var content by remember(initialProfile.id) { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
+    var likedContent by remember(initialProfile.id) { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
+    var savedContent by remember(initialProfile.id) { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var followingIds by remember(initialProfile.id) { mutableStateOf<Set<String>>(emptySet()) }
     var notificationMode by remember(initialProfile.id) { mutableStateOf(DesktopProfileNotificationMode.OFF) }
     var muted by remember(initialProfile.id) { mutableStateOf(false) }
@@ -97,6 +100,12 @@ fun DesktopUserProfileDialog(
         loading = true
         profile = state.client.fetchProfileDetail(initialProfile.id) ?: initialProfile
         content = runCatching { state.client.fetchProfileContent(initialProfile.id) }.getOrDefault(emptyList())
+        if (isMe) {
+            runCatching { state.client.fetchMyProfileRelationContent(saved = false) }
+                .onSuccess { likedContent = it }.onFailure { statusMessage = it.message }
+            runCatching { state.client.fetchMyProfileRelationContent(saved = true) }
+                .onSuccess { savedContent = it }.onFailure { statusMessage = it.message }
+        }
         followingIds = runCatching { state.client.fetchFollowingIds() }.getOrDefault(emptySet())
         notificationMode = runCatching {
             state.client.getProfileNotificationPreference(initialProfile.id)
@@ -107,11 +116,16 @@ fun DesktopUserProfileDialog(
 
     LaunchedEffect(initialProfile.id) { reload() }
 
-    val filteredContent = remember(content, selectedTab, searchQuery) {
+    val filteredContent = remember(content, likedContent, savedContent, selectedTab, searchQuery) {
         val reels = selectedTab == "Reels"
-        content
+        val source = when (selectedTab) {
+            "Liked" -> if (isMe) likedContent else emptyList()
+            "Saved" -> if (isMe) savedContent else emptyList()
+            else -> content
+        }
+        source
             .asSequence()
-            .filter { it.isReel == reels }
+            .filter { selectedTab == "Liked" || selectedTab == "Saved" || it.isReel == reels }
             .filter {
                 searchQuery.isBlank() ||
                     it.text.orEmpty().contains(searchQuery, ignoreCase = true) ||
@@ -315,7 +329,7 @@ fun DesktopUserProfileDialog(
 
                         item {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("Posts", "Reels", "About").forEach { tab ->
+                                (if (isMe) listOf("Posts", "Reels", "Liked", "Saved", "About") else listOf("Posts", "Reels", "About")).forEach { tab ->
                                     FilterChip(
                                         selected = selectedTab == tab,
                                         onClick = { selectedTab = tab },
@@ -341,7 +355,12 @@ fun DesktopUserProfileDialog(
                         } else if (filteredContent.isEmpty()) {
                             item {
                                 Text(
-                                    if (selectedTab == "Reels") "No reels yet." else "No posts yet.",
+                                    when (selectedTab) {
+                                        "Reels" -> "No reels yet."
+                                        "Liked" -> "No liked posts yet."
+                                        "Saved" -> "No saved posts yet."
+                                        else -> "No posts yet."
+                                    },
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }

@@ -405,3 +405,13 @@ Windows equivalent or reason no equivalent is needed: Windows keeps its existing
 Backend/shared behavior preserved: public.user_balances.spendable_coin_balance remains the single wallet authority. Boost pricing/delivery, Drop follower snapshots/reward/refund rules, Store pricing, verification, XP/Rank Points, authentication, and organic recommendation/ranking behavior remain server-authoritative. The new backend work adds idempotency, read-only analytics/receipts, lifecycle notifications, scheduled settlement, and realtime publication for the existing wallet table.
 Tests/validation: Android unit/lint/instrumentation/debug/release checks, Windows build/package/parity, and Supabase safety must pass on Testlab PR #172 before merge. The production migration is applied only after those gates pass and the Testlab PR is merged.
 Owner/reviewer note: This exception covers Android presentation/notification/realtime adapters only. It cannot waive Windows parity for future Growth business-rule, pricing, wallet, reward, or ranking changes.
+
+---
+
+PARITY-CHANGE: testlab-profile-content-and-ai-composer-20261007
+Date: 2026-10-07
+Feature: Carry forward the unresolved AI composer and profile-data fixes from PRs #58 and #86.
+Android behavior: Send stays beside the AI message field while attachment controls scroll independently. Profiles read their own paginated content and authenticated-owner likes/saves rather than using the currently loaded ranked feed. Actions update profile content as well as feed caches; refresh reloads the profile query. Inactive avatar dots are removed.
+Windows behavior: The existing AI dialog retains its fixed Send action. Profile content and private liked/saved relations now paginate independently of the feed, including owner-only Liked/Saved tabs. Inactive avatar dots are removed.
+Shared/backend behavior: Existing feed ranking, content access, presence projection, wallet, XP and notification delivery contracts are preserved. Private relation queries always use the authenticated account. Existing real follower snapshots remain the source for history.
+Validation: Android lint/unit/instrumentation/debug/release/runtime, Windows build/package, parity and isolated migration/RLS regressions must pass before main promotion.

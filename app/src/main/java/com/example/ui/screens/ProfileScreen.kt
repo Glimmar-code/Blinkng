@@ -560,16 +560,18 @@ fun ProfileScreen(
                                         }
                                     }
 
-                                    Box(
-                                        modifier = Modifier
-                                            .size(19.dp)
-                                            .align(Alignment.BottomEnd)
-                                            .background(
-                                                if (profile.onlineNow) Color(0xFF22C55E) else Color(0xFF8B5A2B),
-                                                CircleShape
-                                            )
-                                            .border(3.dp, bgColor, CircleShape)
-                                    )
+                                    if (presenceVisible && profile.onlineNow) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(19.dp)
+                                                .align(Alignment.BottomEnd)
+                                                .background(
+                                                    Color(0xFF22C55E),
+                                                    CircleShape
+                                                )
+                                                .border(3.dp, bgColor, CircleShape)
+                                        )
+                                    }
                                 }
                             }
 

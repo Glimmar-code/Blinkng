@@ -158,7 +158,12 @@ data class BlinkUiState(
     val isLoadingMoreReels: Boolean = false,
     val messageHistoryHasMore: Map<String, Boolean> = emptyMap(),
     val loadingOlderConversationId: String? = null,
-    val loadingInitialConversationId: String? = null
+    val loadingInitialConversationId: String? = null,
+    val profilePostsByUserId: Map<String, List<FeedPost>> = emptyMap(),
+    val myLikedPosts: List<FeedPost> = emptyList(),
+    val mySavedPosts: List<FeedPost> = emptyList(),
+    val profileSurfaceLoadingIds: Set<String> = emptySet(),
+    val profileSurfaceLoadedIds: Set<String> = emptySet()
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
@@ -2512,6 +2517,42 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+
+    fun loadProfileSurfaceData(profile: UserProfile, force: Boolean = false) {
+        val key = profile.id.ifBlank { profile.username.trim().removePrefix("@").lowercase() }
+        val ownerId = supabaseService.getCurrentUserId() ?: return
+        if (key.isBlank() || !_uiState.value.isOnline) return
+        val current = _uiState.value
+        if (key in current.profileSurfaceLoadingIds || (!force && key in current.profileSurfaceLoadedIds)) return
+        _uiState.value = current.copy(profileSurfaceLoadingIds = current.profileSurfaceLoadingIds + key)
+        viewModelScope.launch {
+            try {
+                val resolved = if (profile.id.isNotBlank()) profile
+                    else profileRepository.fetchByUsername(profile.username) ?: profile
+                if (resolved.id.isBlank()) return@launch
+                val content = supabaseService.fetchProfileSurfaceContent(resolved.id)
+                if (supabaseService.getCurrentUserId() != ownerId) return@launch
+                val latest = _uiState.value
+                val isOwner = resolved.id == ownerId
+                _uiState.value = latest.copy(
+                    profilePostsByUserId = latest.profilePostsByUserId + mapOf(key to content.posts, resolved.id to content.posts),
+                    myLikedPosts = if (isOwner) content.likedPosts else latest.myLikedPosts,
+                    mySavedPosts = if (isOwner) content.savedPosts else latest.mySavedPosts,
+                    profileSurfaceLoadedIds = latest.profileSurfaceLoadedIds + key + resolved.id
+                )
+            } catch (error: Exception) {
+                Log.w(TAG, "PROFILE_SURFACE_LOAD failed", error)
+                showToast("Could not load profile content. Pull to refresh to retry.")
+            } finally {
+                val latest = _uiState.value
+                _uiState.value = latest.copy(profileSurfaceLoadingIds = latest.profileSurfaceLoadingIds - key)
+            }
+        }
+    }
+
+    private fun profileSurfacePosts(state: BlinkUiState): List<FeedPost> =
+        state.profilePostsByUserId.values.flatten() + state.myLikedPosts + state.mySavedPosts
+
     fun openProfile(username: String) {
         if (isMe(username)) { _uiState.value = _uiState.value.copy(viewingProfile = _uiState.value.myProfile); return }
         val cached = cachedProfile(username)
@@ -3025,7 +3066,7 @@ private suspend fun restoreSupabaseSession() {
 
     fun togglePostLike(postId: String) {
         val state = _uiState.value
-        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts)
+        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
         val nextLiked = !target.isLiked
         val nextCount = (target.likes + if (nextLiked) 1 else -1).coerceAtLeast(0)
@@ -3036,7 +3077,10 @@ private suspend fun restoreSupabaseSession() {
             posts = update(state.posts, nextLiked, nextCount),
             followingPosts = update(state.followingPosts, nextLiked, nextCount),
             reels = update(state.reels, nextLiked, nextCount),
-            discoverPosts = update(state.discoverPosts, nextLiked, nextCount)
+            discoverPosts = update(state.discoverPosts, nextLiked, nextCount),
+            profilePostsByUserId = state.profilePostsByUserId.mapValues { update(it.value, nextLiked, nextCount) },
+            myLikedPosts = update((state.myLikedPosts + target).distinctBy { it.id }, nextLiked, nextCount),
+            mySavedPosts = update(state.mySavedPosts, nextLiked, nextCount)
         )
         persistCurrentFeed()
 
@@ -3060,7 +3104,10 @@ private suspend fun restoreSupabaseSession() {
                     posts = update(latest.posts, target.isLiked, target.likes),
                     followingPosts = update(latest.followingPosts, target.isLiked, target.likes),
                     reels = update(latest.reels, target.isLiked, target.likes),
-                    discoverPosts = update(latest.discoverPosts, target.isLiked, target.likes)
+                    discoverPosts = update(latest.discoverPosts, target.isLiked, target.likes),
+                    profilePostsByUserId = latest.profilePostsByUserId.mapValues { update(it.value, target.isLiked, target.likes) },
+                    myLikedPosts = update(latest.myLikedPosts, target.isLiked, target.likes),
+                    mySavedPosts = update(latest.mySavedPosts, target.isLiked, target.likes)
                 )
                 persistCurrentFeed()
                 showToast("Failed to update like.")
@@ -3069,7 +3116,7 @@ private suspend fun restoreSupabaseSession() {
     }
     fun toggleRepost(postId: String) {
         val state = _uiState.value
-        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts)
+        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
         val optimisticReposted = !target.isRepostedByMe
         val optimisticCount = (target.repostsCount + if (optimisticReposted) 1 else -1).coerceAtLeast(0)
@@ -3090,7 +3137,10 @@ private suspend fun restoreSupabaseSession() {
             posts = update(state.posts, optimisticReposted, optimisticCount),
             followingPosts = update(state.followingPosts, optimisticReposted, optimisticCount),
             reels = update(state.reels, optimisticReposted, optimisticCount),
-            discoverPosts = update(state.discoverPosts, optimisticReposted, optimisticCount)
+            discoverPosts = update(state.discoverPosts, optimisticReposted, optimisticCount),
+            profilePostsByUserId = state.profilePostsByUserId.mapValues { update(it.value, optimisticReposted, optimisticCount) },
+            myLikedPosts = update(state.myLikedPosts, optimisticReposted, optimisticCount),
+            mySavedPosts = update(state.mySavedPosts, optimisticReposted, optimisticCount)
         )
         persistCurrentFeed()
 
@@ -3102,7 +3152,10 @@ private suspend fun restoreSupabaseSession() {
                     posts = update(latest.posts, target.isRepostedByMe, target.repostsCount),
                     followingPosts = update(latest.followingPosts, target.isRepostedByMe, target.repostsCount),
                     reels = update(latest.reels, target.isRepostedByMe, target.repostsCount),
-                    discoverPosts = update(latest.discoverPosts, target.isRepostedByMe, target.repostsCount)
+                    discoverPosts = update(latest.discoverPosts, target.isRepostedByMe, target.repostsCount),
+                    profilePostsByUserId = latest.profilePostsByUserId.mapValues { update(it.value, target.isRepostedByMe, target.repostsCount) },
+                    myLikedPosts = update(latest.myLikedPosts, target.isRepostedByMe, target.repostsCount),
+                    mySavedPosts = update(latest.mySavedPosts, target.isRepostedByMe, target.repostsCount)
                 )
                 persistCurrentFeed()
                 showToast("Couldn't update repost.")
@@ -3115,14 +3168,17 @@ private suspend fun restoreSupabaseSession() {
                 posts = update(latest.posts, serverReposted, serverCount),
                 followingPosts = update(latest.followingPosts, serverReposted, serverCount),
                 reels = update(latest.reels, serverReposted, serverCount),
-                discoverPosts = update(latest.discoverPosts, serverReposted, serverCount)
+                discoverPosts = update(latest.discoverPosts, serverReposted, serverCount),
+                profilePostsByUserId = latest.profilePostsByUserId.mapValues { update(it.value, serverReposted, serverCount) },
+                myLikedPosts = update(latest.myLikedPosts, serverReposted, serverCount),
+                mySavedPosts = update(latest.mySavedPosts, serverReposted, serverCount)
             )
             persistCurrentFeed()
         }
     }
     fun toggleBookmark(postId: String) {
         val state = _uiState.value
-        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts)
+        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
         val next = !target.isBookmarked
         fun update(items: List<FeedPost>, value: Boolean): List<FeedPost> =
@@ -3132,7 +3188,10 @@ private suspend fun restoreSupabaseSession() {
             posts = update(state.posts, next),
             followingPosts = update(state.followingPosts, next),
             reels = update(state.reels, next),
-            discoverPosts = update(state.discoverPosts, next)
+            discoverPosts = update(state.discoverPosts, next),
+            profilePostsByUserId = state.profilePostsByUserId.mapValues { update(it.value, next) },
+            myLikedPosts = update(state.myLikedPosts, next),
+            mySavedPosts = update((state.mySavedPosts + target).distinctBy { it.id }, next)
         )
         persistCurrentFeed()
 
@@ -3143,7 +3202,10 @@ private suspend fun restoreSupabaseSession() {
                     posts = update(latest.posts, target.isBookmarked),
                     followingPosts = update(latest.followingPosts, target.isBookmarked),
                     reels = update(latest.reels, target.isBookmarked),
-                    discoverPosts = update(latest.discoverPosts, target.isBookmarked)
+                    discoverPosts = update(latest.discoverPosts, target.isBookmarked),
+                    profilePostsByUserId = latest.profilePostsByUserId.mapValues { update(it.value, target.isBookmarked) },
+                    myLikedPosts = update(latest.myLikedPosts, target.isBookmarked),
+                    mySavedPosts = update(latest.mySavedPosts, target.isBookmarked)
                 )
                 persistCurrentFeed()
                 showToast("Failed to update bookmark.")
@@ -3161,7 +3223,10 @@ private suspend fun restoreSupabaseSession() {
                     posts = update(state.posts),
                     followingPosts = update(state.followingPosts),
                     reels = update(state.reels),
-                    discoverPosts = update(state.discoverPosts)
+                    discoverPosts = update(state.discoverPosts),
+                    profilePostsByUserId = state.profilePostsByUserId.mapValues { update(it.value) },
+                    myLikedPosts = update(state.myLikedPosts),
+                    mySavedPosts = update(state.mySavedPosts)
                 )
                 persistCurrentFeed()
                 showToast("🔗 Post shared.")
@@ -3172,10 +3237,10 @@ private suspend fun restoreSupabaseSession() {
     }
     fun deletePost(postId: String) {
         val state = _uiState.value
-        val target = (state.posts + state.followingPosts + state.reels)
+        val target = (state.posts + state.followingPosts + state.reels + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
         val me = state.myProfile.username.trim()
-        if (me.isBlank() || !target.author.equals(me, ignoreCase = true)) {
+        if (me.isBlank() || !target.authorUsername.ifBlank { target.author }.equals(me, ignoreCase = true)) {
             _uiState.value = state.copy(activePostOptionsPost = null)
             showToast("You can only delete your own post or reel.")
             return
@@ -3188,6 +3253,9 @@ private suspend fun restoreSupabaseSession() {
             posts = postsBefore.filterNot { it.id == postId },
             followingPosts = followingBefore.filterNot { it.id == postId },
             reels = reelsBefore.filterNot { it.id == postId },
+            profilePostsByUserId = state.profilePostsByUserId.mapValues { it.value.filterNot { post -> post.id == postId } },
+            myLikedPosts = state.myLikedPosts.filterNot { it.id == postId },
+            mySavedPosts = state.mySavedPosts.filterNot { it.id == postId },
             activePostOptionsPost = null
         )
         persistCurrentFeed()
@@ -3200,7 +3268,10 @@ private suspend fun restoreSupabaseSession() {
                 _uiState.value = _uiState.value.copy(
                     posts = postsBefore,
                     followingPosts = followingBefore,
-                    reels = reelsBefore
+                    reels = reelsBefore,
+                    profilePostsByUserId = state.profilePostsByUserId,
+                    myLikedPosts = state.myLikedPosts,
+                    mySavedPosts = state.mySavedPosts
                 )
                 persistCurrentFeed()
                 showToast("Delete failed. Only the owner can delete this content.")
@@ -3209,7 +3280,7 @@ private suspend fun restoreSupabaseSession() {
     }
     fun markPostNotInterested(postId: String) {
         val state = _uiState.value
-        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts)
+        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
 
         _uiState.value = state.copy(
@@ -3274,7 +3345,7 @@ private suspend fun restoreSupabaseSession() {
     }
     fun votePoll(postId: String, optionId: String) {
         val state = _uiState.value
-        val target = (state.posts + state.followingPosts + state.reels)
+        val target = (state.posts + state.followingPosts + state.reels + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
         val poll = target.poll ?: return
         if (poll.hasVoted || poll.options.any { it.isVotedByMe }) {

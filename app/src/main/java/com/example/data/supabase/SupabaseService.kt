@@ -15,6 +15,7 @@ import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.example.data.models.ContactField
 import com.example.data.models.FeedPost
+import com.example.data.models.ProfileSurfaceContent
 import com.example.data.models.LeaderboardUser
 import com.example.data.models.CampusPeer
 import com.example.data.models.RoommateApplicant
@@ -1868,6 +1869,74 @@ fun getCurrentUserId(): String? {
     // ============================================================
     // FEED
     // ============================================================
+
+
+    /**
+     * Read profile content independently of the ranked feed. Private relations always
+     * use the authenticated account, and pagination has no feed-window cutoff.
+     */
+    suspend fun fetchProfileSurfaceContent(profileId: String): ProfileSurfaceContent =
+        withContext(Dispatchers.IO) {
+            require(isValidUuid(profileId)) { "Profile is required." }
+            val ownerId = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            suspend fun allRows(path: String): List<JSONObject> {
+                val output = mutableListOf<JSONObject>()
+                var offset = 0
+                while (true) {
+                    val rows = executeRequest(
+                        newRequestBuilder("$path&limit=100&offset=$offset", true).get().build()
+                    ).use { response ->
+                        val raw = response.body?.string().orEmpty()
+                        if (!response.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Could not load profile content."))
+                        JSONArray(raw.ifBlank { "[]" })
+                    }
+                    for (i in 0 until rows.length()) rows.optJSONObject(i)?.let(output::add)
+                    if (rows.length() < 100) break
+                    offset += rows.length()
+                }
+                return output
+            }
+            suspend fun relationIds(table: String): List<String> =
+                allRows("/rest/v1/$table?user_id=eq.${encodeValue(ownerId)}&select=post_id&order=created_at.desc,post_id.desc")
+                    .map { it.cleanString("post_id") }.filter(::isValidUuid).distinct()
+            val likedIds = relationIds("post_likes")
+            val savedIds = relationIds("post_bookmarks")
+            val likedSet = likedIds.toSet()
+            val savedSet = savedIds.toSet()
+            val profiles = mutableMapOf<String, UserProfile?>()
+            suspend fun mapRows(rows: List<JSONObject>): List<FeedPost> {
+                val output = mutableListOf<FeedPost>()
+                for (row in rows) {
+                    val userId = row.cleanString("user_id")
+                    if (!profiles.containsKey(userId)) profiles[userId] = fetchProfileById(userId)
+                    val profile = profiles[userId] ?: continue
+                    val mapped = JSONObject(row.toString()).apply {
+                        put("author", profile.fullName.ifBlank { profile.username })
+                        put("author_name", profile.fullName.ifBlank { profile.username })
+                        put("full_name", profile.fullName.ifBlank { profile.username })
+                        put("author_avatar", profile.avatarUrl)
+                        put("username", profile.username)
+                        put("author_username", profile.username)
+                        put("is_verified", profile.verificationBadge != VerificationBadge.NONE)
+                        put("verification_badge", profile.verificationBadge.name)
+                    }
+                    val id = row.cleanString("id")
+                    output += parseFeedPost(mapped).copy(isLiked = id in likedSet, isBookmarked = id in savedSet)
+                }
+                return output
+            }
+            suspend fun relationContent(ids: List<String>): List<FeedPost> {
+                val rows = mutableListOf<JSONObject>()
+                for (chunk in ids.chunked(100)) {
+                    rows += allRows("/rest/v1/feed_posts?id=in.(${chunk.joinToString(",")})&is_active=eq.true&select=*&order=created_at.desc,id.desc")
+                }
+                val byId = mapRows(rows).associateBy { it.id }
+                return ids.mapNotNull { byId[it] }
+            }
+            val posts = mapRows(allRows("/rest/v1/feed_posts?user_id=eq.${encodeValue(profileId)}&is_active=eq.true&select=*&order=is_pinned.desc,created_at.desc,id.desc"))
+            if (profileId != ownerId) return@withContext ProfileSurfaceContent(posts)
+            ProfileSurfaceContent(posts, relationContent(likedIds), relationContent(savedIds))
+        }
 
     suspend fun fetchFeedPosts(): List<FeedPost> =
         fetchFeedPage(limit = 40, feedType = "all")

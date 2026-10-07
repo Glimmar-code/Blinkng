@@ -446,16 +446,50 @@ class DesktopSupabaseClient(
     suspend fun fetchProfileContent(profileId: String): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
         val cleanId = profileId.trim()
         if (cleanId.isBlank()) return@withContext emptyList()
-        val rows = getArray(
-            "/rest/v1/feed_posts?user_id=eq.${encode(cleanId)}&is_active=eq.true&select=id,user_id,text,caption,image_url,video_url,images,hashtags,like_count,comment_count,share_count,view_count,is_reel,is_pinned,created_at&order=is_pinned.desc,created_at.desc&limit=100",
+        val rows = getAllProfileRows(
+            "/rest/v1/feed_posts?user_id=eq.${encode(cleanId)}&is_active=eq.true&select=*&order=is_pinned.desc,created_at.desc,id.desc",
         )
         val profile = runCatching { fetchProfile(cleanId) }.getOrNull()
         val liked = fetchMyLikedPostIds()
+        val bookmarked = fetchMyBookmarkedPostIds()
         (0 until rows.length()).mapNotNull { index ->
             rows.optJSONObject(index)?.let { row ->
                 parseFeedPost(row, profile, row.optString("id") in liked)
+                    .copy(isBookmarked = row.optString("id") in bookmarked)
             }
         }
+    }
+
+    private suspend fun getAllProfileRows(path: String): JSONArray {
+        val output = JSONArray()
+        var offset = 0
+        while (true) {
+            val rows = getArray("$path&limit=100&offset=$offset")
+            for (index in 0 until rows.length()) rows.optJSONObject(index)?.let { output.put(it) }
+            if (rows.length() < 100) break
+            offset += rows.length()
+        }
+        return output
+    }
+
+    suspend fun fetchMyProfileRelationContent(saved: Boolean): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
+        requireSession()
+        val liked = fetchMyLikedPostIds()
+        val bookmarks = fetchMyBookmarkedPostIds()
+        val ids = if (saved) bookmarks else liked
+        val profiles = mutableMapOf<String, DesktopProfile?>()
+        val content = mutableMapOf<String, DesktopFeedPost>()
+        for (chunk in ids.chunked(100)) {
+            val rows = getAllProfileRows("/rest/v1/feed_posts?id=in.(${chunk.joinToString(",")})&is_active=eq.true&select=*&order=created_at.desc,id.desc")
+            for (index in 0 until rows.length()) {
+                val row = rows.optJSONObject(index) ?: continue
+                val userId = row.optString("user_id")
+                if (!profiles.containsKey(userId)) profiles[userId] = fetchProfileDetail(userId)
+                val id = row.optString("id")
+                content[id] = parseFeedPost(row, profiles[userId], id in liked).copy(isBookmarked = id in bookmarks)
+            }
+        }
+        ids.mapNotNull { content[it] }
     }
 
     suspend fun fetchProfileFollowerHistory(profileId: String, days: Int = 30): List<DesktopProfileFollowerPoint> =
@@ -1319,7 +1353,7 @@ class DesktopSupabaseClient(
     private suspend fun fetchMyLikedPostIds(): Set<String> = withContext(Dispatchers.IO) {
         val active = session ?: return@withContext emptySet()
         val rows = runCatching {
-            getArray("/rest/v1/post_likes?user_id=eq.${encode(active.userId)}&select=post_id&limit=1000")
+            getAllProfileRows("/rest/v1/post_likes?user_id=eq.${encode(active.userId)}&select=post_id&order=created_at.desc,post_id.desc")
         }.getOrNull() ?: return@withContext emptySet()
         buildSet {
             for (i in 0 until rows.length()) rows.optJSONObject(i)?.optString("post_id")?.takeIf(String::isNotBlank)?.let(::add)
@@ -1329,7 +1363,7 @@ class DesktopSupabaseClient(
     private suspend fun fetchMyBookmarkedPostIds(): Set<String> = withContext(Dispatchers.IO) {
         val active = session ?: return@withContext emptySet()
         val rows = runCatching {
-            getArray("/rest/v1/post_bookmarks?user_id=eq.${encode(active.userId)}&select=post_id&limit=1000")
+            getAllProfileRows("/rest/v1/post_bookmarks?user_id=eq.${encode(active.userId)}&select=post_id&order=created_at.desc,post_id.desc")
         }.getOrNull() ?: return@withContext emptySet()
         buildSet {
             for (i in 0 until rows.length()) {

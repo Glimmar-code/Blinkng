@@ -1265,6 +1265,7 @@ fun MainAppContent(
                 val currentProfileToDisplay = if (isMyProfile) uiState.myProfile else profile
 
                 LaunchedEffect(currentProfileToDisplay.id, currentProfileToDisplay.username, isMyProfile) {
+                    viewModel.loadProfileSurfaceData(currentProfileToDisplay, force = true)
                     if (!isMyProfile && currentProfileToDisplay.username.isNotBlank()) {
                         com.example.notification.ProfileViewActivityTracker.recordViewedProfile(
                             currentProfileToDisplay.username
@@ -1272,21 +1273,12 @@ fun MainAppContent(
                     }
                 }
 
-                val profilePosts = if (isMyProfile) {
-                    (uiState.posts + uiState.reels).distinctBy { it.id }.filter { viewModel.isMe(it.author) }
-                } else {
-                    (uiState.posts + uiState.reels).distinctBy { it.id }.filter { it.author.equals(profile.username, ignoreCase = true) || it.author.equals(profile.fullName, ignoreCase = true) }
+                val profileKey = currentProfileToDisplay.id.ifBlank {
+                    currentProfileToDisplay.username.trim().removePrefix("@").lowercase()
                 }
-                val profileLikedPosts = if (isMyProfile) {
-                    (uiState.posts + uiState.reels).distinctBy { it.id }.filter { it.isLiked }
-                } else {
-                    emptyList()
-                }
-                val profileSavedPosts = if (isMyProfile) {
-                    (uiState.posts + uiState.reels).distinctBy { it.id }.filter { it.isBookmarked }
-                } else {
-                    emptyList()
-                }
+                val profilePosts = uiState.profilePostsByUserId[profileKey].orEmpty()
+                val profileLikedPosts = if (isMyProfile) uiState.myLikedPosts.filter { it.isLiked } else emptyList()
+                val profileSavedPosts = if (isMyProfile) uiState.mySavedPosts.filter { it.isBookmarked } else emptyList()
 
                 val userMarketItems = if (isMyProfile) {
                     uiState.marketItems.filter {
@@ -1326,7 +1318,10 @@ fun MainAppContent(
                     onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
                     isDark = uiState.isDarkMode,
-                    onRefreshProfile = { viewModel.refreshProgressState() }
+                    onRefreshProfile = {
+                        viewModel.refreshProgressState()
+                        viewModel.loadProfileSurfaceData(currentProfileToDisplay, force = true)
+                    }
                 )
             }
         }
