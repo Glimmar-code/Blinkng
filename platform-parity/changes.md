@@ -304,3 +304,16 @@ Windows equivalent or reason no equivalent is needed: Windows keeps desktop-nati
 Backend/shared behavior preserved: Ranking, qualified views, repeat-view limits, posts/reels data, wallet, verification, authentication, notifications, moderation and all Supabase contracts are unchanged.
 Tests/validation: Pure JVM tests cover velocity settling, viewport autoplay threshold, adaptive prefetch depth and keyed restore resolution. Android unit/lint/instrumentation/debug/release gates plus Windows parity/build/package and Supabase safety must pass before promotion to main.
 Owner/reviewer note: This exception covers presentation/performance adapters only and cannot waive Windows parity for future feed features, ranking semantics or backend behavior.
+
+
+---
+
+PARITY-EXCEPTION: android-professional-chat-upgrade-20261007
+Date: 2026-10-07
+Feature: Android professional messaging/chat interaction upgrade
+Android behavior: Adds Android-native chat interaction polish including persistent composer drafts, media and voice-recorder flows, conversation interaction sheets, realtime message controls, richer message state handling, and Android-specific navigation/lifecycle wiring. Optional server-side conversation inbox state remains backward-compatible.
+Why this is genuinely Android-specific in this PR: The changed presentation and capture flows depend on Android Compose touch interaction, Activity/URI media pickers, microphone capture, Android lifecycle/navigation, and Android realtime adapters. This PR does not redefine the shared message payload contract or remove Windows messaging capabilities.
+Windows equivalent or reason no equivalent is needed: Windows keeps its existing desktop-native Messages surface with conversation search, chat search, send, reply, copy, forward, contact actions and desktop layout. The optional backend chat-control schema is additive, so Windows remains compatible without adopting phone-style voice recording, sheets, gestures, or Android lifecycle behavior in this PR.
+Backend/shared behavior preserved: Existing conversations, messages, auth, read/delivery state, feed/reels, ranking, wallet and user data remain intact. New chat-control columns/tables are additive and guarded by RLS.
+Tests/validation: Android validate/runtime/release/verify, Supabase migration-safety, Windows build and parity must pass in Testlab before production promotion.
+Owner/reviewer note: This exception only covers Android-native interaction/capture/lifecycle presentation. It cannot be used to waive Windows parity for future shared messaging business rules or message data-model changes.
