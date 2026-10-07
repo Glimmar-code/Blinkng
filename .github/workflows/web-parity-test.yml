@@ -83,6 +83,13 @@ jobs:
             if (!app.includes(marker)) throw new Error(`Missing app regression marker: ${marker}`);
           }
 
+          if (app.includes('blink-ai-v2')) {
+            throw new Error('Web Blink AI must use the deployed canonical blink-ai endpoint');
+          }
+          if (!app.includes("for(const endpoint of ['blink-ai'])")) {
+            throw new Error('Web Blink AI canonical endpoint wiring missing');
+          }
+
           if (!styles.includes('.profile-cover-image')) throw new Error('Profile cover image style missing');
           if (!styles.includes(':focus-visible')) throw new Error('Keyboard focus styling missing');
 
