@@ -19,7 +19,7 @@ try {
     create schema auth; create schema private; create schema private_ranking; create schema extensions; create schema cron;
     create table auth.users(id uuid primary key, email text);
     create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
-    grant usage on schema public,auth to authenticated;
+    grant usage on schema public,auth,extensions,private_ranking to authenticated;
     grant execute on function auth.uid() to authenticated;
     create table cron.job(jobid bigint generated always as identity primary key,jobname text unique,schedule text,command text);
     create function cron.schedule(text,text,text) returns bigint language sql as $$insert into cron.job(jobname,schedule,command) values ($1,$2,$3) returning jobid$$;
