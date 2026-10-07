@@ -74,14 +74,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopComment
+import com.blinkng.desktop.data.DesktopConnectInbox
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
 import com.blinkng.desktop.data.DesktopInventoryItem
@@ -119,6 +118,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import org.json.JSONObject
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 
 @Composable
 fun HomeScreen(
@@ -717,11 +718,18 @@ fun ConnectScreen(state: DesktopAppState) {
     var listings by remember { mutableStateOf<List<DesktopConnectListing>>(emptyList()) }
     var students by remember { mutableStateOf<List<DesktopProfile>>(emptyList()) }
     var followingIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var inbox by remember { mutableStateOf(DesktopConnectInbox()) }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
     var selectedPane by remember { mutableStateOf(0) }
+
+    var listingQuery by remember { mutableStateOf("") }
+    var listingGroup by remember { mutableStateOf("All") }
+
     var studentQuery by remember { mutableStateOf("") }
     var studentFilter by remember { mutableStateOf("all") }
+    var studentSort by remember { mutableStateOf("recommended") }
+
     var type by remember { mutableStateOf("community") }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -730,16 +738,36 @@ fun ConnectScreen(state: DesktopAppState) {
     var pulseImpressionRecorded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    fun connectGroup(listing: DesktopConnectListing): String {
+        val text = buildString {
+            append(listing.listingType)
+            append(' ')
+            append(listing.title)
+            append(' ')
+            append(listing.tags.joinToString(" "))
+        }.lowercase()
+
+        return when {
+            listOf("room", "housing", "accommodation", "agent", "relocation").any { text.contains(it) } -> "Housing"
+            listOf("study", "reading", "course", "research", "project", "accountability").any { text.contains(it) } -> "Study"
+            listOf("career", "mentor", "intern", "skill", "founder", "freelance", "alumni").any { text.contains(it) } -> "Career & Skills"
+            listOf("game", "challenge", "quiz").any { text.contains(it) } -> "Games"
+            else -> "People & Community"
+        }
+    }
+
     suspend fun reload() {
         loading = true
         val listingsResult = runCatching { state.client.fetchConnectListings() }
         val studentsResult = runCatching { state.client.fetchOnboardingSuggestions(100) }
         val followingResult = runCatching { state.client.fetchFollowingIds() }
+        val inboxResult = runCatching { state.client.fetchConnectInbox() }
         val policyResult = runCatching { state.client.fetchActivityPulsePolicy() }
 
         listings = listingsResult.getOrDefault(listings)
         students = studentsResult.getOrDefault(students).filterNot { it.id == state.profile?.id }
         followingIds = followingResult.getOrDefault(followingIds)
+        inbox = inboxResult.getOrDefault(inbox)
         pulsePolicy = policyResult.getOrDefault(pulsePolicy).normalized()
         liveActivityAvailable = studentsResult.isSuccess
         loading = false
@@ -748,26 +776,87 @@ fun ConnectScreen(state: DesktopAppState) {
     LaunchedEffect(Unit) { reload() }
 
     val myCampus = state.profile?.university.orEmpty()
-    val visibleStudents = remember(students, studentQuery, studentFilter, myCampus) {
+    val myDepartment = state.profile?.department.orEmpty()
+
+    val visibleListings = remember(listings, listingQuery, listingGroup) {
+        val query = listingQuery.trim()
+        listings.filter { listing ->
+            val groupMatches = listingGroup == "All" || connectGroup(listing) == listingGroup
+            val queryMatches = query.isBlank() ||
+                listing.title.contains(query, ignoreCase = true) ||
+                listing.description.contains(query, ignoreCase = true) ||
+                listing.listingType.contains(query, ignoreCase = true) ||
+                listing.university.orEmpty().contains(query, ignoreCase = true) ||
+                listing.department.orEmpty().contains(query, ignoreCase = true) ||
+                listing.location.orEmpty().contains(query, ignoreCase = true) ||
+                listing.tags.any { it.contains(query, ignoreCase = true) }
+
+            groupMatches && queryMatches
+        }
+    }
+
+    val visibleStudents = remember(
+        students,
+        studentQuery,
+        studentFilter,
+        studentSort,
+        myCampus,
+        myDepartment,
+        followingIds
+    ) {
         val query = studentQuery.trim()
-        students.filter { profile ->
+        val filtered = students.filter { profile ->
             val matchesQuery = query.isBlank() ||
                 profile.fullName.contains(query, ignoreCase = true) ||
                 profile.username.contains(query, ignoreCase = true) ||
                 profile.university.orEmpty().contains(query, ignoreCase = true) ||
                 profile.faculty.orEmpty().contains(query, ignoreCase = true) ||
-                profile.department.orEmpty().contains(query, ignoreCase = true)
+                profile.department.orEmpty().contains(query, ignoreCase = true) ||
+                profile.academicLevel.orEmpty().contains(query, ignoreCase = true)
 
             val matchesFilter = when (studentFilter) {
                 "campus" -> myCampus.isNotBlank() &&
                     profile.university.orEmpty().equals(myCampus, ignoreCase = true)
+                "department" -> myDepartment.isNotBlank() &&
+                    profile.department.orEmpty().equals(myDepartment, ignoreCase = true)
                 "online" -> profile.isOnline
+                "verified" -> profile.isVerified
                 else -> true
             }
 
             matchesQuery && matchesFilter
         }
+
+        when (studentSort) {
+            "active" -> filtered.sortedWith(
+                compareByDescending<DesktopProfile> { it.isOnline }
+                    .thenByDescending { it.lastSeenAt.orEmpty() }
+                    .thenBy { it.fullName.lowercase() }
+            )
+            "campus" -> filtered.sortedWith(
+                compareByDescending<DesktopProfile> {
+                    myCampus.isNotBlank() &&
+                        it.university.orEmpty().equals(myCampus, ignoreCase = true)
+                }.thenByDescending { it.isOnline }
+                    .thenBy { it.fullName.lowercase() }
+            )
+            "name" -> filtered.sortedBy { it.fullName.ifBlank { it.username }.lowercase() }
+            else -> filtered.sortedWith(
+                compareByDescending<DesktopProfile> { it.isOnline }
+                    .thenByDescending { it.id in followingIds }
+                    .thenByDescending {
+                        myDepartment.isNotBlank() &&
+                            it.department.orEmpty().equals(myDepartment, ignoreCase = true)
+                    }
+                    .thenByDescending {
+                        myCampus.isNotBlank() &&
+                            it.university.orEmpty().equals(myCampus, ignoreCase = true)
+                    }
+                    .thenBy { it.fullName.lowercase() }
+            )
+        }
     }
+
     val policy = remember(pulsePolicy) { pulsePolicy.normalized() }
     val realOnlineCount = remember(students) { 1 + students.count { it.isOnline } }
     val reduceMotion = state.settings?.reduceMotion == true
@@ -811,6 +900,21 @@ fun ConnectScreen(state: DesktopAppState) {
         }
     }
 
+    val sameDepartmentCount = remember(students, myDepartment) {
+        students.count {
+            myDepartment.isNotBlank() &&
+                it.department.orEmpty().equals(myDepartment, ignoreCase = true)
+        }
+    }
+    val pendingInboxCount = remember(inbox, state.profile?.id) {
+        val currentId = state.profile?.id.orEmpty()
+        inbox.requests.count {
+            it.direction.equals("incoming", true) && it.status.equals("pending", true)
+        } + inbox.challenges.count {
+            it.opponentId == currentId && it.status.equals("pending", true)
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -823,7 +927,7 @@ fun ConnectScreen(state: DesktopAppState) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ScreenHeader("Connect", "Connect Hub and student discovery")
+                    ScreenHeader("Connect", "People, study, housing, skills and challenges")
                     if (selectedPane == 0) {
                         Button(onClick = { showCreate = true }) { Text("Create") }
                     }
@@ -937,112 +1041,383 @@ fun ConnectScreen(state: DesktopAppState) {
                         label = { Text("Students") },
                         modifier = Modifier.weight(1f),
                     )
+                    FilterChip(
+                        selected = selectedPane == 2,
+                        onClick = { selectedPane = 2 },
+                        label = {
+                            Text(if (pendingInboxCount > 0) "Inbox · $pendingInboxCount" else "Inbox")
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
 
             if (loading) {
                 item { LoadingRow() }
             } else if (selectedPane == 0) {
-                items(listings, key = { it.id }) { listing ->
-                    Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Text(listing.title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                            Text(listing.description)
-                            Text(
-                                listOfNotNull(
-                                    listing.listingType,
-                                    listing.university,
-                                    listing.department,
-                                    listing.academicLevel,
-                                    listing.location,
-                                ).joinToString(" • "),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 12.sp,
-                            )
-                            if (listing.tags.isNotEmpty()) {
-                                Text(
-                                    listing.tags.joinToString("  ") { "#$it" },
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontSize = 12.sp,
+                            listOf(
+                                Triple("People for you", "$sameDepartmentCount same department", 1),
+                                Triple("Housing", "${listings.count { connectGroup(it) == "Housing" }} active", 0),
+                                Triple("Study", "${listings.count { connectGroup(it) == "Study" }} active", 0),
+                                Triple("Career & Skills", "${listings.count { connectGroup(it) == "Career & Skills" }} active", 0),
+                            ).forEach { (label, detail, destination) ->
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            if (destination == 1) selectedPane = 1
+                                            else listingGroup = label
+                                        },
+                                    shape = RoundedCornerShape(16.dp),
+                                    tonalElevation = 1.dp,
+                                ) {
+                                    Column(Modifier.padding(12.dp)) {
+                                        Text(label, fontWeight = FontWeight.Black, fontSize = 12.sp)
+                                        Text(
+                                            detail,
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = listingQuery,
+                            onValueChange = { listingQuery = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Search Connect Hub") },
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(
+                                "All",
+                                "Housing",
+                                "Study",
+                                "Career & Skills",
+                                "People & Community",
+                                "Games",
+                            ).forEach { group ->
+                                FilterChip(
+                                    selected = listingGroup == group,
+                                    onClick = { listingGroup = group },
+                                    label = { Text(group) },
                                 )
                             }
                         }
                     }
                 }
-            } else {
+
+                if (visibleListings.isEmpty()) {
+                    item {
+                        Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text("No Connect listings match these filters.", fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Clear the search or switch category to see more.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp,
+                                )
+                                OutlinedButton(
+                                    onClick = {
+                                        listingQuery = ""
+                                        listingGroup = "All"
+                                    },
+                                ) { Text("Clear filters") }
+                            }
+                        }
+                    }
+                } else {
+                    items(visibleListings, key = { it.id }) { listing ->
+                        Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(18.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(listing.title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                                    Text(
+                                        connectGroup(listing),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                                Text(listing.description)
+                                Text(
+                                    listOfNotNull(
+                                        listing.listingType,
+                                        listing.university,
+                                        listing.department,
+                                        listing.academicLevel,
+                                        listing.location,
+                                    ).filter { it.isNotBlank() }.joinToString(" • "),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp,
+                                )
+                                if (listing.tags.isNotEmpty()) {
+                                    Text(
+                                        listing.tags.joinToString("  ") { "#$it" },
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontSize = 12.sp,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (selectedPane == 1) {
                 item {
                     OutlinedTextField(
                         value = studentQuery,
                         onValueChange = { studentQuery = it },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        label = { Text("Search students") },
+                        label = { Text("Search name, username, campus, department or level") },
                     )
                 }
 
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(
-                            "all" to "All",
-                            "campus" to "Same campus",
-                            "online" to "Online",
-                        ).forEach { (key, label) ->
-                            FilterChip(
-                                selected = studentFilter == key,
-                                onClick = { studentFilter = key },
-                                label = { Text(label) },
-                            )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(
+                                "all" to "All",
+                                "campus" to "Same campus",
+                                "department" to "Same department",
+                                "online" to "Online",
+                                "verified" to "Verified",
+                            ).forEach { (key, label) ->
+                                FilterChip(
+                                    selected = studentFilter == key,
+                                    onClick = { studentFilter = key },
+                                    label = { Text(label) },
+                                )
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(
+                                "recommended" to "Recommended",
+                                "active" to "Recently active",
+                                "campus" to "Campus first",
+                                "name" to "A–Z",
+                            ).forEach { (key, label) ->
+                                FilterChip(
+                                    selected = studentSort == key,
+                                    onClick = { studentSort = key },
+                                    label = { Text(label) },
+                                )
+                            }
                         }
                     }
                 }
 
-                items(visibleStudents, key = { it.id }) { profile ->
-                    val isFollowing = profile.id in followingIds
-                    Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                VerifiedName(profile.fullName.ifBlank { profile.username }, profile.isVerified)
+                if (visibleStudents.isEmpty()) {
+                    item {
+                        Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text("No students match these filters.", fontWeight = FontWeight.Bold)
+                                OutlinedButton(
+                                    onClick = {
+                                        studentQuery = ""
+                                        studentFilter = "all"
+                                        studentSort = "recommended"
+                                    },
+                                ) { Text("Clear filters") }
+                            }
+                        }
+                    }
+                } else {
+                    items(visibleStudents, key = { it.id }) { profile ->
+                        val isFollowing = profile.id in followingIds
+                        Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    VerifiedName(profile.fullName.ifBlank { profile.username }, profile.isVerified)
+                                    Text(
+                                        "@" + profile.username,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        listOfNotNull(
+                                            profile.university,
+                                            profile.faculty,
+                                            profile.department,
+                                            profile.academicLevel,
+                                        ).filter { it.isNotBlank() }.joinToString(" • "),
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        if (profile.isOnline) "Online" else "Offline",
+                                        fontSize = 11.sp,
+                                        color = if (profile.isOnline) Color(0xFF22C55E)
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            followingIds = runCatching {
+                                                state.client.setFollowing(profile.id, !isFollowing)
+                                            }.getOrDefault(followingIds)
+                                        }
+                                    },
+                                ) {
+                                    Text(if (isFollowing) "Following" else "Follow")
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                val currentId = state.profile?.id.orEmpty()
+                val requestItems = inbox.requests.sortedByDescending { it.createdAt }
+                val challengeItems = inbox.challenges.sortedByDescending { it.createdAt }
+
+                if (requestItems.isEmpty() && challengeItems.isEmpty()) {
+                    item {
+                        Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                            Column(Modifier.fillMaxWidth().padding(24.dp)) {
+                                Text("Connect Inbox is clear", fontWeight = FontWeight.Black)
                                 Text(
-                                    "@" + profile.username,
+                                    "Incoming and outgoing Connect requests and challenges will appear here.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    listOfNotNull(
-                                        profile.university,
-                                        profile.faculty,
-                                        profile.department,
-                                        profile.academicLevel,
-                                    ).filter { it.isNotBlank() }.joinToString(" • "),
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    if (profile.isOnline) "Online" else "Offline",
-                                    fontSize = 11.sp,
-                                    color = if (profile.isOnline) Color(0xFF22C55E)
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            OutlinedButton(
-                                onClick = {
-                                    scope.launch {
-                                        followingIds = runCatching {
-                                            state.client.setFollowing(profile.id, !isFollowing)
-                                        }.getOrDefault(followingIds)
-                                    }
-                                },
+                        }
+                    }
+                } else {
+                    items(requestItems, key = { "request-${it.kind}-${it.requestId}" }) { request ->
+                        val person = students.firstOrNull { it.id == request.otherUserId }
+                        val canRespond = request.direction.equals("incoming", true) &&
+                            request.status.equals("pending", true)
+
+                        Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                Text(if (isFollowing) "Following" else "Follow")
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        request.title.ifBlank { request.kind.replace('_', ' ') },
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    Text(
+                                        (person?.fullName?.ifBlank { person.username } ?: "Blink user") +
+                                            " • " + request.direction + " • " + request.status,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                                if (canRespond) {
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                runCatching {
+                                                    state.client.respondConnectRequest(
+                                                        request.kind,
+                                                        request.requestId,
+                                                        true,
+                                                    )
+                                                }
+                                                reload()
+                                            }
+                                        },
+                                    ) { Text("Accept") }
+                                    OutlinedButton(
+                                        onClick = {
+                                            scope.launch {
+                                                runCatching {
+                                                    state.client.respondConnectRequest(
+                                                        request.kind,
+                                                        request.requestId,
+                                                        false,
+                                                    )
+                                                }
+                                                reload()
+                                            }
+                                        },
+                                    ) { Text("Decline") }
+                                }
+                            }
+                        }
+                    }
+
+                    items(challengeItems, key = { "challenge-${it.id}" }) { challenge ->
+                        val otherId = if (challenge.challengerId == currentId) {
+                            challenge.opponentId
+                        } else {
+                            challenge.challengerId
+                        }
+                        val person = students.firstOrNull { it.id == otherId }
+                        val canRespond = challenge.opponentId == currentId &&
+                            challenge.status.equals("pending", true)
+
+                        Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Game challenge • ${challenge.gameType.replace('_', ' ')}", fontWeight = FontWeight.Bold)
+                                    Text(
+                                        (person?.fullName?.ifBlank { person.username } ?: "Blink user") +
+                                            " • " + challenge.status,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                                if (canRespond) {
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                runCatching {
+                                                    state.client.respondGameChallenge(challenge.id, true)
+                                                }
+                                                reload()
+                                            }
+                                        },
+                                    ) { Text("Accept") }
+                                    OutlinedButton(
+                                        onClick = {
+                                            scope.launch {
+                                                runCatching {
+                                                    state.client.respondGameChallenge(challenge.id, false)
+                                                }
+                                                reload()
+                                            }
+                                        },
+                                    ) { Text("Decline") }
+                                }
                             }
                         }
                     }
@@ -1079,7 +1454,7 @@ fun ConnectScreen(state: DesktopAppState) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Create Connect listing", fontWeight = FontWeight.Black, fontSize = 24.sp)
                             Text(
-                                "Create without pushing the form to the end of the Connect list.",
+                                "Create a focused listing without leaving the Connect workspace.",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
