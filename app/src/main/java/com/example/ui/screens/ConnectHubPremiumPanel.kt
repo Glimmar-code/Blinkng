@@ -175,6 +175,7 @@ private enum class ConnectCategory(
     CHALLENGES("Challenges", "Games", Icons.Default.SportsEsports)
 }
 
+
 private val PagerHeight = 620.dp
 
 @Composable
@@ -186,6 +187,7 @@ fun ConnectHubPremiumPanel(
     isLoading: Boolean,
     onProfileClick: (String) -> Unit,
     onMessageUser: (String, String?, String?) -> Unit,
+    modifier: Modifier = Modifier,
     discoveryContent: @Composable () -> Unit = {}
 ) {
     var match by remember { mutableStateOf<Pair<UserProfile, Int>?>(null) }
@@ -199,6 +201,7 @@ fun ConnectHubPremiumPanel(
     var savedMatchPreferences by remember { mutableStateOf<MatchSpinPreferences?>(null) }
     var recentMatches by remember { mutableStateOf<List<Pair<UserProfile, Int>>>(emptyList()) }
     var challengeTarget by remember { mutableStateOf<UserProfile?>(null) }
+    var showUnifiedInbox by rememberSaveable { mutableStateOf(false) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     val matchRepository = remember { ConnectHubRepository() }
@@ -287,17 +290,30 @@ fun ConnectHubPremiumPanel(
     // "Who applied to you", split by category. Adjust the kind-matching keywords below
     // if your backend uses different request.kind strings.
     val incomingRoommateRequests = remember(hub.requests) {
-        hub.requests.filter { it.direction.equals("incoming", true) && it.kind.contains("room", true) }
+        hub.requests.filter {
+            it.direction.equals("incoming", true) &&
+                it.status.equals("pending", true) &&
+                it.kind.contains("room", true)
+        }
     }
     val incomingMentorRequests = remember(hub.requests) {
-        hub.requests.filter { it.direction.equals("incoming", true) && it.kind.contains("mentor", true) }
+        hub.requests.filter {
+            it.direction.equals("incoming", true) &&
+                it.status.equals("pending", true) &&
+                it.kind.contains("mentor", true)
+        }
     }
     val incomingReadingRequests = remember(hub.requests) {
-        hub.requests.filter { it.direction.equals("incoming", true) && it.kind.contains("read", true) }
+        hub.requests.filter {
+            it.direction.equals("incoming", true) &&
+                it.status.equals("pending", true) &&
+                it.kind.contains("read", true)
+        }
     }
     val incomingHousingRequests = remember(hub.requests) {
         hub.requests.filter {
             it.direction.equals("incoming", true) &&
+                it.status.equals("pending", true) &&
                 it.kind.contains("hous", true) &&
                 !it.kind.contains("agent", true)
         }
@@ -308,6 +324,12 @@ fun ConnectHubPremiumPanel(
 
     val currentIsVerifiedAgent = remember(hub.housingAgents, current?.id) {
         hub.housingAgents.any { it.userId == current?.id && it.verified }
+    }
+
+    val pendingInboxCount = remember(hub.requests, incomingChallenges) {
+        hub.requests.count {
+            it.direction.equals("incoming", true) && it.status.equals("pending", true)
+        } + incomingChallenges.size
     }
 
     val categories = remember { ConnectCategory.entries }
@@ -332,7 +354,7 @@ fun ConnectHubPremiumPanel(
     var openCategoryIndex by rememberSaveable { mutableStateOf<Int?>(null) }
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
     ) {
@@ -409,14 +431,41 @@ fun ConnectHubPremiumPanel(
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    Text("Connect Hub", fontSize = 18.sp, fontWeight = FontWeight.Black)
-                    Text(
-                        "Choose from 20 professional ways to connect. Every option opens a live Connect workflow.",
-                        fontSize = 11.5.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Connect Hub", fontSize = 18.sp, fontWeight = FontWeight.Black)
+                            Text(
+                                "Choose from grouped live workflows instead of hunting through separate pages.",
+                                fontSize = 11.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { showUnifiedInbox = true },
+                            shape = RoundedCornerShape(100.dp)
+                        ) {
+                            Text(if (pendingInboxCount > 0) "Inbox · $pendingInboxCount" else "Inbox")
+                        }
+                    }
 
                     Spacer(Modifier.height(10.dp))
+
+                    ConnectForYouSummary(
+                        current = current,
+                        profiles = profiles,
+                        hub = hub,
+                        onOpenStudents = {
+                            coroutineScope.launch { connectSurfacePager.animateScrollToPage(1) }
+                        },
+                        onOpenCategory = { category ->
+                            openCategoryIndex = categories.indexOf(category).coerceAtLeast(0)
+                        }
+                    )
+
+                    Spacer(Modifier.height(12.dp))
                     OutlinedTextField(
                         value = hubQuery,
                         onValueChange = { hubQuery = it },
@@ -877,6 +926,17 @@ fun ConnectHubPremiumPanel(
                 }
             }
         }
+    }
+
+    if (showUnifiedInbox) {
+        UnifiedConnectInboxDialog(
+            requests = hub.requests,
+            challenges = hub.gameChallenges,
+            currentUserId = current?.id.orEmpty(),
+            profiles = profiles,
+            actions = actions,
+            onDismiss = { showUnifiedInbox = false }
+        )
     }
 
     if (form != HubForm.NONE) {
@@ -1734,6 +1794,254 @@ private fun MatchReasonPills(reasons: List<String>) {
     }
 }
 
+private data class ConnectQuickPick(
+    val title: String,
+    val detail: String,
+    val onClick: () -> Unit
+)
+
+@Composable
+private fun ConnectForYouSummary(
+    current: UserProfile?,
+    profiles: List<UserProfile>,
+    hub: ConnectHubSnapshot,
+    onOpenStudents: () -> Unit,
+    onOpenCategory: (ConnectCategory) -> Unit
+) {
+    val campus = current?.university.orEmpty()
+    val department = current?.department.orEmpty()
+    val sameDepartment = profiles.count {
+        department.isNotBlank() && it.department.equals(department, ignoreCase = true)
+    }
+    val sameCampus = profiles.count {
+        campus.isNotBlank() && it.university.equals(campus, ignoreCase = true)
+    }
+    val online = profiles.count { it.onlineNow }
+
+    val picks = listOf(
+        ConnectQuickPick(
+            title = "People for you",
+            detail = when {
+                sameDepartment > 0 -> "$sameDepartment in your department"
+                sameCampus > 0 -> "$sameCampus on your campus"
+                else -> "$online online now"
+            },
+            onClick = onOpenStudents
+        ),
+        ConnectQuickPick(
+            title = "Study",
+            detail = "${hub.readingMates.size} reading mates",
+            onClick = { onOpenCategory(ConnectCategory.READING) }
+        ),
+        ConnectQuickPick(
+            title = "Housing",
+            detail = "${hub.roommates.size + hub.housingRequests.size} active needs",
+            onClick = { onOpenCategory(ConnectCategory.ROOMMATE) }
+        ),
+        ConnectQuickPick(
+            title = "Guidance",
+            detail = "${hub.mentors.size} mentors available",
+            onClick = { onOpenCategory(ConnectCategory.MENTOR) }
+        )
+    )
+
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("For you", fontWeight = FontWeight.Black, fontSize = 13.sp)
+            Spacer(Modifier.weight(1f))
+            Text(
+                "Based on your Blink profile",
+                fontSize = 9.5.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.height(7.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            picks.forEach { pick ->
+                Surface(
+                    modifier = Modifier
+                        .width(150.dp)
+                        .clickable(onClick = pick.onClick),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .48f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                        Text(
+                            pick.title,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            pick.detail,
+                            fontSize = 9.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UnifiedConnectInboxDialog(
+    requests: List<ConnectRequestItem>,
+    challenges: List<GameChallenge>,
+    currentUserId: String,
+    profiles: List<UserProfile>,
+    actions: ConnectHubActions,
+    onDismiss: () -> Unit
+) {
+    val orderedRequests = remember(requests) {
+        requests.sortedByDescending { it.createdAt }
+    }
+    val relevantChallenges = remember(challenges, currentUserId) {
+        challenges
+            .filter { it.challengerId == currentUserId || it.opponentId == currentUserId }
+            .sortedByDescending { it.createdAt }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("Connect Inbox", fontWeight = FontWeight.Black)
+                Text(
+                    "Requests, responses and game challenges in one place.",
+                    fontSize = 10.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
+            if (orderedRequests.isEmpty() && relevantChallenges.isEmpty()) {
+                Text(
+                    "Nothing here yet. New Connect requests will appear here.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 520.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    itemsIndexed(
+                        orderedRequests,
+                        key = { _, item -> "request-${item.kind}-${item.requestId}" }
+                    ) { _, request ->
+                        val person = profiles.firstOrNull { it.id == request.otherUserId }
+                        val canRespond = request.direction.equals("incoming", true) &&
+                            request.status.equals("pending", true)
+
+                        Surface(
+                            shape = RoundedCornerShape(15.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
+                        ) {
+                            Column(Modifier.padding(11.dp)) {
+                                Text(
+                                    request.title.ifBlank {
+                                        request.kind.replace('_', ' ').replaceFirstChar { it.uppercase() }
+                                    },
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    buildString {
+                                        append(person?.fullName?.ifBlank { person.username } ?: "Blink user")
+                                        append(" • ")
+                                        append(request.direction.replaceFirstChar { it.uppercase() })
+                                        append(" • ")
+                                        append(request.status.replaceFirstChar { it.uppercase() })
+                                    },
+                                    fontSize = 9.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (canRespond) {
+                                    Spacer(Modifier.height(7.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            onClick = {
+                                                actions.respondRequest(request.kind, request.requestId, true)
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        ) { Text("Accept", fontSize = 10.sp) }
+                                        OutlinedButton(
+                                            onClick = {
+                                                actions.respondRequest(request.kind, request.requestId, false)
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        ) { Text("Decline", fontSize = 10.sp) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    itemsIndexed(
+                        relevantChallenges,
+                        key = { _, item -> "challenge-${item.id}" }
+                    ) { _, challenge ->
+                        val otherId = if (challenge.challengerId == currentUserId) {
+                            challenge.opponentId
+                        } else {
+                            challenge.challengerId
+                        }
+                        val person = profiles.firstOrNull { it.id == otherId }
+                        val canRespond = challenge.opponentId == currentUserId &&
+                            challenge.status.equals("pending", true)
+
+                        Surface(
+                            shape = RoundedCornerShape(15.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
+                        ) {
+                            Column(Modifier.padding(11.dp)) {
+                                Text(
+                                    "Game challenge • ${ChallengeGameType.fromApiName(challenge.gameType).label}",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "${person?.fullName?.ifBlank { person.username } ?: "Blink user"} • " +
+                                        challenge.status.replaceFirstChar { it.uppercase() },
+                                    fontSize = 9.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (canRespond) {
+                                    Spacer(Modifier.height(7.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            onClick = { actions.respondChallenge(challenge.id, true) },
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        ) { Text("Accept", fontSize = 10.sp) }
+                                        OutlinedButton(
+                                            onClick = { actions.respondChallenge(challenge.id, false) },
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        ) { Text("Decline", fontSize = 10.sp) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        }
+    )
+}
+
 @Composable
 private fun CategoryTabBar(
     categories: List<ConnectCategory>,
@@ -1748,141 +2056,190 @@ private fun CategoryTabBar(
         mutableStateOf(visibleDirectory.firstOrNull()?.slug.orEmpty())
     }
 
+    val groupedDirectory = remember(visibleDirectory) {
+        val order = listOf(
+            "Housing",
+            "Study",
+            "Career & Skills",
+            "People & Community",
+            "Games"
+        )
+        visibleDirectory
+            .groupBy(::connectDirectoryGroup)
+            .toList()
+            .sortedBy { (group, _) -> order.indexOf(group).let { if (it < 0) Int.MAX_VALUE else it } }
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        visibleDirectory.forEachIndexed { directoryIndex, item ->
-            val targetCategory = when (item.routeKind.lowercase()) {
-                "roommate" -> ConnectCategory.ROOMMATE
-                "mentor" -> ConnectCategory.MENTOR
-                "reading" -> ConnectCategory.READING
-                "agents" -> ConnectCategory.AGENTS
-                "housing" -> ConnectCategory.HOUSING
-                "challenges" -> ConnectCategory.CHALLENGES
-                else -> ConnectCategory.MENTOR
-            }
-            val targetIndex = categories.indexOf(targetCategory).coerceAtLeast(0)
-            val selected = selectedSlug == item.slug
-            val pendingCount = badgeCounts.getOrElse(targetIndex) { 0 }
-
-            val background by animateColorAsState(
-                targetValue = if (selected) {
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = .72f)
-                } else {
-                    MaterialTheme.colorScheme.surface
-                },
-                animationSpec = tween(220),
-                label = "directoryRowBackground"
-            )
-            val foreground by animateColorAsState(
-                targetValue = if (selected) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                animationSpec = tween(220),
-                label = "directoryRowForeground"
+        groupedDirectory.forEach { (group, items) ->
+            Text(
+                text = group,
+                modifier = Modifier.padding(start = 2.dp, top = 4.dp),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        selectedSlug = item.slug
-                        onOpenCategory(targetIndex)
-                    },
-                shape = RoundedCornerShape(18.dp),
-                color = background,
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.primary.copy(alpha = .35f)
+            items.forEach { item ->
+                val targetCategory = directoryTargetCategory(item)
+                val targetIndex = categories.indexOf(targetCategory).coerceAtLeast(0)
+                val selected = selectedSlug == item.slug
+                val pendingCount = badgeCounts.getOrElse(targetIndex) { 0 }
+
+                val background by animateColorAsState(
+                    targetValue = if (selected) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = .72f)
                     } else {
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = .72f)
-                    }
+                        MaterialTheme.colorScheme.surface
+                    },
+                    animationSpec = tween(220),
+                    label = "directoryRowBackground"
                 )
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(13.dp),
+                val foreground by animateColorAsState(
+                    targetValue = if (selected) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                    animationSpec = tween(220),
+                    label = "directoryRowForeground"
+                )
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            selectedSlug = item.slug
+                            onOpenCategory(targetIndex)
+                        },
+                    shape = RoundedCornerShape(18.dp),
+                    color = background,
+                    border = BorderStroke(
+                        width = 1.dp,
                         color = if (selected) {
-                            MaterialTheme.colorScheme.primary.copy(alpha = .14f)
+                            MaterialTheme.colorScheme.primary.copy(alpha = .35f)
                         } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f)
+                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = .72f)
                         }
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier.size(42.dp),
-                            contentAlignment = Alignment.Center
+                        Surface(
+                            shape = RoundedCornerShape(13.dp),
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = .14f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .72f)
+                            }
                         ) {
-                            Icon(
-                                targetCategory.icon,
-                                contentDescription = null,
-                                tint = if (selected) MaterialTheme.colorScheme.primary else foreground,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.width(11.dp))
-
-                    Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "${directoryIndex + 1}. ${item.title}",
-                                color = foreground,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (pendingCount > 0) {
-                                Spacer(Modifier.width(7.dp))
-                                Surface(
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = .14f)
-                                ) {
-                                    Text(
-                                        text = pendingCount.toString(),
-                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontSize = 9.5.sp,
-                                        fontWeight = FontWeight.Black
-                                    )
-                                }
+                            Box(
+                                modifier = Modifier.size(42.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    targetCategory.icon,
+                                    contentDescription = null,
+                                    tint = if (selected) MaterialTheme.colorScheme.primary else foreground,
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = item.description,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 10.5.sp,
-                            lineHeight = 14.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
 
-                    Spacer(Modifier.width(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(100.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f)
-                    ) {
-                        Text(
-                            text = targetCategory.shortLabel,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Spacer(Modifier.width(11.dp))
+
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = item.title,
+                                    color = foreground,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (pendingCount > 0) {
+                                    Spacer(Modifier.width(7.dp))
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = .14f)
+                                    ) {
+                                        Text(
+                                            text = pendingCount.toString(),
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = item.description,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 10.5.sp,
+                                lineHeight = 14.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Spacer(Modifier.width(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(100.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f)
+                        ) {
+                            Text(
+                                text = targetCategory.shortLabel,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+private fun directoryTargetCategory(item: ConnectDirectoryCategory): ConnectCategory =
+    when (item.routeKind.lowercase()) {
+        "roommate" -> ConnectCategory.ROOMMATE
+        "mentor" -> ConnectCategory.MENTOR
+        "reading" -> ConnectCategory.READING
+        "agents" -> ConnectCategory.AGENTS
+        "housing" -> ConnectCategory.HOUSING
+        "challenges" -> ConnectCategory.CHALLENGES
+        else -> ConnectCategory.MENTOR
+    }
+
+private fun connectDirectoryGroup(item: ConnectDirectoryCategory): String {
+    val slug = item.slug.lowercase()
+    return when {
+        item.routeKind.equals("housing", true) ||
+            item.routeKind.equals("agents", true) ||
+            item.routeKind.equals("roommate", true) ||
+            "housing" in slug || "roommate" in slug || "relocation" in slug -> "Housing"
+
+        item.routeKind.equals("reading", true) ||
+            "study" in slug || "research" in slug || "course" in slug ||
+            "accountability" in slug || "project" in slug -> "Study"
+
+        item.routeKind.equals("challenges", true) || "game" in slug -> "Games"
+
+        "career" in slug || "internship" in slug || "founder" in slug ||
+            "freelance" in slug || "skill" in slug || "mentor" in slug ||
+            "alumni" in slug -> "Career & Skills"
+
+        else -> "People & Community"
     }
 }
 
