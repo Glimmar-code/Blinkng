@@ -109,7 +109,7 @@ jobs:
           VERSION_CODE: '1999000000'
           VERSION_NAME: 'ci-smoke'
           ALLOW_PLACEHOLDER_GOOGLE_SERVICES: 'true'
-        run: gradle :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
+        run: gradle :app:assembleRelease :app:bundleRelease -x :app:uploadCrashlyticsMappingFileRelease --stacktrace --no-daemon
 
       - name: Verify embedded source revision
         shell: bash
