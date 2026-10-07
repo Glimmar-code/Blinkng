@@ -1,3 +1,11 @@
+## 2026-10-07 — Official BLINK logo master applied
+
+- Android: replaces the previous BLINK mark with the exact supplied official lowercase-b artwork for the launcher icon, Android 12+ system splash, Compose `BlinkMark` surfaces, welcome/auth branding and every other surface already backed by `R.drawable.app_icon`.
+- Windows: replaces the desktop/tray/window BLINK logo resource with the same exact pixel asset, preserving existing desktop-native sizing and layout.
+- Asset handling: the supplied artwork was not redrawn. The top icon artwork was cropped without resampling, exterior white artboard pixels connected to the crop edge were removed onto the existing black app background, and the resulting PNG bytes are reused unchanged on both clients to prevent Android/Windows drift.
+- Safety: presentation-only. No ranking, qualified-view, feed, auth, wallet, Store, notification, messaging, Supabase schema/RPC/RLS, or user-data behavior changes.
+- Validation: PNG-integrity, Android quality/runtime-smoke, Windows build and parity gates must pass in Testlab before promotion to main.
+
 ## 2026-10-07 — Android edge-to-edge startup resilience
 
 PARITY-EXCEPTION: android-edge-to-edge-startup-resilience-20261007
