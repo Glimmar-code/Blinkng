@@ -186,7 +186,17 @@ data class MarketItem(
     val description: String,
     val postedTime: String = "Recently",
     val isFeatured: Boolean = false,
-    val isSold: Boolean = false
+    val isSold: Boolean = false,
+    val quantity: Int = 1,
+    val currency: String = "NGN",
+    val status: String = "active",
+    val isNegotiable: Boolean = false,
+    val deliveryMethod: String = "meetup",
+    val pickupLocation: String = "",
+    val viewsCount: Long = 0L,
+    val savesCount: Long = 0L,
+    val isSaved: Boolean = false,
+    val createdAt: String = ""
 )
 
 data class LeaderboardUser(
