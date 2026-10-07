@@ -284,6 +284,8 @@ fun PremiumFeedScreen(
     onOpenMenu: () -> Unit,
     onToggleTheme: () -> Unit,
     isServerConnected: Boolean = true,
+    activityPulsePolicy: com.blinkng.shared.BlinkActivityPulsePolicy = com.blinkng.shared.BlinkActivityPulseDefaults.policy,
+    onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit = { _, _, _, _, _ -> },
     isLoading: Boolean = false,
     isRefreshing: Boolean = false,
     errorMessage: String? = null,
@@ -313,6 +315,7 @@ fun PremiumFeedScreen(
     homeReselectSignal: Int = 0,
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
     hasUnreadNotifications: Boolean = false,
+    unreadNotificationCount: Int = 0,
     routedReelId: String? = null
 ) {
     val context = LocalContext.current
@@ -382,6 +385,7 @@ fun PremiumFeedScreen(
             isLoadingMoreReels = isLoadingMoreReels,
             homeReselectSignal = homeReselectSignal,
             hasUnreadNotifications = hasUnreadNotifications,
+            unreadNotificationCount = unreadNotificationCount,
             onLaneChanged = { feedLane = it.coerceIn(0, 1) },
             onLikePost = onLikePost,
             onCommentPost = onCommentPost,
@@ -477,6 +481,9 @@ fun PremiumFeedScreen(
             connectHub = connectHub,
             connectHubActions = connectHubActions,
             isConnectHubLoading = isConnectHubLoading,
+            isLiveDataAvailable = isServerConnected,
+            activityPulsePolicy = activityPulsePolicy,
+            onActivityPulseEvent = onActivityPulseEvent,
             onHomeClick = {
                 feedLane = 0
                 onSubTabChanged(0)
@@ -533,6 +540,7 @@ private fun PremiumHomeFeed(
     isLoadingMoreReels: Boolean,
     homeReselectSignal: Int,
     hasUnreadNotifications: Boolean,
+    unreadNotificationCount: Int,
     onLaneChanged: (Int) -> Unit,
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
@@ -1200,6 +1208,7 @@ private fun PremiumHomeFeed(
                     FeedTopBar(
                         userAvatar = userAvatar,
                         hasUnreadNotifications = hasUnreadNotifications,
+                        unreadNotificationCount = unreadNotificationCount,
                         onSearchClick = onSearchClick,
                         onItemsClick = onItemsClick,
                         onNotificationClick = onOpenActivity,
@@ -1619,6 +1628,9 @@ private fun PremiumConnectHost(
     connectHub: ConnectHubSnapshot,
     connectHubActions: ConnectHubActions,
     isConnectHubLoading: Boolean,
+    isLiveDataAvailable: Boolean,
+    activityPulsePolicy: com.blinkng.shared.BlinkActivityPulsePolicy,
+    onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit,
     onHomeClick: () -> Unit,
     onReelClick: () -> Unit,
     onGameClick: () -> Unit
@@ -1641,6 +1653,9 @@ private fun PremiumConnectHost(
             connectHub = connectHub,
             connectHubActions = connectHubActions,
             isConnectHubLoading = isConnectHubLoading,
+            isLiveDataAvailable = isLiveDataAvailable,
+            activityPulsePolicy = activityPulsePolicy,
+            onActivityPulseEvent = onActivityPulseEvent,
             selectedTopTab = 2,
             onHomeClick = onHomeClick,
             onReelClick = onReelClick,

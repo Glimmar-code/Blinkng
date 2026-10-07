@@ -8,6 +8,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +30,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Favorite
@@ -38,6 +42,7 @@ import androidx.compose.material.icons.rounded.ShoppingBag
 import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.Button
@@ -69,10 +74,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopComment
 import com.blinkng.desktop.data.DesktopConnectListing
@@ -87,6 +94,15 @@ import com.blinkng.desktop.data.DesktopSearchResults
 import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
+import com.blinkng.shared.BlinkActivityPulseDefaults
+import com.blinkng.shared.BlinkActivityPulsePolicy
+import com.blinkng.shared.BlinkPulseSessionStore
+import com.blinkng.shared.BlinkPulseTrend
+import com.blinkng.shared.campusActivityLabel
+import com.blinkng.shared.communityActivityRange
+import com.blinkng.shared.nextPulseValue
+import com.blinkng.shared.pulseTrend
+import com.blinkng.shared.rankPulseRange
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
@@ -218,13 +234,89 @@ fun HomeScreen(
             PostCard(
                 post = post,
                 onLike = {
+                    val beforeLiked = post.isLiked
+                    val beforeCount = post.likeCount
+                    val optimisticLiked = !beforeLiked
+                    val optimisticCount = (beforeCount + if (optimisticLiked) 1 else -1).coerceAtLeast(0)
+                    posts = posts.map {
+                        if (it.id == post.id) {
+                            it.copy(isLiked = optimisticLiked, likeCount = optimisticCount)
+                        } else {
+                            it
+                        }
+                    }
                     scope.launch {
-                        val liked = runCatching { state.client.toggleLike(post.id) }.getOrNull() ?: return@launch
-                        posts = posts.map {
-                            if (it.id == post.id) it.copy(
-                                isLiked = liked,
-                                likeCount = (it.likeCount + if (liked) 1 else -1).coerceAtLeast(0),
-                            ) else it
+                        val actual = runCatching { state.client.toggleLike(post.id) }.getOrNull()
+                        if (actual == null) {
+                            posts = posts.map {
+                                if (it.id == post.id) it.copy(isLiked = beforeLiked, likeCount = beforeCount) else it
+                            }
+                            error = "Couldn't update like."
+                        } else if (actual != optimisticLiked) {
+                            posts = posts.map {
+                                if (it.id == post.id) {
+                                    it.copy(
+                                        isLiked = actual,
+                                        likeCount = if (actual == beforeLiked) beforeCount else optimisticCount,
+                                    )
+                                } else {
+                                    it
+                                }
+                            }
+                        }
+                    }
+                },
+                onBookmark = {
+                    val before = post.isBookmarked
+                    val optimistic = !before
+                    posts = posts.map {
+                        if (it.id == post.id) it.copy(isBookmarked = optimistic) else it
+                    }
+                    scope.launch {
+                        val actual = runCatching { state.client.toggleBookmark(post.id) }.getOrNull()
+                        if (actual == null) {
+                            posts = posts.map {
+                                if (it.id == post.id) it.copy(isBookmarked = before) else it
+                            }
+                            error = "Couldn't update saved post."
+                        } else if (actual != optimistic) {
+                            posts = posts.map {
+                                if (it.id == post.id) it.copy(isBookmarked = actual) else it
+                            }
+                        }
+                    }
+                },
+                onRepost = {
+                    val beforeReposted = post.isRepostedByMe
+                    val beforeCount = post.repostCount
+                    val optimisticReposted = !beforeReposted
+                    val optimisticCount = (beforeCount + if (optimisticReposted) 1 else -1).coerceAtLeast(0)
+                    posts = posts.map {
+                        if (it.id == post.id) {
+                            it.copy(isRepostedByMe = optimisticReposted, repostCount = optimisticCount)
+                        } else {
+                            it
+                        }
+                    }
+                    scope.launch {
+                        val result = runCatching { state.client.toggleRepost(post.id) }.getOrNull()
+                        if (result == null) {
+                            posts = posts.map {
+                                if (it.id == post.id) {
+                                    it.copy(isRepostedByMe = beforeReposted, repostCount = beforeCount)
+                                } else {
+                                    it
+                                }
+                            }
+                            error = "Couldn't update repost."
+                        } else {
+                            posts = posts.map {
+                                if (it.id == post.id) {
+                                    it.copy(isRepostedByMe = result.first, repostCount = result.second)
+                                } else {
+                                    it
+                                }
+                            }
                         }
                     }
                 },
@@ -424,7 +516,75 @@ fun SearchScreen(state: DesktopAppState) {
             items(results.posts, key = { "post-${it.id}" }) { post ->
                 PostCard(
                     post = post,
-                    onLike = {},
+                    onLike = {
+                        val beforeLiked = post.isLiked
+                        val beforeCount = post.likeCount
+                        val optimisticLiked = !beforeLiked
+                        val optimisticCount = (beforeCount + if (optimisticLiked) 1 else -1).coerceAtLeast(0)
+                        results = results.copy(
+                            posts = results.posts.map {
+                                if (it.id == post.id) it.copy(isLiked = optimisticLiked, likeCount = optimisticCount) else it
+                            }
+                        )
+                        scope.launch {
+                            val actual = runCatching { state.client.toggleLike(post.id) }.getOrNull()
+                            if (actual == null) {
+                                results = results.copy(
+                                    posts = results.posts.map {
+                                        if (it.id == post.id) it.copy(isLiked = beforeLiked, likeCount = beforeCount) else it
+                                    }
+                                )
+                            }
+                        }
+                    },
+                    onBookmark = {
+                        val before = post.isBookmarked
+                        val optimistic = !before
+                        results = results.copy(
+                            posts = results.posts.map {
+                                if (it.id == post.id) it.copy(isBookmarked = optimistic) else it
+                            }
+                        )
+                        scope.launch {
+                            val actual = runCatching { state.client.toggleBookmark(post.id) }.getOrNull()
+                            if (actual == null) {
+                                results = results.copy(
+                                    posts = results.posts.map {
+                                        if (it.id == post.id) it.copy(isBookmarked = before) else it
+                                    }
+                                )
+                            }
+                        }
+                    },
+                    onRepost = {
+                        val beforeReposted = post.isRepostedByMe
+                        val beforeCount = post.repostCount
+                        val optimisticReposted = !beforeReposted
+                        val optimisticCount = (beforeCount + if (optimisticReposted) 1 else -1).coerceAtLeast(0)
+                        results = results.copy(
+                            posts = results.posts.map {
+                                if (it.id == post.id) {
+                                    it.copy(isRepostedByMe = optimisticReposted, repostCount = optimisticCount)
+                                } else {
+                                    it
+                                }
+                            }
+                        )
+                        scope.launch {
+                            val actual = runCatching { state.client.toggleRepost(post.id) }.getOrNull()
+                            results = results.copy(
+                                posts = results.posts.map {
+                                    if (it.id != post.id) {
+                                        it
+                                    } else if (actual == null) {
+                                        it.copy(isRepostedByMe = beforeReposted, repostCount = beforeCount)
+                                    } else {
+                                        it.copy(isRepostedByMe = actual.first, repostCount = actual.second)
+                                    }
+                                }
+                            )
+                        }
+                    },
                     onComments = {},
                     onCopyLink = {
                         DesktopShareLinkManager.copyToClipboard(post.id, post.isReel)
@@ -565,16 +725,23 @@ fun ConnectScreen(state: DesktopAppState) {
     var type by remember { mutableStateOf("community") }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var pulsePolicy by remember { mutableStateOf(BlinkActivityPulseDefaults.policy) }
+    var liveActivityAvailable by remember { mutableStateOf(false) }
+    var pulseImpressionRecorded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     suspend fun reload() {
         loading = true
-        val loadedListings = runCatching { state.client.fetchConnectListings() }.getOrDefault(emptyList())
-        val loadedStudents = runCatching { state.client.fetchOnboardingSuggestions(100) }.getOrDefault(emptyList())
-        val loadedFollowing = runCatching { state.client.fetchFollowingIds() }.getOrDefault(emptySet())
-        listings = loadedListings
-        students = loadedStudents.filterNot { it.id == state.profile?.id }
-        followingIds = loadedFollowing
+        val listingsResult = runCatching { state.client.fetchConnectListings() }
+        val studentsResult = runCatching { state.client.fetchOnboardingSuggestions(100) }
+        val followingResult = runCatching { state.client.fetchFollowingIds() }
+        val policyResult = runCatching { state.client.fetchActivityPulsePolicy() }
+
+        listings = listingsResult.getOrDefault(listings)
+        students = studentsResult.getOrDefault(students).filterNot { it.id == state.profile?.id }
+        followingIds = followingResult.getOrDefault(followingIds)
+        pulsePolicy = policyResult.getOrDefault(pulsePolicy).normalized()
+        liveActivityAvailable = studentsResult.isSuccess
         loading = false
     }
 
@@ -601,11 +768,48 @@ fun ConnectScreen(state: DesktopAppState) {
             matchesQuery && matchesFilter
         }
     }
+    val policy = remember(pulsePolicy) { pulsePolicy.normalized() }
     val realOnlineCount = remember(students) { 1 + students.count { it.isOnline } }
-    val communityActivity = rememberDesktopFluctuatingPulse(
-        range = desktopCommunityActivityRange(realOnlineCount),
-        tickMillis = 2_800L,
+    val reduceMotion = state.settings?.reduceMotion == true
+    val communityActivity = rememberDesktopManagedPulse(
+        key = "desktop-connect:" + state.profile?.username.orEmpty().lowercase(),
+        range = communityActivityRange(realOnlineCount, policy),
+        tickMillis = policy.connectTickMillis,
+        policy = policy,
+        liveDataAvailable = liveActivityAvailable,
+        reduceMotion = reduceMotion,
     )
+    var previousRealOnline by remember { mutableIntStateOf(realOnlineCount) }
+    var activityTrend by remember { mutableStateOf(BlinkPulseTrend.STABLE) }
+    LaunchedEffect(realOnlineCount) {
+        activityTrend = pulseTrend(previousRealOnline, realOnlineCount)
+        previousRealOnline = realOnlineCount
+    }
+
+    val realCampusOnline = remember(students, myCampus) {
+        students.count {
+            it.isOnline && myCampus.isNotBlank() && it.university.orEmpty().equals(myCampus, ignoreCase = true)
+        } + if (myCampus.isNotBlank()) 1 else 0
+    }
+    val campusLabel = remember(realCampusOnline, policy) {
+        campusActivityLabel(realCampusOnline, policy)
+    }
+    val onlinePreview = remember(students, policy.onlinePreviewLimit) {
+        students.filter { it.isOnline }.take(policy.onlinePreviewLimit)
+    }
+
+    LaunchedEffect(communityActivity, liveActivityAvailable, pulseImpressionRecorded) {
+        if (communityActivity != null && liveActivityAvailable && !pulseImpressionRecorded) {
+            state.client.recordActivityPulseEvent(
+                surface = "connect",
+                eventType = "impression",
+                realCount = realOnlineCount,
+                displayedValue = communityActivity,
+                metadata = mapOf("trend" to activityTrend.label),
+            )
+            pulseImpressionRecorded = true
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -626,35 +830,91 @@ fun ConnectScreen(state: DesktopAppState) {
                 }
             }
 
-            item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    tonalElevation = 1.dp,
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+            if (policy.enabled) {
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        tonalElevation = 1.dp,
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Community Activity", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalArrangement = Arrangement.spacedBy(9.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Community Activity", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                                    Text(
+                                        if (liveActivityAvailable) "Activity Pulse • ${activityTrend.label}"
+                                        else "Last known activity • offline",
+                                        fontSize = 10.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(100.dp),
+                                    color = Color(0xFF22C55E).copy(alpha = 0.13f),
+                                ) {
+                                    Text(
+                                        communityActivity?.toString() ?: "—",
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                        color = Color(0xFF22C55E),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black,
+                                    )
+                                }
+                            }
+
                             Text(
-                                "Live activity pulse • $realOnlineCount real active",
-                                fontSize = 10.5.sp,
+                                "Confirmed online now: $realOnlineCount",
+                                fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(100.dp),
-                            color = Color(0xFF22C55E).copy(alpha = 0.13f),
-                        ) {
-                            Text(
-                                communityActivity.toString(),
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                                color = Color(0xFF22C55E),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Black,
-                            )
+                            if (myCampus.isNotBlank()) {
+                                Text(
+                                    "$myCampus activity: $campusLabel • $realCampusOnline confirmed online",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+
+                            if (onlinePreview.isNotEmpty()) {
+                                HorizontalDivider()
+                                Text(
+                                    "Actually online",
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    onlinePreview.forEach { profile ->
+                                        Column(
+                                            modifier = Modifier
+                                                .width(76.dp)
+                                                .clickable {
+                                                    scope.launch {
+                                                        state.client.recordActivityPulseEvent(
+                                                            surface = "connect",
+                                                            eventType = "online_preview_open",
+                                                            realCount = realOnlineCount,
+                                                            displayedValue = communityActivity,
+                                                            metadata = mapOf("username" to profile.username),
+                                                        )
+                                                    }
+                                                },
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                        ) {
+                                            AvatarInitial(profile.fullName.ifBlank { profile.username }, 34.dp)
+                                            Text(
+                                                "@${profile.username}",
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                fontSize = 9.5.sp,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -907,69 +1167,144 @@ fun LeaderboardScreen(state: DesktopAppState) {
     var entries by remember { mutableStateOf<List<DesktopLeaderboardEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var previousRanks by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var worldRankMovement by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var rankUpsInWindow by remember { mutableIntStateOf(0) }
+    var pulsePolicy by remember { mutableStateOf(BlinkActivityPulseDefaults.policy) }
+    var liveActivityAvailable by remember { mutableStateOf(false) }
+    var pulseImpressionRecorded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
+        pulsePolicy = runCatching { state.client.fetchActivityPulsePolicy() }
+            .getOrDefault(pulsePolicy)
+            .normalized()
+
         while (true) {
-            val loaded = runCatching { state.client.fetchLeaderboard() }.getOrDefault(entries)
+            val result = runCatching { state.client.fetchLeaderboard() }
+            val loaded = result.getOrDefault(entries)
             val currentRanks = loaded.mapNotNull { entry ->
                 entry.worldRank?.let { rank -> entry.userId to rank }
             }.toMap()
-            rankUpsInWindow = if (previousRanks.isEmpty()) {
-                0
+
+            val movement = if (previousRanks.isEmpty()) {
+                emptyMap()
             } else {
-                currentRanks.count { (userId, rank) ->
+                currentRanks.mapValues { (userId, rank) ->
                     val previous = previousRanks[userId]
-                    previous != null && rank < previous
+                    if (previous == null) 0 else previous - rank
                 }
             }
+            worldRankMovement = movement
+            rankUpsInWindow = movement.values.count { it > 0 }
             entries = loaded
-            previousRanks = currentRanks
+            if (result.isSuccess) previousRanks = currentRanks
+            liveActivityAvailable = result.isSuccess
             loading = false
-            delay(20_000L)
+            delay(pulsePolicy.rankWindowMillis)
         }
     }
 
-    val rankPulse = rememberDesktopFluctuatingPulse(
-        range = desktopRankPulseRange(rankUpsInWindow),
-        tickMillis = 2_400L,
+    val policy = remember(pulsePolicy) { pulsePolicy.normalized() }
+    val reduceMotion = state.settings?.reduceMotion == true
+    val rankPulse = rememberDesktopManagedPulse(
+        key = "desktop-leaderboard:" + state.profile?.username.orEmpty().lowercase(),
+        range = rankPulseRange(rankUpsInWindow, policy),
+        tickMillis = policy.rankTickMillis,
+        policy = policy,
+        liveDataAvailable = liveActivityAvailable,
+        reduceMotion = reduceMotion,
     )
+    val rankStatus = remember(rankUpsInWindow, policy.hotRankUpsThreshold) {
+        when {
+            rankUpsInWindow >= policy.hotRankUpsThreshold -> "Heating up"
+            rankUpsInWindow > 0 -> "Active"
+            else -> "Stable"
+        }
+    }
+    val recentMovers = remember(worldRankMovement, entries) {
+        worldRankMovement
+            .filterValues { it > 0 }
+            .entries
+            .sortedByDescending { it.value }
+            .take(3)
+            .mapNotNull { movement ->
+                entries.firstOrNull { it.userId == movement.key }?.let { it to movement.value }
+            }
+    }
 
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LaunchedEffect(rankPulse, liveActivityAvailable, pulseImpressionRecorded) {
+        if (rankPulse != null && liveActivityAvailable && !pulseImpressionRecorded) {
+            state.client.recordActivityPulseEvent(
+                surface = "leaderboard",
+                eventType = "impression",
+                realCount = rankUpsInWindow,
+                displayedValue = rankPulse,
+                metadata = mapOf("status" to rankStatus),
+            )
+            pulseImpressionRecorded = true
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(24.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         item { ScreenHeader("Leaderboard", "Ranks #1–#20 from live Blink activity") }
-        item {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                tonalElevation = 1.dp,
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+
+        if (policy.enabled) {
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    tonalElevation = 1.dp,
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Rank Pulse", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Rank Pulse", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                                Text(
+                                    if (liveActivityAvailable) (policy.rankWindowMillis / 1000).toString() + "-second activity window • " + rankStatus
+                                    else "Last known rank activity • offline",
+                                    fontSize = 10.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(100.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            ) {
+                                Text(
+                                    rankPulse?.toString() ?: "—",
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black,
+                                )
+                            }
+                        }
                         Text(
-                            "20-second activity window • reacts to real rank-ups",
-                            fontSize = 10.5.sp,
+                            "Confirmed rank-ups in this window: $rankUpsInWindow",
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(100.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                    ) {
-                        Text(
-                            rankPulse.toString(),
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Black,
-                        )
+                        if (recentMovers.isNotEmpty()) {
+                            HorizontalDivider()
+                            recentMovers.forEach { (entry, places) ->
+                                Text(
+                                    "@${entry.handle} moved up $places place" + if (places == 1) "" else "s",
+                                    fontSize = 10.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
+
         if (loading) item { LoadingRow() }
         items(
             entries.sortedBy { it.worldRank ?: Int.MAX_VALUE }.take(20),
@@ -1459,40 +1794,185 @@ fun AdminScreen(state: DesktopAppState) {
 private fun PostCard(
     post: DesktopFeedPost,
     onLike: () -> Unit,
+    onBookmark: () -> Unit,
+    onRepost: () -> Unit,
     onComments: () -> Unit,
     onCopyLink: () -> Unit,
 ) {
-    Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
+    var expandedText by remember(post.id) { mutableStateOf(false) }
+    var textCanExpand by remember(post.id) { mutableStateOf(false) }
+    val mediaUrls = remember(post.id, post.imageUrl, post.images) {
+        buildList {
+            post.imageUrl?.trim()?.takeIf { it.isNotBlank() && !it.equals("null", true) }?.let(::add)
+            post.images.map(String::trim)
+                .filter { it.isNotBlank() && !it.equals("null", true) }
+                .forEach(::add)
+        }.distinct()
+    }
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 1.dp,
+        color = MaterialTheme.colorScheme.surface,
+    ) {
         Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 PresenceAvatar(post.authorName, post.authorOnline, showStatus = false)
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     VerifiedName(post.authorName, post.authorVerified)
-                    Text("@${post.authorUsername} • ${formatTime(post.createdAt)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "@${post.authorUsername} • ${formatTime(post.createdAt)}",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onBookmark) {
+                    Icon(
+                        if (post.isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                        contentDescription = if (post.isBookmarked) "Remove saved post" else "Save post",
+                        tint = if (post.isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
+
             val body = post.text?.takeIf(String::isNotBlank) ?: post.caption.orEmpty()
-            if (body.isNotBlank()) Text(body, fontSize = 15.sp)
-            if (post.imageUrl != null || post.images.isNotEmpty()) {
-                Surface(modifier = Modifier.fillMaxWidth().height(180.dp), shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("Image attachment", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (body.isNotBlank()) {
+                Text(
+                    text = body,
+                    fontSize = 15.sp,
+                    maxLines = if (expandedText) Int.MAX_VALUE else 7,
+                    overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { result ->
+                        if (!expandedText && result.hasVisualOverflow) textCanExpand = true
+                    },
+                )
+                if (textCanExpand || expandedText) {
+                    Text(
+                        text = if (expandedText) "Show less" else "See more",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable { expandedText = !expandedText },
+                    )
+                }
+            }
+
+            if (mediaUrls.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    mediaUrls.forEachIndexed { index, url ->
+                        var loadingMedia by remember(url) { mutableStateOf(true) }
+                        var failedMedia by remember(url) { mutableStateOf(false) }
+                        Surface(
+                            modifier = Modifier.width(520.dp).height(320.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = "Post image ${index + 1} of ${mediaUrls.size}",
+                                    contentScale = ContentScale.Fit,
+                                    onLoading = {
+                                        loadingMedia = true
+                                        failedMedia = false
+                                    },
+                                    onSuccess = {
+                                        loadingMedia = false
+                                        failedMedia = false
+                                    },
+                                    onError = {
+                                        loadingMedia = false
+                                        failedMedia = true
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                if (loadingMedia) {
+                                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                                }
+                                if (failedMedia) {
+                                    Text(
+                                        "Image unavailable",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 12.sp,
+                                    )
+                                }
+                                if (mediaUrls.size > 1) {
+                                    Surface(
+                                        modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
+                                        shape = RoundedCornerShape(100.dp),
+                                        color = Color.Black.copy(alpha = 0.62f),
+                                    ) {
+                                        Text(
+                                            "${index + 1}/${mediaUrls.size}",
+                                            color = Color.White,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconButton(onClick = onLike) {
-                    Icon(if (post.isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, contentDescription = "Like", tint = if (post.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+
+            val primaryMetrics = buildList {
+                add("${post.viewCount} views")
+                if (post.likeCount > 0) add("${post.likeCount} likes")
+            }
+            val secondaryMetrics = buildList {
+                if (post.commentCount > 0) add("${post.commentCount} comments")
+                if (post.shareCount > 0) add("${post.shareCount} shares")
+                if (post.repostCount > 0) add("${post.repostCount} reposts")
+            }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    primaryMetrics.joinToString("  ·  "),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.weight(1f))
+                if (secondaryMetrics.isNotEmpty()) {
+                    Text(
+                        secondaryMetrics.joinToString("  ·  "),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                Text(post.likeCount.toString(), fontSize = 12.sp)
-                IconButton(onClick = onComments) { Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments") }
-                Text(post.commentCount.toString(), fontSize = 12.sp)
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                IconButton(onClick = onLike) {
+                    Icon(
+                        if (post.isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                        contentDescription = if (post.isLiked) "Unlike" else "Like",
+                        tint = if (post.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = onComments) {
+                    Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
+                }
+                IconButton(onClick = onRepost) {
+                    Icon(
+                        Icons.Rounded.Repeat,
+                        contentDescription = if (post.isRepostedByMe) "Undo repost" else "Repost",
+                        tint = if (post.isRepostedByMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 OutlinedButton(onClick = onCopyLink) {
                     Text("Copy link", fontSize = 11.sp)
                 }
-                Spacer(Modifier.weight(1f))
-                Text("${post.viewCount} views", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -1633,37 +2113,65 @@ private fun parseDesktopEconomyPolicy(payload: JSONObject?): BlinkEconomyPolicy 
     )
 }
 
-private fun desktopCommunityActivityRange(realOnlineCount: Int): IntRange {
-    val units = realOnlineCount.coerceAtLeast(1).coerceAtMost(100_000)
-    return (units * 30)..(units * 50)
-}
-
-private fun desktopRankPulseRange(rankUpsInWindow: Int): IntRange {
-    val units = rankUpsInWindow.coerceAtLeast(1).coerceAtMost(100_000)
-    return (units * 10)..(units * 15)
-}
-
 @Composable
-private fun rememberDesktopFluctuatingPulse(
+private fun rememberDesktopManagedPulse(
+    key: String,
     range: IntRange,
     tickMillis: Long,
-): Int {
-    val min = minOf(range.first, range.last)
-    val max = maxOf(range.first, range.last)
-    var value by remember(min, max) {
-        mutableIntStateOf(if (min == max) min else Random.nextInt(min, max + 1))
+    policy: BlinkActivityPulsePolicy,
+    liveDataAvailable: Boolean,
+    reduceMotion: Boolean,
+): Int? {
+    val normalized = policy.normalized()
+    val minValue = minOf(range.first, range.last)
+    val maxValue = maxOf(range.first, range.last)
+    var value by remember(key) {
+        mutableStateOf(BlinkPulseSessionStore.get(key))
     }
 
-    LaunchedEffect(min, max, tickMillis) {
+    LaunchedEffect(
+        key,
+        minValue,
+        maxValue,
+        tickMillis,
+        normalized.minHoldMillis,
+        normalized.maxStep,
+        normalized.transitionStepMultiplier,
+        liveDataAvailable,
+        reduceMotion,
+    ) {
+        if (!liveDataAvailable || !normalized.enabled) return@LaunchedEffect
+
+        if (value == null) {
+            val seeded = if (minValue == maxValue) minValue else Random.nextInt(minValue, maxValue + 1)
+            value = seeded
+            BlinkPulseSessionStore.put(key, seeded)
+        }
+
+        val hold = maxOf(tickMillis, normalized.minHoldMillis) * if (reduceMotion) 2L else 1L
         while (true) {
-            delay(tickMillis)
-            val magnitude = Random.nextInt(1, 5)
+            delay(hold)
+            val current = value ?: continue
+            val magnitude = Random.nextInt(1, normalized.maxStep + 1)
             val direction = if (Random.nextBoolean()) 1 else -1
-            var next = (value + (magnitude * direction)).coerceIn(min, max)
-            if (next == value && min < max) {
-                next = if (value <= min) value + 1 else value - 1
+            var next = nextPulseValue(
+                current = current,
+                range = minValue..maxValue,
+                requestedStep = magnitude * direction,
+                maxStep = normalized.maxStep,
+                transitionStepMultiplier = normalized.transitionStepMultiplier,
+            )
+            if (next == current && current in minValue..maxValue && minValue < maxValue) {
+                next = nextPulseValue(
+                    current = current,
+                    range = minValue..maxValue,
+                    requestedStep = if (current <= minValue) 1 else -1,
+                    maxStep = normalized.maxStep,
+                    transitionStepMultiplier = normalized.transitionStepMultiplier,
+                )
             }
-            value = next.coerceIn(min, max)
+            value = next
+            BlinkPulseSessionStore.put(key, next)
         }
     }
 
