@@ -941,7 +941,7 @@
       thread.insertAdjacentHTML('beforeend',`<div class="bubble me">${esc(text)}</div>`);form.reset();status.innerHTML='<span class="muted">Blink AI is thinking…</span>';
       try{
         let data=null;
-        for(const endpoint of ['blink-ai-v2','blink-ai']){
+        for(const endpoint of ['blink-ai']){
           const request=async()=>fetchWithTimeout(`${SUPABASE_URL}/functions/v1/${endpoint}`,{method:'POST',headers:{apikey:KEY,Authorization:`Bearer ${token()}`,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({message:text,use_personal_context:true,use_web_search:true,mode:'fast',tone:'balanced',response_length:'medium',temporary_chat:false,attachments:[],...(previous?{previous_interaction_id:previous}:{})})},45000);
           let res=await request();
           if(res.status===401&&state.session?.refresh_token&&await refreshSession().catch(()=>false))res=await request();

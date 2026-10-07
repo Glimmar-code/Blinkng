@@ -36,6 +36,8 @@ import com.example.data.models.ProfileFollowerPoint
 import com.example.data.models.ProfileNotificationMode
 import com.example.data.models.IdentityAvailability
 import com.example.util.TimeFormatters
+import com.blinkng.shared.BlinkActivityPulseDefaults
+import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.example.util.safeString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.withLock
@@ -2855,6 +2857,83 @@ suspend fun uploadPostMedia(
         }
     }
 
+
+    suspend fun fetchActivityPulsePolicy(): BlinkActivityPulsePolicy = withContext(Dispatchers.IO) {
+        val fallback = BlinkActivityPulseDefaults.policy
+        try {
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/blink_activity_pulse_config?select=*&id=eq.true&limit=1",
+                    authenticated = true
+                ).get().build()
+            ).use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful || body.isBlank()) return@withContext fallback
+                val row = JSONArray(body).optJSONObject(0) ?: return@withContext fallback
+                BlinkActivityPulsePolicy(
+                    enabled = row.optBoolean("enabled", fallback.enabled),
+                    communityMinPerActive = row.optInt("community_min_per_active", fallback.communityMinPerActive),
+                    communityMaxPerActive = row.optInt("community_max_per_active", fallback.communityMaxPerActive),
+                    rankMinPerEvent = row.optInt("rank_min_per_event", fallback.rankMinPerEvent),
+                    rankMaxPerEvent = row.optInt("rank_max_per_event", fallback.rankMaxPerEvent),
+                    connectTickMillis = row.optLong("connect_tick_ms", fallback.connectTickMillis),
+                    rankTickMillis = row.optLong("rank_tick_ms", fallback.rankTickMillis),
+                    minHoldMillis = row.optLong("min_hold_ms", fallback.minHoldMillis),
+                    rankWindowMillis = row.optLong("rank_window_ms", fallback.rankWindowMillis),
+                    maxStep = row.optInt("max_step", fallback.maxStep),
+                    transitionStepMultiplier = row.optInt("transition_step_multiplier", fallback.transitionStepMultiplier),
+                    onlinePreviewLimit = row.optInt("online_preview_limit", fallback.onlinePreviewLimit),
+                    campusActiveThreshold = row.optInt("campus_active_threshold", fallback.campusActiveThreshold),
+                    campusHotThreshold = row.optInt("campus_hot_threshold", fallback.campusHotThreshold),
+                    hotRankUpsThreshold = row.optInt("hot_rank_ups_threshold", fallback.hotRankUpsThreshold),
+                    maxUnits = row.optInt("max_units", fallback.maxUnits),
+                    maxDisplayValue = row.optInt("max_display_value", fallback.maxDisplayValue),
+                ).normalized()
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "ACTIVITY_PULSE_POLICY fallback", error)
+            fallback
+        }
+    }
+
+    suspend fun recordActivityPulseEvent(
+        surface: String,
+        eventType: String,
+        realCount: Int,
+        displayedValue: Int?,
+        metadata: Map<String, String> = emptyMap(),
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!isAuthenticated()) return@withContext false
+        try {
+            val body = JSONObject()
+                .put("p_surface", surface)
+                .put("p_event_type", eventType)
+                .put("p_real_count", realCount.coerceAtLeast(0))
+                .put("p_displayed_value", displayedValue ?: JSONObject.NULL)
+                .put(
+                    "p_metadata",
+                    JSONObject().apply {
+                        metadata.forEach { (key, value) ->
+                            if (key.isNotBlank()) put(key.take(80), value.take(240))
+                        }
+                    }
+                )
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/rpc/record_blink_activity_pulse_event",
+                    authenticated = true
+                )
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                response.isSuccessful
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "ACTIVITY_PULSE_ANALYTICS skipped", error)
+            false
+        }
+    }
+
     suspend fun fetchLeaderboard(): List<LeaderboardUser> = withContext(Dispatchers.IO) {
         try {
             val raw = executeRequest(newRequestBuilder("/rest/v1/game_leaderboard?select=*&order=world_rank.asc&limit=50", true).get().build()).use { resp ->
@@ -2934,6 +3013,35 @@ suspend fun uploadPostMedia(
                 )
 
                 emptyList()
+            }
+        }
+
+    suspend fun fetchMarketItemById(marketId: String): MarketItem? =
+        withContext(Dispatchers.IO) {
+            val cleanId = marketId.trim()
+            if (cleanId.isBlank()) return@withContext null
+
+            try {
+                val request = newRequestBuilder(
+                    "/rest/v1/market_items" +
+                        "?id=eq.${encodeValue(cleanId)}" +
+                        "&select=*" +
+                        "&limit=1"
+                )
+                    .get()
+                    .build()
+
+                executeRequest(request).use { response ->
+                    val body = response.body?.string().orEmpty()
+                    if (!response.isSuccessful || body.isBlank() || body == "[]") {
+                        return@withContext null
+                    }
+                    val array = JSONArray(body)
+                    if (array.length() == 0) null else parseMarketItem(array.getJSONObject(0))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "MARKET_FETCH_BY_ID exception", e)
+                null
             }
         }
 
@@ -4213,6 +4321,34 @@ suspend fun uploadPostMedia(
             }
         } catch (e: Exception) {
             Log.e(TAG, "markActivityRead failed", e)
+            false
+        }
+    }
+
+    suspend fun markActivityUnread(activityId: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            val isNotification = activityId.startsWith("notification:")
+            val rowId = activityId.removePrefix("notification:")
+            if (rowId.isBlank()) return@withContext false
+
+            val table = if (isNotification) "notifications" else "activities"
+            val ownerField = if (isNotification) "user_id" else "recipient_id"
+            val body = JSONObject().put("is_read", false)
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/$table?id=eq.${encodeValue(rowId)}&$ownerField=eq.${encodeValue(uid)}",
+                    true
+                ).patch(body.toString().toRequestBody(jsonMediaType)).build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Could not mark notification unread."))
+                }
+                true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "markActivityUnread failed", e)
             false
         }
     }
