@@ -6,6 +6,7 @@ export async function rankedProfileTests(db) {
   const circle='00000000-0000-4000-8000-000000000112';
   await db.exec(`reset role;
     update public.profiles set campus_hostel_location='Synthetic private hall',current_city_state='Synthetic private locality' where id='${B}';
+    insert into public.blocks(blocker_id,blocked_id) values ('${A}','00000000-0000-4000-8000-000000000003') on conflict do nothing;
     insert into public.feed_posts(id,user_id,text,is_reel,is_active,is_flagged,audience,creator_post_number,created_at)
       values ('${post}','${B}','Recipient public post',false,true,false,'everyone',901,now()-interval '1 minute');
     insert into public.conversations(id,created_by,is_group) values ('${chat}','${A}',false);
