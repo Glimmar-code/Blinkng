@@ -810,7 +810,7 @@ private fun MessageInboxTabChip(
 ) {
     Surface(
         color = if (selected) palette.textPrimary else palette.glassElevated,
-        contentColor = if (selected) palette.background else palette.textPrimary,
+        contentColor = if (selected) palette.backgroundMiddle else palette.textPrimary,
         shape = RoundedCornerShape(100.dp),
         border = BorderStroke(1.dp, if (selected) palette.textPrimary else palette.border),
         modifier = Modifier.clickable(onClick = onClick)
@@ -823,7 +823,7 @@ private fun MessageInboxTabChip(
             Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
             if (count != null) {
                 Badge(
-                    containerColor = if (selected) palette.background else palette.accent,
+                    containerColor = if (selected) palette.backgroundMiddle else palette.accent,
                     contentColor = if (selected) palette.textPrimary else Color.White
                 ) {
                     Text(count.coerceAtMost(99).toString(), fontSize = 8.sp)
@@ -3270,7 +3270,7 @@ private fun SharedChatContentSheet(
                 item(key = key) {
                     Surface(
                         color = if (tab == key) palette.textPrimary else palette.glassElevated,
-                        contentColor = if (tab == key) palette.background else palette.textPrimary,
+                        contentColor = if (tab == key) palette.backgroundMiddle else palette.textPrimary,
                         shape = RoundedCornerShape(100.dp),
                         border = BorderStroke(1.dp, if (tab == key) palette.textPrimary else palette.border),
                         modifier = Modifier.clickable { tab = key }
@@ -3959,7 +3959,7 @@ private fun ChatPrivacyScopeSection(
                 val selected = value == key
                 Surface(
                     color = if (selected) palette.textPrimary else palette.glass,
-                    contentColor = if (selected) palette.background else palette.textPrimary,
+                    contentColor = if (selected) palette.backgroundMiddle else palette.textPrimary,
                     shape = RoundedCornerShape(100.dp),
                     border = BorderStroke(
                         1.dp,

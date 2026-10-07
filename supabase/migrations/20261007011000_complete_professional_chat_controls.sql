@@ -1,3 +1,5 @@
+-- destructive-change-reviewed
+-- rollback-plan: Restore prior chat policies/schema from backup, then drop only the chat-control objects/columns introduced here after confirming no later migration depends on them.
 -- Complete BLINK professional chat controls.
 -- Additive/idempotent: preserves existing messages, receipts and conversation membership.
 
