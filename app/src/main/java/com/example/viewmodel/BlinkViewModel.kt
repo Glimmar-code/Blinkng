@@ -8,6 +8,10 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.example.auth.AccountSessionStore
 import com.example.auth.AuthErrorMapper
 import com.example.auth.PasswordRecoveryLinkParser
@@ -30,6 +34,8 @@ import com.example.notification.BlinkInAppNotificationCenter
 import com.example.notification.BlinkInAppNotificationDestination
 import com.example.notification.BlinkNotificationType
 import com.example.notification.NotificationPreferenceStore
+import com.example.notification.ConversationMuteExpiryWorker
+import com.example.notification.ConversationNotificationMuteStore
 import com.example.sharing.AppDeepLink
 import com.example.sharing.ShareContentType
 import com.example.util.safeBoolean
@@ -43,7 +49,9 @@ import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import com.blinkng.shared.BlinkOnboardingPolicy
+import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -3757,21 +3765,86 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun setConversationMuted(conversation: ChatConversation, muted: Boolean) {
+        applyConversationMute(conversation, muted = muted, durationMillis = null)
+    }
+
+    fun muteConversationFor(conversation: ChatConversation, durationMillis: Long?) {
+        applyConversationMute(conversation, muted = true, durationMillis = durationMillis)
+    }
+
+    private fun applyConversationMute(
+        conversation: ChatConversation,
+        muted: Boolean,
+        durationMillis: Long?
+    ) {
         val before = conversation.isMuted
+        val workName = "blink_conversation_unmute_" + conversation.id
+
         val state = _uiState.value
         _uiState.value = state.copy(conversations = state.conversations.map {
             if (it.id == conversation.id) it.copy(isMuted = muted) else it
         })
         persistConversations()
+
+        if (muted) {
+            ConversationNotificationMuteStore.mute(appContext, conversation.id, durationMillis)
+            if (durationMillis != null && durationMillis > 0L && !conversation.id.startsWith("local_")) {
+                val request = OneTimeWorkRequestBuilder<ConversationMuteExpiryWorker>()
+                    .setInitialDelay(durationMillis, TimeUnit.MILLISECONDS)
+                    .setInputData(
+                        workDataOf(
+                            ConversationMuteExpiryWorker.KEY_CONVERSATION_ID to conversation.id,
+                            ConversationMuteExpiryWorker.KEY_OWNER_ID to supabaseService.getCurrentUserId().orEmpty()
+                        )
+                    )
+                    .build()
+                WorkManager.getInstance(appContext).enqueueUniqueWork(
+                    workName,
+                    ExistingWorkPolicy.REPLACE,
+                    request
+                )
+            } else {
+                WorkManager.getInstance(appContext).cancelUniqueWork(workName)
+            }
+        } else {
+            ConversationNotificationMuteStore.unmute(appContext, conversation.id)
+            WorkManager.getInstance(appContext).cancelUniqueWork(workName)
+        }
+
         if (conversation.id.startsWith("local_")) return
         viewModelScope.launch {
-            if (!chatRepository.setConversationMuted(conversation.id, muted)) {
+            val serverUpdated = if (muted && durationMillis != null && durationMillis > 0L) {
+                chatRepository.setConversationMutedUntil(
+                    conversation.id,
+                    Instant.ofEpochMilli(System.currentTimeMillis() + durationMillis).toString()
+                )
+            } else {
+                chatRepository.setConversationMuted(conversation.id, muted)
+            }
+
+            if (!serverUpdated) {
                 val latest = _uiState.value
                 _uiState.value = latest.copy(conversations = latest.conversations.map {
                     if (it.id == conversation.id) it.copy(isMuted = before) else it
                 })
+                if (before) {
+                    ConversationNotificationMuteStore.mute(appContext, conversation.id, null)
+                } else {
+                    ConversationNotificationMuteStore.unmute(appContext, conversation.id)
+                    WorkManager.getInstance(appContext).cancelUniqueWork(workName)
+                }
                 persistConversations()
                 showToast("Couldn't update chat notifications.")
+            } else {
+                val durationLabel = when (durationMillis) {
+                    null -> if (muted) "until you turn them back on" else ""
+                    60L * 60L * 1_000L -> "for 1 hour"
+                    8L * 60L * 60L * 1_000L -> "for 8 hours"
+                    24L * 60L * 60L * 1_000L -> "for 24 hours"
+                    else -> "temporarily"
+                }
+                if (muted) showToast("Chat notifications muted " + durationLabel + ".")
+                else showToast("Chat notifications unmuted.")
             }
         }
     }
@@ -4413,6 +4486,30 @@ private suspend fun restoreSupabaseSession() {
         _uiState.value = _uiState.value.copy(viewingProduct = item)
     }
 
+    fun openMarketFromNotification(marketId: String?) {
+        setTab(MainTab.MARKET)
+        val cleanId = marketId?.trim().orEmpty()
+        if (cleanId.isBlank()) return
+
+        _uiState.value.marketItems.firstOrNull { it.id == cleanId }?.let {
+            openProductDetail(it)
+            return
+        }
+
+        viewModelScope.launch {
+            val item = runCatching { supabaseService.fetchMarketItemById(cleanId) }.getOrNull()
+            if (item == null) {
+                showToast("This marketplace listing is no longer available.")
+                return@launch
+            }
+            val current = _uiState.value
+            _uiState.value = current.copy(
+                marketItems = (listOf(item) + current.marketItems.filterNot { it.id == item.id }),
+                viewingProduct = item
+            )
+        }
+    }
+
     fun closeProductDetail() {
         _uiState.value = _uiState.value.copy(viewingProduct = null)
     }
@@ -4621,7 +4718,7 @@ private suspend fun restoreSupabaseSession() {
         }
 
         activity.targetMarketId?.let { marketId ->
-            _uiState.value.marketItems.find { it.id == marketId }?.let { openProductDetail(it) }
+            openMarketFromNotification(marketId)
             return
         }
 
@@ -4629,6 +4726,36 @@ private suspend fun restoreSupabaseSession() {
             openProfile(activity.user)
         } else {
             openActivity(true)
+        }
+    }
+
+    fun toggleActivityReadState(activity: ActivityItem) {
+        val newUnreadState = !activity.isUnread
+        _uiState.value = _uiState.value.copy(
+            activities = _uiState.value.activities.map {
+                if (it.id == activity.id) it.copy(isUnread = newUnreadState) else it
+            }
+        )
+        persistExtendedCache()
+
+        viewModelScope.launch {
+            val synced = runCatching {
+                if (newUnreadState) {
+                    supabaseService.markActivityUnread(activity.id)
+                } else {
+                    supabaseService.markActivityRead(activity.id)
+                }
+            }.getOrDefault(false)
+
+            if (!synced) {
+                _uiState.value = _uiState.value.copy(
+                    activities = _uiState.value.activities.map {
+                        if (it.id == activity.id) it.copy(isUnread = activity.isUnread) else it
+                    }
+                )
+                persistExtendedCache()
+                showToast("Couldn't sync notification read status.")
+            }
         }
     }
 
