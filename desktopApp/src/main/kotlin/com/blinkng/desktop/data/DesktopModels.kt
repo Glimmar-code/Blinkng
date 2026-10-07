@@ -171,6 +171,30 @@ data class DesktopConnectListing(
     val createdAt: String,
 )
 
+data class DesktopConnectRequestItem(
+    val kind: String,
+    val requestId: String,
+    val direction: String,
+    val status: String,
+    val title: String,
+    val otherUserId: String,
+    val createdAt: String,
+)
+
+data class DesktopGameChallenge(
+    val id: String,
+    val challengerId: String,
+    val opponentId: String,
+    val gameType: String,
+    val status: String,
+    val createdAt: String,
+)
+
+data class DesktopConnectInbox(
+    val requests: List<DesktopConnectRequestItem> = emptyList(),
+    val challenges: List<DesktopGameChallenge> = emptyList(),
+)
+
 data class DesktopStoreItem(
     val id: String,
     val name: String,

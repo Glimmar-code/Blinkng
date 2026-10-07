@@ -1,9 +1,13 @@
 package com.example.ui.components
 
+import com.example.data.local.PersistentTextDraftStore
 import com.example.data.local.rememberPersistentStringListState
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -42,6 +46,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Poll
@@ -73,6 +81,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -108,9 +117,11 @@ import com.example.data.models.PostPoll
 import com.example.data.models.ScheduledPost
 import com.example.data.models.UserProfile
 import org.json.JSONArray
+import org.json.JSONObject
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Calendar
 import java.util.UUID
 
 @OptIn(
@@ -142,32 +153,36 @@ fun CreatePostSheet(
         Boolean,
         String?,
         String?,
-        String?
+        String?,
+        String
     ) -> Unit,
     onSaveDraft: (PostDraft) -> Unit = {},
     onDeleteDraft: (String) -> Unit = {},
     onSchedulePost: (FeedPost, Long, String) -> Unit = { _, _, _ -> },
+    onPublishScheduledPostNow: (String) -> Unit = {},
+    onCancelScheduledPost: (String) -> Unit = {},
     isDark: Boolean,
     isSubmitting: Boolean = false
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val composerScope = profile.id.ifBlank { profile.username }
 
     var text by rememberPersistentTextState(
         key = "create_post_text",
-        scope = profile.id.ifBlank { profile.username }
+        scope = composerScope
     )
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
     var mode by rememberSaveable { mutableStateOf("post") }
     var pollQuestion by rememberPersistentTextState(
         key = "create_post_poll_question",
-        scope = profile.id.ifBlank { profile.username }
+        scope = composerScope
     )
     var pollOptions by rememberPersistentStringListState(
         key = "create_post_poll_options",
         initialValue = listOf("", ""),
-        scope = profile.id.ifBlank { profile.username }
+        scope = composerScope
     )
     var audience by rememberSaveable { mutableStateOf("Everyone") }
     var category by rememberSaveable { mutableStateOf("Campus Life") }
@@ -179,6 +194,16 @@ fun CreatePostSheet(
     var showScheduleDialog by rememberSaveable { mutableStateOf(false) }
     var selectedTextStyle by rememberSaveable { mutableStateOf("aurora") }
     var textPresentation by rememberSaveable { mutableStateOf("plain") }
+    var location by rememberSaveable { mutableStateOf("") }
+    var linkUrl by rememberSaveable { mutableStateOf("") }
+    var altText by rememberSaveable { mutableStateOf("") }
+    var hideLikes by rememberSaveable { mutableStateOf(false) }
+    var isDisappearing by rememberSaveable { mutableStateOf(false) }
+    var audioTitle by rememberSaveable { mutableStateOf("") }
+    var showAdvancedSettings by rememberSaveable { mutableStateOf(false) }
+    var showPreviewDialog by rememberSaveable { mutableStateOf(false) }
+    var autosaveRestored by rememberSaveable { mutableStateOf(false) }
+    var clientRequestId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
 
     val audiences = listOf("Everyone", "Campus", "Followers")
     val categories = listOf(
@@ -194,7 +219,17 @@ fun CreatePostSheet(
         ActivityResultContracts.PickMultipleVisualMedia(10)
     ) { uris ->
         if (uris.isNotEmpty()) {
-            selectedImages = uris.map(Uri::toString)
+            uris.forEach { uri ->
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+            }
+            selectedImages = (selectedImages + uris.map(Uri::toString))
+                .distinct()
+                .take(10)
             selectedVideo = null
             mode = "post"
         }
@@ -204,6 +239,12 @@ fun CreatePostSheet(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
             selectedVideo = uri.toString()
             selectedImages = emptyList()
             mode = "reel"
@@ -235,14 +276,153 @@ fun CreatePostSheet(
         }.getOrDefault(emptyList())
     }
 
+    fun clearComposerPersistence() {
+        text = ""
+        pollQuestion = ""
+        pollOptions = listOf("", "")
+        PersistentTextDraftStore.clearValue(context, "create_post_text", composerScope)
+        PersistentTextDraftStore.clearValue(context, "create_post_poll_question", composerScope)
+        PersistentTextDraftStore.clearValue(context, "create_post_poll_options", composerScope)
+        PersistentTextDraftStore.clearValue(context, "create_post_autosave_v2", composerScope)
+    }
+
+    fun normalizedLink(raw: String): String? =
+        PostComposerRules.normalizedLink(raw)
+
+    fun extractedTags(value: String): List<String> =
+        PostComposerRules.tags(value)
+
+    fun extractedMentions(value: String): List<String> =
+        PostComposerRules.mentions(value)
+
+    LaunchedEffect(composerScope) {
+        val raw = PersistentTextDraftStore.readValue(
+            context,
+            "create_post_autosave_v2",
+            composerScope
+        )
+        if (!raw.isNullOrBlank()) {
+            runCatching { JSONObject(raw) }.getOrNull()?.let { value ->
+                selectedImages = parseDraftImages(value.optString("image_uri"))
+                selectedVideo = value.optString("video_uri")
+                    .takeIf { it.isNotBlank() && it != "null" }
+                mode = value.optString(
+                    "mode",
+                    if (selectedVideo == null) "post" else "reel"
+                )
+                audience = value.optString("audience", "Everyone")
+                category = value.optString("category", "Campus Life")
+                allowComments = value.optBoolean("allow_comments", true)
+                showPoll = value.optBoolean("show_poll", false)
+                selectedTextStyle = value.optString("text_style", "aurora")
+                textPresentation = value.optString("text_presentation", "plain")
+                location = value.optString("location")
+                linkUrl = value.optString("link_url")
+                altText = value.optString("alt_text")
+                hideLikes = value.optBoolean("hide_likes", false)
+                isDisappearing = value.optBoolean("is_disappearing", false)
+                audioTitle = value.optString("audio_title")
+                clientRequestId = value.optString("client_request_id")
+                    .takeIf { runCatching { UUID.fromString(it) }.isSuccess }
+                    ?: clientRequestId
+            }
+        }
+        autosaveRestored = true
+    }
+
+    LaunchedEffect(
+        autosaveRestored,
+        text,
+        selectedImages,
+        selectedVideo,
+        mode,
+        pollQuestion,
+        pollOptions,
+        audience,
+        category,
+        allowComments,
+        showPoll,
+        selectedTextStyle,
+        textPresentation,
+        location,
+        linkUrl,
+        altText,
+        hideLikes,
+        isDisappearing,
+        audioTitle,
+        clientRequestId
+    ) {
+        if (!autosaveRestored) return@LaunchedEffect
+        val hasAnything = text.isNotBlank() ||
+            selectedImages.isNotEmpty() ||
+            selectedVideo != null ||
+            pollQuestion.isNotBlank() ||
+            pollOptions.any { it.isNotBlank() } ||
+            location.isNotBlank() ||
+            linkUrl.isNotBlank() ||
+            altText.isNotBlank() ||
+            audioTitle.isNotBlank()
+
+        if (!hasAnything) {
+            PersistentTextDraftStore.clearValue(
+                context,
+                "create_post_autosave_v2",
+                composerScope
+            )
+        } else {
+            val snapshot = JSONObject().apply {
+                put("image_uri", imagePayload(selectedImages) ?: JSONObject.NULL)
+                put("video_uri", selectedVideo ?: JSONObject.NULL)
+                put("mode", mode)
+                put("audience", audience)
+                put("category", category)
+                put("allow_comments", allowComments)
+                put("show_poll", showPoll)
+                put("text_style", selectedTextStyle)
+                put("text_presentation", textPresentation)
+                put("location", location)
+                put("link_url", linkUrl)
+                put("alt_text", altText)
+                put("hide_likes", hideLikes)
+                put("is_disappearing", isDisappearing)
+                put("audio_title", audioTitle)
+                put("client_request_id", clientRequestId)
+            }
+            PersistentTextDraftStore.writeValue(
+                context,
+                "create_post_autosave_v2",
+                composerScope,
+                snapshot.toString()
+            )
+        }
+    }
+
     val cleanText = text.trim()
     val validPollOptions = pollOptions.map(String::trim).filter(String::isNotBlank)
-    val pollValid = showPoll && pollQuestion.isNotBlank() && validPollOptions.size >= 2
+    val pollValid = showPoll &&
+        PostComposerRules.validPoll(pollQuestion, pollOptions)
+    val normalizedLinkUrl = normalizedLink(linkUrl)
+    val linkValid = linkUrl.isBlank() || normalizedLinkUrl != null
     val hasContent = cleanText.isNotBlank() ||
         selectedImages.isNotEmpty() ||
         selectedVideo != null ||
         pollValid
-    val canSubmit = hasContent && !isSubmitting
+    val hasComposerInput = cleanText.isNotBlank() ||
+        selectedImages.isNotEmpty() ||
+        selectedVideo != null ||
+        pollQuestion.isNotBlank() ||
+        pollOptions.any { it.isNotBlank() } ||
+        location.isNotBlank() ||
+        linkUrl.isNotBlank() ||
+        altText.isNotBlank() ||
+        audioTitle.isNotBlank() ||
+        hideLikes ||
+        isDisappearing ||
+        !allowComments
+    val canSubmit = hasContent &&
+        linkValid &&
+        (!showPoll || pollValid) &&
+        !isSubmitting
 
     fun scheduledPreviewPost(): FeedPost {
         val poll = if (pollValid) {
@@ -274,14 +454,23 @@ fun CreatePostSheet(
             poll = poll,
             audience = audience,
             category = category,
+            location = location.trim().takeIf { it.isNotBlank() },
+            linkUrl = normalizedLinkUrl,
             allowComments = allowComments,
+            hideLikes = hideLikes,
+            isDisappearing = isDisappearing,
+            audioTitle = audioTitle.trim().takeIf { it.isNotBlank() },
+            altText = altText.trim().takeIf { it.isNotBlank() },
             textStyle = style
         )
     }
 
-    fun scheduleAfter(delayMillis: Long) {
+    fun scheduleAt(timeMillis: Long) {
         if (!canSubmit) return
-        val timeMillis = System.currentTimeMillis() + delayMillis
+        if (timeMillis < System.currentTimeMillis() + 60_000L) {
+            Toast.makeText(context, "Choose a time at least one minute from now.", Toast.LENGTH_SHORT).show()
+            return
+        }
         val formatted = Instant.ofEpochMilli(timeMillis)
             .atZone(ZoneId.systemDefault())
             .format(DateTimeFormatter.ofPattern("EEE, MMM d • h:mm a"))
@@ -289,12 +478,58 @@ fun CreatePostSheet(
         onSchedulePost(scheduledPreviewPost(), timeMillis, formatted)
     }
 
+    fun scheduleAfter(delayMillis: Long) {
+        scheduleAt(System.currentTimeMillis() + delayMillis)
+    }
+
+    fun chooseCustomSchedule() {
+        val now = Calendar.getInstance()
+        DatePickerDialog(
+            context,
+            { _, year, month, day ->
+                TimePickerDialog(
+                    context,
+                    { _, hour, minute ->
+                        val selected = Calendar.getInstance().apply {
+                            set(Calendar.YEAR, year)
+                            set(Calendar.MONTH, month)
+                            set(Calendar.DAY_OF_MONTH, day)
+                            set(Calendar.HOUR_OF_DAY, hour)
+                            set(Calendar.MINUTE, minute)
+                            set(Calendar.SECOND, 0)
+                            set(Calendar.MILLISECOND, 0)
+                        }
+                        scheduleAt(selected.timeInMillis)
+                    },
+                    now.get(Calendar.HOUR_OF_DAY),
+                    now.get(Calendar.MINUTE),
+                    false
+                ).show()
+            },
+            now.get(Calendar.YEAR),
+            now.get(Calendar.MONTH),
+            now.get(Calendar.DAY_OF_MONTH)
+        ).apply {
+            datePicker.minDate = System.currentTimeMillis()
+        }.show()
+    }
+
     fun submit() {
         if (!canSubmit) {
             if (!isSubmitting) {
                 Toast.makeText(
                     context,
-                    if (showPoll && !pollValid) "Add a poll question and at least two options." else "Add something to your post first.",
+                    when {
+                        showPoll && validPollOptions.size >= 2 &&
+                            validPollOptions.map { it.lowercase() }.distinct().size != validPollOptions.size ->
+                            "Poll options must be different."
+                        showPoll && !pollValid ->
+                            "Add a poll question and at least two options."
+                        linkUrl.isNotBlank() && !linkValid ->
+                            "Enter a valid link before publishing."
+                        else ->
+                            "Add something to your post first."
+                    },
                     Toast.LENGTH_SHORT
                 ).show()
             }
@@ -315,32 +550,33 @@ fun CreatePostSheet(
             profile.faculty,
             imagePayload(selectedImages),
             selectedVideo,
-            emptyList(),
-            emptyList(),
+            extractedTags(cleanText),
+            extractedMentions(cleanText),
             poll,
             selectedVideo != null,
             audience,
             category,
-            null,
-            null,
+            location.trim().takeIf { it.isNotBlank() },
+            normalizedLinkUrl,
             allowComments,
+            hideLikes,
             false,
-            false,
-            false,
-            null,
-            null,
+            isDisappearing,
+            audioTitle.trim().takeIf { it.isNotBlank() },
+            altText.trim().takeIf { it.isNotBlank() },
             selectedTextStyle.takeIf {
                 textPresentation == "color" &&
                     cleanText.isNotBlank() &&
                     selectedImages.isEmpty() &&
                     selectedVideo == null &&
                     !pollValid
-            }
+            },
+            clientRequestId
         )
     }
 
     fun saveDraft() {
-        if (!hasContent) {
+        if (!hasComposerInput) {
             Toast.makeText(context, "Add something before saving a draft.", Toast.LENGTH_SHORT).show()
             return
         }
@@ -352,8 +588,19 @@ fun CreatePostSheet(
                 imageUri = imagePayload(selectedImages),
                 videoUri = selectedVideo,
                 isReel = selectedVideo != null,
+                tags = extractedTags(text),
+                mentions = extractedMentions(text),
                 category = category,
                 audience = audience,
+                location = location.trim().takeIf { it.isNotBlank() },
+                linkUrl = normalizedLink(linkUrl),
+                allowComments = allowComments,
+                hideLikes = hideLikes,
+                isDisappearing = isDisappearing,
+                pollQuestion = if (showPoll) pollQuestion else "",
+                pollOptions = if (showPoll) pollOptions else emptyList(),
+                audioTrack = audioTitle.trim().takeIf { it.isNotBlank() },
+                altText = altText.trim().takeIf { it.isNotBlank() },
                 textStyle = selectedTextStyle.takeIf {
                     textPresentation == "color" &&
                         text.isNotBlank() &&
@@ -366,7 +613,7 @@ fun CreatePostSheet(
         Toast.makeText(context, "Draft saved.", Toast.LENGTH_SHORT).show()
     }
 
-    val currentHasContent by rememberUpdatedState(hasContent)
+    val currentHasContent by rememberUpdatedState(hasComposerInput)
     val currentIsSubmitting by rememberUpdatedState(isSubmitting)
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -385,7 +632,7 @@ fun CreatePostSheet(
 
     fun requestDismiss() {
         if (isSubmitting) return
-        if (hasContent) {
+        if (hasComposerInput) {
             showDiscardDialog = true
         } else {
             onDismiss()
@@ -578,6 +825,24 @@ fun CreatePostSheet(
                             SelectedImagePreview(
                                 uri = uri,
                                 index = index,
+                                canMoveLeft = index > 0,
+                                canMoveRight = index < selectedImages.lastIndex,
+                                onMoveLeft = {
+                                    if (index > 0) {
+                                        selectedImages = selectedImages.toMutableList().also { items ->
+                                            val value = items.removeAt(index)
+                                            items.add(index - 1, value)
+                                        }
+                                    }
+                                },
+                                onMoveRight = {
+                                    if (index < selectedImages.lastIndex) {
+                                        selectedImages = selectedImages.toMutableList().also { items ->
+                                            val value = items.removeAt(index)
+                                            items.add(index + 1, value)
+                                        }
+                                    }
+                                },
                                 onRemove = {
                                     selectedImages = selectedImages.toMutableList().also {
                                         it.removeAt(index)
@@ -654,7 +919,14 @@ fun CreatePostSheet(
                             selectedVideo = null
                             mode = "post"
                         }
-                    }
+                    },
+                    onMention = {
+                        if (text.length < 4999) {
+                            text = text.trimEnd() + if (text.isBlank()) "@" else " @"
+                        }
+                    },
+                    onLink = { showAdvancedSettings = true },
+                    onLocation = { showAdvancedSettings = true }
                 )
 
                 Card(
@@ -726,6 +998,122 @@ fun CreatePostSheet(
                                 enabled = !isSubmitting
                             )
                         }
+
+                        TextButton(
+                            onClick = { showAdvancedSettings = !showAdvancedSettings },
+                            enabled = !isSubmitting,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (showAdvancedSettings) "Hide extra settings" else "More post settings")
+                        }
+
+                        if (showAdvancedSettings) {
+                            OutlinedTextField(
+                                value = location,
+                                onValueChange = { location = it.take(120) },
+                                enabled = !isSubmitting,
+                                modifier = Modifier.fillMaxWidth(),
+                                leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
+                                label = { Text("Location or campus tag") },
+                                placeholder = { Text("e.g. FUTA South Gate") },
+                                singleLine = true
+                            )
+
+                            Spacer(Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = linkUrl,
+                                onValueChange = { linkUrl = it.take(500) },
+                                enabled = !isSubmitting,
+                                modifier = Modifier.fillMaxWidth(),
+                                leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
+                                label = { Text("Link") },
+                                placeholder = { Text("https://example.com") },
+                                singleLine = true,
+                                isError = linkUrl.isNotBlank() && !linkValid,
+                                supportingText = {
+                                    if (linkUrl.isNotBlank() && !linkValid) {
+                                        Text("Enter a valid web address.")
+                                    } else if (normalizedLinkUrl != null) {
+                                        Text(Uri.parse(normalizedLinkUrl).host.orEmpty())
+                                    }
+                                }
+                            )
+
+                            if (selectedImages.isNotEmpty() || selectedVideo != null) {
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = altText,
+                                    onValueChange = { altText = it.take(500) },
+                                    enabled = !isSubmitting,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Media description") },
+                                    placeholder = { Text("Describe the media for accessibility") },
+                                    minLines = 2,
+                                    maxLines = 4
+                                )
+                            }
+
+                            if (selectedVideo != null) {
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = audioTitle,
+                                    onValueChange = { audioTitle = it.take(120) },
+                                    enabled = !isSubmitting,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Audio title") },
+                                    placeholder = { Text("Original audio") },
+                                    singleLine = true
+                                )
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Hide like count", fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "People can still like the post.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = hideLikes,
+                                    onCheckedChange = { hideLikes = it },
+                                    enabled = !isSubmitting
+                                )
+                            }
+
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Temporary post", fontWeight = FontWeight.Medium)
+                                    Text(
+                                        "Use BLINK's existing disappearing-post policy.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = isDisappearing,
+                                    onCheckedChange = { isDisappearing = it },
+                                    enabled = !isSubmitting
+                                )
+                            }
+
+                            Text(
+                                "Tip: @username mentions and #topics are detected automatically from your text.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
                     }
                 }
 
@@ -751,9 +1139,22 @@ fun CreatePostSheet(
                                     mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
                                     audience = draft.audience
                                     category = draft.category
+                                    location = draft.location.orEmpty()
+                                    linkUrl = draft.linkUrl.orEmpty()
+                                    allowComments = draft.allowComments
+                                    hideLikes = draft.hideLikes
+                                    isDisappearing = draft.isDisappearing
+                                    altText = draft.altText.orEmpty()
+                                    audioTitle = draft.audioTrack.orEmpty()
+                                    pollQuestion = draft.pollQuestion
+                                    pollOptions = draft.pollOptions
+                                        .takeIf { it.size >= 2 }
+                                        ?: listOf("", "")
+                                    showPoll = draft.pollQuestion.isNotBlank() &&
+                                        draft.pollOptions.count { it.isNotBlank() } >= 2
                                     textPresentation = if (draft.textStyle.isNullOrBlank()) "plain" else "color"
                                     selectedTextStyle = draft.textStyle ?: "aurora"
-                                    showPoll = false
+                                    clientRequestId = UUID.randomUUID().toString()
                                 },
                                 onDelete = { onDeleteDraft(draft.id) }
                             )
@@ -781,7 +1182,7 @@ fun CreatePostSheet(
                 ) {
                     OutlinedButton(
                         onClick = ::saveDraft,
-                        enabled = hasContent && !isSubmitting,
+                        enabled = hasComposerInput && !isSubmitting,
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(
@@ -793,34 +1194,70 @@ fun CreatePostSheet(
                         Text("Save draft")
                     }
 
-                    Button(
-                        onClick = ::submit,
+                    OutlinedButton(
+                        onClick = { showPreviewDialog = true },
                         enabled = canSubmit,
                         modifier = Modifier.weight(1f)
                     ) {
-                        if (isSubmitting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text("Publishing")
-                        } else {
-                            Text(if (selectedVideo != null) "Post reel" else "Publish")
-                        }
+                        Text("Preview")
                     }
                 }
 
                 if (scheduledPosts.isNotEmpty()) {
                     Text(
-                        "${scheduledPosts.size} scheduled post${if (scheduledPosts.size == 1) "" else "s"}",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        "Scheduled posts",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleSmall
                     )
+                    scheduledPosts.take(3).forEach { scheduled ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f)
+                            )
+                        ) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(
+                                    scheduled.post.text.ifBlank {
+                                        if (scheduled.post.isReel) "Scheduled reel" else "Scheduled post"
+                                    },
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    scheduled.scheduledTimeFormatted,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End
+                                ) {
+                                    TextButton(
+                                        onClick = { onCancelScheduledPost(scheduled.id) },
+                                        enabled = !isSubmitting
+                                    ) { Text("Cancel") }
+                                    TextButton(
+                                        onClick = { onPublishScheduledPostNow(scheduled.id) },
+                                        enabled = !isSubmitting
+                                    ) { Text("Publish now") }
+                                }
+                            }
+                        }
+                    }
+                    if (scheduledPosts.size > 3) {
+                        Text(
+                            "+${scheduledPosts.size - 3} more scheduled",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -849,11 +1286,25 @@ fun CreatePostSheet(
                             modifier = Modifier.fillMaxWidth()
                         ) { Text(label) }
                     }
+                    Button(
+                        onClick = ::chooseCustomSchedule,
+                        enabled = !isSubmitting,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Choose date & time")
+                    }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showScheduleDialog = false }) { Text("Close") }
             }
+        )
+    }
+
+    if (showPreviewDialog) {
+        PostPreviewDialog(
+            post = scheduledPreviewPost(),
+            onDismiss = { showPreviewDialog = false }
         )
     }
 
@@ -873,6 +1324,7 @@ fun CreatePostSheet(
                 TextButton(
                     onClick = {
                         showDiscardDialog = false
+                        clearComposerPersistence()
                         onDismiss()
                     }
                 ) {
@@ -883,6 +1335,140 @@ fun CreatePostSheet(
     }
 }
 
+
+@Composable
+private fun PostPreviewDialog(
+    post: FeedPost,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 8.dp,
+            shadowElevation = 10.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Post preview",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 19.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = onDismiss) { Text("Done") }
+                }
+
+                if (post.audience.isNotBlank()) {
+                    Text(
+                        "${post.audience} • ${post.category}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                if (post.text.isNotBlank()) {
+                    Text(
+                        post.text,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+
+                if (post.images.isNotEmpty()) {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(post.images) { uri ->
+                            AsyncImage(
+                                model = uri,
+                                contentDescription = post.altText ?: "Post image",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(156.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                            )
+                        }
+                    }
+                }
+
+                if (!post.videoUrl.isNullOrBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f)
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text("Reel video selected", fontWeight = FontWeight.SemiBold)
+                            post.audioTitle?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                post.poll?.let { poll ->
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .4f)
+                        )
+                    ) {
+                        Column(
+                            Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(poll.question, fontWeight = FontWeight.Bold)
+                            poll.options.forEach { option ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.outlineVariant
+                                    )
+                                ) {
+                                    Text(
+                                        option.text,
+                                        modifier = Modifier.padding(
+                                            horizontal = 12.dp,
+                                            vertical = 8.dp
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                post.location?.let {
+                    Text(
+                        "Location: $it",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                post.linkUrl?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun ColoredTextComposer(
@@ -1115,6 +1701,10 @@ private fun AuthorComposerHeader(
 private fun SelectedImagePreview(
     uri: String,
     index: Int,
+    canMoveLeft: Boolean,
+    canMoveRight: Boolean,
+    onMoveLeft: () -> Unit,
+    onMoveRight: () -> Unit,
     onRemove: () -> Unit
 ) {
     Box(
@@ -1146,6 +1736,44 @@ private fun SelectedImagePreview(
                     tint = Color.White,
                     modifier = Modifier.padding(6.dp)
                 )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (canMoveLeft) {
+                IconButton(
+                    onClick = onMoveLeft,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Surface(shape = CircleShape, color = Color.Black.copy(alpha = .62f)) {
+                        Icon(
+                            Icons.Default.KeyboardArrowLeft,
+                            contentDescription = "Move image left",
+                            tint = Color.White,
+                            modifier = Modifier.padding(5.dp)
+                        )
+                    }
+                }
+            }
+            if (canMoveRight) {
+                IconButton(
+                    onClick = onMoveRight,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Surface(shape = CircleShape, color = Color.Black.copy(alpha = .62f)) {
+                        Icon(
+                            Icons.Default.KeyboardArrowRight,
+                            contentDescription = "Move image right",
+                            tint = Color.White,
+                            modifier = Modifier.padding(5.dp)
+                        )
+                    }
+                }
             }
         }
     }
@@ -1253,7 +1881,10 @@ private fun AddToPostCard(
     enabled: Boolean,
     onImages: () -> Unit,
     onVideo: () -> Unit,
-    onPoll: () -> Unit
+    onPoll: () -> Unit,
+    onMention: () -> Unit,
+    onLink: () -> Unit,
+    onLocation: () -> Unit
 ) {
     Text(
         text = "Add to your post",
@@ -1274,6 +1905,15 @@ private fun AddToPostCard(
         }
         item {
             ComposerActionTile("Poll", Icons.Default.Poll, enabled, onPoll)
+        }
+        item {
+            ComposerActionTile("Mention", Icons.Default.People, enabled, onMention)
+        }
+        item {
+            ComposerActionTile("Link", Icons.Default.Link, enabled, onLink)
+        }
+        item {
+            ComposerActionTile("Location", Icons.Default.LocationOn, enabled, onLocation)
         }
     }
 }

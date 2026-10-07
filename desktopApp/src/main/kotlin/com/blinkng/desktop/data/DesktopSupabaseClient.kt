@@ -615,22 +615,54 @@ class DesktopSupabaseClient(
         }
     }
 
-    suspend fun createPost(text: String, isReel: Boolean = false, videoUrl: String? = null): DesktopFeedPost = withContext(Dispatchers.IO) {
+    suspend fun createPost(
+        text: String,
+        isReel: Boolean = false,
+        videoUrl: String? = null,
+        audience: String = "Everyone",
+        category: String = "Campus Life",
+        location: String? = null,
+        linkUrl: String? = null,
+        allowComments: Boolean = true,
+        hideLikes: Boolean = false,
+        isDisappearing: Boolean = false,
+        clientRequestId: String = UUID.randomUUID().toString(),
+    ): DesktopFeedPost = withContext(Dispatchers.IO) {
         val active = requireSession()
         val clean = text.trim()
         require(clean.isNotBlank() || !videoUrl.isNullOrBlank()) { "Write something or attach media." }
+
+        val requestId = runCatching { UUID.fromString(clientRequestId.trim()).toString() }
+            .getOrElse { UUID.randomUUID().toString() }
+
+        val existing = getArray(
+            "/rest/v1/feed_posts?id=eq.${encode(requestId)}&user_id=eq.${encode(active.userId)}&select=*&limit=1",
+        ).optJSONObject(0)
+        if (existing != null) {
+            return@withContext parseFeedPost(existing, fetchProfile(active.userId), false)
+        }
+
         val last = getArray(
             "/rest/v1/feed_posts?user_id=eq.${encode(active.userId)}&select=creator_post_number&order=creator_post_number.desc&limit=1",
         )
         val nextNumber = (last.optJSONObject(0)?.optInt("creator_post_number", 0) ?: 0) + 1
         val body = JSONObject()
+            .put("id", requestId)
             .put("user_id", active.userId)
             .put("text", clean.ifBlank { JSONObject.NULL })
             .put("caption", clean.ifBlank { JSONObject.NULL })
             .put("is_reel", isReel)
             .put("type", if (isReel) "video" else "text")
             .put("creator_post_number", nextNumber)
+            .put("audience", audience)
+            .put("category", category)
+            .put("allow_comments", allowComments)
+            .put("hide_likes", hideLikes)
+            .put("is_disappearing", isDisappearing)
+        location?.trim()?.takeIf(String::isNotBlank)?.let { body.put("location", it) }
+        linkUrl?.trim()?.takeIf(String::isNotBlank)?.let { body.put("link_url", it) }
         if (!videoUrl.isNullOrBlank()) body.put("video_url", videoUrl)
+
         val created = postArray("/rest/v1/feed_posts", body, prefer = "return=representation")
             .optJSONObject(0) ?: throw IllegalStateException("Post was created but no row was returned.")
         parseFeedPost(created, fetchProfile(active.userId), false)
@@ -991,6 +1023,79 @@ class DesktopSupabaseClient(
             .optJSONObject(0) ?: throw IllegalStateException("Connect listing was not returned.")
         parseConnectListing(created)
     }
+
+    suspend fun fetchConnectInbox(): DesktopConnectInbox = withContext(Dispatchers.IO) {
+        val currentId = requireSession().userId
+
+        val requests = runCatching {
+            val payload = postObject(
+                "/rest/v1/rpc/get_connect_request_inbox",
+                JSONObject().put("p_limit", 120),
+            )
+            val rows = payload as? JSONArray ?: JSONArray()
+            (0 until rows.length()).mapNotNull { index ->
+                rows.optJSONObject(index)?.let { row ->
+                    DesktopConnectRequestItem(
+                        kind = row.optString("kind"),
+                        requestId = row.optString("request_id"),
+                        direction = row.optString("direction"),
+                        status = row.optString("status"),
+                        title = row.optString("title"),
+                        otherUserId = row.optString("other_user_id"),
+                        createdAt = row.optString("created_at"),
+                    )
+                }
+            }
+        }.getOrDefault(emptyList())
+
+        val challenges = runCatching {
+            val rows = getArray(
+                "/rest/v1/game_challenges" +
+                    "?select=id,challenger_id,opponent_id,game_type,status,created_at" +
+                    "&or=(challenger_id.eq.${encode(currentId)},opponent_id.eq.${encode(currentId)})" +
+                    "&order=created_at.desc&limit=60",
+            )
+            (0 until rows.length()).mapNotNull { index ->
+                rows.optJSONObject(index)?.let { row ->
+                    DesktopGameChallenge(
+                        id = row.optString("id"),
+                        challengerId = row.optString("challenger_id"),
+                        opponentId = row.optString("opponent_id"),
+                        gameType = row.optString("game_type"),
+                        status = row.optString("status"),
+                        createdAt = row.optString("created_at"),
+                    )
+                }
+            }
+        }.getOrDefault(emptyList())
+
+        DesktopConnectInbox(requests = requests, challenges = challenges)
+    }
+
+    suspend fun respondConnectRequest(kind: String, requestId: String, accept: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            rpcBoolean(
+                postObject(
+                    "/rest/v1/rpc/respond_connect_request",
+                    JSONObject()
+                        .put("p_kind", kind)
+                        .put("p_request_id", requestId)
+                        .put("p_accept", accept),
+                ),
+            )
+        }
+
+    suspend fun respondGameChallenge(challengeId: String, accept: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            rpcBoolean(
+                postObject(
+                    "/rest/v1/rpc/respond_game_challenge",
+                    JSONObject()
+                        .put("p_challenge_id", challengeId)
+                        .put("p_accept", accept),
+                ),
+            )
+        }
 
     suspend fun fetchStore(): Pair<List<DesktopStoreItem>, List<DesktopInventoryItem>> = withContext(Dispatchers.IO) {
         val catalogRows = getArray(
@@ -1441,6 +1546,15 @@ class DesktopSupabaseClient(
             else -> JSONObject().put("value", trimmed)
         }
     }
+
+    private fun rpcBoolean(result: Any): Boolean =
+        when (result) {
+            is JSONObject -> result.optString("value")
+                .trim()
+                .removeSurrounding("\"")
+                .equals("true", ignoreCase = true)
+            else -> false
+        }
 
     private fun patch(path: String, body: JSONObject) {
         execute(
