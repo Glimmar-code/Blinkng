@@ -443,22 +443,54 @@ class DesktopSupabaseClient(
         }
     }
 
-    suspend fun createPost(text: String, isReel: Boolean = false, videoUrl: String? = null): DesktopFeedPost = withContext(Dispatchers.IO) {
+    suspend fun createPost(
+        text: String,
+        isReel: Boolean = false,
+        videoUrl: String? = null,
+        audience: String = "Everyone",
+        category: String = "Campus Life",
+        location: String? = null,
+        linkUrl: String? = null,
+        allowComments: Boolean = true,
+        hideLikes: Boolean = false,
+        isDisappearing: Boolean = false,
+        clientRequestId: String = UUID.randomUUID().toString(),
+    ): DesktopFeedPost = withContext(Dispatchers.IO) {
         val active = requireSession()
         val clean = text.trim()
         require(clean.isNotBlank() || !videoUrl.isNullOrBlank()) { "Write something or attach media." }
+
+        val requestId = runCatching { UUID.fromString(clientRequestId.trim()).toString() }
+            .getOrElse { UUID.randomUUID().toString() }
+
+        val existing = getArray(
+            "/rest/v1/feed_posts?id=eq.${encode(requestId)}&user_id=eq.${encode(active.userId)}&select=*&limit=1",
+        ).optJSONObject(0)
+        if (existing != null) {
+            return@withContext parseFeedPost(existing, fetchProfile(active.userId), false)
+        }
+
         val last = getArray(
             "/rest/v1/feed_posts?user_id=eq.${encode(active.userId)}&select=creator_post_number&order=creator_post_number.desc&limit=1",
         )
         val nextNumber = (last.optJSONObject(0)?.optInt("creator_post_number", 0) ?: 0) + 1
         val body = JSONObject()
+            .put("id", requestId)
             .put("user_id", active.userId)
             .put("text", clean.ifBlank { JSONObject.NULL })
             .put("caption", clean.ifBlank { JSONObject.NULL })
             .put("is_reel", isReel)
             .put("type", if (isReel) "video" else "text")
             .put("creator_post_number", nextNumber)
+            .put("audience", audience)
+            .put("category", category)
+            .put("allow_comments", allowComments)
+            .put("hide_likes", hideLikes)
+            .put("is_disappearing", isDisappearing)
+        location?.trim()?.takeIf(String::isNotBlank)?.let { body.put("location", it) }
+        linkUrl?.trim()?.takeIf(String::isNotBlank)?.let { body.put("link_url", it) }
         if (!videoUrl.isNullOrBlank()) body.put("video_url", videoUrl)
+
         val created = postArray("/rest/v1/feed_posts", body, prefer = "return=representation")
             .optJSONObject(0) ?: throw IllegalStateException("Post was created but no row was returned.")
         parseFeedPost(created, fetchProfile(active.userId), false)

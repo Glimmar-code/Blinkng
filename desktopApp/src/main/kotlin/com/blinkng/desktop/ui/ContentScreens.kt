@@ -117,6 +117,7 @@ import java.net.URI
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 import org.json.JSONObject
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
@@ -128,6 +129,15 @@ fun HomeScreen(
 ) {
     var posts by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var composer by remember { mutableStateOf("") }
+    var composerAudience by remember { mutableStateOf("Everyone") }
+    var composerCategory by remember { mutableStateOf("Campus Life") }
+    var composerLocation by remember { mutableStateOf("") }
+    var composerLink by remember { mutableStateOf("") }
+    var composerAllowComments by remember { mutableStateOf(true) }
+    var composerHideLikes by remember { mutableStateOf(false) }
+    var composerTemporary by remember { mutableStateOf(false) }
+    var composerMoreSettings by remember { mutableStateOf(false) }
+    var composerRequestId by remember { mutableStateOf(UUID.randomUUID().toString()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var commentsFor by remember { mutableStateOf<String?>(null) }
@@ -151,6 +161,22 @@ fun HomeScreen(
     }
 
     LaunchedEffect(Unit) { reload() }
+
+    fun normalizedComposerLink(): String? {
+        val raw = composerLink.trim()
+        if (raw.isBlank()) return null
+        val hasExplicitScheme = raw.contains("://")
+        val isHttpScheme = raw.startsWith("https://", true) || raw.startsWith("http://", true)
+        if (hasExplicitScheme && !isHttpScheme) return null
+        val candidate = if (isHttpScheme) raw else "https://$raw"
+        val uri = runCatching { URI(candidate) }.getOrNull() ?: return null
+        return candidate.takeIf {
+            (uri.scheme.equals("https", true) || uri.scheme.equals("http", true)) &&
+                !uri.host.isNullOrBlank()
+        }
+    }
+
+    val composerLinkValid = composerLink.isBlank() || normalizedComposerLink() != null
 
     LazyColumn(
         state = listState,
@@ -193,16 +219,126 @@ fun HomeScreen(
                         label = { Text("Create a post") },
                         placeholder = { Text("What's happening on campus?") },
                     )
+                    Text(
+                        "Audience",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Everyone", "Campus", "Followers").forEach { item ->
+                            FilterChip(
+                                selected = composerAudience == item,
+                                onClick = { composerAudience = item },
+                                label = { Text(item) },
+                            )
+                        }
+                    }
+
+                    Text(
+                        "Category",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf("Campus Life", "Academic", "Events", "Sports", "Entertainment", "Marketplace").forEach { item ->
+                            FilterChip(
+                                selected = composerCategory == item,
+                                onClick = { composerCategory = item },
+                                label = { Text(item) },
+                            )
+                        }
+                    }
+
+                    OutlinedButton(onClick = { composerMoreSettings = !composerMoreSettings }) {
+                        Text(if (composerMoreSettings) "Hide post settings" else "More post settings")
+                    }
+
+                    if (composerMoreSettings) {
+                        OutlinedTextField(
+                            value = composerLocation,
+                            onValueChange = { composerLocation = it.take(120) },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Location or campus tag") },
+                            singleLine = true,
+                        )
+                        OutlinedTextField(
+                            value = composerLink,
+                            onValueChange = { composerLink = it.take(500) },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Link") },
+                            placeholder = { Text("https://example.com") },
+                            isError = !composerLinkValid,
+                            supportingText = {
+                                if (!composerLinkValid) Text("Enter a valid web address.")
+                            },
+                            singleLine = true,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("Allow comments", modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = composerAllowComments,
+                                onCheckedChange = { composerAllowComments = it },
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("Hide like count", modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = composerHideLikes,
+                                onCheckedChange = { composerHideLikes = it },
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("Temporary post", modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = composerTemporary,
+                                onCheckedChange = { composerTemporary = it },
+                            )
+                        }
+                    }
+
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
                             onClick = {
                                 scope.launch {
-                                    runCatching { state.client.createPost(composer) }
-                                        .onSuccess { composer = ""; reload() }
+                                    runCatching {
+                                        state.client.createPost(
+                                            text = composer,
+                                            audience = composerAudience,
+                                            category = composerCategory,
+                                            location = composerLocation.trim().takeIf(String::isNotBlank),
+                                            linkUrl = normalizedComposerLink(),
+                                            allowComments = composerAllowComments,
+                                            hideLikes = composerHideLikes,
+                                            isDisappearing = composerTemporary,
+                                            clientRequestId = composerRequestId,
+                                        )
+                                    }
+                                        .onSuccess {
+                                            composer = ""
+                                            composerLocation = ""
+                                            composerLink = ""
+                                            composerAllowComments = true
+                                            composerHideLikes = false
+                                            composerTemporary = false
+                                            composerRequestId = UUID.randomUUID().toString()
+                                            reload()
+                                        }
                                         .onFailure { error = it.message }
                                 }
                             },
-                            enabled = composer.isNotBlank(),
+                            enabled = composer.isNotBlank() && composerLinkValid,
                         ) {
                             Icon(Icons.Rounded.Add, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
