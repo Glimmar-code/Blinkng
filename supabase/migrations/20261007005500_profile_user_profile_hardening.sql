@@ -1,3 +1,5 @@
+-- destructive-change-reviewed
+-- rollback-plan: Restore the previous profile policies/schema from backup, then drop only the profile hardening objects/columns introduced by this migration after confirming no newer migration depends on them.
 begin;
 
 alter table public.profiles
