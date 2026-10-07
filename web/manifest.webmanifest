@@ -13,49 +13,14 @@
     "productivity"
   ],
   "shortcuts": [
-    {
-      "name": "Home",
-      "short_name": "Home",
-      "description": "Open your Blink feed",
-      "url": "./feed"
-    },
-    {
-      "name": "Messages",
-      "short_name": "Messages",
-      "description": "Open Blink messages",
-      "url": "./messages"
-    },
-    {
-      "name": "Blink Store",
-      "short_name": "Store",
-      "description": "Open Blink Store and premium items",
-      "url": "./store"
-    },
-    {
-      "name": "Blink AI",
-      "short_name": "AI",
-      "description": "Open Blink AI",
-      "url": "./ai"
-    },
-    {
-      "name": "More app features",
-      "short_name": "More",
-      "description": "Open the Android-to-web parity center",
-      "url": "./more"
-    }
+    {"name":"Home","short_name":"Home","description":"Open your Blink feed","url":"./feed"},
+    {"name":"Messages","short_name":"Messages","description":"Open Blink messages","url":"./messages"},
+    {"name":"Blink Store","short_name":"Store","description":"Open Blink Store and premium items","url":"./store"},
+    {"name":"Blink AI","short_name":"AI","description":"Open Blink AI","url":"./ai"},
+    {"name":"More app features","short_name":"More","description":"Open the Android-to-web parity center","url":"./more"}
   ],
   "icons": [
-    {
-      "src": "blink-logo-v2.png",
-      "sizes": "256x256",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "blink-logo-v2.png",
-      "sizes": "256x256",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
+    {"src":"blink-logo-v2.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"blink-logo-v2.png","sizes":"192x192","type":"image/png","purpose":"maskable"}
   ]
 }
