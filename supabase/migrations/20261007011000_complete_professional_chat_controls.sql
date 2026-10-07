@@ -3,6 +3,43 @@
 -- Complete BLINK professional chat controls.
 -- Additive/idempotent: preserves existing messages, receipts and conversation membership.
 
+begin;
+
+-- Older production schemas predate the professional-chat foundations. Supply
+-- the additive dependencies here without replaying their historical policies.
+alter table public.conversation_participants
+  add column if not exists left_at timestamptz;
+
+create table if not exists public.conversation_notification_preferences (
+  conversation_id uuid not null references public.conversations(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  messages_enabled boolean not null default true,
+  calls_enabled boolean not null default true,
+  mentions_only boolean not null default false,
+  preview_mode text not null default 'inherit'
+    check (preview_mode in ('inherit','full','sender_only','hidden')),
+  sound_key text,
+  ringtone_key text,
+  vibration_enabled boolean not null default true,
+  updated_at timestamptz not null default now(),
+  primary key (conversation_id, user_id)
+);
+alter table public.conversation_notification_preferences enable row level security;
+drop policy if exists conversation_notification_preferences_self
+  on public.conversation_notification_preferences;
+create policy conversation_notification_preferences_self
+on public.conversation_notification_preferences for all to authenticated
+using (user_id = (select auth.uid()))
+with check (
+  user_id = (select auth.uid()) and exists (
+    select 1 from public.conversation_participants cp
+    where cp.conversation_id = conversation_notification_preferences.conversation_id
+      and cp.user_id = (select auth.uid()) and cp.left_at is null
+  )
+);
+revoke all on public.conversation_notification_preferences from public, anon;
+grant select, insert, update, delete on public.conversation_notification_preferences to authenticated;
+
 alter table public.messages
   add column if not exists forwarded_from_message_id uuid references public.messages(id) on delete set null;
 
@@ -77,8 +114,9 @@ for update to authenticated
 using (recipient_id = (select auth.uid()))
 with check (recipient_id = (select auth.uid()));
 
-revoke all on public.direct_message_requests from anon;
-grant select, update on public.direct_message_requests to authenticated;
+revoke all on public.direct_message_requests from public, anon, authenticated;
+grant select on public.direct_message_requests to authenticated;
+grant update (status, responded_at) on public.direct_message_requests to authenticated;
 
 create or replace function private.chat_users_are_connected(p_a uuid, p_b uuid)
 returns boolean
@@ -290,8 +328,8 @@ create or replace function public.block_chat_user(
 )
 returns boolean
 language plpgsql
-security invoker
-set search_path = 'public', 'pg_temp'
+security definer
+set search_path = ''
 as $$
 declare
   v_me uuid := auth.uid();
@@ -339,6 +377,7 @@ declare
   v_source public.messages%rowtype;
   v_conversation uuid;
   v_new_id uuid;
+  v_privacy text;
 begin
   if v_me is null then raise exception 'AUTHENTICATION_REQUIRED'; end if;
 
@@ -366,6 +405,18 @@ begin
 
   if v_target is null or v_target = v_me then
     raise exception 'INVALID_FORWARD_TARGET';
+  end if;
+
+  select coalesce(s.dm_privacy::text, 'everyone') into v_privacy
+  from public.user_settings s where s.user_id = v_target;
+  if coalesce(v_privacy, 'everyone') = 'nobody' then
+    raise exception 'DM_PRIVACY_RESTRICTED';
+  end if;
+  if v_privacy = 'following' and not exists (
+    select 1 from public.follows f
+    where f.follower_id = v_target and f.following_id = v_me
+  ) then
+    raise exception 'DM_PRIVACY_FOLLOWING_ONLY';
   end if;
 
   if exists (
@@ -449,7 +500,8 @@ as $$
   select
     ids.conversation_id,
     case
-      when coalesce(p.messages_enabled, true) = false then 'none'
+      when coalesce(p.messages_enabled, true) = false
+        and (p.mute_until is null or p.mute_until > now()) then 'none'
       when coalesce(p.mentions_only, false) = true then 'mentions'
       else 'all'
     end as notification_mode,
@@ -539,3 +591,5 @@ revoke all on function public.set_conversation_notification_settings(uuid, text,
   from public, anon;
 grant execute on function public.set_conversation_notification_settings(uuid, text, timestamptz, text, boolean)
   to authenticated;
+
+commit;

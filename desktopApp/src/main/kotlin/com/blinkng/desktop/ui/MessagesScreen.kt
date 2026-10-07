@@ -1,6 +1,8 @@
 package com.blinkng.desktop.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,6 +32,9 @@ import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -57,9 +62,12 @@ import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
+import com.blinkng.shared.BlinkChatInboxPolicy
+import com.blinkng.shared.BlinkMessageInbox
 import kotlinx.coroutines.launch
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import java.time.Instant
 
 @Composable
 fun MessagesScreen(state: DesktopAppState) {
@@ -74,6 +82,10 @@ fun MessagesScreen(state: DesktopAppState) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var actionMessageId by remember { mutableStateOf<String?>(null) }
+    var inbox by remember { mutableStateOf(BlinkMessageInbox.PRIMARY) }
+    var controlsBusy by remember { mutableStateOf(false) }
+    var forwardMessageId by remember { mutableStateOf<String?>(null) }
+    var forwardUsername by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val myUserId = state.session?.userId.orEmpty()
 
@@ -82,10 +94,21 @@ fun MessagesScreen(state: DesktopAppState) {
         runCatching { state.client.fetchConversations() }
             .onSuccess {
                 conversations = it
+                selected?.id?.let { id -> selected = it.firstOrNull { conversation -> conversation.id == id } }
                 error = null
             }
             .onFailure { error = it.message }
         loading = false
+    }
+
+    fun changeControl(action: suspend () -> Boolean) {
+        if (controlsBusy) return
+        controlsBusy = true
+        scope.launch {
+            runCatching { check(action()) { "The conversation action was not applied." }; loadConversations() }
+                .onFailure { error = it.message }
+            controlsBusy = false
+        }
     }
 
     suspend fun loadMessages(conversation: DesktopConversation?) {
@@ -108,12 +131,14 @@ fun MessagesScreen(state: DesktopAppState) {
 
     val active = selected
     if (active == null) {
-        val filtered = remember(conversations, query) {
-            if (query.isBlank()) conversations
-            else conversations.filter { it.title.contains(query, ignoreCase = true) }
+        val filtered = remember(conversations, query, inbox) {
+            conversations.filter {
+                BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary") &&
+                    (query.isBlank() || it.title.contains(query, ignoreCase = true))
+            }.sortedWith(compareByDescending<DesktopConversation> { it.isPinned }.thenByDescending { it.lastMessageAt.orEmpty() })
         }
         val important = remember(conversations) {
-            conversations.sortedWith(
+            conversations.filter { !it.isArchived && it.requestStatus != "pending" }.sortedWith(
                 compareByDescending<DesktopConversation> { it.isOnline }
                     .thenByDescending { it.lastMessageAt.orEmpty() }
             ).take(6)
@@ -185,12 +210,19 @@ fun MessagesScreen(state: DesktopAppState) {
             }
 
             Text(
-                "All messages",
+                "Inbox",
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 17.sp,
                 modifier = Modifier.padding(start = 18.dp, top = 18.dp, bottom = 8.dp)
             )
             HorizontalDivider()
+
+            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BlinkMessageInbox.entries.forEach { tab ->
+                    FilterChip(selected = inbox == tab, onClick = { inbox = tab },
+                        label = { Text(tab.name.lowercase().replaceFirstChar { it.uppercase() }) })
+                }
+            }
 
             error?.let {
                 Text(
@@ -244,7 +276,9 @@ fun MessagesScreen(state: DesktopAppState) {
                             )
                             Spacer(Modifier.width(11.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(conversation.title, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text((if (conversation.isPinned) "Pinned · " else "") + conversation.title,
+                                    fontWeight = if (conversation.markedUnread || conversation.unreadCount > 0) FontWeight.Black else FontWeight.SemiBold,
+                                    maxLines = 1)
                                 Text(
                                     if (conversation.isGroup) "Group conversation"
                                     else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt),
@@ -413,9 +447,9 @@ fun MessagesScreen(state: DesktopAppState) {
                                 DropdownMenuItem(
                                     text = { Text("Forward") },
                                     onClick = {
-                                        draft = message.content
+                                        forwardMessageId = message.id
+                                        forwardUsername = ""
                                         actionMessageId = null
-                                        error = "Message copied into the composer. Choose another chat to forward it."
                                     }
                                 )
                             }
@@ -472,7 +506,7 @@ fun MessagesScreen(state: DesktopAppState) {
                 color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 18.dp
             ) {
-                Column(modifier = Modifier.fillMaxSize().padding(22.dp)) {
+                Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(22.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { showContactCard = false }) {
                             Icon(Icons.Rounded.ArrowBack, contentDescription = "Back to chat")
@@ -532,7 +566,8 @@ fun MessagesScreen(state: DesktopAppState) {
                             icon = Icons.Rounded.VolumeOff,
                             modifier = Modifier.weight(1f)
                         ) {
-                            error = "Desktop conversation mute sync is not active yet."
+                            changeControl { state.client.setChatNotifications(active.id,
+                                if (active.notificationMode == "none") "all" else "none") }
                             showContactCard = false
                         }
                         ContactActionButton(
@@ -547,15 +582,56 @@ fun MessagesScreen(state: DesktopAppState) {
 
                     Spacer(Modifier.size(20.dp))
                     HorizontalDivider()
-                    Text(
-                        "The Android chat profile opens the full BLINK profile from here. Desktop profile routing is being kept separate until its profile adapter is connected.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(top = 16.dp)
-                    )
+                    if (active.controlsAvailable) {
+                        TextButton(enabled = !controlsBusy, onClick = {
+                            changeControl { state.client.setChatInboxState(active.id, pinned = !active.isPinned) }
+                        }) { Text(if (active.isPinned) "Unpin conversation" else "Pin conversation") }
+                        TextButton(enabled = !controlsBusy, onClick = {
+                            changeControl { state.client.setChatInboxState(active.id, archived = !active.isArchived) }
+                        }) { Text(if (active.isArchived) "Move to Primary" else "Archive conversation") }
+                        TextButton(enabled = !controlsBusy, onClick = {
+                            changeControl { state.client.setChatInboxState(active.id, unread = !active.markedUnread) }
+                        }) { Text(if (active.markedUnread) "Clear unread marker" else "Mark unread") }
+                        TextButton(enabled = !controlsBusy, onClick = {
+                            changeControl { state.client.setChatNotifications(active.id, "none", Instant.now().plusSeconds(3600).toString()) }
+                        }) { Text("Mute for one hour") }
+                        TextButton(enabled = !controlsBusy, onClick = {
+                            changeControl { state.client.setChatNotifications(active.id, "mentions") }
+                        }) { Text("Notify for mentions only") }
+                        if (active.requestStatus == "pending") {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(enabled = !controlsBusy, onClick = {
+                                    changeControl { state.client.respondMessageRequest(active.id, true) }
+                                }) { Text("Accept request") }
+                                TextButton(enabled = !controlsBusy, onClick = {
+                                    changeControl { state.client.respondMessageRequest(active.id, false) }
+                                }) { Text("Decline") }
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+    forwardMessageId?.let { messageId ->
+        AlertDialog(
+            onDismissRequest = { if (!controlsBusy) forwardMessageId = null },
+            title = { Text("Forward message") },
+            text = { OutlinedTextField(value = forwardUsername, onValueChange = { forwardUsername = it }, label = { Text("Recipient username") }, singleLine = true) },
+            confirmButton = { Button(enabled = !controlsBusy && forwardUsername.isNotBlank(), onClick = {
+                if (!controlsBusy) {
+                    controlsBusy = true
+                    val username = forwardUsername
+                    scope.launch {
+                        runCatching { state.client.forwardChatMessage(messageId, username) }
+                            .onSuccess { forwardMessageId = null; loadConversations() }
+                            .onFailure { error = it.message }
+                        controlsBusy = false
+                    }
+                }
+            }) { Text("Forward") } },
+            dismissButton = { TextButton(enabled = !controlsBusy, onClick = { forwardMessageId = null }) { Text("Cancel") } },
+        )
     }
 }
 

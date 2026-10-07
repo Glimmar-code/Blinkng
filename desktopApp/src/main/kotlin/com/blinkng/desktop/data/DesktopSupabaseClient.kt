@@ -334,11 +334,10 @@ class DesktopSupabaseClient(
             return@withContext false
         }
         val currentId = requireSession().userId
-        val rows = getArray(
-            "/rest/v1/profiles?username=eq.${encode(clean)}&select=id&limit=1",
-        )
-        val existingId = rows.optJSONObject(0)?.optString("id").orEmpty()
-        existingId.isBlank() || existingId == currentId
+        rpcBoolean(postObject(
+            "/rest/v1/rpc/is_blink_username_available",
+            JSONObject().put("p_username", clean),
+        ))
     }
 
     suspend fun saveOnboardingProfile(
@@ -922,7 +921,7 @@ class DesktopSupabaseClient(
         }.getOrNull()
         val summaryRows = summaryResponse as? JSONArray
         if (summaryRows != null) {
-            return@withContext (0 until summaryRows.length()).mapNotNull { i ->
+            return@withContext withChatControls((0 until summaryRows.length()).mapNotNull { i ->
                 summaryRows.optJSONObject(i)?.let { row ->
                     DesktopConversation(
                         id = row.optString("conversation_id"),
@@ -934,15 +933,16 @@ class DesktopSupabaseClient(
                         lastMessageAt = row.optNullableString("last_message_at"),
                         isOnline = row.optBoolean("partner_online", false),
                         lastSeenAt = row.optNullableString("partner_last_seen"),
+                        unreadCount = row.optLong("unread_count"),
                     )
                 }
-            }
+            })
         }
 
         val rows = getArray(
             "/rest/v1/conversations?select=id,title,avatar_url,is_group,last_message_at&order=last_message_at.desc.nullslast&limit=100",
         )
-        (0 until rows.length()).mapNotNull { i ->
+        withChatControls((0 until rows.length()).mapNotNull { i ->
             rows.optJSONObject(i)?.let { row ->
                 DesktopConversation(
                     id = row.optString("id"),
@@ -952,7 +952,61 @@ class DesktopSupabaseClient(
                     lastMessageAt = row.optNullableString("last_message_at"),
                 )
             }
+        })
+    }
+
+    private fun withChatControls(conversations: List<DesktopConversation>): List<DesktopConversation> {
+        if (conversations.isEmpty()) return conversations
+        val params = JSONObject().put("p_conversation_ids", JSONArray(conversations.map { it.id }))
+        fun rows(function: String): Map<String, JSONObject> {
+            val value = runCatching { postObject("/rest/v1/rpc/$function", params) as? JSONArray }.getOrNull()
+                ?: return emptyMap()
+            return (0 until value.length()).mapNotNull { value.optJSONObject(it) }
+                .associateBy { it.optString("conversation_id") }
         }
+        val inbox = rows("get_chat_inbox_state")
+        val notifications = rows("get_conversation_notification_settings")
+        return conversations.map { conversation ->
+            val entry = inbox[conversation.id]
+            val preference = notifications[conversation.id]
+            conversation.copy(
+                isArchived = entry?.optBoolean("is_archived") ?: false,
+                isPinned = entry?.optBoolean("is_pinned") ?: false,
+                markedUnread = entry?.optBoolean("marked_unread") ?: false,
+                requestStatus = entry?.optString("request_status") ?: "accepted",
+                notificationMode = preference?.optString("notification_mode") ?: "all",
+                muteUntil = preference?.optNullableString("mute_until"),
+                controlsAvailable = entry != null,
+            )
+        }
+    }
+
+    suspend fun setChatInboxState(
+        conversationId: String, archived: Boolean? = null, pinned: Boolean? = null, unread: Boolean? = null,
+    ): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/set_chat_inbox_state", JSONObject()
+            .put("p_conversation_id", conversationId)
+            .put("p_archived", archived ?: JSONObject.NULL)
+            .put("p_pinned", pinned ?: JSONObject.NULL)
+            .put("p_marked_unread", unread ?: JSONObject.NULL)))
+    }
+
+    suspend fun respondMessageRequest(conversationId: String, accept: Boolean): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/respond_direct_message_request", JSONObject()
+            .put("p_conversation_id", conversationId).put("p_accept", accept)))
+    }
+
+    suspend fun setChatNotifications(conversationId: String, mode: String, muteUntil: String? = null): Boolean =
+        withContext(Dispatchers.IO) {
+            rpcBoolean(postObject("/rest/v1/rpc/set_conversation_notification_settings", JSONObject()
+                .put("p_conversation_id", conversationId).put("p_notification_mode", mode)
+                .put("p_mute_until", muteUntil ?: JSONObject.NULL)))
+        }
+
+    suspend fun forwardChatMessage(messageId: String, username: String) = withContext(Dispatchers.IO) {
+        postObject("/rest/v1/rpc/forward_chat_message", JSONObject()
+            .put("p_message_id", messageId).put("p_target_username", username.trim().removePrefix("@")))
+        Unit
     }
 
     suspend fun fetchMessages(conversationId: String): List<DesktopMessage> = withContext(Dispatchers.IO) {

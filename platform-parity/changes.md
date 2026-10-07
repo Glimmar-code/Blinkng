@@ -1,3 +1,11 @@
+## 2026-10-07 — Verified Testlab promotion compatibility
+
+- Shared: Android and Windows share inbox classification and immutable Boost/Drop request fingerprints. Retry IDs stay bound to the same submitted inputs.
+- Android: installs its own lifecycle-owned Compose host before window enhancements or consent UI. Realtime presence uses the canonical server RPC and respects existing online-status privacy.
+- Windows: Primary/Requests/Archived inboxes, pin/archive/unread controls, request responses, timed/mentions-only notifications and real forwarding use the same authenticated chat RPCs. Boost uses v2 idempotent spending, budget recommendations, analytics, receipts and live refresh. The Drops tab supports real eligibility/budget previews, confirmed creation, actions/rewards, history, refunds, top givers and receipts.
+- Backend: chat migrations supply additive dependencies on older schemas; forwards respect DM privacy and membership; request identities cannot be rewritten; timed mutes expire. Profile privacy honors the existing online toggle, preserves username checks through a narrow RPC and redacts inbox presence without changing pagination or ranking.
+- Verification: isolated PostgreSQL fixtures check schema dependencies, account boundaries, retry spending, pin limits and reapplication. They contain synthetic rows and never connect to production. Android, Windows, web, domain and release gates remain required before promotion.
+
 ## 2026-10-07 — Logo decoding repair across clients
 
 - Android, Windows and web: re-encode the approved compact purple-eye artwork into fully decodable PNGs, with launcher density sizes and a valid multi-size Windows ICO. All clients use the same source artwork.

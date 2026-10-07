@@ -521,10 +521,9 @@ fun BlinkDropsRoute(
             onCreate = { target, action, reward, winners, audience, duration ->
                 if (!creatingDrop && isOnline) scope.launch {
                     creatingDrop = true
-                    val fingerprint = listOf(
-                        target.type,target.id,action,reward.toString(),winners.toString(),
-                        audience,duration.toString()
-                    ).joinToString("|")
+                    val fingerprint = com.blinkng.shared.BlinkDropRequest(
+                        target.type, target.id, action, reward, winners, audience, duration
+                    ).fingerprint()
                     if (pendingCreateRequestId == null || pendingCreateFingerprint != fingerprint) {
                         pendingCreateRequestId = UUID.randomUUID().toString()
                         pendingCreateFingerprint = fingerprint

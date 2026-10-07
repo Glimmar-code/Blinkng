@@ -7,7 +7,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.*
@@ -19,6 +18,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -343,22 +344,21 @@ class MainActivity : ComponentActivity() {
             adUnitId = BuildConfig.ADMOB_REWARDED_AD_UNIT_ID
         )
         adConsentManager = BlinkAdConsentManager(this)
-        adConsentManager.gatherConsent {
-            if (BlinkAdsRuntime.canRequestAds.value) rewardedAdManager.load()
+        // Install our own Compose host. The Activity setContent convenience API
+        // assumes android.R.id.content already exists in the decor hierarchy.
+        val composeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         }
+        setContentView(composeView)
         runCatching { enableEdgeToEdge() }
             .onFailure { error ->
-                android.util.Log.w(
-                    "MainActivity",
-                    "Edge-to-edge setup unavailable; continuing with the platform default window insets.",
-                    error
-                )
+                android.util.Log.w("MainActivity", "Edge-to-edge setup unavailable.", error)
             }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
 
-        setContent {
+        composeView.setContent {
             val uiState by viewModel.uiState.collectAsStateWithLifecycle()
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
@@ -553,6 +553,9 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        adConsentManager.gatherConsent {
+            if (BlinkAdsRuntime.canRequestAds.value) rewardedAdManager.load()
+        }
         handleIncomingIntent(intent)
     }
 }

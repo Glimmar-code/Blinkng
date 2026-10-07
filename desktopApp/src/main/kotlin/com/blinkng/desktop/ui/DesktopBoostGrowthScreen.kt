@@ -19,13 +19,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopRpcActions
+import com.blinkng.shared.BlinkBoostCampaignRequest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.NumberFormat
 import java.util.Locale
+import java.util.UUID
 
-private enum class DesktopBoostColumn { BOOST, EARN }
+private enum class DesktopBoostColumn { BOOST, EARN, DROPS }
 
 private data class DesktopBoostTarget(
     val id: String,
@@ -66,6 +70,11 @@ fun DesktopBoostGrowthScreen(state: DesktopAppState) {
                 onClick = { column = DesktopBoostColumn.EARN },
                 modifier = Modifier.weight(1f),
             )
+            DesktopGrowthTab(
+                selected = column == DesktopBoostColumn.DROPS,
+                label = "Drops", icon = Icons.Rounded.CardGiftcard,
+                onClick = { column = DesktopBoostColumn.DROPS }, modifier = Modifier.weight(1f),
+            )
         }
 
         HorizontalDivider()
@@ -73,6 +82,7 @@ fun DesktopBoostGrowthScreen(state: DesktopAppState) {
         when (column) {
             DesktopBoostColumn.BOOST -> DesktopBoostCampaignColumn(state)
             DesktopBoostColumn.EARN -> DesktopEarnRankPointsColumn(state)
+            DesktopBoostColumn.DROPS -> DesktopDropsScreen(state)
         }
     }
 }
@@ -128,9 +138,15 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
     var duration by remember { mutableIntStateOf(3) }
     var selectedUniversity by remember { mutableStateOf("") }
     var quote by remember { mutableStateOf<JSONObject?>(null) }
+    var pendingRequestId by remember { mutableStateOf<String?>(null) }
+    var pendingFingerprint by remember { mutableStateOf("") }
+    var budgetText by remember { mutableStateOf("1000") }
 
-    suspend fun reload() {
-        loading = true
+    fun currentRequest() = BlinkBoostCampaignRequest(targetType, targetId, power.toInt(), objective,
+        audience, duration, selectedUniversity.trim().takeIf { audience == "SELECTED_UNIVERSITY" && it.isNotBlank() })
+
+    suspend fun reload(background: Boolean = false) {
+        if (!background) loading = true
         runCatching {
             growthState = rpc.getBoostGrowthState()
             boostable = rpc.getBoostableContent()
@@ -142,7 +158,10 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
         loading = false
     }
 
-    LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(rpc) {
+        reload()
+        while (isActive) { delay(30_000); reload(background = true) }
+    }
 
     LaunchedEffect(targetType) {
         targetId = if (targetType == "PROFILE") state.profile?.id.orEmpty() else ""
@@ -391,22 +410,48 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
                 (audience != "SELECTED_UNIVERSITY" || !university.isNullOrBlank())
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value = budgetText, onValueChange = { budgetText = it.filter(Char::isDigit).take(9) },
+                    enabled = !working, label = { Text("Coin budget") }, singleLine = true)
+                OutlinedButton(enabled = ready && !working && (budgetText.toLongOrNull() ?: 0) >= 50, onClick = {
+                    if (!working) {
+                        val request = currentRequest()
+                        val budget = budgetText.toLongOrNull() ?: return@OutlinedButton
+                        working = true
+                        scope.launch {
+                            runCatching { rpc.recommendBoostPower(request, budget) }
+                                .onSuccess { result ->
+                                    if (request == currentRequest()) {
+                                        val recommended = result.optInt("recommended_power")
+                                        if (recommended > 0) { power = recommended.toFloat(); quote = null }
+                                        else error = "This budget is below the minimum for the selected campaign."
+                                    }
+                                }.onFailure { error = it.message }
+                            working = false
+                        }
+                    }
+                }) { Text("Recommend power") }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(
                     onClick = {
+                        if (working) return@OutlinedButton
+                        working = true
+                        val request = currentRequest()
                         scope.launch {
                             working = true
                             runCatching {
                                 rpc.quoteBoostCampaign(
-                                    targetType = targetType,
-                                    targetId = targetId,
-                                    boostPower = power.toInt(),
-                                    objective = objective,
-                                    audienceScope = audience,
-                                    durationDays = duration,
-                                    targetUniversity = university,
+                                    targetType = request.targetType,
+                                    targetId = request.targetId,
+                                    boostPower = request.power,
+                                    objective = request.objective,
+                                    audienceScope = request.audience,
+                                    durationDays = request.duration,
+                                    targetUniversity = request.university,
                                 )
                             }.onSuccess {
-                                quote = it
+                                quote = if (request == currentRequest()) it else null
                                 error = null
                             }.onFailure {
                                 error = it.message ?: "Unable to calculate this Boost."
@@ -419,20 +464,30 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
 
                 Button(
                     onClick = {
+                        if (working) return@Button
+                        working = true
+                        val request = currentRequest()
+                        val fingerprint = request.fingerprint()
+                        if (pendingRequestId == null || pendingFingerprint != fingerprint) {
+                            pendingRequestId = UUID.randomUUID().toString()
+                            pendingFingerprint = fingerprint
+                        }
+                        val requestId = pendingRequestId.orEmpty()
                         scope.launch {
-                            working = true
                             runCatching {
                                 rpc.createBoostCampaign(
-                                    targetType = targetType,
-                                    targetId = targetId,
-                                    boostPower = power.toInt(),
-                                    objective = objective,
-                                    audienceScope = audience,
-                                    durationDays = duration,
-                                    targetUniversity = university,
+                                    targetType = request.targetType,
+                                    targetId = request.targetId,
+                                    boostPower = request.power,
+                                    objective = request.objective,
+                                    audienceScope = request.audience,
+                                    durationDays = request.duration,
+                                    requestId = requestId,
+                                    targetUniversity = request.university,
                                 )
                             }.onSuccess {
                                 message = "Boost campaign started."
+                                pendingRequestId = null
                                 quote = null
                                 reload()
                             }.onFailure {
@@ -459,6 +514,25 @@ private fun DesktopBoostCampaignColumn(state: DesktopAppState) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp,
                 )
+            }
+        }
+
+        growthState?.optJSONObject("analytics")?.let { analytics ->
+            item {
+                DesktopBoostSection("Growth results", "Live totals for your campaigns")
+                Text("Impressions " + formatter.format(analytics.optLong("impressions")) +
+                    " · Opens " + formatter.format(analytics.optLong("opens")) +
+                    " · Conversion " + analytics.optDouble("conversion_rate") + "%")
+                Text("Spent " + formatter.format(analytics.optLong("spent")) +
+                    " · Refunded " + formatter.format(analytics.optLong("refunded")) + " coins")
+            }
+        }
+        val receipts = growthState?.optJSONArray("receipts").objects()
+        if (receipts.isNotEmpty()) {
+            item { DesktopBoostSection("Growth receipts", "Server-recorded reserves, spending and refunds") }
+            items(receipts, key = { "receipt-" + it.optString("id") }) { receipt ->
+                Text(receipt.optString("item_name") + " · " + formatter.format(receipt.optLong("amount")) +
+                    " coins · Balance " + formatter.format(receipt.optLong("balance_after")))
             }
         }
 

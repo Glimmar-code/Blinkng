@@ -106,6 +106,14 @@ data class DesktopConversation(
     val lastMessageAt: String?,
     val isOnline: Boolean = false,
     val lastSeenAt: String? = null,
+    val isArchived: Boolean = false,
+    val isPinned: Boolean = false,
+    val markedUnread: Boolean = false,
+    val unreadCount: Long = 0,
+    val requestStatus: String = "accepted",
+    val notificationMode: String = "all",
+    val muteUntil: String? = null,
+    val controlsAvailable: Boolean = false,
 )
 
 data class DesktopMessage(

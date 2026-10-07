@@ -181,7 +181,7 @@ private const val MESSAGE_PREFERENCES = "blink_message_preferences"
 private const val MESSAGE_THEME_KEY = "message_theme"
 
 private enum class MessageCallKind { AUDIO, VIDEO }
-private enum class MessageInboxTab { PRIMARY, REQUESTS, ARCHIVED }
+private typealias MessageInboxTab = com.blinkng.shared.BlinkMessageInbox
 
 private data class MessageCallState(
     val conversation: ChatConversation,
@@ -650,13 +650,9 @@ private fun PremiumMessagesHome(
     val sortedConversations = remember(conversations, inboxTab) {
         conversations
             .filter { conversation ->
-                when (inboxTab) {
-                    MessageInboxTab.PRIMARY ->
-                        !conversation.isArchived && conversation.inboxCategory != "requests"
-                    MessageInboxTab.REQUESTS ->
-                        !conversation.isArchived && conversation.inboxCategory == "requests"
-                    MessageInboxTab.ARCHIVED -> conversation.isArchived
-                }
+                com.blinkng.shared.BlinkChatInboxPolicy.matches(
+                    inboxTab, conversation.isArchived, conversation.inboxCategory
+                )
             }
             .sortedWith(
                 compareByDescending<ChatConversation> { it.isConversationPinned }
