@@ -5,6 +5,7 @@ export async function rankedProfileTests(db) {
   const post='00000000-0000-4000-8000-000000000025', chat='00000000-0000-4000-8000-000000000111';
   const circle='00000000-0000-4000-8000-000000000112';
   await db.exec(`reset role;
+    update public.profiles set campus_hostel_location='Synthetic private hall',current_city_state='Synthetic private locality' where id='${B}';
     insert into public.feed_posts(id,user_id,text,is_reel,is_active,is_flagged,audience,creator_post_number,created_at)
       values ('${post}','${B}','Recipient public post',false,true,false,'everyone',901,now()-interval '1 minute');
     insert into public.conversations(id,created_by,is_group) values ('${chat}','${A}',false);
@@ -18,6 +19,8 @@ export async function rankedProfileTests(db) {
   for(const key of ['email','phone','whatsapp','fcm_token','coin_balance','total_earned_coin']) assert.equal(key in other,false);
   assert.equal(other.online_now,false);
   assert.equal(other.last_seen_at,null);
+  assert.equal(other.campus_hostel_location,null);
+  assert.equal(other.current_city_state,null);
   assert.equal((await db.query(`select id from public.profiles where id='${B}'`)).rows.length,0);
   const feed=(await db.query("select * from public.get_ranked_feed_page(p_surface=>'all')")).rows;
   assert.ok(feed.some(row=>row.item.id===post),'ranked feed must include another author after profile RLS hardening');

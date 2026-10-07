@@ -2,7 +2,8 @@ begin;
 
 -- Compatibility repair for profile row privacy. Public discovery/ranking reads
 -- only the existing public identity and ranking inputs through this projection.
--- Contact fields, device tokens and wallet/account fields are never projected.
+-- Contacts, device tokens and wallet/account fields are never projected.
+-- Private locality inputs are retained only for the authenticated owner.
 -- Ranking formulas, weights, audience checks and all other table RLS stay intact.
 -- Rollback: restore the prior function definitions with the prior profile-read
 -- policy only as a coordinated rollback; never reopen private raw rows alone.
@@ -50,8 +51,8 @@ as $projection$
     p.course_of_study,
     p.academic_level,
     p.professional_headline,
-    p.current_city_state,
-    p.campus_hostel_location,
+    case when p.id=auth.uid() then p.current_city_state else null end as current_city_state,
+    case when p.id=auth.uid() then p.campus_hostel_location else null end as campus_hostel_location,
     p.bio,
     p.core_skills,
     p.hobbies,

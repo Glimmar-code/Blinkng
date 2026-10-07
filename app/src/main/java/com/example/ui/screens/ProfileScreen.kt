@@ -237,7 +237,7 @@ fun ProfileScreen(
         scope = profile.presenceVisibility,
         isOwner = isMe,
         isFollowing = isFollowing
-    )
+    ) && (profile.onlineNow || profile.lastSeenAt.isNotBlank())
 
     fun openConnectionList(kind: ProfileConnectionKind) {
         if (profile.id.isBlank()) return
