@@ -1,3 +1,12 @@
+## 2026-10-07 — X-style feed polish, restoration and performance hardening
+
+- Android Home: the BLINK branding/action chrome now collapses continuously while For You / Following remain pinned; fling velocity participates in settle decisions; 12dp direction hysteresis still suppresses jitter; pull-to-refresh forces a stable fully-open chrome state; the Create Post action compacts on downward intent and expands after deliberate upward movement or when scrolling settles.
+- Resume behavior: Home stores the stable top-row key, pixel offset and header collapse fraction per account/lane, so Feed → Profile/Search → Feed restoration prefers the exact post rather than a fragile numeric index when sponsored/Drop/reel rows change.
+- Media/performance: image lookahead adapts to scroll speed with a bounded prefetch set; inline reel autoplay now requires at least 70% visibility and exactly one upcoming inline reel may be prepared while paused; sampled scroll telemetry records only aggregate frame counts/durations and never post IDs, usernames, media URLs or content.
+- Accessibility: Android's system animator-duration preference disables decorative feed settle/entrance animation when animations are turned off.
+- Scroll consistency: Home/Following share the same feed implementation, while Profile, Search and Connect were verified to use Compose's standard LazyColumn/LazyRow physics without custom fling overrides.
+- Backend/safety: no feed/reel ranking, qualified-view algorithm, repeat-view rule, wallet/coin rule, authentication, notifications, Supabase schema/RLS/RPC or server payload contract is changed.
+
 ## 2026-10-06 — Leaderboard Top 20 + Connect Hub/Students split
 
 - Android: Leaderboard now renders ranks #1–#20 as one consistent scrollable list, including ranks #1–#3 in the same row design as everyone else. Connect keeps Smart Match first, then exposes two equal swipeable columns: Connect Hub and Students. Roommate/Mentor/Reading/Housing/Challenge rows now open the existing left-slide workflow reliably by opening the panel before paging its content. Student Discovery keeps Search + All/Same campus/Online filters and adds real Follow/Following actions backed by the canonical follow RPC state.
@@ -282,6 +291,19 @@ Android behavior: Uses the shared server-controlled pulse policy, safe overflow-
 Windows behavior: Uses the same shared pulse policy and range/transition functions, honors the desktop Reduce Motion preference, freezes the last pulse when live fetches fail, shows real online/campus context and real rank movement summaries, and records the same server analytics events.
 Backend/shared behavior: Adds an authenticated read-only pulse configuration table and an authenticated rate-limited analytics RPC/table. Presence rows, canonical leaderboard order, points, XP, feed/reel ranking, coins, verification, auth, messages and existing user data are not modified.
 Tests/validation: Shared/Android pulse range tests, Android quality/release smoke, Windows compile/package/parity, and disposable Supabase migration safety must pass on Testlab before production promotion.
+
+
+---
+
+PARITY-EXCEPTION: android-feed-scroll-polish-20261007
+Date: 2026-10-07
+Feature: Android phone Home feed touch-scroll chrome, keyed restoration, inline media preparation and aggregate frame telemetry
+Android behavior: Keeps For You/Following sticky while the upper Home chrome collapses with nested touch scrolling; uses velocity-aware settle, pull-to-refresh coordination, system reduced-motion preference, exact keyed resume state, adaptive image lookahead, one-next-inline-reel preparation and content-free sampled frame timing.
+Why this is genuinely Android-only: The changed chrome behavior is tied to compact phone touch/nested scrolling, Android animator settings, Choreographer frame callbacks and Android inline ExoPlayer preparation. Those adapters do not map directly to Windows mouse/keyboard desktop navigation.
+Windows equivalent or reason no equivalent is needed: Windows keeps desktop-native fixed navigation and standard Compose desktop scrolling. Its Home/Search/Profile/Connect routes are not given phone-style collapsing chrome. Windows continues to build/test against the same feed/backend contracts.
+Backend/shared behavior preserved: Ranking, qualified views, repeat-view limits, posts/reels data, wallet, verification, authentication, notifications, moderation and all Supabase contracts are unchanged.
+Tests/validation: Pure JVM tests cover velocity settling, viewport autoplay threshold, adaptive prefetch depth and keyed restore resolution. Android unit/lint/instrumentation/debug/release gates plus Windows parity/build/package and Supabase safety must pass before promotion to main.
+Owner/reviewer note: This exception covers presentation/performance adapters only and cannot waive Windows parity for future feed features, ranking semantics or backend behavior.
 
 
 ---
