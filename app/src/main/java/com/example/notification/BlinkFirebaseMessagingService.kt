@@ -255,6 +255,15 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             }
         }
 
+        if (
+            type == BlinkNotificationType.MESSAGE &&
+            conversationId.isNotBlank() &&
+            ConversationNotificationMuteStore.isMuted(this, conversationId)
+        ) {
+            Log.d(TAG, "Muted conversation notification suppressed: $conversationId")
+            return
+        }
+
         if (!NotificationPreferenceStore.isAllowed(this, type)) {
             Log.d(TAG, "Notification suppressed by Blink preference/quiet-hour policy: $type")
             return
@@ -507,6 +516,12 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                     )
                 }
             }
+
+            BlinkNotificationType.SECURITY -> BlinkNotificationHelper.showSecurityNotification(
+                context = this,
+                title = title,
+                body = body
+            )
 
             else -> BlinkNotificationHelper.showSocialNotification(
                 context = this,

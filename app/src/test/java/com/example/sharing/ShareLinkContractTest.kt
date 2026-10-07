@@ -40,6 +40,19 @@ class ShareLinkContractTest {
     }
 
     @Test
+    fun `market listing uses the canonical public Blink URL and routes back to that listing`() {
+        val marketId = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+        val link = ShareLinkManager.generateShareLink(ShareContentType.MARKET, marketId)
+
+        assertEquals("https://www.blink.com.ng/market/$marketId", link)
+        assertEquals(
+            AppDeepLink(ShareContentType.MARKET, marketId),
+            DeepLinkRouter.parse(Uri.parse(link))
+        )
+        assertNotNull(DeepLinkRouter.parse(Uri.parse("blink://market/$marketId")))
+    }
+
+    @Test
     fun `canonical share base remains the production Blink domain`() {
         assertEquals("https://www.blink.com.ng", BuildConfig.SHARE_BASE_URL)
         assertNotNull(DeepLinkRouter.parse(Uri.parse("blink://post/$postId")))

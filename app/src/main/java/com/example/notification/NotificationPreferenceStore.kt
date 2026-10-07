@@ -102,6 +102,16 @@ object NotificationPreferenceStore {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .safeBoolean(QUIET_ENABLED, false)
 
+    fun quietStartMinute(context: Context): Int =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .safeInt(QUIET_START, DEFAULT_QUIET_START)
+            .coerceIn(0, 1439)
+
+    fun quietEndMinute(context: Context): Int =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .safeInt(QUIET_END, DEFAULT_QUIET_END)
+            .coerceIn(0, 1439)
+
     private fun isQuietNow(context: Context): Boolean {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (!prefs.safeBoolean(QUIET_ENABLED, false)) return false

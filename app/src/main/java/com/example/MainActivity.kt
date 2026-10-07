@@ -213,12 +213,7 @@ class MainActivity : ComponentActivity() {
 
             BlinkNotificationHelper.ACTION_OPEN_MARKET -> {
                 val marketId = intent.getStringExtra(BlinkNotificationHelper.EXTRA_MARKET_ID)
-                viewModel.setTab(MainTab.MARKET)
-                if (!marketId.isNullOrBlank()) {
-                    viewModel.uiState.value.marketItems
-                        .firstOrNull { it.id == marketId }
-                        ?.let(viewModel::openProductDetail)
-                }
+                viewModel.openMarketFromNotification(marketId)
             }
 
             BlinkNotificationHelper.ACTION_OPEN_SOCIAL -> {
@@ -287,12 +282,7 @@ class MainActivity : ComponentActivity() {
             }
 
             BlinkInAppNotificationDestination.MARKET -> {
-                viewModel.setTab(MainTab.MARKET)
-                (event.marketId ?: event.targetId)?.let { marketId ->
-                    viewModel.uiState.value.marketItems
-                        .firstOrNull { it.id == marketId }
-                        ?.let(viewModel::openProductDetail)
-                }
+                viewModel.openMarketFromNotification(event.marketId ?: event.targetId)
             }
 
             BlinkInAppNotificationDestination.DROPS -> {
@@ -757,6 +747,7 @@ fun MainAppContent(
                         onMarketClick = { viewModel.setTab(MainTab.MARKET) },
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
+                        unreadNotificationCount = uiState.activities.count { it.isUnread },
                         hasMorePosts = uiState.hasMorePosts,
                         hasMoreFollowingPosts = uiState.hasMoreFollowingPosts,
                         hasMoreReels = uiState.hasMoreReels,
@@ -829,6 +820,16 @@ fun MainAppContent(
                         onOpenPostItem = { viewModel.openPostItem(true) },
                         onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
                         onOpenGetVerified = { viewModel.openGetVerified(true) },
+                        onToggleSave = { viewModel.toggleMarketSaved(it) },
+                        onSearch = { query, category, sort ->
+                            viewModel.searchMarketItems(query, category, sort)
+                        },
+                        onRefresh = { viewModel.refreshMarketItems() },
+                        onLoadMore = { viewModel.loadMoreMarketItems() },
+                        isLoading = uiState.isMarketLoading,
+                        isLoadingMore = uiState.isLoadingMoreMarket,
+                        hasMore = uiState.marketHasMore,
+                        errorMessage = uiState.marketErrorMessage,
                         isDark = uiState.isDarkMode
                     )
                 }
@@ -860,6 +861,7 @@ fun MainAppContent(
                             onReportMessage = { message, reason -> viewModel.reportChatMessage(message, reason) },
                             onClearConversation = { conversation -> viewModel.clearConversationForMe(conversation) },
                             onMuteConversation = { conversation, muted -> viewModel.setConversationMuted(conversation, muted) },
+                            onMuteConversationFor = { conversation, duration -> viewModel.muteConversationFor(conversation, duration) },
                             onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
                         ),
                         onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
@@ -1190,6 +1192,18 @@ fun MainAppContent(
                         viewModel.openChatWithUser(partner, sellerName, sellerAvatar)
                     },
                     onSellerProfileClick = { viewModel.openProfile(it) },
+                    onToggleSave = { viewModel.toggleMarketSaved(it) },
+                    onRequestOrder = { listing, quantity ->
+                        viewModel.requestMarketplaceOrder(listing, quantity)
+                    },
+                    onReport = { listing, reason, details ->
+                        viewModel.reportMarketItem(listing, reason, details)
+                    },
+                    isOwner = viewModel.isMe(product.sellerUsername) || viewModel.isMe(product.sellerName),
+                    onUpdateListingStatus = { listing, status ->
+                        viewModel.updateMarketListingStatus(listing, status)
+                    },
+                    onDeleteListing = { viewModel.deleteMarketListing(it) },
                     isDark = uiState.isDarkMode
                 )
             }
@@ -1284,9 +1298,21 @@ fun MainAppContent(
         ) {
             PostItemScreen(
                 onBack = { viewModel.openPostItem(false) },
-                onSubmit = { title, price, category, condition, description, imageUrl ->
-                    viewModel.addMarketItem(title, price, category, condition, description, imageUrl)
+                onSubmit = { title, price, category, condition, description, images, quantity, negotiable, deliveryMethod, pickupLocation ->
+                    viewModel.addMarketItem(
+                        title = title,
+                        price = price,
+                        category = category,
+                        condition = condition,
+                        description = description,
+                        imageSources = images,
+                        quantity = quantity,
+                        negotiable = negotiable,
+                        deliveryMethod = deliveryMethod,
+                        pickupLocation = pickupLocation
+                    )
                 },
+                isPublishing = uiState.isPublishingMarketItem,
                 isDark = uiState.isDarkMode
             )
         }
@@ -1302,6 +1328,11 @@ fun MainAppContent(
                 onSuccess = { storeName, phone, whatsapp, state, city ->
                     viewModel.activateSellerAccount(storeName, phone, whatsapp, state, city)
                 },
+                initialStoreName = uiState.myProfile.sellerStoreName,
+                initialPhone = uiState.myProfile.phone.value,
+                initialWhatsapp = uiState.myProfile.whatsapp.value,
+                cashCheckoutEnabled = uiState.economyPolicy.cashCheckoutEnabled,
+                isSubmitting = uiState.isSellerActivationLoading,
                 isDark = uiState.isDarkMode
             )
         }
@@ -1427,7 +1458,8 @@ fun MainAppContent(
                 isLoading = uiState.activitiesLoading,
                 errorMessage = uiState.activitiesError,
                 onRefresh = { viewModel.fetchSupabaseData() },
-                onMarkAllRead = { viewModel.markAllActivitiesRead() }
+                onMarkAllRead = { viewModel.markAllActivitiesRead() },
+                onToggleRead = { activity -> viewModel.toggleActivityReadState(activity) }
             )
         }
 

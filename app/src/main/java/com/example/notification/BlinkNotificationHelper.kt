@@ -73,6 +73,7 @@ object BlinkNotificationHelper {
     const val CHANNEL_COMMENTS = "blink_comments_channel"
     const val CHANNEL_FOLLOWS = "blink_follows_channel"
     const val CHANNEL_MARKET_ORDERS = "blink_market_orders_channel"
+    const val CHANNEL_SECURITY = "blink_security_channel"
 
     // ================================================================
     // NOTIFICATION ID RANGES
@@ -83,6 +84,7 @@ object BlinkNotificationHelper {
     private const val MARKET_ID_BASE = 3000
     private const val MENTION_ID_BASE = 4000
     private const val COMMENT_ID_BASE = 5000
+    private const val SECURITY_ID_BASE = 6000
 
     // ================================================================
     // GROUP KEYS
@@ -371,6 +373,25 @@ object BlinkNotificationHelper {
                 )
             }
 
+        // ------------------------------------------------------------
+        // SECURITY
+        // ------------------------------------------------------------
+
+        val securityChannel =
+            NotificationChannel(
+                CHANNEL_SECURITY,
+                "Account Security",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Important login, password and account security alerts"
+                enableLights(true)
+                lightColor = Color.parseColor("#8A2BE2")
+                enableVibration(true)
+                setShowBadge(true)
+                setGroup(GROUP_COMMUNICATION)
+                lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
+            }
+
         manager.createNotificationChannels(
             listOf(
                 messagesChannel,
@@ -379,7 +400,8 @@ object BlinkNotificationHelper {
                 mentionsChannel,
                 commentsChannel,
                 followsChannel,
-                marketOrdersChannel
+                marketOrdersChannel,
+                securityChannel
             )
         )
     }
@@ -866,7 +888,9 @@ object BlinkNotificationHelper {
         targetPostId: String? = null,
         targetType: String? = null,
         targetId: String? = null,
-        profileIdentifier: String? = null
+        profileIdentifier: String? = null,
+        stableNotificationKey: String? = null,
+        notificationCount: Int = 1
     ) {
 
         if (
@@ -912,6 +936,8 @@ object BlinkNotificationHelper {
                 .setAutoCancel(
                     true
                 )
+                .setOnlyAlertOnce(!stableNotificationKey.isNullOrBlank())
+                .setNumber(notificationCount.coerceAtLeast(1))
                 .setContentIntent(
                     when {
                         targetType.equals("profile", ignoreCase = true) &&
@@ -947,7 +973,7 @@ object BlinkNotificationHelper {
             context,
             SOCIAL_ID_BASE +
                     positiveHash(
-                        "$title$body"
+                        stableNotificationKey ?: "$title$body"
                     ) % 700,
             notification
         )
@@ -964,15 +990,24 @@ object BlinkNotificationHelper {
         targetType: String = "post"
     ) {
 
+        val burstKey = "like:" + targetType.lowercase() + ":" + postId
+        val burst = SocialNotificationBurstStore.register(context, burstKey, "@$username")
         showSocialNotification(
             context = context,
-            title =
-                "❤️ @$username liked your post",
-            body =
-                "Someone interacted with your campus post.",
-            targetPostId =
-                postId,
-            targetType = targetType
+            title = if (burst.count == 1) {
+                "❤️ @$username liked your post"
+            } else {
+                "❤️ " + burst.actorSummary + " liked your post"
+            },
+            body = if (burst.count == 1) {
+                "Someone interacted with your campus post."
+            } else {
+                burst.count.toString() + " new likes on this post."
+            },
+            targetPostId = postId,
+            targetType = targetType,
+            stableNotificationKey = burstKey,
+            notificationCount = burst.count
         )
     }
 
@@ -1000,6 +1035,19 @@ object BlinkNotificationHelper {
             context
         )
 
+        val burstKey = "comment:" + targetType.lowercase() + ":" + postId
+        val burst = SocialNotificationBurstStore.register(context, burstKey, "@$username")
+        val notificationTitle = if (burst.count == 1) {
+            "@$username commented on your post"
+        } else {
+            burst.actorSummary + " commented on your post"
+        }
+        val notificationBody = if (burst.count == 1) {
+            comment
+        } else {
+            burst.count.toString() + " new comments. Latest: " + comment
+        }
+
         val notification =
             NotificationCompat.Builder(
                 context,
@@ -1007,15 +1055,15 @@ object BlinkNotificationHelper {
             )
                 .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
-                    "@$username commented on your post"
+                    notificationTitle
                 )
                 .setContentText(
-                    comment
+                    notificationBody
                 )
                 .setStyle(
                     NotificationCompat
                         .BigTextStyle()
-                        .bigText(comment)
+                        .bigText(notificationBody)
                 )
                 .setCategory(
                     NotificationCompat
@@ -1031,6 +1079,8 @@ object BlinkNotificationHelper {
                 .setAutoCancel(
                     true
                 )
+                .setOnlyAlertOnce(true)
+                .setNumber(burst.count)
                 .setContentIntent(
                     buildPostPendingIntent(
                         context,
@@ -1047,7 +1097,7 @@ object BlinkNotificationHelper {
             context,
             COMMENT_ID_BASE +
                     positiveHash(
-                        "${username}_${postId}_${comment}"
+                        burstKey
                     ) % 700,
             notification
         )
@@ -1077,6 +1127,16 @@ object BlinkNotificationHelper {
             context
         )
 
+        val burstKey = "mention:" + targetType.lowercase() + ":" + postId
+        val burst = SocialNotificationBurstStore.register(context, burstKey, "@$username")
+        val notificationTitle = if (burst.count == 1) {
+            "@$username mentioned you"
+        } else {
+            burst.actorSummary + " mentioned you"
+        }
+        val notificationBody = if (burst.count == 1) body
+        else burst.count.toString() + " new mentions. Latest: " + body
+
         val notification =
             NotificationCompat.Builder(
                 context,
@@ -1084,15 +1144,15 @@ object BlinkNotificationHelper {
             )
                 .setSmallIcon(com.example.R.drawable.ic_stat_blink)
                 .setContentTitle(
-                    "@$username mentioned you"
+                    notificationTitle
                 )
                 .setContentText(
-                    body
+                    notificationBody
                 )
                 .setStyle(
                     NotificationCompat
                         .BigTextStyle()
-                        .bigText(body)
+                        .bigText(notificationBody)
                 )
                 .setCategory(
                     NotificationCompat
@@ -1104,6 +1164,8 @@ object BlinkNotificationHelper {
                 .setAutoCancel(
                     true
                 )
+                .setOnlyAlertOnce(true)
+                .setNumber(burst.count)
                 .setContentIntent(
                     buildPostPendingIntent(
                         context,
@@ -1120,7 +1182,7 @@ object BlinkNotificationHelper {
             context,
             MENTION_ID_BASE +
                     positiveHash(
-                        "${username}_${postId}"
+                        burstKey
                     ) % 700,
             notification
         )
@@ -1147,6 +1209,9 @@ object BlinkNotificationHelper {
             context
         )
 
+        val burstKey = "follow"
+        val burst = SocialNotificationBurstStore.register(context, burstKey, "@$username")
+
         val notification =
             NotificationCompat.Builder(
                 context,
@@ -1160,7 +1225,11 @@ object BlinkNotificationHelper {
                     "New follower"
                 )
                 .setContentText(
-                    "@$username started following you"
+                    if (burst.count == 1) {
+                        "@$username started following you"
+                    } else {
+                        burst.actorSummary + " started following you"
+                    }
                 )
                 .setCategory(
                     NotificationCompat
@@ -1172,19 +1241,23 @@ object BlinkNotificationHelper {
                 .setAutoCancel(
                     true
                 )
+                .setOnlyAlertOnce(true)
+                .setNumber(burst.count)
                 .setContentIntent(
-                    buildProfilePendingIntent(
-                        context,
-                        username
-                    )
+                    if (burst.count == 1) {
+                        buildProfilePendingIntent(context, username)
+                    } else {
+                        buildSocialPendingIntent(context)
+                    }
                 )
+                .setGroup(GROUP_KEY_SOCIAL)
                 .build()
 
         notifySafely(
             context,
             SOCIAL_ID_BASE +
                     positiveHash(
-                        "follow_$username"
+                        burstKey
                     ) % 700,
             notification
         )
@@ -1364,6 +1437,38 @@ object BlinkNotificationHelper {
                     positiveHash(
                         "order_$marketId"
                     ) % 700,
+            notification
+        )
+    }
+
+    // ================================================================
+    // SECURITY NOTIFICATION
+    // ================================================================
+
+    fun showSecurityNotification(
+        context: Context,
+        title: String,
+        body: String
+    ) {
+        if (!hasNotificationPermission(context)) return
+        createNotificationChannels(context)
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_SECURITY)
+            .setSmallIcon(com.example.R.drawable.ic_stat_blink)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setColor(PURPLE_COLOR)
+            .setAutoCancel(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setContentIntent(buildSocialPendingIntent(context))
+            .build()
+
+        notifySafely(
+            context,
+            SECURITY_ID_BASE + positiveHash(title + body) % 700,
             notification
         )
     }
