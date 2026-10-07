@@ -1,3 +1,5 @@
+-- destructive-change-reviewed
+-- rollback-plan: Recreate the previous policies/grants from the pre-migration schema snapshot if compatibility requires it. This migration changes policy/grant metadata only and does not delete table data.
 -- Correct legacy policies that were accidentally created as FOR ALL.
 -- This preserves the intended read/write behavior while removing cross-command overlap
 -- and uses init-plan-safe auth.uid() evaluation.
