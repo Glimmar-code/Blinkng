@@ -260,6 +260,17 @@ class BlinkEconomyService {
         )
     }
 
+    suspend fun initializePaystackMarketSellerCheckout(storeName: String) = runCatching {
+        val cleanStore = storeName.trim()
+        require(cleanStore.length >= 2) { "Enter your store name." }
+        edgeFunction(
+            "paystack-initialize",
+            JSONObject()
+                .put("kind", "MARKET_SELLER_ACTIVATION")
+                .put("store_name", cleanStore)
+        )
+    }
+
     suspend fun verifyPaystackCashOrder(orderId: String) = runCatching {
         require(orderId.isNotBlank()) { "Payment order is missing." }
         edgeFunction(
@@ -364,6 +375,9 @@ class BlinkEconomyService {
             message.contains("PAYSTACK_VERIFY_FAILED") -> "Paystack could not verify that payment yet."
             message.contains("CASH_ORDER_NOT_FOUND") -> "That payment order could not be found."
             message.contains("VERIFICATION_PURCHASE_ORDER_NOT_FOUND") -> "That verification payment could not be found."
+            message.contains("SELLER_ACTIVATION_ORDER_NOT_FOUND") -> "That seller activation payment could not be found."
+            message.contains("SELLER_ALREADY_ACTIVE") -> "Your Market seller account is already active."
+            message.contains("STORE_NAME_REQUIRED") -> "Enter a valid store name."
             message.contains("MISSION_NOT_COMPLETE") -> "Complete the mission before claiming its reward."
             message.contains("MISSION_NOT_FOUND") -> "That daily mission is no longer available."
             message.contains("MISSION_REQUIRED") -> "Choose a mission first."

@@ -13,7 +13,8 @@ import com.example.util.startActivitySafely
 enum class ShareContentType(val pathSegment: String) {
     PROFILE("profile"),
     POST("post"),
-    REEL("reel");
+    REEL("reel"),
+    MARKET("market");
 
     companion object {
         fun fromPath(value: String?): ShareContentType? =
@@ -21,7 +22,7 @@ enum class ShareContentType(val pathSegment: String) {
     }
 }
 
-/** Single source of truth for public Blink profile/post/reel URLs. */
+/** Single source of truth for public Blink profile/post/reel/market URLs. */
 object ShareLinkManager {
     private val baseUrl: String
         get() = BuildConfig.SHARE_BASE_URL.trim().trimEnd('/')
@@ -40,6 +41,7 @@ object ShareLinkManager {
             ShareContentType.PROFILE -> "$baseUrl/@$encoded"
             ShareContentType.POST -> "$baseUrl/post/$encoded"
             ShareContentType.REEL -> "$baseUrl/reel/$encoded"
+            ShareContentType.MARKET -> "$baseUrl/market/$encoded"
         }
     }
 

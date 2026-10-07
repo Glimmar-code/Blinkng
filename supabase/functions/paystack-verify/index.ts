@@ -35,7 +35,7 @@ Deno.serve(async (req: Request) => {
   const orderId = String(body?.order_id ?? body?.orderId ?? "").trim();
   if (!orderId) return json(400, { error: "ORDER_REQUIRED" });
 
-  let kind: "COIN_PACK" | "BLUE_VERIFICATION" | null = null;
+  let kind: "COIN_PACK" | "BLUE_VERIFICATION" | "MARKET_SELLER_ACTIVATION" | null = null;
   let order: any = null;
 
   const coin = await service
@@ -58,6 +58,17 @@ Deno.serve(async (req: Request) => {
     if (verification.data) {
       kind = "BLUE_VERIFICATION";
       order = verification.data;
+    } else {
+      const sellerActivation = await service
+        .from("market_seller_activation_orders")
+        .select("id,user_id,amount_ngn,currency,status,provider_reference")
+        .eq("id", orderId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (sellerActivation.data) {
+        kind = "MARKET_SELLER_ACTIVATION";
+        order = sellerActivation.data;
+      }
     }
   }
 
@@ -91,7 +102,9 @@ Deno.serve(async (req: Request) => {
   const rpcName =
     kind === "COIN_PACK"
       ? "fulfill_blink_coin_purchase_order"
-      : "fulfill_blink_verification_purchase_order";
+      : kind === "BLUE_VERIFICATION"
+        ? "fulfill_blink_verification_purchase_order"
+        : "fulfill_market_seller_activation_order";
 
   const { data, error } = await service.rpc(rpcName, {
     p_order_id: order.id,
