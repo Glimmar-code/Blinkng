@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import com.example.R
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -94,7 +95,8 @@ fun ActivityScreen(
     isLoading: Boolean = false,
     errorMessage: String? = null,
     onRefresh: () -> Unit = {},
-    onMarkAllRead: () -> Unit = {}
+    onMarkAllRead: () -> Unit = {},
+    onToggleRead: (ActivityItem) -> Unit = {}
 ) {
     var filter by remember { mutableStateOf(NotificationCategory.ALL) }
     var viewMode by remember { mutableStateOf(NotificationViewMode.ALL) }
@@ -310,35 +312,40 @@ fun ActivityScreen(
                             NotificationSectionHeader(section.title)
                         }
                         items(section.items, key = { it.id }) { item ->
-                            NotificationCard(
+                            NotificationSwipeRow(
                                 item = item,
-                                profile = actorProfiles[item.user],
-                                onProfileClick = onProfileClick,
-                                onNotificationClick = { tapped ->
-                                    if (!tapped.targetType.equals("notification", ignoreCase = true)) {
-                                        onNotificationClick(tapped)
-                                    } else if (!adminMessageLoading) {
-                                        scope.launch {
-                                            adminMessageLoading = true
-                                            adminMessageError = null
-                                            announcementService.fetchForActivity(tapped.id)
-                                                .onSuccess { detail ->
-                                                    if (detail != null) {
-                                                        selectedAdminMessage = detail
-                                                        onRefresh()
-                                                    } else {
-                                                        onNotificationClick(tapped)
+                                onToggleRead = { onToggleRead(item) }
+                            ) {
+                                NotificationCard(
+                                    item = item,
+                                    profile = actorProfiles[item.user],
+                                    onProfileClick = onProfileClick,
+                                    onNotificationClick = { tapped ->
+                                        if (!tapped.targetType.equals("notification", ignoreCase = true)) {
+                                            onNotificationClick(tapped)
+                                        } else if (!adminMessageLoading) {
+                                            scope.launch {
+                                                adminMessageLoading = true
+                                                adminMessageError = null
+                                                announcementService.fetchForActivity(tapped.id)
+                                                    .onSuccess { detail ->
+                                                        if (detail != null) {
+                                                            selectedAdminMessage = detail
+                                                            onRefresh()
+                                                        } else {
+                                                            onNotificationClick(tapped)
+                                                        }
                                                     }
-                                                }
-                                                .onFailure {
-                                                    adminMessageError = it.message
-                                                        ?: "Couldn't open this Blink message."
-                                                }
-                                            adminMessageLoading = false
+                                                    .onFailure {
+                                                        adminMessageError = it.message
+                                                            ?: "Couldn't open this Blink message."
+                                                    }
+                                                adminMessageLoading = false
+                                            }
                                         }
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
                         if (section.showCaughtUpAfter) {
                             item(key = "caught_up_${section.title}") {
@@ -629,6 +636,56 @@ private fun NotificationSkeletonList() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NotificationSwipeRow(
+    item: ActivityItem,
+    onToggleRead: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            if (value == SwipeToDismissBoxValue.StartToEnd) {
+                onToggleRead()
+                false
+            } else {
+                value == SwipeToDismissBoxValue.Settled
+            }
+        },
+        positionalThreshold = { distance -> distance * 0.28f }
+    )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = true,
+        enableDismissFromEndToStart = false,
+        backgroundContent = {
+            val accent = if (item.isUnread) Color(0xFF22C55E) else BlinkPurple
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(accent.copy(alpha = .12f))
+                    .padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = if (item.isUnread) Icons.Default.DoneAll else Icons.Default.Notifications,
+                    contentDescription = null,
+                    tint = accent
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (item.isUnread) "Mark read" else "Mark unread",
+                    color = accent,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp
+                )
+            }
+        },
+        content = { content() }
+    )
+}
+
 @Composable
 private fun NotificationCard(
     item: ActivityItem,
@@ -648,7 +705,6 @@ private fun NotificationCard(
         ?: if (isOfficial) "Blink" else "Someone on Blink"
     val avatar = profile?.avatarUrl?.takeIf { it.isNotBlank() } ?: item.avatar
     val verificationBadge = profile?.verificationBadge ?: item.verificationBadge
-    val isActive = profile?.onlineNow == true
     val canOpenProfile = username.isNotBlank() && !isOfficial
 
     Surface(
@@ -723,14 +779,6 @@ private fun NotificationCard(
                     }
                 }
 
-                if (isActive && !isOfficial) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0xFF22C55E),
-                        border = BorderStroke(2.dp, MaterialTheme.colorScheme.background),
-                        modifier = Modifier.size(12.dp).align(Alignment.TopEnd)
-                    ) {}
-                }
             }
 
             Spacer(Modifier.width(12.dp))
@@ -801,14 +849,6 @@ private fun NotificationCard(
                         color = if (item.isUnread) accent else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = if (item.isUnread) FontWeight.SemiBold else FontWeight.Normal
                     )
-                    if (isActive && !isOfficial) {
-                        Text(
-                            "  •  Active",
-                            fontSize = 10.5.sp,
-                            color = Color(0xFF22C55E),
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
                 }
             }
 

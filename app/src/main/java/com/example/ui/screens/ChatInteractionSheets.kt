@@ -69,6 +69,7 @@ data class ChatInteractionActions(
     val onReportMessage: (ChatMessage, String) -> Unit = { _, _ -> },
     val onClearConversation: (ChatConversation) -> Unit = {},
     val onMuteConversation: (ChatConversation, Boolean) -> Unit = { _, _ -> },
+    val onMuteConversationFor: (ChatConversation, Long?) -> Unit = { _, _ -> },
     val onReportConversation: (ChatConversation, String) -> Unit = { _, _ -> }
 )
 
