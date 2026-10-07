@@ -103,7 +103,9 @@ export async function behaviorTests(db) {
   assert.equal(await scalar("select count(*)::int from public.messages_compat where sender_username='test_owner'"),1);
   await user(C);
   assert.equal(await scalar("select count(*)::int from public.messages_compat where sender_username='test_owner'"),0);
-  await assert.rejects(sql("delete from public.messages_compat where sender_username='test_owner'"),/permission denied|row-level security/);
+  await sql("delete from public.messages_compat where sender_username='test_owner'");
+  await admin();
+  assert.equal(await scalar("select count(*)::int from public.messages_compat where sender_username='test_owner'"),1);
  });
  await test('departed members cannot read inbox summaries or controls',async()=>{
   await admin();await sql(`update public.conversation_participants set left_at=now() where conversation_id='${chat}' and user_id='${B}'`);
