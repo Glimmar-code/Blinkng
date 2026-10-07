@@ -326,3 +326,10 @@ grant execute on function public.gift_blink_vip(text) to authenticated;
 
 revoke all on function public.send_blink_digital_gift(uuid, text, text) from public, anon;
 grant execute on function public.send_blink_digital_gift(uuid, text, text) to authenticated;
+
+
+-- The modern game client uses start_game_round/submit_game_answer, where the
+-- server owns the question, correct answer, score and reward. Disable the
+-- legacy generic RPC that accepted a client-supplied score.
+revoke all on function public.record_game_session(text, integer, integer) from public, anon, authenticated;
+grant execute on function public.record_game_session(text, integer, integer) to service_role;
