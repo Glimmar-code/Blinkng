@@ -82,6 +82,29 @@ export async function behaviorTests(db) {
   await assert.rejects(sql("select public.set_profile_pin('00000000-0000-4000-8000-000000000023',true)"),/PROFILE_PIN_LIMIT_REACHED/);
   assert.equal(await scalar(`select count(*)::int from public.feed_posts where user_id='${A}' and is_pinned`),3);
  });
+ await test('release hardening keeps notification writers and legacy rewards safe',async()=>{
+  await admin();
+  for (const signature of [
+    "private.expire_blink_items_and_remind_vip()",
+    "private.process_blink_vip_auto_renewals()",
+    "public.gift_blink_vip(text)",
+    "public.send_blink_digital_gift(uuid,text,text)",
+  ]) {
+    const def=String(await scalar(`select pg_get_functiondef('${signature}'::regprocedure)`));
+    assert.doesNotMatch(def,/notifications\s*\([^)]*\bcomment\b/i);
+  }
+  await user(A);
+  await assert.rejects(sql("select public.record_game_session('legacy',100,10)"),/permission denied/);
+ });
+ await test('corrected RLS policies do not leak compatibility messages',async()=>{
+  await admin();
+  await sql(`insert into public.messages_compat(sender_username,receiver_username,text) values ('test_owner','test_recipient','compat fixture')`);
+  await user(B);
+  assert.equal(await scalar("select count(*)::int from public.messages_compat where sender_username='test_owner'"),1);
+  await user(C);
+  assert.equal(await scalar("select count(*)::int from public.messages_compat where sender_username='test_owner'"),0);
+  await assert.rejects(sql("delete from public.messages_compat where sender_username='test_owner'"),/permission denied|row-level security/);
+ });
  await test('departed members cannot read inbox summaries or controls',async()=>{
   await admin();await sql(`update public.conversation_participants set left_at=now() where conversation_id='${chat}' and user_id='${B}'`);
   await user(B);assert.equal((await sql('select * from public.get_conversation_summaries_page()')).rows.length,0);
