@@ -423,3 +423,11 @@ Date: 2026-10-07
 Shared/backend behavior: Keep legacy ranked Feed, Connect, Games and Search RPCs compatible with owner-only raw profile reads. A narrowly projected authenticated profile function includes only existing public identity/ranking fields and redacted presence. The existing formulas, weights, audience checks, cursors and RLS on other tables remain intact. Legacy inbox reads delegate to the canonical membership/presence contract; study-circle owner requests retain requester public identity.
 Android and Windows behavior: Both surfaces retain cross-account discovery and public identity while using the same private-contact and presence projection. Existing wallet, XP, rank, Boost and content algorithms are preserved.
 Validation: The isolated PostgreSQL fixture includes the actual legacy RPC definitions and pg_trgm. Regression checks exercise other-user Feed, Connect, Games, Search, inbox and study-circle rows, deny raw private profiles/anonymous projection execution, and verify hidden presence. All seven migrations reapply.
+
+---
+
+PARITY-CHANGE: study-circle-rls-recursion-20261007
+Date: 2026-10-07
+Shared/backend behavior: Circle and member SELECT policies use a scoped authenticated owner/member/public access helper, avoiding mutual RLS recursion and uncorrelated membership matches. Existing circle mutations, requests and ranking formulas remain intact.
+Android and Windows behavior: Existing study-circle and owner-request reads keep working through the same backend contract.
+Validation: Isolated PostgreSQL checks prove private circles/members stay hidden from an account that belongs to a different circle, while the owner and approved members retain access. All eight promotion migrations reapply.
