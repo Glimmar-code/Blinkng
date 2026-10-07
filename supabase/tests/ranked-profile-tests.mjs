@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+
+export async function rankedProfileTests(db) {
+  const A='00000000-0000-4000-8000-000000000001', B='00000000-0000-4000-8000-000000000002';
+  const post='00000000-0000-4000-8000-000000000025', chat='00000000-0000-4000-8000-000000000111';
+  const circle='00000000-0000-4000-8000-000000000112';
+  await db.exec(`reset role;
+    insert into public.feed_posts(id,user_id,text,is_reel,is_active,is_flagged,audience,creator_post_number,created_at)
+      values ('${post}','${B}','Recipient public post',false,true,false,'everyone',901,now()-interval '1 minute');
+    insert into public.conversations(id,created_by,is_group) values ('${chat}','${A}',false);
+    insert into public.conversation_participants(conversation_id,user_id) values ('${chat}','${A}'),('${chat}','${B}');
+    insert into public.study_circles(id,owner_id,name) values ('${circle}','${A}','Synthetic study circle');
+    insert into public.study_circle_requests(circle_id,user_id) values ('${circle}','${B}');
+    select set_config('request.jwt.claim.sub','${A}',false);set role authenticated;`);
+  const profiles=(await db.query('select * from public.get_blink_ranking_profiles()')).rows;
+  const other=profiles.find(row=>row.id===B);
+  assert.ok(other);
+  for(const key of ['email','phone','whatsapp','fcm_token','coin_balance','total_earned_coin']) assert.equal(key in other,false);
+  assert.equal(other.online_now,false);
+  assert.equal(other.last_seen_at,null);
+  assert.equal((await db.query(`select id from public.profiles where id='${B}'`)).rows.length,0);
+  const feed=(await db.query("select * from public.get_ranked_feed_page(p_surface=>'all')")).rows;
+  assert.ok(feed.some(row=>row.item.id===post),'ranked feed must include another author after profile RLS hardening');
+  const matches=(await db.query('select * from public.get_connect_matches()')).rows;
+  assert.ok(matches.some(row=>row.id===B),'Connect matches must include another account');
+  const games=(await db.query('select * from public.get_ranked_game_opponents()')).rows;
+  assert.ok(games.some(row=>row.id===B),'game matches must include another account');
+  const search=(await db.query("select * from public.search_discovery('test_recipient',array['profile']::text[])")).rows;
+  assert.ok(search.some(row=>row.result_id===B),'profile search must include another account');
+  const legacy=(await db.query('select * from public.get_conversation_summaries()')).rows;
+  assert.ok(legacy.some(row=>row.conversation_id===chat&&row.partner_username==='test_recipient'));
+  const requests=(await db.query('select * from public.get_my_study_circle_join_requests()')).rows;
+  assert.ok(requests.some(row=>row.circle_id===circle&&row.requester_username==='test_recipient'));
+  await db.exec('reset role;set role anon;');
+  await assert.rejects(db.query('select * from public.get_blink_ranking_profiles()'),/permission denied/);
+  await db.exec("reset role;select set_config('request.jwt.claim.sub','',false);set role authenticated;");
+  assert.equal((await db.query('select * from public.get_blink_ranking_profiles()')).rows.length,0);
+  await db.exec('reset role;');
+  console.log('PASS ranked profiles: cross-account feed, Connect, Games, Search, inbox and study-circle reads preserve private raw rows');
+}

@@ -1,5 +1,6 @@
 import { PGlite } from '@electric-sql/pglite';
 import fs from 'node:fs';
+import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { behaviorTests } from './behavior-tests.mjs';
 
 const fixture = JSON.parse(fs.readFileSync(new URL('./fixtures/promotion-baseline.json', import.meta.url), 'utf8'));
@@ -10,8 +11,9 @@ const migrations = [
   '20261007113500_fix_stale_notification_writers.sql',
   '20261007114500_correct_legacy_rls_policy_commands.sql',
   '20261007115500_optimize_flagged_rls_auth_initplans.sql',
+  '20261007120500_keep_ranked_profile_projections_private.sql',
 ];
-const db = new PGlite();
+const db = new PGlite({ extensions: { pg_trgm } });
 try {
   await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
     create schema auth; create schema private; create schema private_ranking; create schema extensions; create schema cron;
@@ -21,7 +23,8 @@ try {
     grant execute on function auth.uid() to authenticated;
     create table cron.job(jobid bigint generated always as identity primary key,jobname text unique,schedule text,command text);
     create function cron.schedule(text,text,text) returns bigint language sql as $$insert into cron.job(jobname,schedule,command) values ($1,$2,$3) returning jobid$$;
-    create publication supabase_realtime;`);
+    create publication supabase_realtime;
+    create extension pg_trgm with schema extensions;`);
   for (const sql of fixture.schema) await db.exec(sql);
   const pending = [...fixture.functions];
   while (pending.length) {
@@ -39,6 +42,7 @@ try {
     console.log('PASS migration:', name);
   }
   await behaviorTests(db);
+  await (await import('./ranked-profile-tests.mjs')).rankedProfileTests(db);
   await (await import('./legacy-hardening-tests.mjs')).legacyHardeningTests(db);
   for (const name of migrations) {
     await db.exec(fs.readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));

@@ -415,3 +415,11 @@ Android behavior: Send stays beside the AI message field while attachment contro
 Windows behavior: The existing AI dialog retains its fixed Send action. Profile content and private liked/saved relations now paginate independently of the feed, including owner-only Liked/Saved tabs. Inactive avatar dots are removed.
 Shared/backend behavior: Existing feed ranking, content access, presence projection, wallet, XP and notification delivery contracts are preserved. Private relation queries always use the authenticated account. Existing real follower snapshots remain the source for history.
 Validation: Android lint/unit/instrumentation/debug/release/runtime, Windows build/package, parity and isolated migration/RLS regressions must pass before main promotion.
+
+---
+
+PARITY-CHANGE: private-profile-ranked-rpc-compatibility-20261007
+Date: 2026-10-07
+Shared/backend behavior: Keep legacy ranked Feed, Connect, Games and Search RPCs compatible with owner-only raw profile reads. A narrowly projected authenticated profile function includes only existing public identity/ranking fields and redacted presence. The existing formulas, weights, audience checks, cursors and RLS on other tables remain intact. Legacy inbox reads delegate to the canonical membership/presence contract; study-circle owner requests retain requester public identity.
+Android and Windows behavior: Both surfaces retain cross-account discovery and public identity while using the same private-contact and presence projection. Existing wallet, XP, rank, Boost and content algorithms are preserved.
+Validation: The isolated PostgreSQL fixture includes the actual legacy RPC definitions and pg_trgm. Regression checks exercise other-user Feed, Connect, Games, Search, inbox and study-circle rows, deny raw private profiles/anonymous projection execution, and verify hidden presence. All seven migrations reapply.
