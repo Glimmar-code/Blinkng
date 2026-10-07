@@ -34,7 +34,7 @@ try {
   }
   await db.exec(`
     create or replace function public.record_game_session(p_game_type text, p_score integer, p_coins_earned integer)
-    returns jsonb language sql as $select jsonb_build_object('score',p_score,'coins',p_coins_earned)$;
+    returns jsonb language sql as 'select jsonb_build_object(''score'',p_score,''coins'',p_coins_earned)';
     grant execute on function public.record_game_session(text,integer,integer) to authenticated;
   `);
   await db.exec('grant select,insert,update,delete on all tables in schema public to authenticated;');
