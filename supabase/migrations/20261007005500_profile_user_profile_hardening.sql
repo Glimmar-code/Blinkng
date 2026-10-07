@@ -258,7 +258,7 @@ language sql
 stable
 security definer
 set search_path = public, pg_temp
-as $
+as $$
   select p.id, p.username, p.full_name, p.avatar_url, p.university, p.faculty,
          p.department, p.academic_level, p.verification_badge, p.is_verified,
          case
