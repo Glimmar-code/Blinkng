@@ -79,6 +79,20 @@ Deno.serve(async (req: Request) => {
     currency = String(data.currency ?? "NGN");
     table = "blink_verification_purchase_orders";
     product = "BLINK_VERIFIED";
+  } else if (kind === "MARKET_SELLER_ACTIVATION") {
+    const storeName = String(body?.store_name ?? body?.storeName ?? "").trim();
+    if (storeName.length < 2) return json(400, { error: "STORE_NAME_REQUIRED" });
+    const { data, error } = await userClient.rpc("create_market_seller_activation_order", {
+      p_store_name: storeName,
+    });
+    if (error || !data?.order_id) {
+      return json(400, { error: "ORDER_CREATE_FAILED", message: error?.message ?? "Seller activation order could not be created." });
+    }
+    orderId = data.order_id;
+    amountNgn = Number(data.amount_ngn);
+    currency = String(data.currency ?? "NGN");
+    table = "market_seller_activation_orders";
+    product = "MARKET_SELLER_ACTIVATION";
   } else {
     return json(400, { error: "INVALID_PRODUCT_KIND" });
   }
@@ -87,7 +101,11 @@ Deno.serve(async (req: Request) => {
     return json(500, { error: "INVALID_SERVER_PRICE" });
   }
 
-  const reference = `BLINK-${kind === "COIN_PACK" ? "COIN" : "VERIFY"}-${orderId.replaceAll("-", "")}`;
+  const referencePrefix =
+    kind === "COIN_PACK" ? "COIN" :
+    kind === "BLUE_VERIFICATION" ? "VERIFY" :
+    "MARKETSELLER";
+  const reference = `BLINK-${referencePrefix}-${orderId.replaceAll("-", "")}`;
   const metadata = {
     blink_order_id: orderId,
     blink_kind: kind,
