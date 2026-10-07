@@ -886,7 +886,8 @@ fun ConnectScreen(state: DesktopAppState) {
     var description by remember { mutableStateOf("") }
     var pulsePolicy by remember { mutableStateOf(BlinkActivityPulseDefaults.policy) }
     var liveActivityAvailable by remember { mutableStateOf(false) }
-    var pulseImpressionRecorded by remember { mutableStateOf(false) }\n    var selectedStudentProfile by remember { mutableStateOf<DesktopProfile?>(null) }
+    var pulseImpressionRecorded by remember { mutableStateOf(false) }
+    var selectedStudentProfile by remember { mutableStateOf<DesktopProfile?>(null) }
     val scope = rememberCoroutineScope()
 
     fun connectGroup(listing: DesktopConnectListing): String {
