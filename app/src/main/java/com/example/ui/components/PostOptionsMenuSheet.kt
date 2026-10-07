@@ -114,7 +114,8 @@ fun PostOptionsMenuSheet(
     onShare: () -> Unit,
     onDelete: () -> Unit,
     onReport: (reason: String) -> Unit,
-    onMuteUser: (username: String) -> Unit
+    onMuteUser: (username: String) -> Unit,
+    onNotInterested: () -> Unit = {}
 ) {
     val clipboardManager: ClipboardManager =
         LocalClipboardManager.current
@@ -129,6 +130,10 @@ fun PostOptionsMenuSheet(
     }
 
     var showMuteConfirmDialog by rememberSaveable {
+        mutableStateOf(false)
+    }
+
+    var showHideConfirmDialog by rememberSaveable {
         mutableStateOf(false)
     }
 
@@ -234,7 +239,7 @@ fun PostOptionsMenuSheet(
                 ) {
 
                     Text(
-                        text = "Post actions",
+                        text = if (post.isReel) "Reel actions" else "Post actions",
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Black,
                         color =
@@ -491,6 +496,19 @@ fun PostOptionsMenuSheet(
                     onClick = { showMuteConfirmDialog = true },
                     testTag = "mute_user_action"
                 )
+
+                ActionItemRow(
+                    icon = Icons.Default.VisibilityOff,
+                    iconTint = Color(0xFFFF9800),
+                    title = "Not interested",
+                    subtitle = if (post.isReel) {
+                        "Show fewer reels like this"
+                    } else {
+                        "Show fewer posts like this"
+                    },
+                    onClick = { showHideConfirmDialog = true },
+                    testTag = "not_interested_action"
+                )
             }
 
             Spacer(
@@ -594,9 +612,9 @@ fun PostOptionsMenuSheet(
                     iconTint =
                         Color(0xFFFF5252),
                     title =
-                        "Delete post",
+                        if (post.isReel) "Delete reel" else "Delete post",
                     subtitle =
-                        "Permanently remove your post",
+                        if (post.isReel) "Permanently remove your reel" else "Permanently remove your post",
                     onClick = {
                         showDeleteConfirmDialog = true
                     },
@@ -612,7 +630,7 @@ fun PostOptionsMenuSheet(
                     iconTint =
                         Color(0xFFFF5252),
                     title =
-                        "Report post",
+                        if (post.isReel) "Report reel" else "Report post",
                     subtitle =
                         "Send this content to moderation",
                     onClick = {
@@ -663,6 +681,21 @@ fun PostOptionsMenuSheet(
 
                 showMuteConfirmDialog = false
                 onMuteUser(post.author)
+                onDismiss()
+            }
+        )
+    }
+
+    // ================================================================
+    // NOT INTERESTED DIALOG
+    // ================================================================
+
+    if (showHideConfirmDialog) {
+        NotInterestedDialog(
+            onDismiss = { showHideConfirmDialog = false },
+            onConfirm = {
+                showHideConfirmDialog = false
+                onNotInterested()
                 onDismiss()
             }
         )

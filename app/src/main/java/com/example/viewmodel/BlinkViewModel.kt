@@ -25,6 +25,8 @@ import com.example.data.models.*
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.*
 import com.example.data.supabase.BlinkEconomyService
+import com.example.data.supabase.ReelRecommendationService
+import com.example.data.supabase.BlinkWalletStore
 import com.example.data.supabase.RealtimeEvent
 import com.example.data.supabase.SupabaseRealtimeManager
 import com.example.data.supabase.SupabaseService
@@ -115,6 +117,7 @@ data class BlinkUiState(
     val leaderboardUsers: List<LeaderboardUser> = emptyList(),
     val gameLeaderboardUsers: List<LeaderboardUser> = emptyList(),
     val conversations: List<ChatConversation> = emptyList(),
+    val chatPrivacySettings: ChatPrivacySettings = ChatPrivacySettings(),
     val isConversationsLoading: Boolean = false,
     val activities: List<ActivityItem> = emptyList(),
     val activitiesLoading: Boolean = false,
@@ -155,7 +158,12 @@ data class BlinkUiState(
     val isLoadingMoreReels: Boolean = false,
     val messageHistoryHasMore: Map<String, Boolean> = emptyMap(),
     val loadingOlderConversationId: String? = null,
-    val loadingInitialConversationId: String? = null
+    val loadingInitialConversationId: String? = null,
+    val profilePostsByUserId: Map<String, List<FeedPost>> = emptyMap(),
+    val myLikedPosts: List<FeedPost> = emptyList(),
+    val mySavedPosts: List<FeedPost> = emptyList(),
+    val profileSurfaceLoadingIds: Set<String> = emptySet(),
+    val profileSurfaceLoadedIds: Set<String> = emptySet()
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
@@ -284,6 +292,14 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
                 .onFailure { Log.w(TAG, "Offline cache pruning failed", it) }
         }
         viewModelScope.launch { realtimeManager.events.collect { handleRealtimeEvent(it) } }
+        viewModelScope.launch {
+            BlinkWalletStore.balance.collectLatest { balance ->
+                if (balance != null && _uiState.value.blinkCoinBalance != balance) {
+                    _uiState.value = _uiState.value.copy(blinkCoinBalance = balance)
+                    persistExtendedCache()
+                }
+            }
+        }
         // MESSAGING_RELIABILITY_AUDIT_V3: expose real messages-channel readiness, not feed REST health.
         viewModelScope.launch {
             realtimeManager.messagesSubscribed.collectLatest { subscribed ->
@@ -1099,6 +1115,7 @@ private suspend fun restoreSupabaseSession() {
                 .getOrNull()
             val missions = missionsPayload?.let(::parseDailyMissions) ?: before.dailyMissions
 
+            BlinkWalletStore.publish(balance)
             withContext(Dispatchers.Main) {
                 val latest = _uiState.value
                 val currentMe = latest.myProfile
@@ -1238,6 +1255,7 @@ private suspend fun restoreSupabaseSession() {
                     val bonus = payload.optInt("milestone_bonus", 0)
                     val adsToday = payload.optInt("ads_today", latest.rewardedAdsToday + 1)
                     val balance = payload.optLong("balance", latest.blinkCoinBalance + reward)
+                    BlinkWalletStore.publish(balance)
                     _uiState.value = latest.copy(
                         blinkCoinBalance = balance,
                         rewardedAdsToday = adsToday.coerceIn(0, latest.economyPolicy.rewardedAdDailyLimit),
@@ -1274,6 +1292,7 @@ private suspend fun restoreSupabaseSession() {
                     val updatedMe = latest.myProfile.copy(totalXp = totalXp, xpLevel = xpLevel)
                     val coinReward = payload.optInt("coin_reward", 0)
                     val xpReward = payload.optInt("xp_reward", 0)
+                    BlinkWalletStore.publish(balance)
                     _uiState.value = latest.copy(
                         myProfile = updatedMe,
                         profiles = latest.profiles.map {
@@ -1430,6 +1449,7 @@ private suspend fun restoreSupabaseSession() {
                     val refreshed = runCatching { profileRepository.fetchById(_uiState.value.myProfile.id) }.getOrNull()
                     val latest = _uiState.value
                     val updatedMe = refreshed ?: latest.myProfile.copy(verificationBadge = VerificationBadge.BLUE)
+                    BlinkWalletStore.publish(balance)
                     _uiState.value = latest.copy(
                         myProfile = updatedMe,
                         profiles = latest.profiles.map {
@@ -1592,6 +1612,10 @@ private suspend fun restoreSupabaseSession() {
                         runCatching { MessageMediaService.hydrateVideos(chatRepository.fetchConversations()) }
                             .onFailure { Log.e(TAG, "Message fetch failed", it) }
                     }
+                    val chatPrivacyRequest = async {
+                        runCatching { chatRepository.fetchChatPrivacySettings() }
+                            .onFailure { Log.e(TAG, "Chat privacy fetch failed", it) }
+                    }
                     val leaderboardRequest = async {
                         runCatching { supabaseService.fetchLeaderboard() }
                             .onFailure { Log.e(TAG, "Leaderboard fetch failed", it) }
@@ -1639,6 +1663,8 @@ private suspend fun restoreSupabaseSession() {
                         summaries = conversationSummaries,
                         local = before.conversations
                     )
+                    val chatPrivacySettings = chatPrivacyRequest.await()
+                        .getOrDefault(before.chatPrivacySettings)
                     if (conversationsResult.isSuccess) {
                         cacheWriteMutex.withLock {
                             runCatching { offlineContentStore.replaceConversations(conversations, _uiState.value.myProfile.username) }
@@ -1688,6 +1714,7 @@ private suspend fun restoreSupabaseSession() {
                         marketHasMore = marketResult.isSuccess && market.size >= 40,
                         marketErrorMessage = marketResult.exceptionOrNull()?.message,
                         conversations = conversations,
+                        chatPrivacySettings = chatPrivacySettings,
                         leaderboardUsers = leaderboard,
                         gameLeaderboardUsers = gameLeaderboard,
                         connectHub = connectHub,
@@ -2490,6 +2517,42 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+
+    fun loadProfileSurfaceData(profile: UserProfile, force: Boolean = false) {
+        val key = profile.id.ifBlank { profile.username.trim().removePrefix("@").lowercase() }
+        val ownerId = supabaseService.getCurrentUserId() ?: return
+        if (key.isBlank() || !_uiState.value.isOnline) return
+        val current = _uiState.value
+        if (key in current.profileSurfaceLoadingIds || (!force && key in current.profileSurfaceLoadedIds)) return
+        _uiState.value = current.copy(profileSurfaceLoadingIds = current.profileSurfaceLoadingIds + key)
+        viewModelScope.launch {
+            try {
+                val resolved = if (profile.id.isNotBlank()) profile
+                    else profileRepository.fetchByUsername(profile.username) ?: profile
+                if (resolved.id.isBlank()) return@launch
+                val content = supabaseService.fetchProfileSurfaceContent(resolved.id)
+                if (supabaseService.getCurrentUserId() != ownerId) return@launch
+                val latest = _uiState.value
+                val isOwner = resolved.id == ownerId
+                _uiState.value = latest.copy(
+                    profilePostsByUserId = latest.profilePostsByUserId + mapOf(key to content.posts, resolved.id to content.posts),
+                    myLikedPosts = if (isOwner) content.likedPosts else latest.myLikedPosts,
+                    mySavedPosts = if (isOwner) content.savedPosts else latest.mySavedPosts,
+                    profileSurfaceLoadedIds = latest.profileSurfaceLoadedIds + key + resolved.id
+                )
+            } catch (error: Exception) {
+                Log.w(TAG, "PROFILE_SURFACE_LOAD failed", error)
+                showToast("Could not load profile content. Pull to refresh to retry.")
+            } finally {
+                val latest = _uiState.value
+                _uiState.value = latest.copy(profileSurfaceLoadingIds = latest.profileSurfaceLoadingIds - key)
+            }
+        }
+    }
+
+    private fun profileSurfacePosts(state: BlinkUiState): List<FeedPost> =
+        state.profilePostsByUserId.values.flatten() + state.myLikedPosts + state.mySavedPosts
+
     fun openProfile(username: String) {
         if (isMe(username)) { _uiState.value = _uiState.value.copy(viewingProfile = _uiState.value.myProfile); return }
         val cached = cachedProfile(username)
@@ -3003,7 +3066,7 @@ private suspend fun restoreSupabaseSession() {
 
     fun togglePostLike(postId: String) {
         val state = _uiState.value
-        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts)
+        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
         val nextLiked = !target.isLiked
         val nextCount = (target.likes + if (nextLiked) 1 else -1).coerceAtLeast(0)
@@ -3014,7 +3077,10 @@ private suspend fun restoreSupabaseSession() {
             posts = update(state.posts, nextLiked, nextCount),
             followingPosts = update(state.followingPosts, nextLiked, nextCount),
             reels = update(state.reels, nextLiked, nextCount),
-            discoverPosts = update(state.discoverPosts, nextLiked, nextCount)
+            discoverPosts = update(state.discoverPosts, nextLiked, nextCount),
+            profilePostsByUserId = state.profilePostsByUserId.mapValues { update(it.value, nextLiked, nextCount) },
+            myLikedPosts = update((state.myLikedPosts + target).distinctBy { it.id }, nextLiked, nextCount),
+            mySavedPosts = update(state.mySavedPosts, nextLiked, nextCount)
         )
         persistCurrentFeed()
 
@@ -3038,7 +3104,10 @@ private suspend fun restoreSupabaseSession() {
                     posts = update(latest.posts, target.isLiked, target.likes),
                     followingPosts = update(latest.followingPosts, target.isLiked, target.likes),
                     reels = update(latest.reels, target.isLiked, target.likes),
-                    discoverPosts = update(latest.discoverPosts, target.isLiked, target.likes)
+                    discoverPosts = update(latest.discoverPosts, target.isLiked, target.likes),
+                    profilePostsByUserId = latest.profilePostsByUserId.mapValues { update(it.value, target.isLiked, target.likes) },
+                    myLikedPosts = update(latest.myLikedPosts, target.isLiked, target.likes),
+                    mySavedPosts = update(latest.mySavedPosts, target.isLiked, target.likes)
                 )
                 persistCurrentFeed()
                 showToast("Failed to update like.")
@@ -3047,7 +3116,7 @@ private suspend fun restoreSupabaseSession() {
     }
     fun toggleRepost(postId: String) {
         val state = _uiState.value
-        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts)
+        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
         val optimisticReposted = !target.isRepostedByMe
         val optimisticCount = (target.repostsCount + if (optimisticReposted) 1 else -1).coerceAtLeast(0)
@@ -3068,7 +3137,10 @@ private suspend fun restoreSupabaseSession() {
             posts = update(state.posts, optimisticReposted, optimisticCount),
             followingPosts = update(state.followingPosts, optimisticReposted, optimisticCount),
             reels = update(state.reels, optimisticReposted, optimisticCount),
-            discoverPosts = update(state.discoverPosts, optimisticReposted, optimisticCount)
+            discoverPosts = update(state.discoverPosts, optimisticReposted, optimisticCount),
+            profilePostsByUserId = state.profilePostsByUserId.mapValues { update(it.value, optimisticReposted, optimisticCount) },
+            myLikedPosts = update(state.myLikedPosts, optimisticReposted, optimisticCount),
+            mySavedPosts = update(state.mySavedPosts, optimisticReposted, optimisticCount)
         )
         persistCurrentFeed()
 
@@ -3080,7 +3152,10 @@ private suspend fun restoreSupabaseSession() {
                     posts = update(latest.posts, target.isRepostedByMe, target.repostsCount),
                     followingPosts = update(latest.followingPosts, target.isRepostedByMe, target.repostsCount),
                     reels = update(latest.reels, target.isRepostedByMe, target.repostsCount),
-                    discoverPosts = update(latest.discoverPosts, target.isRepostedByMe, target.repostsCount)
+                    discoverPosts = update(latest.discoverPosts, target.isRepostedByMe, target.repostsCount),
+                    profilePostsByUserId = latest.profilePostsByUserId.mapValues { update(it.value, target.isRepostedByMe, target.repostsCount) },
+                    myLikedPosts = update(latest.myLikedPosts, target.isRepostedByMe, target.repostsCount),
+                    mySavedPosts = update(latest.mySavedPosts, target.isRepostedByMe, target.repostsCount)
                 )
                 persistCurrentFeed()
                 showToast("Couldn't update repost.")
@@ -3093,14 +3168,17 @@ private suspend fun restoreSupabaseSession() {
                 posts = update(latest.posts, serverReposted, serverCount),
                 followingPosts = update(latest.followingPosts, serverReposted, serverCount),
                 reels = update(latest.reels, serverReposted, serverCount),
-                discoverPosts = update(latest.discoverPosts, serverReposted, serverCount)
+                discoverPosts = update(latest.discoverPosts, serverReposted, serverCount),
+                profilePostsByUserId = latest.profilePostsByUserId.mapValues { update(it.value, serverReposted, serverCount) },
+                myLikedPosts = update(latest.myLikedPosts, serverReposted, serverCount),
+                mySavedPosts = update(latest.mySavedPosts, serverReposted, serverCount)
             )
             persistCurrentFeed()
         }
     }
     fun toggleBookmark(postId: String) {
         val state = _uiState.value
-        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts)
+        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
         val next = !target.isBookmarked
         fun update(items: List<FeedPost>, value: Boolean): List<FeedPost> =
@@ -3110,7 +3188,10 @@ private suspend fun restoreSupabaseSession() {
             posts = update(state.posts, next),
             followingPosts = update(state.followingPosts, next),
             reels = update(state.reels, next),
-            discoverPosts = update(state.discoverPosts, next)
+            discoverPosts = update(state.discoverPosts, next),
+            profilePostsByUserId = state.profilePostsByUserId.mapValues { update(it.value, next) },
+            myLikedPosts = update(state.myLikedPosts, next),
+            mySavedPosts = update((state.mySavedPosts + target).distinctBy { it.id }, next)
         )
         persistCurrentFeed()
 
@@ -3121,7 +3202,10 @@ private suspend fun restoreSupabaseSession() {
                     posts = update(latest.posts, target.isBookmarked),
                     followingPosts = update(latest.followingPosts, target.isBookmarked),
                     reels = update(latest.reels, target.isBookmarked),
-                    discoverPosts = update(latest.discoverPosts, target.isBookmarked)
+                    discoverPosts = update(latest.discoverPosts, target.isBookmarked),
+                    profilePostsByUserId = latest.profilePostsByUserId.mapValues { update(it.value, target.isBookmarked) },
+                    myLikedPosts = update(latest.myLikedPosts, target.isBookmarked),
+                    mySavedPosts = update(latest.mySavedPosts, target.isBookmarked)
                 )
                 persistCurrentFeed()
                 showToast("Failed to update bookmark.")
@@ -3139,7 +3223,10 @@ private suspend fun restoreSupabaseSession() {
                     posts = update(state.posts),
                     followingPosts = update(state.followingPosts),
                     reels = update(state.reels),
-                    discoverPosts = update(state.discoverPosts)
+                    discoverPosts = update(state.discoverPosts),
+                    profilePostsByUserId = state.profilePostsByUserId.mapValues { update(it.value) },
+                    myLikedPosts = update(state.myLikedPosts),
+                    mySavedPosts = update(state.mySavedPosts)
                 )
                 persistCurrentFeed()
                 showToast("🔗 Post shared.")
@@ -3150,10 +3237,10 @@ private suspend fun restoreSupabaseSession() {
     }
     fun deletePost(postId: String) {
         val state = _uiState.value
-        val target = (state.posts + state.followingPosts + state.reels)
+        val target = (state.posts + state.followingPosts + state.reels + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
         val me = state.myProfile.username.trim()
-        if (me.isBlank() || !target.author.equals(me, ignoreCase = true)) {
+        if (me.isBlank() || !target.authorUsername.ifBlank { target.author }.equals(me, ignoreCase = true)) {
             _uiState.value = state.copy(activePostOptionsPost = null)
             showToast("You can only delete your own post or reel.")
             return
@@ -3166,6 +3253,9 @@ private suspend fun restoreSupabaseSession() {
             posts = postsBefore.filterNot { it.id == postId },
             followingPosts = followingBefore.filterNot { it.id == postId },
             reels = reelsBefore.filterNot { it.id == postId },
+            profilePostsByUserId = state.profilePostsByUserId.mapValues { it.value.filterNot { post -> post.id == postId } },
+            myLikedPosts = state.myLikedPosts.filterNot { it.id == postId },
+            mySavedPosts = state.mySavedPosts.filterNot { it.id == postId },
             activePostOptionsPost = null
         )
         persistCurrentFeed()
@@ -3178,13 +3268,46 @@ private suspend fun restoreSupabaseSession() {
                 _uiState.value = _uiState.value.copy(
                     posts = postsBefore,
                     followingPosts = followingBefore,
-                    reels = reelsBefore
+                    reels = reelsBefore,
+                    profilePostsByUserId = state.profilePostsByUserId,
+                    myLikedPosts = state.myLikedPosts,
+                    mySavedPosts = state.mySavedPosts
                 )
                 persistCurrentFeed()
                 showToast("Delete failed. Only the owner can delete this content.")
             }
         }
     }
+    fun markPostNotInterested(postId: String) {
+        val state = _uiState.value
+        val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
+            .firstOrNull { it.id == postId } ?: return
+
+        _uiState.value = state.copy(
+            activePostOptionsPost = null,
+            posts = state.posts.filterNot { it.id == postId },
+            followingPosts = state.followingPosts.filterNot { it.id == postId },
+            reels = state.reels.filterNot { it.id == postId },
+            discoverPosts = state.discoverPosts.filterNot { it.id == postId }
+        )
+        persistCurrentFeed()
+        showToast(
+            if (target.isReel) "We'll show fewer reels like this."
+            else "We'll show fewer posts like this."
+        )
+
+        viewModelScope.launch {
+            val synced = ReelRecommendationService().recordRecommendationSignal(
+                postId = postId,
+                eventType = "hide",
+                surface = if (target.isReel) "reels" else "feed"
+            )
+            if (!synced) {
+                showToast("Hidden for now. Your preference couldn't sync yet.")
+            }
+        }
+    }
+
     fun reportPost(postId: String, reason: String) {
         _uiState.value = _uiState.value.copy(activePostOptionsPost = null)
         viewModelScope.launch {
@@ -3222,7 +3345,7 @@ private suspend fun restoreSupabaseSession() {
     }
     fun votePoll(postId: String, optionId: String) {
         val state = _uiState.value
-        val target = (state.posts + state.followingPosts + state.reels)
+        val target = (state.posts + state.followingPosts + state.reels + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
         val poll = target.poll ?: return
         if (poll.hasVoted || poll.options.any { it.isVotedByMe }) {
@@ -3403,7 +3526,9 @@ private suspend fun restoreSupabaseSession() {
                 viewingProfile = null,
                 viewingProduct = null,
                 conversations = state.conversations.map {
-                    if (it.partnerUsername.equals(clean, true)) it.copy(unreadCount = 0) else it
+                    if (it.partnerUsername.equals(clean, true)) {
+                        it.copy(unreadCount = 0, isMarkedUnread = false)
+                    } else it
                 },
                 activeConversationPartner = clean,
                 isConversationFullScreen = false
@@ -3411,6 +3536,7 @@ private suspend fun restoreSupabaseSession() {
             persistUiPreferences()
             viewModelScope.launch {
                 if (_uiState.value.isOnline && existing.id.isNotBlank() && !existing.id.startsWith("local_")) {
+                    runCatching { chatRepository.setConversationMarkedUnread(existing.id, false) }
                     loadConversationHistory(existing.id, clean, older = false)
                 }
             }
@@ -3537,11 +3663,13 @@ private suspend fun restoreSupabaseSession() {
         }
 
         try {
-            val page = chatRepository.fetchMessagePage(
-                conversationId = resolvedConversationId,
-                beforeCreatedAt = beforeAt,
-                beforeId = beforeId,
-                limit = 50
+            val page = MessageMediaService.hydrateMessagePage(
+                chatRepository.fetchMessagePage(
+                    conversationId = resolvedConversationId,
+                    beforeCreatedAt = beforeAt,
+                    beforeId = beforeId,
+                    limit = 50
+                )
             )
 
             withContext(Dispatchers.Main) {
@@ -3583,7 +3711,9 @@ private suspend fun restoreSupabaseSession() {
             // Make the merged page durable before acknowledging it to the server.
             persistConversationsNow()
             runCatching { chatRepository.ackPendingDeliveries() }
-            if (!older) runCatching { chatRepository.markConversationRead(partnerUsername) }
+            if (!older && _uiState.value.chatPrivacySettings.sendReadReceipts) {
+                runCatching { chatRepository.markConversationRead(partnerUsername) }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Message history hydration failed for @$partnerUsername", e)
         } finally {
@@ -3603,6 +3733,45 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun closeConversation() { _uiState.value = _uiState.value.copy(activeConversationPartner = null, isConversationFullScreen = false) }
+
+    fun updateChatPrivacySettings(settings: ChatPrivacySettings) {
+        val before = _uiState.value.chatPrivacySettings
+        _uiState.value = _uiState.value.copy(chatPrivacySettings = settings)
+        viewModelScope.launch {
+            if (!chatRepository.updateChatPrivacySettings(settings)) {
+                _uiState.value = _uiState.value.copy(chatPrivacySettings = before)
+                showToast("Couldn't update message privacy.")
+            }
+        }
+    }
+
+    fun updateChatPresence(partnerUsername: String, state: String) {
+        val privacy = _uiState.value.chatPrivacySettings
+        when (state.lowercase()) {
+            "typing" -> if (!privacy.showTyping) return
+            "recording" -> if (!privacy.showRecording) return
+            "online" -> if (!privacy.showOnline) return
+        }
+        val cleanPartner = partnerUsername.trim().removePrefix("@")
+        val conversation = _uiState.value.conversations.firstOrNull {
+            it.partnerUsername.equals(cleanPartner, true)
+        } ?: return
+        if (conversation.id.isBlank() || conversation.id.startsWith("local_")) return
+        val deviceId = android.provider.Settings.Secure.getString(
+            appContext.contentResolver,
+            android.provider.Settings.Secure.ANDROID_ID
+        ).orEmpty().ifBlank { "blink-android" }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                chatRepository.updateConversationPresence(
+                    conversationId = conversation.id,
+                    deviceId = deviceId,
+                    state = state,
+                    ttlSeconds = if (state == "typing" || state == "recording") 12 else 30
+                )
+            }.onFailure { Log.w(TAG, "Chat presence update failed", it) }
+        }
+    }
 
     fun sendMessage(
         partnerUsername: String,
@@ -3672,14 +3841,32 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun sendVideoMessage(partnerUsername: String, uri: Uri) {
+        sendAttachmentMessage(partnerUsername, uri, "video")
+    }
+
+    fun sendAttachmentMessage(partnerUsername: String, uri: Uri, kind: String) {
         val cleanPartner = partnerUsername.trim().removePrefix("@")
+        val cleanKind = kind.trim().lowercase().let {
+            when (it) {
+                "image", "video", "audio", "voice", "document" -> it
+                else -> return
+            }
+        }
         if (cleanPartner.isBlank()) return
-        val tempId = "temp_video_${UUID.randomUUID()}"
+
+        val tempId = "temp_attachment_${UUID.randomUUID()}"
         val uid = supabaseService.getCurrentUserId() ?: "local_user"
         val existingConversationId = _uiState.value.conversations
             .firstOrNull { it.partnerUsername.equals(cleanPartner, true) }
             ?.id
             ?.takeUnless { it.startsWith("local_") }
+        val label = when (cleanKind) {
+            "image" -> "Photo"
+            "video" -> "Video"
+            "voice" -> "Voice message"
+            "audio" -> "Audio"
+            else -> uri.lastPathSegment?.substringAfterLast('/')?.ifBlank { "Document" } ?: "Document"
+        }
         appendMessageToState(
             cleanPartner,
             ChatMessage(
@@ -3687,28 +3874,84 @@ private suspend fun restoreSupabaseSession() {
                 conversationId = existingConversationId,
                 senderId = uid,
                 receiverUsername = cleanPartner,
-                text = "Video",
+                text = label,
                 rawTimestamp = java.time.Instant.now().toString(),
                 timestamp = "Sending...",
                 isFromMe = true,
                 isRead = false,
-                status = MessageStatus.SENDING
+                status = MessageStatus.SENDING,
+                isVoiceNote = cleanKind == "voice",
+                attachedImageUrl = uri.toString().takeIf { cleanKind == "image" },
+                attachedVideoUrl = uri.toString().takeIf { cleanKind == "video" },
+                attachedAudioUrl = uri.toString().takeIf { cleanKind == "audio" || cleanKind == "voice" },
+                attachedDocumentUrl = uri.toString().takeIf { cleanKind == "document" },
+                attachmentName = uri.lastPathSegment?.substringAfterLast('/'),
+                messageType = cleanKind,
+                localAttachmentUri = uri.toString()
             )
         )
+
         viewModelScope.launch(Dispatchers.IO) {
-            MessageMediaService.sendVideoMessage(appContext, cleanPartner, uri).fold(
+            MessageMediaService.sendAttachmentMessage(appContext, cleanPartner, uri, cleanKind).fold(
                 onSuccess = { serverMsg ->
                     withContext(Dispatchers.Main) {
-                        replaceMessageInState(cleanPartner, tempId, serverMsg.copy(status = MessageStatus.SENT))
+                        replaceMessageInState(
+                            cleanPartner,
+                            tempId,
+                            serverMsg.copy(
+                                receiverUsername = cleanPartner,
+                                status = MessageStatus.SENT,
+                                localAttachmentUri = null
+                            )
+                        )
                     }
-                    // Confirmed media messages receive the same durable Room ordering as text.
                     persistConversationsNow()
-                    withContext(Dispatchers.Main) { fetchSupabaseData() }
+                    chatRepository.triggerMessagePushBestEffort(serverMsg.id)
                 },
-                onFailure = {
+                onFailure = { error ->
                     withContext(Dispatchers.Main) {
                         updateMessageStatusInState(cleanPartner, tempId, MessageStatus.FAILED)
-                        showToast("Failed to send video. Tap the message to retry.")
+                        showToast(error.message ?: "Attachment couldn't be sent. Tap to retry.")
+                    }
+                }
+            )
+        }
+    }
+
+    private fun retryAttachmentMessage(partnerUsername: String, failedMessage: ChatMessage) {
+        val localUri = failedMessage.localAttachmentUri?.takeIf { it.isNotBlank() } ?: run {
+            showToast("Choose the attachment again to resend it.")
+            return
+        }
+        val uri = runCatching { Uri.parse(localUri) }.getOrNull() ?: return
+        updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.SENDING)
+        persistConversations()
+        viewModelScope.launch(Dispatchers.IO) {
+            MessageMediaService.sendAttachmentMessage(
+                appContext,
+                partnerUsername.trim().removePrefix("@"),
+                uri,
+                failedMessage.messageType
+            ).fold(
+                onSuccess = { serverMsg ->
+                    withContext(Dispatchers.Main) {
+                        replaceMessageInState(
+                            partnerUsername,
+                            failedMessage.id,
+                            serverMsg.copy(
+                                receiverUsername = partnerUsername.trim().removePrefix("@"),
+                                status = MessageStatus.SENT,
+                                localAttachmentUri = null
+                            )
+                        )
+                    }
+                    persistConversationsNow()
+                    chatRepository.triggerMessagePushBestEffort(serverMsg.id)
+                },
+                onFailure = { error ->
+                    withContext(Dispatchers.Main) {
+                        updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.FAILED)
+                        showToast(error.message ?: "Attachment retry failed.")
                     }
                 }
             )
@@ -3716,6 +3959,10 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun retrySendMessage(partnerUsername: String, failedMessage: ChatMessage) {
+        if (failedMessage.messageType != "text" && !failedMessage.localAttachmentUri.isNullOrBlank()) {
+            retryAttachmentMessage(partnerUsername, failedMessage)
+            return
+        }
         if (failedMessage.text.isBlank()) return
         updateMessageStatusInState(partnerUsername, failedMessage.id, MessageStatus.SENDING)
         persistConversations()
@@ -4037,6 +4284,193 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    fun setConversationArchived(conversation: ChatConversation, archived: Boolean) {
+        if (conversation.id.startsWith("local_")) return
+        val latest = _uiState.value
+        _uiState.value = latest.copy(
+            conversations = latest.conversations.map {
+                if (it.id == conversation.id) it.copy(isArchived = archived) else it
+            }
+        )
+        persistConversations()
+        viewModelScope.launch {
+            if (!chatRepository.setConversationArchived(conversation.id, archived)) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    conversations = current.conversations.map {
+                        if (it.id == conversation.id) it.copy(isArchived = !archived) else it
+                    }
+                )
+                persistConversations()
+                showToast("Couldn't update archive.")
+            }
+        }
+    }
+
+    fun setConversationPinned(conversation: ChatConversation, pinned: Boolean) {
+        if (conversation.id.startsWith("local_")) return
+        val latest = _uiState.value
+        _uiState.value = latest.copy(
+            conversations = latest.conversations.map {
+                if (it.id == conversation.id) it.copy(isConversationPinned = pinned) else it
+            }
+        )
+        persistConversations()
+        viewModelScope.launch {
+            if (!chatRepository.setConversationPinned(conversation.id, pinned)) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    conversations = current.conversations.map {
+                        if (it.id == conversation.id) it.copy(isConversationPinned = !pinned) else it
+                    }
+                )
+                persistConversations()
+                showToast("Couldn't update pinned chat.")
+            }
+        }
+    }
+
+    fun setConversationMarkedUnread(conversation: ChatConversation, unread: Boolean) {
+        if (conversation.id.startsWith("local_")) return
+        val latest = _uiState.value
+        _uiState.value = latest.copy(
+            conversations = latest.conversations.map {
+                if (it.id == conversation.id) it.copy(isMarkedUnread = unread) else it
+            }
+        )
+        persistConversations()
+        viewModelScope.launch {
+            if (!chatRepository.setConversationMarkedUnread(conversation.id, unread)) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    conversations = current.conversations.map {
+                        if (it.id == conversation.id) it.copy(isMarkedUnread = !unread) else it
+                    }
+                )
+                persistConversations()
+                showToast("Couldn't update unread state.")
+            }
+        }
+    }
+
+    fun setChatNotificationSettings(
+        conversation: ChatConversation,
+        mode: String,
+        muteUntil: String? = null
+    ) {
+        if (conversation.id.startsWith("local_")) return
+        val cleanMode = mode.lowercase().takeIf { it in setOf("all", "mentions", "none") } ?: return
+        val beforeMode = conversation.notificationMode
+        val beforeUntil = conversation.muteUntil
+        val latest = _uiState.value
+        _uiState.value = latest.copy(
+            conversations = latest.conversations.map {
+                if (it.id == conversation.id) {
+                    it.copy(
+                        notificationMode = cleanMode,
+                        muteUntil = muteUntil,
+                        isMuted = cleanMode == "none"
+                    )
+                } else it
+            }
+        )
+        persistConversations()
+        viewModelScope.launch {
+            if (!chatRepository.setConversationNotificationSettings(
+                    conversationId = conversation.id,
+                    mode = cleanMode,
+                    muteUntil = muteUntil
+                )
+            ) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    conversations = current.conversations.map {
+                        if (it.id == conversation.id) {
+                            it.copy(
+                                notificationMode = beforeMode,
+                                muteUntil = beforeUntil,
+                                isMuted = beforeMode == "none"
+                            )
+                        } else it
+                    }
+                )
+                persistConversations()
+                showToast("Couldn't update notification settings.")
+            }
+        }
+    }
+
+    fun respondToMessageRequest(conversation: ChatConversation, accept: Boolean) {
+        if (conversation.id.startsWith("local_")) return
+        viewModelScope.launch {
+            if (chatRepository.respondMessageRequest(conversation.id, accept)) {
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    conversations = latest.conversations.map {
+                        if (it.id == conversation.id) {
+                            it.copy(
+                                inboxCategory = if (accept) "primary" else "requests",
+                                isArchived = !accept
+                            )
+                        } else it
+                    },
+                    activeConversationPartner = if (!accept &&
+                        latest.activeConversationPartner.equals(conversation.partnerUsername, true)
+                    ) null else latest.activeConversationPartner
+                )
+                persistConversations()
+                showToast(if (accept) "Message request accepted." else "Message request deleted.")
+            } else {
+                showToast("Couldn't update message request.")
+            }
+        }
+    }
+
+    fun blockChatUser(conversation: ChatConversation) {
+        viewModelScope.launch {
+            if (chatRepository.blockChatUser(conversation.partnerUsername, true)) {
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    conversations = latest.conversations.filterNot {
+                        it.partnerUsername.equals(conversation.partnerUsername, true)
+                    },
+                    activeConversationPartner = if (
+                        latest.activeConversationPartner.equals(conversation.partnerUsername, true)
+                    ) null else latest.activeConversationPartner
+                )
+                persistConversations()
+                showToast("@${conversation.partnerUsername.removePrefix("@")} blocked.")
+            } else {
+                showToast("Couldn't block this user.")
+            }
+        }
+    }
+
+    fun forwardChatMessage(targetUsername: String, message: ChatMessage) {
+        if (message.id.startsWith("temp_")) {
+            showToast("Wait for the message to finish sending before forwarding.")
+            return
+        }
+        viewModelScope.launch {
+            val newMessageId = chatRepository.forwardMessage(message.id, targetUsername)
+            if (newMessageId == null) {
+                showToast("Couldn't forward message.")
+                return@launch
+            }
+            reconcileConversationSummary(targetUsername)
+            val targetConversation = _uiState.value.conversations.firstOrNull {
+                it.partnerUsername.equals(targetUsername, true)
+            }
+            if (targetConversation != null) {
+                loadConversationHistory(
+                    targetConversation.id,
+                    targetConversation.partnerUsername,
+                    older = false
+                )
+            }
+        }
+    }
+
     private suspend fun reconcileConversationSummary(partnerUsername: String) {
         val server = runCatching { chatRepository.fetchConversations() }.getOrDefault(emptyList())
             .firstOrNull { it.partnerUsername.equals(partnerUsername, true) }
@@ -4061,6 +4495,29 @@ private suspend fun restoreSupabaseSession() {
     private fun handleRealtimeEvent(event: RealtimeEvent) {
         when (event) {
             is RealtimeEvent.MessageEvent -> handleIncomingRealtimeMessage(event.message)
+            is RealtimeEvent.ConversationPresenceEvent -> {
+                val myId = _uiState.value.myProfile.id
+                if (event.userId.isNotBlank() && event.userId != myId && event.conversationId.isNotBlank()) {
+                    val label = if (event.eventType.equals("DELETE", true)) {
+                        ""
+                    } else {
+                        when (event.state.lowercase()) {
+                            "typing" -> "Typing…"
+                            "recording" -> "Recording voice…"
+                            "uploading" -> "Sending attachment…"
+                            else -> ""
+                        }
+                    }
+                    val latest = _uiState.value
+                    _uiState.value = latest.copy(
+                        conversations = latest.conversations.map { conversation ->
+                            if (conversation.id == event.conversationId) {
+                                conversation.copy(presenceLabel = label)
+                            } else conversation
+                        }
+                    )
+                }
+            }
             is RealtimeEvent.ConversationEvent -> viewModelScope.launch {
                 runCatching { chatRepository.fetchConversations() }
                     .onSuccess { summaries ->
@@ -4102,6 +4559,13 @@ private suspend fun restoreSupabaseSession() {
                 )
             }
             is RealtimeEvent.ConnectHubEvent -> refreshConnectHub()
+            is RealtimeEvent.WalletBalanceEvent -> {
+                if (event.userId == _uiState.value.myProfile.id) {
+                    BlinkWalletStore.publish(event.balance)
+                    _uiState.value = _uiState.value.copy(blinkCoinBalance = event.balance)
+                    persistExtendedCache()
+                }
+            }
             is RealtimeEvent.FeedPostEvent -> viewModelScope.launch {
                 val current = _uiState.value
                 if (event.eventType.equals("DELETE", ignoreCase = true)) {
@@ -4476,7 +4940,9 @@ private suspend fun restoreSupabaseSession() {
             persistConversations()
 
             if (active) {
-                chatRepository.markConversationRead(partner)
+                if (_uiState.value.chatPrivacySettings.sendReadReceipts) {
+                    chatRepository.markConversationRead(partner)
+                }
             } else if (NotificationPreferenceStore.isAllowed(appContext, BlinkNotificationType.MESSAGE)) {
                 val handledInApp = BlinkInAppNotificationCenter.publish(
                     BlinkInAppNotification(

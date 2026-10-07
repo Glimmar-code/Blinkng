@@ -289,7 +289,20 @@ data class ChatMessage(
     val reactionCounts: Map<String, Int> = emptyMap(),
     val myReactions: Set<String> = emptySet(),
     val isStarred: Boolean = false,
-    val isPinned: Boolean = false
+    val isPinned: Boolean = false,
+    val messageType: String = "text",
+    val attachedAudioUrl: String? = null,
+    val attachedDocumentUrl: String? = null,
+    val attachmentName: String? = null,
+    val attachmentMimeType: String? = null,
+    val locationLabel: String? = null,
+    val locationLatitude: Double? = null,
+    val locationLongitude: Double? = null,
+    val contactName: String? = null,
+    val contactPhone: String? = null,
+    val forwardedFromMessageId: String? = null,
+    val isForwarded: Boolean = false,
+    val localAttachmentUri: String? = null
 )
 
 data class ChatConversation(
@@ -309,5 +322,26 @@ data class ChatConversation(
     val faculty: String = "SIMME",
     val lastSeen: String = "Last seen recently",
     val isMuted: Boolean = false,
-    val messages: MutableList<ChatMessage> = mutableListOf()
+    val messages: MutableList<ChatMessage> = mutableListOf(),
+    val isArchived: Boolean = false,
+    val isConversationPinned: Boolean = false,
+    val isMarkedUnread: Boolean = false,
+    val inboxCategory: String = "primary",
+    val notificationMode: String = "all",
+    val muteUntil: String? = null,
+    val presenceLabel: String = ""
+)
+
+data class ChatPrivacySettings(
+    val whoCanMessage: String = "everyone",
+    val whoCanCall: String = "everyone",
+    val whoCanGroupInvite: String = "everyone",
+    val showOnline: Boolean = true,
+    val showLastSeen: Boolean = true,
+    val sendReadReceipts: Boolean = true,
+    val showTyping: Boolean = true,
+    val showRecording: Boolean = true,
+    val showProfilePhotoInChat: Boolean = true,
+    val allowLinkPreviews: Boolean = true,
+    val notificationPreview: String = "full"
 )

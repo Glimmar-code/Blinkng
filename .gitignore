@@ -20,3 +20,6 @@ debug.keystore
 *.keystore
 keystore.properties
 release-keystore.*
+
+# Firebase client config is restored locally/CI and must never be committed.
+/app/google-services.json

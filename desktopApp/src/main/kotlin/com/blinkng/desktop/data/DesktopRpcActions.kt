@@ -116,7 +116,7 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
     suspend fun getBoostableContent(): JSONObject = rpc("get_my_blink_boostable_content", JSONObject())
 
     suspend fun getBoostGrowthState(): JSONObject =
-        rpc("get_blink_boost_growth_state", JSONObject())
+        rpc("get_blink_boost_growth_state_v2", JSONObject())
 
     suspend fun getBoostMissions(limit: Int = 12): JSONObject =
         rpc("get_blink_boost_missions", JSONObject().put("p_limit", limit.coerceIn(1, 30)))
@@ -138,7 +138,7 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         durationDays: Int,
         targetUniversity: String? = null,
     ): JSONObject = rpc(
-        "quote_blink_boost_campaign",
+        "quote_blink_boost_campaign_v2",
         JSONObject()
             .put("p_target_type", targetType.trim().uppercase())
             .put("p_target_id", targetId.trim())
@@ -156,9 +156,10 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         objective: String,
         audienceScope: String,
         durationDays: Int,
+        requestId: String,
         targetUniversity: String? = null,
     ): JSONObject = rpc(
-        "create_blink_boost_campaign",
+        "create_blink_boost_campaign_v2",
         JSONObject()
             .put("p_target_type", targetType.trim().uppercase())
             .put("p_target_id", targetId.trim())
@@ -166,11 +167,40 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
             .put("p_objective", objective.trim().uppercase())
             .put("p_audience_scope", audienceScope.trim().uppercase())
             .put("p_duration_days", durationDays)
+            .put("p_request_id", requestId)
             .put("p_target_university", targetUniversity?.trim()?.takeIf(String::isNotBlank) ?: JSONObject.NULL),
     )
 
     suspend fun cancelBoostCampaign(campaignId: String): JSONObject =
         rpc("cancel_blink_boost_campaign", JSONObject().put("p_campaign_id", campaignId.trim()))
+
+    suspend fun getDropsState(): JSONObject = rpc("get_blink_drops_state_v2", JSONObject().put("p_limit", 30))
+
+    suspend fun recommendBoostPower(input: com.blinkng.shared.BlinkBoostCampaignRequest, budget: Long): JSONObject =
+        rpc("recommend_blink_boost_power", JSONObject()
+            .put("p_target_type", input.targetType).put("p_target_id", input.targetId).put("p_budget", budget)
+            .put("p_objective", input.objective).put("p_audience_scope", input.audience)
+            .put("p_duration_days", input.duration).put("p_target_university", input.university ?: JSONObject.NULL))
+
+    suspend fun quoteDrop(input: com.blinkng.shared.BlinkDropRequest): JSONObject = rpc("quote_blink_drop", dropParams(input))
+
+    suspend fun createDrop(input: com.blinkng.shared.BlinkDropRequest, requestId: String): JSONObject =
+        rpc("create_blink_drop_v2", dropParams(input).put("p_request_id", requestId))
+
+    private fun dropParams(input: com.blinkng.shared.BlinkDropRequest) = JSONObject()
+        .put("p_target_type", input.targetType).put("p_target_id", input.targetId)
+        .put("p_action", input.action).put("p_reward_per_user", input.reward)
+        .put("p_winner_count", input.recipients).put("p_audience_scope", input.audience)
+        .put("p_duration_hours", input.hours)
+
+    suspend fun cancelDrop(id: String): JSONObject = rpc("cancel_blink_drop", JSONObject().put("p_drop_id", id))
+
+    suspend fun completeDropAction(id: String, comment: String?): JSONObject =
+        rpc("complete_blink_drop_action", JSONObject().put("p_drop_id", id)
+            .put("p_comment_text", comment?.takeIf(String::isNotBlank) ?: JSONObject.NULL))
+
+    suspend fun followDropCreator(id: String): JSONObject =
+        rpc("follow_blink_drop_creator", JSONObject().put("p_creator_id", id))
 
     suspend fun recordBoostDelivery(campaignId: String, eventType: String, surface: String): JSONObject =
         rpc(

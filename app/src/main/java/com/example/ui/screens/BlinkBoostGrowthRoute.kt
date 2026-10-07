@@ -43,6 +43,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,6 +55,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -66,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -78,8 +81,10 @@ import com.example.data.models.MarketItem
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
 import com.example.data.models.kNigerianUniversitiesList
+import com.example.data.network.NetworkMonitor
 import com.example.data.repository.FollowStateStore
 import com.example.data.supabase.BlinkEconomyService
+import com.example.data.supabase.BlinkWalletStore
 import com.example.ui.components.PostCard
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -87,8 +92,23 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.text.NumberFormat
 import java.util.Locale
+import java.util.UUID
 
 private enum class BoostGrowthColumn { BOOST, EARN }
+
+private data class BoostDraftSnapshot(
+    val targetType: BlinkBoostTargetType = BlinkBoostTargetType.POST,
+    val targetId: String = "",
+    val boostPower: Int = 25,
+    val objective: BlinkBoostObjective = BlinkBoostObjective.VIEWS,
+    val audience: BlinkBoostAudienceScope = BlinkBoostAudienceScope.MY_UNIVERSITY,
+    val durationDays: Int = 3,
+    val selectedUniversity: String = "",
+)
+
+private object BoostDraftStore {
+    var value = BoostDraftSnapshot()
+}
 
 private data class MissionItem(
     val campaignId: String,
@@ -120,6 +140,8 @@ fun BlinkBoostGrowthRoute(
     onBookmarkPost: (String) -> Unit,
     onProfileClick: (String) -> Unit,
     onListingClick: (MarketItem) -> Unit,
+    onGetCoins: () -> Unit = {},
+    onCreateContent: () -> Unit = {},
     onClose: () -> Unit,
 ) {
     var selectedColumn by remember { mutableStateOf(BoostGrowthColumn.BOOST) }
@@ -178,6 +200,8 @@ fun BlinkBoostGrowthRoute(
                 marketItems = marketItems,
                 myProfile = myProfile,
                 isDark = isDark,
+                onGetCoins = onGetCoins,
+                onCreateContent = onCreateContent,
             )
             BoostGrowthColumn.EARN -> EarnRankPointsColumn(
                 isDark = isDark,
@@ -217,6 +241,7 @@ private fun GrowthColumnTab(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BoostCampaignColumn(
     posts: List<FeedPost>,
@@ -224,10 +249,17 @@ private fun BoostCampaignColumn(
     marketItems: List<MarketItem>,
     myProfile: UserProfile,
     isDark: Boolean,
+    onGetCoins: () -> Unit,
+    onCreateContent: () -> Unit,
 ) {
     val service = remember { BlinkEconomyService() }
     val scope = rememberCoroutineScope()
     val formatter = remember { NumberFormat.getNumberInstance(Locale.US) }
+    val context = LocalContext.current
+    val networkMonitor = remember(context) { NetworkMonitor(context) }
+    val isOnline by networkMonitor.isOnline.collectAsState(initial = networkMonitor.isCurrentlyOnline())
+    val liveWalletBalance by BlinkWalletStore.balance.collectAsState()
+    val draft = remember { BoostDraftStore.value }
 
     val me = myProfile.username.trim().removePrefix("@")
     val ownPosts = remember(posts, me) {
@@ -244,39 +276,69 @@ private fun BoostCampaignColumn(
         marketItems.filter { it.sellerUsername.trim().removePrefix("@").equals(me, ignoreCase = true) }
     }
 
-    var targetType by remember { mutableStateOf(BlinkBoostTargetType.POST) }
-    var targetId by remember { mutableStateOf("") }
-    var boostPower by remember { mutableIntStateOf(25) }
-    var objective by remember { mutableStateOf(BlinkBoostObjective.VIEWS) }
-    var audience by remember { mutableStateOf(BlinkBoostAudienceScope.MY_UNIVERSITY) }
-    var durationDays by remember { mutableIntStateOf(3) }
-    var selectedUniversity by remember { mutableStateOf("") }
+    var targetType by remember { mutableStateOf(draft.targetType) }
+    var targetId by remember { mutableStateOf(draft.targetId) }
+    var boostPower by remember { mutableIntStateOf(draft.boostPower) }
+    var objective by remember { mutableStateOf(draft.objective) }
+    var audience by remember { mutableStateOf(draft.audience) }
+    var durationDays by remember { mutableIntStateOf(draft.durationDays) }
+    var selectedUniversity by remember { mutableStateOf(draft.selectedUniversity) }
     var universityMenuOpen by remember { mutableStateOf(false) }
+    var lastTargetType by remember { mutableStateOf(targetType) }
 
     var state by remember { mutableStateOf<JSONObject?>(null) }
     var quote by remember { mutableStateOf<JSONObject?>(null) }
     var quoteLoading by remember { mutableStateOf(false) }
+    var stateLoading by remember { mutableStateOf(false) }
     var working by remember { mutableStateOf(false) }
+    var budgetWorking by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var confirmStart by remember { mutableStateOf(false) }
+    var refreshNonce by remember { mutableIntStateOf(0) }
+    var pendingRequestId by remember { mutableStateOf<String?>(null) }
+    var pendingRequestFingerprint by remember { mutableStateOf<String?>(null) }
+    var historyFilter by remember { mutableStateOf("ALL") }
+    var historyQuery by remember { mutableStateOf("") }
 
     suspend fun reloadState() {
+        stateLoading = true
         service.boostGrowthState()
-            .onSuccess { state = it; error = null }
+            .onSuccess {
+                state = it
+                it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
+                error = null
+            }
             .onFailure { error = boostUserMessage(it, "Boost is temporarily unavailable. Please try again.") }
+        stateLoading = false
     }
 
-    LaunchedEffect(Unit) { reloadState() }
+    LaunchedEffect(refreshNonce) { reloadState() }
 
     LaunchedEffect(targetType) {
-        targetId = when (targetType) {
-            BlinkBoostTargetType.PROFILE -> myProfile.id
-            else -> ""
+        if (targetType != lastTargetType) {
+            targetId = when (targetType) {
+                BlinkBoostTargetType.PROFILE -> myProfile.id
+                else -> ""
+            }
+            objective = defaultObjectiveFor(targetType)
+            pendingRequestId = null
+            quote = null
+            error = null
         }
-        objective = defaultObjectiveFor(targetType)
-        quote = null
-        error = null
+        lastTargetType = targetType
+    }
+
+    LaunchedEffect(targetType, targetId, boostPower, objective, audience, durationDays, selectedUniversity) {
+        BoostDraftStore.value = BoostDraftSnapshot(
+            targetType = targetType,
+            targetId = targetId,
+            boostPower = boostPower,
+            objective = objective,
+            audience = audience,
+            durationDays = durationDays,
+            selectedUniversity = selectedUniversity,
+        )
     }
 
     val targetUniversity = when (audience) {
@@ -288,7 +350,7 @@ private fun BoostCampaignColumn(
 
     LaunchedEffect(targetType, targetId, boostPower, objective, audience, durationDays, selectedUniversity) {
         quote = null
-        if (!targetReady) return@LaunchedEffect
+        if (!targetReady || !isOnline) return@LaunchedEffect
         delay(260)
         quoteLoading = true
         service.quoteBoostCampaign(
@@ -301,6 +363,7 @@ private fun BoostCampaignColumn(
             targetUniversity = targetUniversity,
         ).onSuccess {
             quote = it
+            it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
             error = null
         }.onFailure {
             error = boostUserMessage(it, "Unable to calculate this boost right now. Please try again.")
@@ -308,17 +371,82 @@ private fun BoostCampaignColumn(
         quoteLoading = false
     }
 
-    val balance = state?.takeIf { it.has("balance") }?.optLong("balance")
-    val quoteCost = quote?.optLong("coin_cost", 0L) ?: 0L
-    val activeCampaigns = state?.optJSONArray("campaigns").objectList()
-        .filter { it.optString("status") == "ACTIVE" }
+    fun applyBudgetPreset(budget: Long) {
+        if (!targetReady || !isOnline || budgetWorking) return
+        scope.launch {
+            budgetWorking = true
+            service.recommendBoostPower(
+                targetType = targetType.name,
+                targetId = targetId,
+                budget = budget,
+                objective = objective.name,
+                audienceScope = audience.name,
+                durationDays = durationDays,
+                targetUniversity = targetUniversity,
+            ).onSuccess { recommendation ->
+                val recommended = recommendation.optInt("recommended_power", 0)
+                if (recommended > 0) {
+                    boostPower = recommended
+                    val cost = recommendation.optLong("coin_cost", 0L)
+                    message = "Budget preset applied: $recommended% power" +
+                        if (cost > 0) " • about ${formatter.format(cost)} coins" else ""
+                    error = null
+                } else {
+                    error = "That budget is below the minimum for this campaign setup."
+                }
+            }.onFailure {
+                error = boostUserMessage(it, "Unable to apply that budget right now.")
+            }
+            budgetWorking = false
+        }
+    }
 
-    LazyColumn(
+    val stateBalance = state?.takeIf { it.has("balance") }?.optLong("balance")
+    val balance = liveWalletBalance ?: stateBalance
+    val quoteCost = quote?.optLong("coin_cost", 0L) ?: 0L
+    val campaigns = state?.optJSONArray("campaigns").objectList()
+    val activeCampaigns = campaigns.filter { it.optString("status") == "ACTIVE" }
+    val historyCampaigns = campaigns.filter { it.optString("status") != "ACTIVE" }
+        .filter { historyFilter == "ALL" || it.optString("status").equals(historyFilter, ignoreCase = true) }
+        .filter {
+            val q = historyQuery.trim()
+            q.isBlank() ||
+                it.optString("target_type").contains(q, ignoreCase = true) ||
+                it.optString("objective").contains(q, ignoreCase = true) ||
+                it.optString("status").contains(q, ignoreCase = true)
+        }
+    val receipts = state?.optJSONArray("receipts").objectList()
+    val analytics = state?.optJSONObject("analytics")
+
+    PullToRefreshBox(
+        isRefreshing = stateLoading,
+        onRefresh = { if (isOnline) refreshNonce++ },
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item { BalanceCard(balance = balance, formatter = formatter) }
+
+        if (stateLoading) {
+            item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
+        }
+
+        analytics?.let { value ->
+            item { BoostAnalyticsCard(value, formatter) }
+        }
+
+        if (!isOnline) {
+            item {
+                StatusCard(
+                    "You're offline. Campaign history remains visible, but spending is disabled until you reconnect.",
+                    MaterialTheme.colorScheme.surfaceVariant,
+                    MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
 
         error?.let { value ->
             item {
@@ -328,6 +456,20 @@ private fun BoostCampaignColumn(
         message?.let { value ->
             item {
                 StatusCard(value, MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurface)
+            }
+        }
+
+        if (error != null && state == null) {
+            item {
+                OutlinedButton(
+                    onClick = { refreshNonce++ },
+                    enabled = !stateLoading && isOnline,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text("Retry Boost")
+                }
             }
         }
 
@@ -351,7 +493,7 @@ private fun BoostCampaignColumn(
         when (targetType) {
             BlinkBoostTargetType.POST -> {
                 if (ownPosts.isEmpty()) {
-                    item { EmptyTargetCard("You do not have a boostable post yet.") }
+                    item { EmptyTargetCard("You do not have a boostable post yet.", "Create a post", onCreateContent) }
                 } else {
                     items(ownPosts.take(12), key = { "boost-post-" + it.id }) { post ->
                         SelectablePostTarget(
@@ -366,7 +508,7 @@ private fun BoostCampaignColumn(
             }
             BlinkBoostTargetType.REEL -> {
                 if (ownReels.isEmpty()) {
-                    item { EmptyTargetCard("You do not have a boostable Reel yet.") }
+                    item { EmptyTargetCard("You do not have a boostable Reel yet.", "Create content", onCreateContent) }
                 } else {
                     items(ownReels.take(12), key = { "boost-reel-" + it.id }) { reel ->
                         SelectablePostTarget(
@@ -474,7 +616,10 @@ private fun BoostCampaignColumn(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Slider(
                     value = boostPower.toFloat(),
-                    onValueChange = { boostPower = it.toInt().coerceIn(1, 100) },
+                    onValueChange = {
+                        boostPower = it.toInt().coerceIn(1, 100)
+                        pendingRequestId = null
+                    },
                     valueRange = 1f..100f,
                     modifier = Modifier.weight(1f),
                 )
@@ -484,6 +629,20 @@ private fun BoostCampaignColumn(
                     fontWeight = FontWeight.Black,
                     style = MaterialTheme.typography.titleMedium,
                 )
+            }
+            Text(
+                "Quick max budget",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(listOf(100L, 250L, 500L, 1_000L)) { budget ->
+                    AssistChip(
+                        onClick = { applyBudgetPreset(budget) },
+                        enabled = targetReady && isOnline && !budgetWorking,
+                        label = { Text(formatter.format(budget) + " coins") },
+                    )
+                }
             }
         }
 
@@ -512,7 +671,7 @@ private fun BoostCampaignColumn(
         item {
             Button(
                 onClick = { confirmStart = true },
-                enabled = !working && !quoteLoading && quote != null && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
+                enabled = !working && !quoteLoading && isOnline && quote != null && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 if (working) {
@@ -521,12 +680,24 @@ private fun BoostCampaignColumn(
                 }
                 Text(
                     when {
+                        !isOnline -> "Connect to start Boost"
                         quote == null -> "Choose a boost target"
                         balance == null -> "Balance unavailable"
                         balance < quoteCost -> "Not enough Blink Coins"
                         else -> "Start Boost • " + formatter.format(quoteCost) + " coins"
                     },
                 )
+            }
+        }
+
+        if (quote != null && balance != null && balance < quoteCost) {
+            item {
+                OutlinedButton(
+                    onClick = onGetCoins,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Get Blink Coins")
+                }
             }
         }
 
@@ -546,6 +717,7 @@ private fun BoostCampaignColumn(
                                 service.cancelBoostCampaign(id)
                                     .onSuccess {
                                         val refund = it.optLong("refunded", 0L)
+                                        it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
                                         message = if (refund > 0) {
                                             "Boost cancelled. " + formatter.format(refund) + " unused coins were returned."
                                         } else {
@@ -561,6 +733,54 @@ private fun BoostCampaignColumn(
                 )
             }
         }
+
+        if (campaigns.isNotEmpty()) {
+            item { HorizontalDivider() }
+            item { SectionTitle("Campaign history", "Search completed and cancelled Boosts, spend, reach and refunds.") }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(listOf("ALL", "ENDED", "CANCELLED")) { status ->
+                        FilterChip(
+                            selected = historyFilter == status,
+                            onClick = { historyFilter = status },
+                            label = {
+                                Text(
+                                    when (status) {
+                                        "ENDED" -> "Completed"
+                                        "CANCELLED" -> "Cancelled"
+                                        else -> "All"
+                                    }
+                                )
+                            },
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = historyQuery,
+                    onValueChange = { historyQuery = it.take(60) },
+                    label = { Text("Search history") },
+                    placeholder = { Text("Post, Reel, objective or status") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (historyCampaigns.isEmpty()) {
+                item { EmptyTargetCard("No campaigns match this history filter.") }
+            } else {
+                items(historyCampaigns, key = { "history-" + it.optString("id") }) { campaign ->
+                    CampaignHistoryCard(campaign, formatter)
+                }
+            }
+        }
+
+        if (receipts.isNotEmpty()) {
+            item { HorizontalDivider() }
+            item { SectionTitle("Growth receipts", "Every Boost reserve/refund and Drop reserve/reward/refund remains auditable.") }
+            items(receipts.take(12), key = { "receipt-" + it.optString("id") }) { receipt ->
+                GrowthReceiptCard(receipt, formatter)
+            }
+        }
+    }
     }
 
     if (confirmStart) {
@@ -576,6 +796,9 @@ private fun BoostCampaignColumn(
                     Text(durationDays.toString() + " day" + if (durationDays == 1) "" else "s")
                     Text("Estimated reach: " + formatter.format(low) + "–" + formatter.format(high))
                     Text("Reserved budget: " + formatter.format(quoteCost) + " Blink Coins", fontWeight = FontWeight.Black)
+                    balance?.let {
+                        Text("Balance after reserve: " + formatter.format(it - quoteCost) + " Blink Coins")
+                    }
                     Text(
                         "Reach and engagement are estimates, not guaranteed results.",
                         style = MaterialTheme.typography.bodySmall,
@@ -585,10 +808,18 @@ private fun BoostCampaignColumn(
             },
             confirmButton = {
                 Button(
-                    enabled = !working && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
+                    enabled = !working && isOnline && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
                     onClick = {
                         scope.launch {
                             working = true
+                            val fingerprint = com.blinkng.shared.BlinkBoostCampaignRequest(
+                                targetType.name, targetId, boostPower, objective.name,
+                                audience.name, durationDays, targetUniversity
+                            ).fingerprint()
+                            if (pendingRequestId == null || pendingRequestFingerprint != fingerprint) {
+                                pendingRequestId = UUID.randomUUID().toString()
+                                pendingRequestFingerprint = fingerprint
+                            }
                             service.createBoostCampaign(
                                 targetType = targetType.name,
                                 targetId = targetId,
@@ -597,10 +828,14 @@ private fun BoostCampaignColumn(
                                 audienceScope = audience.name,
                                 durationDays = durationDays,
                                 targetUniversity = targetUniversity,
+                                requestId = pendingRequestId.orEmpty(),
                             ).onSuccess {
                                 confirmStart = false
+                                pendingRequestId = null
+                                pendingRequestFingerprint = null
                                 val charged = it.optLong("charged", quoteCost)
-                                message = "Boost started. " + formatter.format(charged) + " coins were charged for campaign delivery."
+                                it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
+                                message = "Boost started. " + formatter.format(charged) + " coins were reserved for campaign delivery."
                                 reloadState()
                             }.onFailure {
                                 error = boostUserMessage(it, "Unable to start this boost right now. Please try again.")
@@ -1115,17 +1350,37 @@ private fun CampaignQuoteCard(
                     val cost = quote.optLong("coin_cost", 0L)
                     val low = quote.optLong("estimated_reach_low", 0L)
                     val high = quote.optLong("estimated_reach_high", 0L)
+                    val audienceCount = quote.optLong("audience_user_count", 0L)
+                    val dailyLow = quote.optLong("estimated_daily_reach_low", 0L)
+                    val dailyHigh = quote.optLong("estimated_daily_reach_high", 0L)
+                    val remainingAfter = quote.optLong(
+                        "remaining_balance_after_reserve",
+                        balance?.minus(cost) ?: Long.MIN_VALUE,
+                    )
                     Text(
                         formatter.format(cost) + " Blink Coins",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Black,
                     )
                     Text("Estimated reach: " + formatter.format(low) + "–" + formatter.format(high))
+                    if (dailyHigh > 0) {
+                        Text("Expected daily delivery: " + formatter.format(dailyLow) + "–" + formatter.format(dailyHigh))
+                    }
+                    if (audienceCount > 0) {
+                        Text("Audience preview: " + formatter.format(audienceCount) + " eligible BLINK users")
+                    }
                     Text(
                         balance?.let { "Balance: " + formatter.format(it) + " coins" }
                             ?: "Balance unavailable",
                         color = if (balance == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                     )
+                    if (remainingAfter != Long.MIN_VALUE) {
+                        Text(
+                            "After reserve: " + formatter.format(remainingAfter.coerceAtLeast(0L)) + " coins",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Text(
                         "Estimates are not guarantees. Paid delivery is marked Promoted and stays separate from organic Trending.",
                         style = MaterialTheme.typography.bodySmall,
@@ -1167,17 +1422,147 @@ private fun ActiveCampaignCard(
                 Spacer(Modifier.weight(1f))
                 Text(formatter.format(budget) + " coins", style = MaterialTheme.typography.labelMedium)
             }
+            val progress = if (budget <= 0L) 0f else (spent.toFloat() / budget.toFloat()).coerceIn(0f, 1f)
+            val conversion = if (impressions <= 0L) 0.0 else opens.toDouble() * 100.0 / impressions.toDouble()
+            LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
             Text(
-                impressions.toString() + " promoted impressions • " + opens + " opens",
+                ((progress * 100).toInt()).toString() + "% delivered • " +
+                    formatter.format(impressions) + " impressions • " +
+                    formatter.format(opens) + " opens",
                 style = MaterialTheme.typography.bodySmall,
             )
             Text(
-                "Spent " + formatter.format(spent) + " • Reserved remaining " + formatter.format(remaining) + " coins",
+                "Open rate: " + String.format(Locale.US, "%.1f%%", conversion) +
+                    " • Spent " + formatter.format(spent) +
+                    " • Reserved " + formatter.format(remaining),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            campaign.optString("ends_at").takeIf { it.isNotBlank() }?.let {
+                Text(
+                    "Ends " + shortGrowthDate(it),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             OutlinedButton(onClick = onCancel, enabled = !working) {
                 Text("Cancel & refund unused budget")
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoostAnalyticsCard(
+    analytics: JSONObject,
+    formatter: NumberFormat,
+) {
+    val campaigns = analytics.optInt("campaigns", 0)
+    val spent = analytics.optLong("spent", 0L)
+    val refunded = analytics.optLong("refunded", 0L)
+    val impressions = analytics.optLong("impressions", 0L)
+    val opens = analytics.optLong("opens", 0L)
+    val conversion = analytics.optDouble("conversion_rate", 0.0)
+    Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text("Boost performance", fontWeight = FontWeight.Black)
+            Text(
+                formatter.format(campaigns) + " campaigns • " +
+                    formatter.format(impressions) + " impressions • " +
+                    formatter.format(opens) + " opens",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "Spent " + formatter.format(spent) + " • Refunded " + formatter.format(refunded) +
+                    " • Open rate " + String.format(Locale.US, "%.1f%%", conversion),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CampaignHistoryCard(
+    campaign: JSONObject,
+    formatter: NumberFormat,
+) {
+    val status = campaign.optString("status", "ENDED")
+    val target = campaign.optString("target_type", "BOOST")
+    val objective = campaign.optString("objective", "")
+    val budget = campaign.optLong("coin_budget", 0L)
+    val spent = campaign.optLong("coin_spent", 0L)
+    val refunded = campaign.optLong("coin_refunded", 0L)
+    val impressions = campaign.optLong("promoted_impressions", 0L)
+    val opens = campaign.optLong("promoted_opens", 0L)
+    Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    target.lowercase().replaceFirstChar { it.uppercase() } +
+                        if (objective.isBlank()) "" else " • " + objective.lowercase().replace('_',' '),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                AssistChip(
+                    onClick = {},
+                    label = { Text(if (status == "ENDED") "Completed" else status.lowercase().replaceFirstChar { it.uppercase() }) },
+                )
+            }
+            Text(
+                "Budget " + formatter.format(budget) +
+                    " • Spent " + formatter.format(spent) +
+                    " • Refunded " + formatter.format(refunded),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                formatter.format(impressions) + " impressions • " + formatter.format(opens) + " opens",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            campaign.optString("created_at").takeIf { it.isNotBlank() }?.let {
+                Text("Started " + shortGrowthDate(it), style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GrowthReceiptCard(
+    receipt: JSONObject,
+    formatter: NumberFormat,
+) {
+    val amount = receipt.optLong("amount", 0L)
+    val kind = receipt.optString("kind").replace('_',' ').lowercase().replaceFirstChar { it.uppercase() }
+    Card(shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(receipt.optString("item_name").ifBlank { kind }, fontWeight = FontWeight.SemiBold)
+                Text(
+                    kind + " • " + shortGrowthDate(receipt.optString("created_at")),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    (if (amount > 0) "+" else "") + formatter.format(amount) + " coins",
+                    fontWeight = FontWeight.Black,
+                )
+                Text(
+                    "Balance " + formatter.format(receipt.optLong("balance_after", 0L)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -1211,6 +1596,9 @@ private fun BalanceCard(
     }
 }
 
+private fun shortGrowthDate(raw: String): String =
+    raw.replace('T', ' ').replace("Z", "").take(16).ifBlank { "—" }
+
 private fun boostUserMessage(error: Throwable, fallback: String): String {
     val raw = error.message.orEmpty()
     return when {
@@ -1239,17 +1627,25 @@ private fun SectionTitle(
 }
 
 @Composable
-private fun EmptyTargetCard(message: String) {
+private fun EmptyTargetCard(
+    message: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(
-            message,
-            modifier = Modifier.padding(16.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (actionLabel != null && onAction != null) {
+                OutlinedButton(onClick = onAction) { Text(actionLabel) }
+            }
+        }
     }
 }
 

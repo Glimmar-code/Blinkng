@@ -2,8 +2,9 @@
 <resources>
 
     <!-- Android 12+ always shows a system splash window before the first app frame.
-         Override the default launcher icon so startup shows only Blink branding. -->
-    <style name="Theme.MyApplication" parent="android:style/Theme.DeviceDefault.NoActionBar">
+         Keep the same Material window contract as the base theme so Compose always
+         receives a valid android.R.id.content host after the splash exits. -->
+    <style name="Theme.MyApplication" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/black</item>
         <item name="android:statusBarColor">@color/black</item>
         <item name="android:navigationBarColor">@color/black</item>

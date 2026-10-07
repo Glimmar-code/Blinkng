@@ -113,6 +113,7 @@ object BlinkNotificationHelper {
     const val ACTION_OPEN_MARKET = "OPEN_MARKET"
     const val ACTION_OPEN_SOCIAL = "OPEN_SOCIAL"
     const val ACTION_OPEN_ITEMS = "OPEN_ITEMS"
+    const val ACTION_OPEN_BOOST = "OPEN_BOOST"
 
     // ================================================================
     // COLORS
@@ -636,6 +637,23 @@ object BlinkNotificationHelper {
         )
     }
 
+    private fun buildBoostPendingIntent(
+        context: Context,
+        campaignId: String?
+    ): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_ACTION, ACTION_OPEN_BOOST)
+            putExtra(EXTRA_POST_ID, campaignId)
+        }
+        return PendingIntent.getActivity(
+            context,
+            positiveHash("boost_${campaignId ?: "growth"}"),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
     // ================================================================
     // PROFILE DEEP LINK
     // ================================================================
@@ -932,6 +950,8 @@ object BlinkNotificationHelper {
                             buildMarketPendingIntent(context, targetId)
                         targetType.equals("giveaway", ignoreCase = true) ->
                             buildDropsPendingIntent(context, targetId)
+                        targetType.equals("boost", ignoreCase = true) ->
+                            buildBoostPendingIntent(context, targetId)
                         targetType.equals("story", ignoreCase = true) ||
                             targetType.equals("notification", ignoreCase = true) ||
                             (targetPostId.isNullOrBlank() && targetId.isNullOrBlank()) ->

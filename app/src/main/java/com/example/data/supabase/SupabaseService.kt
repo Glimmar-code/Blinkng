@@ -1,6 +1,7 @@
 package com.example.data.supabase
 
 import com.blinkng.shared.ProfileRankSnapshot
+import com.blinkng.shared.ProfileVisibilityScope
 import com.example.auth.AccountSessionStore
 import com.example.auth.SupabaseSessionRefresher
 import android.content.Context
@@ -14,6 +15,7 @@ import com.example.data.models.ChatMessage
 import com.example.data.models.MessageStatus
 import com.example.data.models.ContactField
 import com.example.data.models.FeedPost
+import com.example.data.models.ProfileSurfaceContent
 import com.example.data.models.LeaderboardUser
 import com.example.data.models.CampusPeer
 import com.example.data.models.RoommateApplicant
@@ -32,6 +34,9 @@ import com.example.data.models.CommentReply
 import com.example.data.models.ActivityItem
 import com.example.data.models.NotificationFilter
 import com.example.data.models.GameActionResult
+import com.example.data.models.ProfileConnectionKind
+import com.example.data.models.ProfileFollowerPoint
+import com.example.data.models.ProfileNotificationMode
 import com.example.data.models.IdentityAvailability
 import com.example.util.TimeFormatters
 import com.blinkng.shared.BlinkActivityPulseDefaults
@@ -137,6 +142,7 @@ class SupabaseService {
          * inherit a refresh token from a different account when Supabase omits one.
          */
         fun replaceSession(accessToken: String?, refreshToken: String?) {
+            BlinkWalletStore.clear()
             val context = appContext ?: return
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
@@ -154,6 +160,7 @@ class SupabaseService {
         }
 
         fun clearSession() {
+            BlinkWalletStore.clear()
             appContext
                 ?.getSharedPreferences(
                     PREFS,
@@ -1145,6 +1152,35 @@ fun getCurrentUserId(): String? {
             profile
         }
 
+    private suspend fun fetchProfileDetailRpc(identifier: String): UserProfile? {
+        val clean = identifier.trim().removePrefix("@")
+        if (clean.isBlank()) return null
+
+        return try {
+            val body = JSONObject().put("p_identifier", clean)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/get_profile_detail", true)
+                    .addHeader("Content-Type", "application/json")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty().trim()
+                if (!response.isSuccessful) {
+                    if (response.code != 404 && !raw.contains("get_profile_detail", ignoreCase = true)) {
+                        Log.w(TAG, "PROFILE_DETAIL_RPC failed status=${response.code} body=$raw")
+                    }
+                    return@use null
+                }
+                if (raw.isBlank() || raw == "null") return@use null
+                val json = runCatching { JSONObject(raw) }.getOrNull() ?: return@use null
+                parseUserProfile(json)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "PROFILE_DETAIL_RPC fallback identifier=$clean", e)
+            null
+        }
+    }
+
     suspend fun fetchProfileById(
         userId: String
     ): UserProfile? =
@@ -1166,6 +1202,10 @@ fun getCurrentUserId(): String? {
                         return@withContext fetchProfileByUsername(cleanUser) ?: fetchProfileByEmail(cleanUser)
                     }
                     return@withContext null
+                }
+
+                fetchProfileDetailRpc(userId)?.let {
+                    return@withContext enrichProfileForDetail(it)
                 }
 
                 val encoded =
@@ -1329,6 +1369,10 @@ fun getCurrentUserId(): String? {
                     cleanUsername.equals("null", ignoreCase = true)
                 ) {
                     return@withContext null
+                }
+
+                fetchProfileDetailRpc(cleanUsername)?.let {
+                    return@withContext enrichProfileForDetail(it)
                 }
 
                 val encoded =
@@ -1575,7 +1619,8 @@ fun getCurrentUserId(): String? {
         try {
             val uid = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
             val year = profile.graduationYear.trim().toIntOrNull()
-            val body = JSONObject().apply {
+
+            fun profileBody(includePrivacy: Boolean): JSONObject = JSONObject().apply {
                 put("full_name", profile.fullName.trim())
                 put("username", profile.username.trim().lowercase(Locale.US))
                 put("avatar_url", profile.avatarUrl)
@@ -1595,28 +1640,62 @@ fun getCurrentUserId(): String? {
                 put("onboarding_step", profile.onboardingStep.coerceIn(0, 4))
                 put("country_of_origin", profile.countryOfOrigin)
                 put("current_city_state", profile.currentCityState)
-                put("phone", profile.phone.value); put("whatsapp", profile.whatsapp.value)
-                put("website", profile.links.website); put("linkedin", profile.links.linkedin)
-                put("twitter", profile.links.twitter); put("instagram", profile.links.instagram)
-                put("featured_link", profile.links.featuredLink); put("featured_link_label", profile.links.featuredLinkLabel)
+                put("phone", profile.phone.value)
+                put("whatsapp", profile.whatsapp.value)
+                put("website", profile.links.website)
+                put("linkedin", profile.links.linkedin)
+                put("twitter", profile.links.twitter)
+                put("instagram", profile.links.instagram)
+                put("featured_link", profile.links.featuredLink)
+                put("featured_link_label", profile.links.featuredLinkLabel)
                 put("favorite_quote", profile.favoriteQuote)
                 put("availability", profile.availability.label)
                 put("relationship_status", profile.relationshipStatus)
-                put("core_skills", JSONArray(profile.coreSkills)); put("hobbies", JSONArray(profile.hobbies)); put("languages", JSONArray(profile.languages))
+                put("core_skills", JSONArray(profile.coreSkills))
+                put("hobbies", JSONArray(profile.hobbies))
+                put("languages", JSONArray(profile.languages))
+                if (includePrivacy) {
+                    put("email_visibility", profile.emailVisibility.name)
+                    put("phone_visibility", profile.phoneVisibility.name)
+                    put("whatsapp_visibility", profile.whatsappVisibility.name)
+                    put("presence_visibility", profile.presenceVisibility.name)
+                }
                 put("updated_at", nowIso())
             }
-            executeRequest(newRequestBuilder("/rest/v1/profiles?id=eq.${encodeValue(uid)}", true)
-                .addHeader("Prefer", "return=representation")
-                .patch(body.toString().toRequestBody(jsonMediaType)).build()).use { resp ->
-                val raw = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful || raw == "[]" || raw.isBlank()) {
-                    Log.e(TAG, "PROFILE_UPDATE failed status=${resp.code} body=$raw")
-                    return@withContext false
+
+            suspend fun send(body: JSONObject): Pair<Boolean, String> =
+                executeRequest(
+                    newRequestBuilder("/rest/v1/profiles?id=eq.${encodeValue(uid)}", true)
+                        .addHeader("Prefer", "return=representation")
+                        .patch(body.toString().toRequestBody(jsonMediaType))
+                        .build()
+                ).use { resp ->
+                    val raw = resp.body?.string().orEmpty()
+                    (resp.isSuccessful && raw != "[]" && raw.isNotBlank()) to raw
                 }
-                true
+
+            val (savedWithPrivacy, firstRaw) = send(profileBody(includePrivacy = true))
+            if (savedWithPrivacy) return@withContext true
+
+            // Compatibility path while a Testlab client is running against an older backend.
+            if (firstRaw.contains("visibility", ignoreCase = true) ||
+                firstRaw.contains("schema cache", ignoreCase = true) ||
+                firstRaw.contains("PGRST204", ignoreCase = true)
+            ) {
+                val (legacySaved, legacyRaw) = send(profileBody(includePrivacy = false))
+                if (legacySaved) return@withContext true
+                Log.e(TAG, "PROFILE_UPDATE legacy fallback failed body=$legacyRaw")
+                return@withContext false
             }
-        } catch (e: Exception) { Log.e(TAG, "PROFILE_UPDATE exception", e); false }
+
+            Log.e(TAG, "PROFILE_UPDATE failed body=$firstRaw")
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "PROFILE_UPDATE exception", e)
+            false
+        }
     }
+
     suspend fun updatePrivateBirthDate(birthDate: String): Boolean = withContext(Dispatchers.IO) {
         val uid = getCurrentUserId()?.takeIf { it.isNotBlank() } ?: return@withContext false
         val clean = birthDate.trim()
@@ -1790,6 +1869,74 @@ fun getCurrentUserId(): String? {
     // ============================================================
     // FEED
     // ============================================================
+
+
+    /**
+     * Read profile content independently of the ranked feed. Private relations always
+     * use the authenticated account, and pagination has no feed-window cutoff.
+     */
+    suspend fun fetchProfileSurfaceContent(profileId: String): ProfileSurfaceContent =
+        withContext(Dispatchers.IO) {
+            require(isValidUuid(profileId)) { "Profile is required." }
+            val ownerId = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
+            suspend fun allRows(path: String): List<JSONObject> {
+                val output = mutableListOf<JSONObject>()
+                var offset = 0
+                while (true) {
+                    val rows = executeRequest(
+                        newRequestBuilder("$path&limit=100&offset=$offset", true).get().build()
+                    ).use { response ->
+                        val raw = response.body?.string().orEmpty()
+                        if (!response.isSuccessful) throw IllegalStateException(parseSupabaseError(raw, "Could not load profile content."))
+                        JSONArray(raw.ifBlank { "[]" })
+                    }
+                    for (i in 0 until rows.length()) rows.optJSONObject(i)?.let(output::add)
+                    if (rows.length() < 100) break
+                    offset += rows.length()
+                }
+                return output
+            }
+            suspend fun relationIds(table: String): List<String> =
+                allRows("/rest/v1/$table?user_id=eq.${encodeValue(ownerId)}&select=post_id&order=created_at.desc,post_id.desc")
+                    .map { it.cleanString("post_id") }.filter(::isValidUuid).distinct()
+            val likedIds = relationIds("post_likes")
+            val savedIds = relationIds("post_bookmarks")
+            val likedSet = likedIds.toSet()
+            val savedSet = savedIds.toSet()
+            val profiles = mutableMapOf<String, UserProfile?>()
+            suspend fun mapRows(rows: List<JSONObject>): List<FeedPost> {
+                val output = mutableListOf<FeedPost>()
+                for (row in rows) {
+                    val userId = row.cleanString("user_id")
+                    if (!profiles.containsKey(userId)) profiles[userId] = fetchProfileById(userId)
+                    val profile = profiles[userId] ?: continue
+                    val mapped = JSONObject(row.toString()).apply {
+                        put("author", profile.fullName.ifBlank { profile.username })
+                        put("author_name", profile.fullName.ifBlank { profile.username })
+                        put("full_name", profile.fullName.ifBlank { profile.username })
+                        put("author_avatar", profile.avatarUrl)
+                        put("username", profile.username)
+                        put("author_username", profile.username)
+                        put("is_verified", profile.verificationBadge != VerificationBadge.NONE)
+                        put("verification_badge", profile.verificationBadge.name)
+                    }
+                    val id = row.cleanString("id")
+                    output += parseFeedPost(mapped).copy(isLiked = id in likedSet, isBookmarked = id in savedSet)
+                }
+                return output
+            }
+            suspend fun relationContent(ids: List<String>): List<FeedPost> {
+                val rows = mutableListOf<JSONObject>()
+                for (chunk in ids.chunked(100)) {
+                    rows += allRows("/rest/v1/feed_posts?id=in.(${chunk.joinToString(",")})&is_active=eq.true&select=*&order=created_at.desc,id.desc")
+                }
+                val byId = mapRows(rows).associateBy { it.id }
+                return ids.mapNotNull { byId[it] }
+            }
+            val posts = mapRows(allRows("/rest/v1/feed_posts?user_id=eq.${encodeValue(profileId)}&is_active=eq.true&select=*&order=is_pinned.desc,created_at.desc,id.desc"))
+            if (profileId != ownerId) return@withContext ProfileSurfaceContent(posts)
+            ProfileSurfaceContent(posts, relationContent(likedIds), relationContent(savedIds))
+        }
 
     suspend fun fetchFeedPosts(): List<FeedPost> =
         fetchFeedPage(limit = 40, feedType = "all")
@@ -1969,11 +2116,15 @@ fun getCurrentUserId(): String? {
 
         val profiles = mutableMapOf<String, JSONObject>()
         if (userIds.isNotEmpty()) {
+            val body = JSONObject().put("p_ids", JSONArray(userIds.toList()))
             executeRequest(
                 newRequestBuilder(
-                    "/rest/v1/profiles?id=in.(${userIds.joinToString(",")})&select=id,username,avatar_url,is_verified,verification_badge,full_name",
+                    "/rest/v1/rpc/get_public_profiles_by_ids",
                     authenticated = true
-                ).get().build()
+                )
+                    .addHeader("Content-Type", "application/json")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
             ).use { response ->
                 val raw = response.body?.string().orEmpty()
                 if (response.isSuccessful && raw.isNotBlank() && raw != "[]") {
@@ -3074,50 +3225,27 @@ suspend fun uploadPostMedia(
     // PROFILES LIST
     // ============================================================
 
-    suspend fun fetchProfiles():
-        List<UserProfile> =
+    suspend fun fetchProfiles(): List<UserProfile> =
         withContext(Dispatchers.IO) {
-
             try {
-
-                val request =
-                    newRequestBuilder(
-                        "/rest/v1/profiles" +
-                                "?select=*" +
-                                "&order=created_at.desc" +
-                                "&limit=100",
-                        authenticated = true
-                    )
-                        .get()
-                        .build()
+                val body = JSONObject().put("p_limit", 100)
+                val request = newRequestBuilder(
+                    "/rest/v1/rpc/get_profile_directory",
+                    authenticated = true
+                )
+                    .addHeader("Content-Type", "application/json")
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
 
                 executeRequest(request).use { response ->
-
-                    val body =
-                        response.body
-                            ?.string()
-                            .orEmpty()
-
-                    if (!response.isSuccessful) {
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful || raw.isBlank() || raw == "[]") {
                         return@withContext emptyList()
                     }
 
-                    if (
-                        body.isBlank() ||
-                        body == "[]"
-                    ) {
-                        return@withContext emptyList()
-                    }
-
-                    val array =
-                        JSONArray(body)
-
+                    val array = JSONArray(raw)
                     buildList {
-
-                        for (
-                            i in 0 until array.length()
-                        ) {
-
+                        for (i in 0 until array.length()) {
                             parseUserProfile(array.getJSONObject(i)).let { profile ->
                                 if (profile.username.isNotBlank() &&
                                     !profile.username.equals("null", ignoreCase = true)
@@ -3126,15 +3254,8 @@ suspend fun uploadPostMedia(
                         }
                     }
                 }
-
             } catch (e: Exception) {
-
-                Log.e(
-                    TAG,
-                    "PROFILES_FETCH exception",
-                    e
-                )
-
+                Log.w(TAG, "PROFILE_DIRECTORY failed", e)
                 emptyList()
             }
         }
@@ -4071,9 +4192,22 @@ suspend fun uploadPostMedia(
             availability = availabilityStatus,
             countryOfOrigin = obj.cleanString("country_of_origin"),
             currentCityState = obj.cleanString("current_city_state"),
-            email = ContactField(obj.cleanString("email"), true),
-            phone = ContactField(obj.cleanString("phone"), true),
-            whatsapp = ContactField(obj.cleanString("whatsapp"), true),
+            email = ContactField(
+                obj.cleanString("email"),
+                ProfileVisibilityScope.fromWire(obj.cleanString("email_visibility")) == ProfileVisibilityScope.PUBLIC
+            ),
+            phone = ContactField(
+                obj.cleanString("phone"),
+                ProfileVisibilityScope.fromWire(obj.cleanString("phone_visibility")) == ProfileVisibilityScope.PUBLIC
+            ),
+            whatsapp = ContactField(
+                obj.cleanString("whatsapp"),
+                ProfileVisibilityScope.fromWire(obj.cleanString("whatsapp_visibility")) == ProfileVisibilityScope.PUBLIC
+            ),
+            emailVisibility = ProfileVisibilityScope.fromWire(obj.cleanString("email_visibility")),
+            phoneVisibility = ProfileVisibilityScope.fromWire(obj.cleanString("phone_visibility")),
+            whatsappVisibility = ProfileVisibilityScope.fromWire(obj.cleanString("whatsapp_visibility")),
+            presenceVisibility = ProfileVisibilityScope.fromWire(obj.cleanString("presence_visibility").ifBlank { "PUBLIC" }),
             links = links,
             coreSkills = skills,
             skillEndorsements = endorsementsList,
@@ -4896,6 +5030,269 @@ suspend fun uploadPostMedia(
             false
         }
     }
+
+    suspend fun fetchProfileFollowerHistory(
+        profileId: String,
+        days: Int = 30
+    ): List<ProfileFollowerPoint> = withContext(Dispatchers.IO) {
+        if (!isValidUuid(profileId)) return@withContext emptyList()
+        try {
+            val body = JSONObject()
+                .put("p_profile_id", profileId)
+                .put("p_days", days.coerceIn(1, 90))
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/get_profile_follower_history", true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@withContext emptyList()
+                val array = JSONArray(if (raw.isBlank()) "[]" else raw)
+                buildList {
+                    for (i in 0 until array.length()) {
+                        val item = array.optJSONObject(i) ?: continue
+                        add(
+                            ProfileFollowerPoint(
+                                date = item.optString("snapshot_date"),
+                                followerCount = item.optInt("follower_count", 0).coerceAtLeast(0)
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "fetchProfileFollowerHistory failed", e)
+            emptyList()
+        }
+    }
+
+    suspend fun fetchProfileConnections(
+        profileId: String,
+        kind: ProfileConnectionKind,
+        limit: Int = 100
+    ): List<UserProfile> = withContext(Dispatchers.IO) {
+        if (!isValidUuid(profileId)) return@withContext emptyList()
+        try {
+            val body = JSONObject()
+                .put("p_profile_id", profileId)
+                .put("p_kind", kind.name)
+                .put("p_limit", limit.coerceIn(1, 200))
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/get_profile_connections", true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@withContext emptyList()
+                val array = JSONArray(if (raw.isBlank()) "[]" else raw)
+                buildList {
+                    for (i in 0 until array.length()) {
+                        val item = array.optJSONObject(i) ?: continue
+                        parseUserProfile(item).takeIf { it.id.isNotBlank() }?.let(::add)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "fetchProfileConnections failed", e)
+            emptyList()
+        }
+    }
+
+    suspend fun getProfileNotificationPreference(profileId: String): ProfileNotificationMode =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(profileId)) return@withContext ProfileNotificationMode.OFF
+            try {
+                val body = JSONObject().put("p_profile_id", profileId)
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/get_profile_notification_preference", true)
+                        .post(body.toString().toRequestBody(jsonMediaType))
+                        .build()
+                ).use { response ->
+                    if (!response.isSuccessful) return@withContext ProfileNotificationMode.OFF
+                    val raw = response.body?.string().orEmpty().trim().trim('"')
+                    ProfileNotificationMode.fromWire(raw)
+                }
+            } catch (_: Exception) {
+                ProfileNotificationMode.OFF
+            }
+        }
+
+    suspend fun setProfileNotificationPreference(
+        profileId: String,
+        mode: ProfileNotificationMode
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidUuid(profileId)) return@withContext false
+        try {
+            val body = JSONObject()
+                .put("p_profile_id", profileId)
+                .put("p_mode", mode.name)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/set_profile_notification_preference", true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                response.body?.close()
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "setProfileNotificationPreference failed", e)
+            false
+        }
+    }
+
+    suspend fun isProfileMuted(profileId: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidUuid(profileId)) return@withContext false
+        val uid = getCurrentUserId() ?: return@withContext false
+        try {
+            val body = JSONObject().put("p_profile_id", profileId)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/is_profile_muted", true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty().trim()
+                if (response.isSuccessful) return@withContext raw.equals("true", true)
+            }
+        } catch (_: Exception) {
+            // Fall through to the existing muted_users table for compatibility.
+        }
+
+        try {
+            executeRequest(
+                newRequestBuilder(
+                    "/rest/v1/muted_users?user_id=eq.${encodeValue(uid)}&muted_id=eq.${encodeValue(profileId)}&select=id&limit=1",
+                    true
+                ).get().build()
+            ).use { response ->
+                val raw = response.body?.string().orEmpty()
+                response.isSuccessful && raw.isNotBlank() && raw != "[]"
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    suspend fun setProfileMuted(profileId: String, muted: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(profileId)) return@withContext false
+            val uid = getCurrentUserId() ?: return@withContext false
+            try {
+                val body = JSONObject()
+                    .put("p_profile_id", profileId)
+                    .put("p_muted", muted)
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/set_profile_muted", true)
+                        .post(body.toString().toRequestBody(jsonMediaType))
+                        .build()
+                ).use { response ->
+                    response.body?.close()
+                    if (response.isSuccessful) return@withContext true
+                }
+            } catch (_: Exception) {
+                // Compatibility fallback below.
+            }
+
+            try {
+                val request = if (muted) {
+                    val body = JSONObject().put("user_id", uid).put("muted_id", profileId)
+                    newRequestBuilder("/rest/v1/muted_users", true)
+                        .addHeader("Prefer", "resolution=merge-duplicates")
+                        .post(body.toString().toRequestBody(jsonMediaType))
+                        .build()
+                } else {
+                    newRequestBuilder(
+                        "/rest/v1/muted_users?user_id=eq.${encodeValue(uid)}&muted_id=eq.${encodeValue(profileId)}",
+                        true
+                    ).delete().build()
+                }
+                executeRequest(request).use { response ->
+                    response.body?.close()
+                    response.isSuccessful
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "setProfileMuted fallback failed", e)
+                false
+            }
+        }
+
+    suspend fun reportUser(profileId: String, reason: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidUuid(profileId) || reason.trim().length < 3) return@withContext false
+        try {
+            val body = JSONObject().put("p_user_id", profileId).put("p_reason", reason.trim())
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/report_user", true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                response.body?.close()
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "reportUser failed", e)
+            false
+        }
+    }
+
+    suspend fun blockUser(profileId: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidUuid(profileId)) return@withContext false
+        try {
+            val body = JSONObject().put("p_target_id", profileId)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/block_user", true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                response.body?.close()
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "blockUser failed", e)
+            false
+        }
+    }
+
+    suspend fun unblockUser(profileId: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidUuid(profileId)) return@withContext false
+        try {
+            val body = JSONObject().put("p_target_id", profileId)
+            executeRequest(
+                newRequestBuilder("/rest/v1/rpc/unblock_user", true)
+                    .post(body.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
+                response.body?.close()
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "unblockUser failed", e)
+            false
+        }
+    }
+
+    suspend fun setProfilePin(contentId: String, pinned: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!isValidUuid(contentId)) return@withContext false
+            try {
+                val body = JSONObject()
+                    .put("p_content_id", contentId)
+                    .put("p_pinned", pinned)
+                executeRequest(
+                    newRequestBuilder("/rest/v1/rpc/set_profile_pin", true)
+                        .post(body.toString().toRequestBody(jsonMediaType))
+                        .build()
+                ).use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) {
+                        Log.w(TAG, "setProfilePin failed body=$raw")
+                        return@withContext false
+                    }
+                    true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "setProfilePin failed", e)
+                false
+            }
+        }
 
     suspend fun reportPost(postId: String, reason: String): Boolean = withContext(Dispatchers.IO) {
         try {

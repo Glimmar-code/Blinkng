@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.Manifest
+import com.example.data.local.PersistentTextDraftStore
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
@@ -80,10 +82,13 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.filled.Notifications
@@ -104,10 +109,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -154,6 +162,7 @@ import coil.compose.AsyncImage
 import com.example.data.models.ActivityItem
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
+import com.example.data.models.ChatPrivacySettings
 import com.example.data.models.MessageStatus
 import com.example.data.models.Story
 import com.example.data.models.VerificationBadge
@@ -172,6 +181,7 @@ private const val MESSAGE_PREFERENCES = "blink_message_preferences"
 private const val MESSAGE_THEME_KEY = "message_theme"
 
 private enum class MessageCallKind { AUDIO, VIDEO }
+private typealias MessageInboxTab = com.blinkng.shared.BlinkMessageInbox
 
 private data class MessageCallState(
     val conversation: ChatConversation,
@@ -202,6 +212,7 @@ fun PremiumMessagesScreen(
     conversations: List<ChatConversation>,
     stories: List<Story>,
     activities: List<ActivityItem>,
+    chatPrivacySettings: ChatPrivacySettings = ChatPrivacySettings(),
     myAvatar: String,
     myName: String,
     activePartner: String?,
@@ -210,7 +221,10 @@ fun PremiumMessagesScreen(
     onOpenConversation: (String) -> Unit,
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String, String?) -> Unit,
+    onForwardMessage: (String, ChatMessage) -> Unit = { _, _ -> },
     onSendVideo: (String, Uri) -> Unit = { _, _ -> },
+    onSendAttachment: (String, Uri, String) -> Unit = { _, _, _ -> },
+    onPresenceChange: (String, String) -> Unit = { _, _ -> },
     onRetryMessage: ((String, ChatMessage) -> Unit)? = null,
     hasMoreMessages: (String) -> Boolean = { false },
     isLoadingOlder: (String) -> Boolean = { false },
@@ -220,6 +234,7 @@ fun PremiumMessagesScreen(
     onStoryClick: (Story) -> Unit,
     onAddStoryClick: () -> Unit,
     onOpenActivity: () -> Unit,
+    onUpdateChatPrivacy: (ChatPrivacySettings) -> Unit = {},
     onComposeMessage: () -> Unit = {},
     interactionActions: ChatInteractionActions = ChatInteractionActions(),
     isConnected: Boolean = true,
@@ -235,6 +250,7 @@ fun PremiumMessagesScreen(
     }
     val messageTheme = MessageThemeMode.fromStorage(storedTheme)
     var showAppearanceSheet by rememberSaveable { mutableStateOf(false) }
+    var showPrivacySheet by rememberSaveable { mutableStateOf(false) }
     var activeCall by remember { mutableStateOf<MessageCallState?>(null) }
 
     val liveActiveConversation = activePartner?.let { partner ->
@@ -317,7 +333,11 @@ fun PremiumMessagesScreen(
                         onOpenConversation = onOpenConversation,
                         onCloseConversation = onCloseConversation,
                         onSendMessage = onSendMessage,
+                        onForwardMessage = onForwardMessage,
                         onSendVideo = onSendVideo,
+                        onSendAttachment = onSendAttachment,
+                        onPresenceChange = onPresenceChange,
+                        allowLinkPreviews = chatPrivacySettings.allowLinkPreviews,
                         onRetryMessage = onRetryMessage,
                         hasMoreMessages = hasMoreMessages,
                         isLoadingOlder = isLoadingOlder,
@@ -360,11 +380,24 @@ fun PremiumMessagesScreen(
                     preferences.edit().putString(MESSAGE_THEME_KEY, selected.storageValue).apply()
                     showAppearanceSheet = false
                 },
+                onOpenPrivacy = {
+                    showAppearanceSheet = false
+                    showPrivacySheet = true
+                },
                 onOpenActivity = {
                     showAppearanceSheet = false
                     onOpenActivity()
                 },
                 onDismiss = { showAppearanceSheet = false }
+            )
+        }
+
+        if (showPrivacySheet && activeCall == null) {
+            ChatPrivacySettingsSheet(
+                settings = chatPrivacySettings,
+                palette = palette,
+                onChange = onUpdateChatPrivacy,
+                onDismiss = { showPrivacySheet = false }
             )
         }
     }
@@ -415,7 +448,11 @@ private fun PremiumMessagesMasterDetail(
     onOpenConversation: (String) -> Unit,
     onCloseConversation: () -> Unit,
     onSendMessage: (String, String, String?) -> Unit,
+    onForwardMessage: (String, ChatMessage) -> Unit,
     onSendVideo: (String, Uri) -> Unit,
+    onSendAttachment: (String, Uri, String) -> Unit,
+    onPresenceChange: (String, String) -> Unit,
+    allowLinkPreviews: Boolean,
     onRetryMessage: ((String, ChatMessage) -> Unit)?,
     hasMoreMessages: (String) -> Boolean,
     isLoadingOlder: (String) -> Boolean,
@@ -469,14 +506,17 @@ private fun PremiumMessagesMasterDetail(
                     onSendMessage(displayedConversation.partnerUsername, content, replyTo)
                 },
                 onForward = { target, message ->
-                    val forwarded = message.text.takeIf { it.isNotBlank() }
-                        ?: message.attachedVideoUrl
-                        ?: message.attachedImageUrl
-                        ?: "Forwarded message"
-                    onSendMessage(target, forwarded, null)
+                    onForwardMessage(target, message)
                 },
                 interactionActions = interactionActions,
                 onSendVideo = { onSendVideo(displayedConversation.partnerUsername, it) },
+                onSendAttachment = { uri, kind ->
+                    onSendAttachment(displayedConversation.partnerUsername, uri, kind)
+                },
+                onPresenceChange = { state ->
+                    onPresenceChange(displayedConversation.partnerUsername, state)
+                },
+                allowLinkPreviews = allowLinkPreviews,
                 onRetry = { message ->
                     onRetryMessage?.invoke(displayedConversation.partnerUsername, message)
                 },
@@ -603,12 +643,22 @@ private fun PremiumMessagesHome(
     isConnected: Boolean,
     isLoading: Boolean
 ) {
-    var query by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:query:1")
-    val sortedConversations = remember(conversations) {
-        conversations.sortedWith(
-            compareByDescending<ChatConversation> { it.lastMessageRawTime }
-                .thenByDescending { it.id }
-        )
+    var query by rememberPersistentTextState(key = "message_home_search")
+    var inboxTab by rememberSaveable { mutableStateOf(MessageInboxTab.PRIMARY) }
+    val requestCount = conversations.count { it.inboxCategory == "requests" && !it.isArchived }
+    val archivedCount = conversations.count { it.isArchived }
+    val sortedConversations = remember(conversations, inboxTab) {
+        conversations
+            .filter { conversation ->
+                com.blinkng.shared.BlinkChatInboxPolicy.matches(
+                    inboxTab, conversation.isArchived, conversation.inboxCategory
+                )
+            }
+            .sortedWith(
+                compareByDescending<ChatConversation> { it.isConversationPinned }
+                    .thenByDescending { it.lastMessageRawTime }
+                    .thenByDescending { it.id }
+            )
     }
     val filteredConversations = remember(sortedConversations, query) {
         if (query.isBlank()) sortedConversations
@@ -667,12 +717,12 @@ private fun PremiumMessagesHome(
                 )
             }
 
-            Text(
-                text = "All messages",
-                color = palette.textPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 18.dp, top = 8.dp, bottom = 8.dp)
+            MessageInboxTabs(
+                selected = inboxTab,
+                requestCount = requestCount,
+                archivedCount = archivedCount,
+                palette = palette,
+                onSelect = { inboxTab = it }
             )
 
             if (!isConnected) {
@@ -699,6 +749,81 @@ private fun PremiumMessagesHome(
                     isLoading = isLoading && conversations.isEmpty() && query.isBlank(),
                     modifier = Modifier.fillMaxSize()
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageInboxTabs(
+    selected: MessageInboxTab,
+    requestCount: Int,
+    archivedCount: Int,
+    palette: MessagePalette,
+    onSelect: (MessageInboxTab) -> Unit
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            MessageInboxTabChip(
+                label = "Primary",
+                selected = selected == MessageInboxTab.PRIMARY,
+                count = null,
+                palette = palette,
+                onClick = { onSelect(MessageInboxTab.PRIMARY) }
+            )
+        }
+        item {
+            MessageInboxTabChip(
+                label = "Requests",
+                selected = selected == MessageInboxTab.REQUESTS,
+                count = requestCount.takeIf { it > 0 },
+                palette = palette,
+                onClick = { onSelect(MessageInboxTab.REQUESTS) }
+            )
+        }
+        item {
+            MessageInboxTabChip(
+                label = "Archived",
+                selected = selected == MessageInboxTab.ARCHIVED,
+                count = archivedCount.takeIf { it > 0 },
+                palette = palette,
+                onClick = { onSelect(MessageInboxTab.ARCHIVED) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun MessageInboxTabChip(
+    label: String,
+    selected: Boolean,
+    count: Int?,
+    palette: MessagePalette,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = if (selected) palette.textPrimary else palette.glassElevated,
+        contentColor = if (selected) palette.backgroundMiddle else palette.textPrimary,
+        shape = RoundedCornerShape(100.dp),
+        border = BorderStroke(1.dp, if (selected) palette.textPrimary else palette.border),
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            if (count != null) {
+                Badge(
+                    containerColor = if (selected) palette.backgroundMiddle else palette.accent,
+                    contentColor = if (selected) palette.textPrimary else Color.White
+                ) {
+                    Text(count.coerceAtMost(99).toString(), fontSize = 8.sp)
+                }
             }
         }
     }
@@ -1114,6 +1239,16 @@ private fun ConversationCard(
     onOpen: () -> Unit,
     onAvatarClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val draftScope = conversation.id.ifBlank { conversation.partnerUsername.lowercase() }
+    val draft = remember(conversation.id, conversation.partnerUsername, conversation.lastMessageRawTime) {
+        PersistentTextDraftStore.readDraft(
+            context = context,
+            key = "chat_composer_text",
+            scope = draftScope
+        )
+    }
+
     Surface(
         color = palette.glassElevated.copy(alpha = if (palette.isLight) .88f else .66f),
         contentColor = palette.textPrimary,
@@ -1158,10 +1293,28 @@ private fun ConversationCard(
                 }
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    conversation.lastMessage.ifBlank { "Start the conversation" },
-                    color = if (conversation.unreadCount > 0) palette.textSecondary else palette.textMuted,
+                    when {
+                        conversation.presenceLabel.isNotBlank() -> conversation.presenceLabel
+                        !draft.isNullOrBlank() -> "Draft: $draft"
+                        else -> conversation.lastMessage.ifBlank { "Start the conversation" }
+                    },
+                    color = when {
+                        conversation.presenceLabel.isNotBlank() -> palette.accent
+                        !draft.isNullOrBlank() -> palette.accent
+                        conversation.unreadCount > 0 || conversation.isMarkedUnread -> palette.textSecondary
+                        else -> palette.textMuted
+                    },
                     fontSize = 11.sp,
-                    fontWeight = if (conversation.unreadCount > 0) FontWeight.Medium else FontWeight.Normal,
+                    fontWeight = if (
+                        conversation.presenceLabel.isNotBlank() ||
+                        !draft.isNullOrBlank() ||
+                        conversation.unreadCount > 0 ||
+                        conversation.isMarkedUnread
+                    ) {
+                        FontWeight.Medium
+                    } else {
+                        FontWeight.Normal
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1174,10 +1327,17 @@ private fun ConversationCard(
                     fontSize = 9.sp,
                     maxLines = 1
                 )
-                if (conversation.unreadCount > 0) {
+                if (conversation.unreadCount > 0 || conversation.isMarkedUnread) {
                     Spacer(Modifier.height(7.dp))
                     Badge(containerColor = palette.accent, contentColor = Color.White) {
-                        Text(conversation.unreadCount.coerceAtMost(99).toString(), fontSize = 9.sp)
+                        Text(
+                            if (conversation.unreadCount > 0) {
+                                conversation.unreadCount.coerceAtMost(99).toString()
+                            } else {
+                                "•"
+                            },
+                            fontSize = 9.sp
+                        )
                     }
                 }
             }
@@ -1200,6 +1360,9 @@ private fun PremiumChatDetail(
     onForward: (String, ChatMessage) -> Unit,
     interactionActions: ChatInteractionActions,
     onSendVideo: (Uri) -> Unit,
+    onSendAttachment: (Uri, String) -> Unit,
+    onPresenceChange: (String) -> Unit,
+    allowLinkPreviews: Boolean,
     onRetry: (ChatMessage) -> Unit,
     onProfileClick: () -> Unit,
     onAudioCall: () -> Unit,
@@ -1209,7 +1372,68 @@ private fun PremiumChatDetail(
     onToggleFullScreen: () -> Unit
 ) {
     val context = LocalContext.current
-    var text by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:text:2")
+    val voiceRecorder = remember(conversation.id) { ChatVoiceRecorder(context.applicationContext) }
+    var isRecordingVoice by remember(conversation.id) { mutableStateOf(false) }
+    var recordingSeconds by remember(conversation.id) { mutableIntStateOf(0) }
+
+    fun startVoiceRecordingNow() {
+        voiceRecorder.start()
+            .onSuccess {
+                isRecordingVoice = true
+                recordingSeconds = 0
+                onPresenceChange("recording")
+            }
+            .onFailure {
+                Toast.makeText(context, "Unable to start voice recording.", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    val voicePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startVoiceRecordingNow()
+        else Toast.makeText(context, "Microphone permission is needed for voice notes.", Toast.LENGTH_SHORT).show()
+    }
+
+    fun beginVoiceRecording() {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) startVoiceRecordingNow()
+        else voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
+    fun finishVoiceRecording(send: Boolean) {
+        if (!isRecordingVoice) return
+        if (send) {
+            voiceRecorder.stopAndKeep()
+                .onSuccess { (uri, _) -> onSendAttachment(uri, "voice") }
+                .onFailure {
+                    Toast.makeText(context, "Voice recording could not be saved.", Toast.LENGTH_SHORT).show()
+                }
+        } else {
+            voiceRecorder.cancel()
+        }
+        isRecordingVoice = false
+        recordingSeconds = 0
+        onPresenceChange("online")
+    }
+
+    LaunchedEffect(isRecordingVoice) {
+        while (isRecordingVoice) {
+            recordingSeconds = voiceRecorder.elapsedSeconds()
+            delay(500)
+        }
+    }
+    DisposableEffect(conversation.id) {
+        onDispose { voiceRecorder.cancel() }
+    }
+
+    var text by rememberPersistentTextState(
+        key = "chat_composer_text",
+        scope = conversation.id.ifBlank { conversation.partnerUsername.lowercase() }
+    )
     var showEmojiRail by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var showAttachmentSheet by rememberSaveable(conversation.partnerUsername) { mutableStateOf(false) }
     var selectedMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
@@ -1218,13 +1442,27 @@ private fun PremiumChatDetail(
     var editingMessage by remember(conversation.partnerUsername) { mutableStateOf<ChatMessage?>(null) }
     var showOverflow by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var showMuteOptions by remember(conversation.partnerUsername) { mutableStateOf(false) }
+    var showNotificationSettings by remember(conversation.partnerUsername) { mutableStateOf(false) }
+    var showSharedContent by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var showContactProfile by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var confirmClearChat by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var searchVisible by remember(conversation.partnerUsername) { mutableStateOf(false) }
-    var searchQuery by rememberPersistentTextState(key = "com/example/ui/screens/PremiumMessagesScreen.kt:searchQuery:3")
+    var searchQuery by rememberPersistentTextState(
+        key = "chat_search_query",
+        scope = conversation.id.ifBlank { conversation.partnerUsername.lowercase() }
+    )
     var pinnedOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val scrollScope = rememberCoroutineScope()
+    var newMessagesBelow by remember(conversation.id) { mutableIntStateOf(0) }
+    val isNearLatest by remember(conversation.id) {
+        derivedStateOf {
+            val layout = listState.layoutInfo
+            if (layout.totalItemsCount == 0) true
+            else (layout.visibleItemsInfo.lastOrNull()?.index ?: 0) >= layout.totalItemsCount - 2
+        }
+    }
     BackHandler(enabled = showContactProfile) { showContactProfile = false }
     // MESSAGING_RELIABILITY_AUDIT_V3: older pages load only after a real user scroll reaches the top.
     var userHasScrolled by remember(conversation.id) { mutableStateOf(false) }
@@ -1236,11 +1474,34 @@ private fun PremiumChatDetail(
             onLoadOlder()
         }
     }
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) onSendAttachment(uri, "image")
+        onPresenceChange("online")
+    }
     val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) onSendVideo(uri)
+        onPresenceChange("online")
+    }
+    val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) onSendAttachment(uri, "audio")
+        onPresenceChange("online")
+    }
+    val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onSendAttachment(uri, "document")
+        onPresenceChange("online")
     }
     val startDictation = rememberSpeechInput { spoken ->
         text = listOf(text.trim(), spoken.trim()).filter { it.isNotBlank() }.joinToString(" ")
+    }
+
+    LaunchedEffect(conversation.id, text) {
+        if (text.isBlank()) {
+            onPresenceChange("online")
+        } else {
+            onPresenceChange("typing")
+            delay(1800)
+            onPresenceChange("online")
+        }
     }
 
     val visibleMessages = conversation.messages.filter { message ->
@@ -1266,10 +1527,21 @@ private fun PremiumChatDetail(
     }
 
     val latestVisibleMessageId = visibleMessages.lastOrNull()?.id
+    var previousLatestVisibleMessageId by remember(conversation.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(conversation.partnerUsername, latestVisibleMessageId) {
-        if (visibleMessages.isNotEmpty()) {
+        if (visibleMessages.isEmpty()) return@LaunchedEffect
+        val changed = previousLatestVisibleMessageId != null &&
+            previousLatestVisibleMessageId != latestVisibleMessageId
+        if (!userHasScrolled || isNearLatest || previousLatestVisibleMessageId == null) {
             listState.animateScrollToItem(visibleMessages.lastIndex)
+            newMessagesBelow = 0
+        } else if (changed) {
+            newMessagesBelow = (newMessagesBelow + 1).coerceAtMost(99)
         }
+        previousLatestVisibleMessageId = latestVisibleMessageId
+    }
+    LaunchedEffect(isNearLatest) {
+        if (isNearLatest) newMessagesBelow = 0
     }
 
     MessageBackground(palette) {
@@ -1287,6 +1559,81 @@ private fun PremiumChatDetail(
                 isFullScreen = isFullScreen,
                 onToggleFullScreen = onToggleFullScreen
             )
+
+            if (conversation.inboxCategory == "requests") {
+                Surface(
+                    color = palette.glassElevated,
+                    border = BorderStroke(1.dp, palette.border)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        Text(
+                            "Message request",
+                            color = palette.textPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Accept to move this chat into your main inbox.",
+                            color = palette.textSecondary,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Surface(
+                                color = palette.accent,
+                                contentColor = Color.White,
+                                shape = RoundedCornerShape(100.dp),
+                                modifier = Modifier.clickable {
+                                    interactionActions.onRespondMessageRequest(conversation, true)
+                                }
+                            ) {
+                                Text(
+                                    "Accept",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                )
+                            }
+                            Surface(
+                                color = palette.glass,
+                                contentColor = palette.textPrimary,
+                                shape = RoundedCornerShape(100.dp),
+                                border = BorderStroke(1.dp, palette.border),
+                                modifier = Modifier.clickable {
+                                    interactionActions.onRespondMessageRequest(conversation, false)
+                                    onBack()
+                                }
+                            ) {
+                                Text(
+                                    "Delete",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                )
+                            }
+                            Surface(
+                                color = palette.danger.copy(alpha = .10f),
+                                contentColor = palette.danger,
+                                shape = RoundedCornerShape(100.dp),
+                                border = BorderStroke(1.dp, palette.danger.copy(alpha = .30f)),
+                                modifier = Modifier.clickable {
+                                    interactionActions.onBlockConversation(conversation)
+                                    onBack()
+                                }
+                            ) {
+                                Text(
+                                    "Block",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             if (!isConnected) {
                 Surface(color = palette.danger.copy(alpha = .18f)) {
@@ -1386,8 +1733,47 @@ private fun PremiumChatDetail(
                                 replyingTo = message
                                 editingMessage = null
                             },
+                            onReplyTargetClick = {
+                                val targetId = message.replyToMessageId
+                                val targetIndex = visibleMessages.indexOfFirst { it.id == targetId }
+                                if (targetIndex >= 0) {
+                                    scrollScope.launch { listState.animateScrollToItem(targetIndex) }
+                                }
+                            },
                             onActions = { selectedMessage = message },
-                            onRetry = { onRetry(message) }
+                            onRetry = { onRetry(message) },
+                            allowLinkPreviews = allowLinkPreviews
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(visible = newMessagesBelow > 0) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Surface(
+                        color = palette.glassElevated,
+                        contentColor = palette.textPrimary,
+                        shape = RoundedCornerShape(100.dp),
+                        border = BorderStroke(1.dp, palette.border),
+                        shadowElevation = 6.dp,
+                        modifier = Modifier.clickable {
+                            scrollScope.launch {
+                                if (visibleMessages.isNotEmpty()) {
+                                    listState.animateScrollToItem(visibleMessages.lastIndex)
+                                    newMessagesBelow = 0
+                                }
+                            }
+                        }
+                    ) {
+                        Text(
+                            "↓ $newMessagesBelow new",
+                            color = palette.textPrimary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp)
                         )
                     }
                 }
@@ -1441,7 +1827,12 @@ private fun PremiumChatDetail(
                 onDictation = startDictation,
                 onEmoji = { showEmojiRail = !showEmojiRail },
                 onSubmit = { submitMessage() },
-                onQuickLike = { submitMessage("👍") }
+                onQuickLike = { submitMessage("👍") },
+                isRecording = isRecordingVoice,
+                recordingSeconds = recordingSeconds,
+                onVoiceStart = { beginVoiceRecording() },
+                onVoiceStop = { finishVoiceRecording(true) },
+                onVoiceCancel = { finishVoiceRecording(false) }
             )
         }
     }
@@ -1518,6 +1909,10 @@ private fun PremiumChatDetail(
             starredOnly = starredOnly,
             onProfile = { showOverflow = false; onProfileClick() },
             onSearch = { showOverflow = false; searchVisible = true },
+            onSharedMedia = {
+                showOverflow = false
+                showSharedContent = true
+            },
             onPinned = { showOverflow = false; pinnedOnly = !pinnedOnly; starredOnly = false },
             onStarred = { showOverflow = false; starredOnly = !starredOnly; pinnedOnly = false },
             onMute = {
@@ -1527,6 +1922,28 @@ private fun PremiumChatDetail(
                 } else {
                     showMuteOptions = true
                 }
+            },
+            onNotificationSettings = {
+                showOverflow = false
+                showNotificationSettings = true
+            },
+            onPinConversation = {
+                showOverflow = false
+                interactionActions.onPinConversation(conversation, !conversation.isConversationPinned)
+            },
+            onMarkUnread = {
+                showOverflow = false
+                interactionActions.onMarkConversationUnread(conversation, !conversation.isMarkedUnread)
+            },
+            onArchive = {
+                showOverflow = false
+                interactionActions.onArchiveConversation(conversation, !conversation.isArchived)
+                if (!conversation.isArchived) onBack()
+            },
+            onBlock = {
+                showOverflow = false
+                interactionActions.onBlockConversation(conversation)
+                onBack()
             },
             onDelete = {
                 showOverflow = false
@@ -1612,12 +2029,48 @@ private fun PremiumChatDetail(
         )
     }
 
+    if (showSharedContent) {
+        SharedChatContentSheet(
+            conversation = conversation,
+            palette = palette,
+            onDismiss = { showSharedContent = false }
+        )
+    }
+
+    if (showNotificationSettings) {
+        ChatNotificationSettingsSheet(
+            conversation = conversation,
+            palette = palette,
+            onSelect = { mode, muteUntil ->
+                interactionActions.onNotificationSettings(conversation, mode, muteUntil)
+                showNotificationSettings = false
+            },
+            onDismiss = { showNotificationSettings = false }
+        )
+    }
+
     if (showAttachmentSheet) {
         AttachmentSheet(
             palette = palette,
+            onImage = {
+                showAttachmentSheet = false
+                onPresenceChange("uploading")
+                imagePicker.launch("image/*")
+            },
             onVideo = {
                 showAttachmentSheet = false
+                onPresenceChange("uploading")
                 videoPicker.launch("video/*")
+            },
+            onAudio = {
+                showAttachmentSheet = false
+                onPresenceChange("uploading")
+                audioPicker.launch("audio/*")
+            },
+            onDocument = {
+                showAttachmentSheet = false
+                onPresenceChange("uploading")
+                documentPicker.launch(arrayOf("*/*"))
             },
             onDismiss = { showAttachmentSheet = false }
         )
@@ -1706,7 +2159,9 @@ private fun ChatHeader(
                 )
             }
             Text(
-                if (conversation.isOnline) "Active now" else conversation.lastSeen,
+                conversation.presenceLabel.ifBlank {
+                    if (conversation.isOnline) "Active now" else conversation.lastSeen
+                },
                 color = if (conversation.isOnline) palette.online else palette.textSecondary,
                 fontSize = 9.sp,
                 maxLines = 1,
@@ -1918,7 +2373,9 @@ private fun ChatContactProfileOverlay(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                if (conversation.isOnline) "Active now" else conversation.lastSeen,
+                                conversation.presenceLabel.ifBlank {
+                    if (conversation.isOnline) "Active now" else conversation.lastSeen
+                },
                                 color = palette.textSecondary,
                                 fontSize = 10.sp
                             )
@@ -2026,8 +2483,10 @@ private fun MessageBubble(
     partnerName: String,
     palette: MessagePalette,
     onReply: () -> Unit,
+    onReplyTargetClick: () -> Unit,
     onActions: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    allowLinkPreviews: Boolean
 ) {
     val isMine = message.isFromMe
     val density = LocalDensity.current
@@ -2091,12 +2550,24 @@ private fun MessageBubble(
                         )
                         .border(1.dp, palette.border.copy(alpha = .55f), bubbleShape)
                 ) {
+                    if (message.isForwarded) {
+                        Text(
+                            "Forwarded",
+                            color = palette.textSecondary,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 7.dp)
+                        )
+                    }
                     if (message.replyToMessageId != null) {
                         Surface(
                             color = palette.glass.copy(alpha = .45f),
                             shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(1.dp, palette.border.copy(alpha = .55f)),
-                            modifier = Modifier.fillMaxWidth().padding(start = 5.dp, end = 5.dp, top = 5.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 5.dp, end = 5.dp, top = 5.dp)
+                                .clickable(onClick = onReplyTargetClick)
                         ) {
                             Column(Modifier.padding(horizontal = 9.dp, vertical = 6.dp)) {
                                 Text(
@@ -2115,7 +2586,12 @@ private fun MessageBubble(
                             }
                         }
                     }
-                    MessageContent(message = message, isMine = isMine, palette = palette)
+                    MessageContent(
+                        message = message,
+                        isMine = isMine,
+                        palette = palette,
+                        allowLinkPreviews = allowLinkPreviews
+                    )
                 }
 
                 if (message.reactionCounts.isNotEmpty()) {
@@ -2171,7 +2647,12 @@ private fun MessageBubble(
 }
 
 @Composable
-private fun MessageContent(message: ChatMessage, isMine: Boolean, palette: MessagePalette) {
+private fun MessageContent(
+    message: ChatMessage,
+    isMine: Boolean,
+    palette: MessagePalette,
+    allowLinkPreviews: Boolean
+) {
     val context = LocalContext.current
     val contentColor = if (isMine) palette.outgoingText else palette.textPrimary
     Column(modifier = Modifier.padding(5.dp)) {
@@ -2206,21 +2687,79 @@ private fun MessageContent(message: ChatMessage, isMine: Boolean, palette: Messa
                     }
                 }
             }
-            if (message.isVoiceNote) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            if (!message.attachedAudioUrl.isNullOrBlank()) {
+                Surface(
+                    color = Color.Transparent,
+                    contentColor = contentColor,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .widthIn(min = 190.dp)
+                        .clickable { openExternalUri(context, Uri.parse(message.attachedAudioUrl)) }
                 ) {
-                    Icon(Icons.Default.Mic, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Box(Modifier.width(104.dp).height(3.dp).clip(CircleShape).background(contentColor.copy(alpha = .55f)))
-                    Spacer(Modifier.width(8.dp))
-                    Text(message.voiceDuration.ifBlank { "0:00" }, color = contentColor, fontSize = 9.sp)
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (message.isVoiceNote) Icons.Default.Mic else Icons.Default.MusicNote,
+                            contentDescription = if (message.isVoiceNote) "Play voice message" else "Play audio",
+                            tint = contentColor,
+                            modifier = Modifier.size(19.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Box(
+                            Modifier
+                                .width(104.dp)
+                                .height(3.dp)
+                                .clip(CircleShape)
+                                .background(contentColor.copy(alpha = .55f))
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (message.isVoiceNote) message.voiceDuration.ifBlank { "Voice" } else "Audio",
+                            color = contentColor,
+                            fontSize = 9.sp
+                        )
+                    }
+                }
+            }
+            if (!message.attachedDocumentUrl.isNullOrBlank()) {
+                Surface(
+                    color = contentColor.copy(alpha = .08f),
+                    contentColor = contentColor,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, contentColor.copy(alpha = .16f)),
+                    modifier = Modifier
+                        .widthIn(min = 190.dp, max = 240.dp)
+                        .clickable { openExternalUri(context, Uri.parse(message.attachedDocumentUrl)) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(21.dp))
+                        Spacer(Modifier.width(9.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                message.attachmentName ?: message.text.ifBlank { "Document" },
+                                color = contentColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text("Tap to open", color = contentColor.copy(alpha = .72f), fontSize = 9.sp)
+                        }
+                    }
                 }
             }
             val placeholderOnly =
                 (!message.attachedVideoUrl.isNullOrBlank() && message.text.equals("Video", true)) ||
-                    (!message.attachedImageUrl.isNullOrBlank() && message.text.equals("Image", true))
+                    (!message.attachedImageUrl.isNullOrBlank() &&
+                        (message.text.equals("Image", true) || message.text.equals("Photo", true))) ||
+                    (!message.attachedAudioUrl.isNullOrBlank() &&
+                        (message.text.equals("Audio", true) || message.text.equals("Voice message", true))) ||
+                    !message.attachedDocumentUrl.isNullOrBlank()
             if (message.text.isNotBlank() && !placeholderOnly && !message.isVoiceNote) {
                 Text(
                     message.text,
@@ -2229,6 +2768,37 @@ private fun MessageContent(message: ChatMessage, isMine: Boolean, palette: Messa
                     lineHeight = 18.sp,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                 )
+                if (allowLinkPreviews) firstHttpUrl(message.text)?.let { url ->
+                    val host = runCatching { java.net.URI(url).host }.getOrNull().orEmpty()
+                    Surface(
+                        color = contentColor.copy(alpha = .08f),
+                        contentColor = contentColor,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, contentColor.copy(alpha = .14f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 7.dp, vertical = 4.dp)
+                            .clickable { openExternalUri(context, Uri.parse(url)) }
+                    ) {
+                        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                            Text(
+                                host.ifBlank { "Open link" },
+                                color = contentColor,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                url,
+                                color = contentColor.copy(alpha = .72f),
+                                fontSize = 8.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -2255,6 +2825,8 @@ private fun MessageActionsPopover(
     val attachmentUrl = message.attachedVideoUrl
         ?.takeIf { it.isNotBlank() }
         ?: message.attachedImageUrl?.takeIf { it.isNotBlank() }
+        ?: message.attachedAudioUrl?.takeIf { it.isNotBlank() }
+        ?: message.attachedDocumentUrl?.takeIf { it.isNotBlank() }
 
     Popup(
         alignment = Alignment.CenterEnd,
@@ -2464,7 +3036,12 @@ private fun MessageComposer(
     onDictation: () -> Unit,
     onEmoji: () -> Unit,
     onSubmit: () -> Unit,
-    onQuickLike: () -> Unit
+    onQuickLike: () -> Unit,
+    isRecording: Boolean,
+    recordingSeconds: Int,
+    onVoiceStart: () -> Unit,
+    onVoiceStop: () -> Unit,
+    onVoiceCancel: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -2484,66 +3061,145 @@ private fun MessageComposer(
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                GlassIconButton(
-                    icon = Icons.Default.Add,
-                    contentDescription = "Add attachment",
-                    palette = palette,
-                    size = 40.dp,
-                    onClick = onAttachment
-                )
+                if (isRecording) {
+                    GlassIconButton(
+                        icon = Icons.Default.Close,
+                        contentDescription = "Cancel voice note",
+                        palette = palette,
+                        size = 40.dp,
+                        onClick = onVoiceCancel
+                    )
+                } else {
+                    GlassIconButton(
+                        icon = Icons.Default.Add,
+                        contentDescription = "Add attachment",
+                        palette = palette,
+                        size = 40.dp,
+                        onClick = onAttachment
+                    )
+                }
                 Spacer(Modifier.width(5.dp))
 
-                TextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    placeholder = { Text("Message", color = palette.textMuted, fontSize = 12.sp) },
-                    trailingIcon = {
-                        IconButton(onClick = onEmoji) {
-                            Icon(
-                                Icons.Default.EmojiEmotions,
-                                contentDescription = "Choose emoji",
-                                tint = palette.textSecondary,
-                                modifier = Modifier.size(20.dp)
+                if (isRecording) {
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 44.dp)
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = palette.danger,
+                            modifier = Modifier.size(9.dp)
+                        ) {}
+                        Spacer(Modifier.width(9.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                "Recording voice note",
+                                color = palette.textPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                formatCallDuration(recordingSeconds),
+                                color = palette.textSecondary,
+                                fontSize = 9.sp
                             )
                         }
-                    },
-                    maxLines = 4,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { if (value.isNotBlank()) onSubmit() }),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedTextColor = palette.textPrimary,
-                        unfocusedTextColor = palette.textPrimary,
-                        cursorColor = palette.accent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 44.dp, max = 112.dp)
-                )
+                    }
+                } else {
+                    TextField(
+                        value = value,
+                        onValueChange = onValueChange,
+                        placeholder = { Text("Message", color = palette.textMuted, fontSize = 12.sp) },
+                        trailingIcon = {
+                            IconButton(onClick = onEmoji) {
+                                Icon(
+                                    Icons.Default.EmojiEmotions,
+                                    contentDescription = "Choose emoji",
+                                    tint = palette.textSecondary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        },
+                        maxLines = 4,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { if (value.isNotBlank()) onSubmit() }),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = palette.textPrimary,
+                            unfocusedTextColor = palette.textPrimary,
+                            cursorColor = palette.accent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 44.dp, max = 112.dp)
+                    )
+                }
 
                 Spacer(Modifier.width(4.dp))
-                Surface(
-                    shape = CircleShape,
-                    color = palette.accent,
-                    contentColor = Color.White,
-                    modifier = Modifier.size(42.dp)
-                ) {
-                    IconButton(onClick = if (value.isBlank()) onDictation else onSubmit) {
-                        AnimatedContent(
-                            targetState = value.isNotBlank(),
-                            transitionSpec = { fadeIn(tween(120)) togetherWith fadeOut(tween(90)) },
-                            label = "composer_action"
-                        ) { hasText ->
-                            Icon(
-                                if (hasText) Icons.Default.Send else Icons.Default.Mic,
-                                contentDescription = if (hasText) "Send message" else "Voice input",
-                                tint = Color.White,
-                                modifier = Modifier.size(21.dp)
-                            )
+                when {
+                    isRecording -> {
+                        Surface(
+                            shape = CircleShape,
+                            color = palette.accent,
+                            contentColor = Color.White,
+                            modifier = Modifier.size(42.dp).clickable(onClick = onVoiceStop)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Send,
+                                    contentDescription = "Send voice note",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
+                        }
+                    }
+                    value.isNotBlank() -> {
+                        Surface(
+                            shape = CircleShape,
+                            color = palette.accent,
+                            contentColor = Color.White,
+                            modifier = Modifier.size(42.dp).clickable(onClick = onSubmit)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Send,
+                                    contentDescription = "Send message",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
+                        }
+                    }
+                    else -> {
+                        Surface(
+                            shape = CircleShape,
+                            color = palette.accent,
+                            contentColor = Color.White,
+                            modifier = Modifier
+                                .size(42.dp)
+                                .pointerInput(onDictation, onVoiceStart) {
+                                    detectTapGestures(
+                                        onTap = { onDictation() },
+                                        onLongPress = { onVoiceStart() }
+                                    )
+                                }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Mic,
+                                    contentDescription = "Tap for voice typing, hold for voice note",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -2552,11 +3208,309 @@ private fun MessageComposer(
     }
 }
 
+private fun firstHttpUrl(text: String): String? =
+    Regex("""https?://[^\s]+""", RegexOption.IGNORE_CASE)
+        .find(text)
+        ?.value
+        ?.trimEnd('.', ',', ')', ']', '}', ';')
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SharedChatContentSheet(
+    conversation: ChatConversation,
+    palette: MessagePalette,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var tab by rememberSaveable(conversation.id) { mutableStateOf("media") }
+    val media = remember(conversation.messages) {
+        conversation.messages.filter {
+            !it.attachedImageUrl.isNullOrBlank() ||
+                !it.attachedVideoUrl.isNullOrBlank() ||
+                !it.attachedAudioUrl.isNullOrBlank()
+        }
+    }
+    val links = remember(conversation.messages) {
+        conversation.messages.mapNotNull { message ->
+            firstHttpUrl(message.text)?.let { url -> message to url }
+        }
+    }
+    val files = remember(conversation.messages) {
+        conversation.messages.filter { !it.attachedDocumentUrl.isNullOrBlank() }
+    }
+    val starred = remember(conversation.messages) {
+        conversation.messages.filter { it.isStarred }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = palette.glass,
+        contentColor = palette.textPrimary
+    ) {
+        Text(
+            "Shared content",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            listOf(
+                "media" to "Media",
+                "links" to "Links",
+                "files" to "Files",
+                "starred" to "Starred"
+            ).forEach { (key, label) ->
+                item(key = key) {
+                    Surface(
+                        color = if (tab == key) palette.textPrimary else palette.glassElevated,
+                        contentColor = if (tab == key) palette.backgroundMiddle else palette.textPrimary,
+                        shape = RoundedCornerShape(100.dp),
+                        border = BorderStroke(1.dp, if (tab == key) palette.textPrimary else palette.border),
+                        modifier = Modifier.clickable { tab = key }
+                    ) {
+                        Text(
+                            label,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            when (tab) {
+                "media" -> {
+                    if (media.isEmpty()) {
+                        item { SharedContentEmpty("No shared media yet", palette) }
+                    } else {
+                        items(media, key = { "media:${it.id}" }) { message ->
+                            val url = message.attachedImageUrl
+                                ?: message.attachedVideoUrl
+                                ?: message.attachedAudioUrl
+                            SharedContentRow(
+                                title = when {
+                                    !message.attachedImageUrl.isNullOrBlank() -> "Photo"
+                                    !message.attachedVideoUrl.isNullOrBlank() -> "Video"
+                                    message.isVoiceNote -> "Voice message"
+                                    else -> "Audio"
+                                },
+                                subtitle = message.timestamp,
+                                palette = palette,
+                                onClick = {
+                                    url?.let { openExternalUri(context, Uri.parse(it)) }
+                                }
+                            )
+                        }
+                    }
+                }
+                "links" -> {
+                    if (links.isEmpty()) {
+                        item { SharedContentEmpty("No shared links yet", palette) }
+                    } else {
+                        items(links, key = { "link:${it.first.id}:${it.second}" }) { (_, url) ->
+                            val host = runCatching { java.net.URI(url).host }.getOrNull().orEmpty()
+                            SharedContentRow(
+                                title = host.ifBlank { "Link" },
+                                subtitle = url,
+                                palette = palette,
+                                onClick = { openExternalUri(context, Uri.parse(url)) }
+                            )
+                        }
+                    }
+                }
+                "files" -> {
+                    if (files.isEmpty()) {
+                        item { SharedContentEmpty("No shared files yet", palette) }
+                    } else {
+                        items(files, key = { "file:${it.id}" }) { message ->
+                            SharedContentRow(
+                                title = message.attachmentName ?: message.text.ifBlank { "Document" },
+                                subtitle = message.timestamp,
+                                palette = palette,
+                                onClick = {
+                                    message.attachedDocumentUrl?.let {
+                                        openExternalUri(context, Uri.parse(it))
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+                else -> {
+                    if (starred.isEmpty()) {
+                        item { SharedContentEmpty("No starred messages yet", palette) }
+                    } else {
+                        items(starred, key = { "starred:${it.id}" }) { message ->
+                            SharedContentRow(
+                                title = message.text.ifBlank {
+                                    when {
+                                        !message.attachedImageUrl.isNullOrBlank() -> "Photo"
+                                        !message.attachedVideoUrl.isNullOrBlank() -> "Video"
+                                        !message.attachedDocumentUrl.isNullOrBlank() -> "Document"
+                                        else -> "Media message"
+                                    }
+                                },
+                                subtitle = message.timestamp,
+                                palette = palette,
+                                onClick = {}
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp).navigationBarsPadding())
+    }
+}
+
+@Composable
+private fun SharedContentRow(
+    title: String,
+    subtitle: String,
+    palette: MessagePalette,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = palette.glassElevated,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, palette.border),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Column(Modifier.padding(horizontal = 13.dp, vertical = 11.dp)) {
+            Text(
+                title,
+                color = palette.textPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                subtitle,
+                color = palette.textSecondary,
+                fontSize = 9.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SharedContentEmpty(
+    text: String,
+    palette: MessagePalette
+) {
+    Text(
+        text,
+        color = palette.textSecondary,
+        fontSize = 11.sp,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 34.dp)
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChatNotificationSettingsSheet(
+    conversation: ChatConversation,
+    palette: MessagePalette,
+    onSelect: (String, String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = palette.glass,
+        contentColor = palette.textPrimary
+    ) {
+        Text(
+            "Chat notifications",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+        Text(
+            "Choose how this conversation can notify you.",
+            color = palette.textSecondary,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+        )
+
+        val options = listOf(
+            Triple("All messages", "all", null),
+            Triple("Mentions only", "mentions", null),
+            Triple("Mute for 1 hour", "none", java.time.Instant.now().plusSeconds(3600).toString()),
+            Triple("Mute for 8 hours", "none", java.time.Instant.now().plusSeconds(8 * 3600L).toString()),
+            Triple("Mute for 1 week", "none", java.time.Instant.now().plusSeconds(7 * 24 * 3600L).toString()),
+            Triple("Mute until I turn it back on", "none", null)
+        )
+
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            options.forEach { (label, mode, until) ->
+                val selected = when {
+                    mode == "all" -> conversation.notificationMode == "all"
+                    mode == "mentions" -> conversation.notificationMode == "mentions"
+                    label.startsWith("Mute until") ->
+                        conversation.notificationMode == "none" && conversation.muteUntil == null
+                    else -> false
+                }
+                Surface(
+                    color = if (selected) palette.accent.copy(alpha = .14f) else palette.glassElevated,
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(
+                        1.dp,
+                        if (selected) palette.accent.copy(alpha = .55f) else palette.border
+                    ),
+                    modifier = Modifier.fillMaxWidth().clickable { onSelect(mode, until) }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            label,
+                            color = palette.textPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (selected) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = "Selected",
+                                tint = palette.accent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(18.dp).navigationBarsPadding())
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AttachmentSheet(
     palette: MessagePalette,
+    onImage: () -> Unit,
     onVideo: () -> Unit,
+    onAudio: () -> Unit,
+    onDocument: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
@@ -2579,35 +3533,81 @@ private fun AttachmentSheet(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
         )
-        Surface(
-            color = palette.glassElevated.copy(alpha = .75f),
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, palette.border),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 8.dp)
-                .clickable(onClick = onVideo)
+        Text(
+            "Media stays private to conversation members.",
+            color = palette.textSecondary,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+        )
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                modifier = Modifier.padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(shape = CircleShape, color = palette.accent.copy(alpha = .18f)) {
-                    Icon(
-                        Icons.Default.VideoLibrary,
-                        contentDescription = null,
-                        tint = palette.accent,
-                        modifier = Modifier.padding(10.dp).size(22.dp)
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("Video", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text("Choose a video from your device", color = palette.textSecondary, fontSize = 11.sp)
-                }
-            }
+            AttachmentOption(
+                label = "Photo",
+                description = "Choose an image from your device",
+                icon = Icons.Default.Image,
+                palette = palette,
+                onClick = onImage
+            )
+            AttachmentOption(
+                label = "Video",
+                description = "Choose a video from your device",
+                icon = Icons.Default.VideoLibrary,
+                palette = palette,
+                onClick = onVideo
+            )
+            AttachmentOption(
+                label = "Audio",
+                description = "Share an audio file",
+                icon = Icons.Default.MusicNote,
+                palette = palette,
+                onClick = onAudio
+            )
+            AttachmentOption(
+                label = "Document",
+                description = "PDF, slides, notes and other files",
+                icon = Icons.Default.Description,
+                palette = palette,
+                onClick = onDocument
+            )
         }
         Spacer(Modifier.height(18.dp).navigationBarsPadding())
+    }
+}
+
+@Composable
+private fun AttachmentOption(
+    label: String,
+    description: String,
+    icon: ImageVector,
+    palette: MessagePalette,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = palette.glassElevated.copy(alpha = .75f),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, palette.border),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(shape = CircleShape, color = palette.accent.copy(alpha = .16f)) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = palette.accent,
+                    modifier = Modifier.padding(10.dp).size(22.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(description, color = palette.textSecondary, fontSize = 11.sp)
+            }
+        }
     }
 }
 
@@ -2761,11 +3761,307 @@ private fun CallControl(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+private fun ChatPrivacySettingsSheet(
+    settings: ChatPrivacySettings,
+    palette: MessagePalette,
+    onChange: (ChatPrivacySettings) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = palette.glass,
+        contentColor = palette.textPrimary
+    ) {
+        Text(
+            "Privacy & messaging",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+        Text(
+            "Control who can reach you and what activity other people can see.",
+            color = palette.textSecondary,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+        )
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item {
+                ChatPrivacyScopeSection(
+                    title = "Who can message me",
+                    value = settings.whoCanMessage,
+                    palette = palette,
+                    onSelect = { onChange(settings.copy(whoCanMessage = it)) }
+                )
+            }
+            item {
+                ChatPrivacyScopeSection(
+                    title = "Who can call me",
+                    value = settings.whoCanCall,
+                    palette = palette,
+                    onSelect = { onChange(settings.copy(whoCanCall = it)) }
+                )
+            }
+            item {
+                ChatPrivacyScopeSection(
+                    title = "Who can add me to groups",
+                    value = settings.whoCanGroupInvite,
+                    palette = palette,
+                    onSelect = { onChange(settings.copy(whoCanGroupInvite = it)) }
+                )
+            }
+
+            item {
+                Text(
+                    "Activity",
+                    color = palette.textSecondary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                )
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Show online status",
+                    "Allow people to see when you are active.",
+                    settings.showOnline,
+                    palette
+                ) { onChange(settings.copy(showOnline = it)) }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Show last seen",
+                    "Show your most recent activity time.",
+                    settings.showLastSeen,
+                    palette
+                ) { onChange(settings.copy(showLastSeen = it)) }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Read receipts",
+                    "Send read status when you open messages.",
+                    settings.sendReadReceipts,
+                    palette
+                ) { onChange(settings.copy(sendReadReceipts = it)) }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Typing status",
+                    "Let people see when you are typing.",
+                    settings.showTyping,
+                    palette
+                ) { onChange(settings.copy(showTyping = it)) }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Recording status",
+                    "Let people see when you are recording a voice note.",
+                    settings.showRecording,
+                    palette
+                ) { onChange(settings.copy(showRecording = it)) }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Profile photo in chat",
+                    "Allow your profile photo to appear in conversations.",
+                    settings.showProfilePhotoInChat,
+                    palette
+                ) { onChange(settings.copy(showProfilePhotoInChat = it)) }
+            }
+            item {
+                ChatPrivacyToggleRow(
+                    "Link previews",
+                    "Show compact previews for web links in messages.",
+                    settings.allowLinkPreviews,
+                    palette
+                ) { onChange(settings.copy(allowLinkPreviews = it)) }
+            }
+
+            item {
+                Text(
+                    "Notification preview",
+                    color = palette.textSecondary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                )
+            }
+            item {
+                ChatPrivacyChoiceRow(
+                    label = "Full preview",
+                    selected = settings.notificationPreview == "full",
+                    palette = palette,
+                    onClick = { onChange(settings.copy(notificationPreview = "full")) }
+                )
+            }
+            item {
+                ChatPrivacyChoiceRow(
+                    label = "Sender only",
+                    selected = settings.notificationPreview == "sender_only",
+                    palette = palette,
+                    onClick = { onChange(settings.copy(notificationPreview = "sender_only")) }
+                )
+            }
+            item {
+                ChatPrivacyChoiceRow(
+                    label = "Hide message preview",
+                    selected = settings.notificationPreview == "hidden",
+                    palette = palette,
+                    onClick = { onChange(settings.copy(notificationPreview = "hidden")) }
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp).navigationBarsPadding())
+    }
+}
+
+@Composable
+private fun ChatPrivacyScopeSection(
+    title: String,
+    value: String,
+    palette: MessagePalette,
+    onSelect: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(palette.glassElevated)
+            .border(1.dp, palette.border, RoundedCornerShape(16.dp))
+            .padding(12.dp)
+    ) {
+        Text(
+            title,
+            color = palette.textPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        LazyRow(
+            contentPadding = PaddingValues(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            val choices = listOf(
+                "everyone" to "Everyone",
+                "followers" to "Followers",
+                "mutuals" to "Mutuals",
+                "connections" to "Connections",
+                "nobody" to "Nobody"
+            )
+            items(choices, key = { it.first }) { (key, label) ->
+                val selected = value == key
+                Surface(
+                    color = if (selected) palette.textPrimary else palette.glass,
+                    contentColor = if (selected) palette.backgroundMiddle else palette.textPrimary,
+                    shape = RoundedCornerShape(100.dp),
+                    border = BorderStroke(
+                        1.dp,
+                        if (selected) palette.textPrimary else palette.border
+                    ),
+                    modifier = Modifier.clickable { onSelect(key) }
+                ) {
+                    Text(
+                        label,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatPrivacyToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    palette: MessagePalette,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Surface(
+        color = palette.glassElevated,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, palette.border),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    color = palette.textPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    subtitle,
+                    color = palette.textSecondary,
+                    fontSize = 9.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChatPrivacyChoiceRow(
+    label: String,
+    selected: Boolean,
+    palette: MessagePalette,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = if (selected) palette.accent.copy(alpha = .12f) else palette.glassElevated,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(
+            1.dp,
+            if (selected) palette.accent.copy(alpha = .50f) else palette.border
+        ),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                label,
+                color = palette.textPrimary,
+                fontSize = 11.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier.weight(1f)
+            )
+            if (selected) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = "Selected",
+                    tint = palette.accent,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 private fun MessageAppearanceSheet(
     selected: MessageThemeMode,
     palette: MessagePalette,
     unreadActivityCount: Int,
     onSelect: (MessageThemeMode) -> Unit,
+    onOpenPrivacy: () -> Unit,
     onOpenActivity: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -2817,6 +4113,31 @@ private fun MessageAppearanceSheet(
                     onClick = { onSelect(mode) }
                 )
             }
+        }
+
+        HorizontalDivider(color = palette.border)
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenPrivacy)
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(shape = CircleShape, color = palette.glassElevated) {
+                Icon(
+                    Icons.Default.Menu,
+                    contentDescription = null,
+                    tint = palette.accent,
+                    modifier = Modifier.padding(10.dp).size(21.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Privacy & messaging", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Who can message, call and see your activity", color = palette.textSecondary, fontSize = 11.sp)
+            }
+            Text("›", color = palette.accent, fontSize = 24.sp)
         }
 
         HorizontalDivider(color = palette.border)
@@ -2976,13 +4297,13 @@ private fun RingAvatar(
                 modifier = Modifier.fillMaxSize()
             )
         }
-        online?.let { active ->
+        if (online == true) {
             Box(
                 modifier = Modifier
                     .size(size * .25f)
                     .align(Alignment.BottomEnd)
                     .clip(CircleShape)
-                    .background(if (active) palette.online else Color(0xFF8B5A2B))
+                    .background(palette.online)
                     .border(2.dp, palette.glass, CircleShape)
             )
         }

@@ -16,12 +16,42 @@ tasks.matching { it.name == "preBuild" }.configureEach {
   dependsOn("validatePngIntegrity")
 }
 
-if (file("google-services.json").exists()) {
+val releaseTaskRequested = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+val googleServicesFile = file("google-services.json")
+val googleServicesExampleFile = file("google-services.json.example")
+val allowPlaceholderGoogleServices = providers.environmentVariable("ALLOW_PLACEHOLDER_GOOGLE_SERVICES")
+  .orNull
+  ?.equals("true", ignoreCase = true) == true
+
+if (!googleServicesFile.exists()) {
+  if (!releaseTaskRequested || allowPlaceholderGoogleServices) {
+    if (!googleServicesExampleFile.exists()) {
+      throw GradleException("Missing app/google-services.json.example; cannot generate a safe CI Firebase placeholder.")
+    }
+    googleServicesExampleFile.copyTo(googleServicesFile, overwrite = true)
+  } else {
+    throw GradleException(
+      "Release Firebase configuration is missing. Restore app/google-services.json from the protected " +
+        "GOOGLE_SERVICES_JSON_BASE64 secret before building a production release."
+    )
+  }
+}
+
+if (
+  releaseTaskRequested &&
+  googleServicesFile.readText().contains("YOUR_FIREBASE_") &&
+  !allowPlaceholderGoogleServices
+) {
+  throw GradleException(
+    "Production release refused: app/google-services.json contains placeholder Firebase values."
+  )
+}
+
+if (googleServicesFile.exists()) {
   apply(plugin = "com.google.gms.google-services")
   apply(plugin = "com.google.firebase.crashlytics")
 }
 
-val releaseTaskRequested = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
 val requestedVersionCodeRaw = providers.environmentVariable("VERSION_CODE").orNull?.trim()
 val requestedVersionCode = requestedVersionCodeRaw?.toIntOrNull()
 val requestedVersionName = providers.environmentVariable("VERSION_NAME").orNull
@@ -288,6 +318,7 @@ dependencies {
   implementation(libs.androidx.camera.view)
   implementation(libs.androidx.camera.core)
   implementation("io.github.webrtc-sdk:android:150.7871.01")
+  implementation("com.google.zxing:core:3.5.3")
 
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)

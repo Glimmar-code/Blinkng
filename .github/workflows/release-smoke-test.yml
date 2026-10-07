@@ -14,7 +14,8 @@ on:
       - 'settings.gradle.kts'
       - 'gradle.properties'
       - 'gradle/**'
-      - 'app/google-services.json'
+      - 'app/google-services.json.example'
+      - '.github/scripts/restore_google_services.sh'
       - 'app/proguard-rules.pro'
       - '.github/workflows/signed-release.yml'
       - '.github/workflows/release-smoke-test.yml'
@@ -30,7 +31,8 @@ on:
       - 'settings.gradle.kts'
       - 'gradle.properties'
       - 'gradle/**'
-      - 'app/google-services.json'
+      - 'app/google-services.json.example'
+      - '.github/scripts/restore_google_services.sh'
       - 'app/proguard-rules.pro'
       - '.github/workflows/signed-release.yml'
       - '.github/workflows/release-smoke-test.yml'
@@ -47,6 +49,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Restore disposable Firebase client configuration
+        shell: bash
+        run: bash .github/scripts/restore_google_services.sh ci
 
       - uses: actions/setup-java@v5
         with:
@@ -102,7 +108,8 @@ jobs:
           KEY_PASSWORD: smoke-password
           VERSION_CODE: '1999000000'
           VERSION_NAME: 'ci-smoke'
-        run: gradle :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
+          ALLOW_PLACEHOLDER_GOOGLE_SERVICES: 'true'
+        run: gradle :app:assembleRelease :app:bundleRelease -x :app:uploadCrashlyticsMappingFileRelease --stacktrace --no-daemon
 
       - name: Verify embedded source revision
         shell: bash

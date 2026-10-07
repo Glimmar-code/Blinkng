@@ -1,5 +1,7 @@
 package com.example.data.models
 
+import com.blinkng.shared.ProfileVisibilityScope
+
 enum class VerificationBadge {
     NONE, BLUE, GOLD
 }
@@ -68,6 +70,10 @@ data class UserProfile(
     var email: ContactField = ContactField("", true),
     var phone: ContactField = ContactField("", false),
     var whatsapp: ContactField = ContactField("", false),
+    var emailVisibility: ProfileVisibilityScope = ProfileVisibilityScope.PRIVATE,
+    var phoneVisibility: ProfileVisibilityScope = ProfileVisibilityScope.PRIVATE,
+    var whatsappVisibility: ProfileVisibilityScope = ProfileVisibilityScope.PRIVATE,
+    var presenceVisibility: ProfileVisibilityScope = ProfileVisibilityScope.PUBLIC,
     var links: SocialLinks = SocialLinks(),
     var coreSkills: MutableList<String> = mutableListOf(),
     var skillEndorsements: MutableList<SkillEndorsement> = mutableListOf(),

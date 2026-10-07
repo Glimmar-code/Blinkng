@@ -291,11 +291,36 @@ class DesktopSupabaseClient(
 
     suspend fun fetchProfile(userId: String = requireSession().userId): DesktopProfile = withContext(Dispatchers.IO) {
         profileCache[userId]?.let { return@withContext it }
+        val ownId = requireSession().userId
+
+        if (userId != ownId) {
+            val detail = fetchProfileDetail(userId)
+            if (detail != null) {
+                profileCache[userId] = detail
+                return@withContext detail
+            }
+        }
+
         val rows = getArray(
             "/rest/v1/profiles?id=eq.${encode(userId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=1",
         )
         val row = rows.optJSONObject(0) ?: throw IllegalStateException("Profile was not found.")
         parseProfile(row).also { profileCache[userId] = it }
+    }
+
+    suspend fun fetchProfileDetail(identifier: String): DesktopProfile? = withContext(Dispatchers.IO) {
+        val clean = identifier.trim().removePrefix("@")
+        if (clean.isBlank()) return@withContext null
+        runCatching {
+            when (val response = postObject(
+                "/rest/v1/rpc/get_profile_detail",
+                JSONObject().put("p_identifier", clean),
+            )) {
+                is JSONObject -> response.takeIf { it.length() > 0 && !it.isNull("id") }?.let(::parseProfile)
+                is JSONArray -> response.optJSONObject(0)?.let(::parseProfile)
+                else -> null
+            }
+        }.getOrNull()
     }
 
     suspend fun refreshProfile(userId: String = requireSession().userId): DesktopProfile {
@@ -309,11 +334,10 @@ class DesktopSupabaseClient(
             return@withContext false
         }
         val currentId = requireSession().userId
-        val rows = getArray(
-            "/rest/v1/profiles?username=eq.${encode(clean)}&select=id&limit=1",
-        )
-        val existingId = rows.optJSONObject(0)?.optString("id").orEmpty()
-        existingId.isBlank() || existingId == currentId
+        rpcBoolean(postObject(
+            "/rest/v1/rpc/is_blink_username_available",
+            JSONObject().put("p_username", clean),
+        ))
     }
 
     suspend fun saveOnboardingProfile(
@@ -377,10 +401,15 @@ class DesktopSupabaseClient(
     }
 
     suspend fun fetchOnboardingSuggestions(limit: Int = 40): List<DesktopProfile> = withContext(Dispatchers.IO) {
-        val currentId = requireSession().userId
-        val rows = getArray(
-            "/rest/v1/profiles?id=neq.${encode(currentId)}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,academic_level,gender,interests,onboarding_completed,onboarding_step,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=${limit.coerceIn(5, 100)}",
+        val response = postObject(
+            "/rest/v1/rpc/get_profile_directory",
+            JSONObject().put("p_limit", limit.coerceIn(5, 100)),
         )
+        val rows = when (response) {
+            is JSONArray -> response
+            is JSONObject -> JSONArray().put(response)
+            else -> JSONArray()
+        }
         (0 until rows.length()).mapNotNull { index ->
             rows.optJSONObject(index)?.let(::parseProfile)
         }
@@ -414,9 +443,185 @@ class DesktopSupabaseClient(
         fetchFollowingIds()
     }
 
+    suspend fun fetchProfileContent(profileId: String): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
+        val cleanId = profileId.trim()
+        if (cleanId.isBlank()) return@withContext emptyList()
+        val rows = getAllProfileRows(
+            "/rest/v1/feed_posts?user_id=eq.${encode(cleanId)}&is_active=eq.true&select=*&order=is_pinned.desc,created_at.desc,id.desc",
+        )
+        val profile = runCatching { fetchProfile(cleanId) }.getOrNull()
+        val liked = fetchMyLikedPostIds()
+        val bookmarked = fetchMyBookmarkedPostIds()
+        (0 until rows.length()).mapNotNull { index ->
+            rows.optJSONObject(index)?.let { row ->
+                parseFeedPost(row, profile, row.optString("id") in liked)
+                    .copy(isBookmarked = row.optString("id") in bookmarked)
+            }
+        }
+    }
+
+    private suspend fun getAllProfileRows(path: String): JSONArray {
+        val output = JSONArray()
+        var offset = 0
+        while (true) {
+            val rows = getArray("$path&limit=100&offset=$offset")
+            for (index in 0 until rows.length()) rows.optJSONObject(index)?.let { output.put(it) }
+            if (rows.length() < 100) break
+            offset += rows.length()
+        }
+        return output
+    }
+
+    suspend fun fetchMyProfileRelationContent(saved: Boolean): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
+        requireSession()
+        val liked = fetchMyLikedPostIds()
+        val bookmarks = fetchMyBookmarkedPostIds()
+        val ids = if (saved) bookmarks else liked
+        val profiles = mutableMapOf<String, DesktopProfile?>()
+        val content = mutableMapOf<String, DesktopFeedPost>()
+        for (chunk in ids.chunked(100)) {
+            val rows = getAllProfileRows("/rest/v1/feed_posts?id=in.(${chunk.joinToString(",")})&is_active=eq.true&select=*&order=created_at.desc,id.desc")
+            for (index in 0 until rows.length()) {
+                val row = rows.optJSONObject(index) ?: continue
+                val userId = row.optString("user_id")
+                if (!profiles.containsKey(userId)) profiles[userId] = fetchProfileDetail(userId)
+                val id = row.optString("id")
+                content[id] = parseFeedPost(row, profiles[userId], id in liked).copy(isBookmarked = id in bookmarks)
+            }
+        }
+        ids.mapNotNull { content[it] }
+    }
+
+    suspend fun fetchProfileFollowerHistory(profileId: String, days: Int = 30): List<DesktopProfileFollowerPoint> =
+        withContext(Dispatchers.IO) {
+            val response = runCatching {
+                postObject(
+                    "/rest/v1/rpc/get_profile_follower_history",
+                    JSONObject().put("p_profile_id", profileId).put("p_days", days.coerceIn(1, 90)),
+                )
+            }.getOrNull()
+            val rows = when (response) {
+                is JSONArray -> response
+                is JSONObject -> JSONArray().put(response)
+                else -> JSONArray()
+            }
+            buildList {
+                for (index in 0 until rows.length()) {
+                    val row = rows.optJSONObject(index) ?: continue
+                    add(
+                        DesktopProfileFollowerPoint(
+                            date = row.optString("snapshot_date"),
+                            followerCount = row.optInt("follower_count").coerceAtLeast(0),
+                        ),
+                    )
+                }
+            }
+        }
+
+    suspend fun getProfileNotificationPreference(profileId: String): DesktopProfileNotificationMode =
+        withContext(Dispatchers.IO) {
+            val response = runCatching {
+                postObject(
+                    "/rest/v1/rpc/get_profile_notification_preference",
+                    JSONObject().put("p_profile_id", profileId),
+                )
+            }.getOrNull()
+            val raw = when (response) {
+                is JSONObject -> response.optString("value")
+                is JSONArray -> response.optString(0)
+                else -> ""
+            }
+            DesktopProfileNotificationMode.entries.firstOrNull { it.name.equals(raw.trim('"'), true) }
+                ?: DesktopProfileNotificationMode.OFF
+        }
+
+    suspend fun setProfileNotificationPreference(
+        profileId: String,
+        mode: DesktopProfileNotificationMode,
+    ): DesktopProfileNotificationMode = withContext(Dispatchers.IO) {
+        postObject(
+            "/rest/v1/rpc/set_profile_notification_preference",
+            JSONObject().put("p_profile_id", profileId).put("p_mode", mode.name),
+        )
+        mode
+    }
+
+    suspend fun isProfileMuted(profileId: String): Boolean = withContext(Dispatchers.IO) {
+        val response = runCatching {
+            postObject(
+                "/rest/v1/rpc/is_profile_muted",
+                JSONObject().put("p_profile_id", profileId),
+            )
+        }.getOrNull()
+        when (response) {
+            is JSONObject -> response.optString("value").equals("true", true) || response.optBoolean("value", false)
+            else -> false
+        }
+    }
+
+    suspend fun fetchProfileConnections(profileId: String, kind: String): List<DesktopProfile> =
+        withContext(Dispatchers.IO) {
+            val response = runCatching {
+                postObject(
+                    "/rest/v1/rpc/get_profile_connections",
+                    JSONObject()
+                        .put("p_profile_id", profileId)
+                        .put("p_kind", kind.uppercase())
+                        .put("p_limit", 200),
+                )
+            }.getOrNull()
+            val rows = when (response) {
+                is JSONArray -> response
+                is JSONObject -> JSONArray().put(response)
+                else -> JSONArray()
+            }
+            buildList {
+                for (index in 0 until rows.length()) {
+                    rows.optJSONObject(index)?.let(::parseProfile)?.let(::add)
+                }
+            }
+        }
+
+    suspend fun setProfileMuted(profileId: String, muted: Boolean): Boolean = withContext(Dispatchers.IO) {
+        val response = postObject(
+            "/rest/v1/rpc/set_profile_muted",
+            JSONObject().put("p_profile_id", profileId).put("p_muted", muted),
+        )
+        when (response) {
+            is JSONObject -> response.optString("value").equals("true", true) || response.optBoolean("value", muted)
+            else -> muted
+        }
+    }
+
+    suspend fun reportProfile(profileId: String, reason: String): Boolean = withContext(Dispatchers.IO) {
+        require(reason.trim().length >= 3) { "Choose a report reason." }
+        postObject(
+            "/rest/v1/rpc/report_user",
+            JSONObject().put("p_user_id", profileId).put("p_reason", reason.trim()),
+        )
+        true
+    }
+
+    suspend fun blockProfile(profileId: String): Boolean = withContext(Dispatchers.IO) {
+        postObject(
+            "/rest/v1/rpc/block_user",
+            JSONObject().put("p_target_id", profileId),
+        )
+        profileCache.remove(profileId)
+        true
+    }
+
+    suspend fun setProfilePin(contentId: String, pinned: Boolean): Boolean = withContext(Dispatchers.IO) {
+        postObject(
+            "/rest/v1/rpc/set_profile_pin",
+            JSONObject().put("p_content_id", contentId).put("p_pinned", pinned),
+        )
+        true
+    }
+
     suspend fun fetchFeed(reelsOnly: Boolean = false, search: String? = null): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
         val filter = buildString {
-            append("/rest/v1/feed_posts?select=id,user_id,text,caption,image_url,video_url,images,hashtags,like_count,comment_count,share_count,repost_count,view_count,is_reel,created_at")
+            append("/rest/v1/feed_posts?select=id,user_id,text,caption,image_url,video_url,images,hashtags,like_count,comment_count,share_count,repost_count,view_count,is_reel,is_pinned,created_at")
             append("&is_active=eq.true")
             if (reelsOnly) append("&is_reel=eq.true")
             search?.trim()?.takeIf { it.isNotBlank() }?.let { q ->
@@ -599,10 +804,21 @@ class DesktopSupabaseClient(
     suspend fun search(query: String): DesktopSearchResults = withContext(Dispatchers.IO) {
         val clean = query.trim()
         if (clean.isBlank()) return@withContext DesktopSearchResults(emptyList(), emptyList())
-        val encodedPattern = encode("*$clean*")
-        val profiles = getArray(
-            "/rest/v1/profiles?or=${encode("(full_name.ilike.*$clean*,username.ilike.*$clean*,handle.ilike.*$clean*)")}&select=id,full_name,name,username,handle,avatar_url,university,faculty,department,bio,is_verified,verification_badge,verification_tier,follower_count,following_count,posts_count,current_wallet_balance,online_now,is_online,last_seen_at,points,total_xp,xp_level,created_at,blink_vip_until,verified_at,profile_views_this_week&limit=30",
+
+        val response = postObject(
+            "/rest/v1/rpc/search_profiles_page",
+            JSONObject()
+                .put("p_query", clean)
+                .put("p_limit", 30)
+                .put("p_after_username", JSONObject.NULL)
+                .put("p_after_id", JSONObject.NULL),
         )
+        val profiles = when (response) {
+            is JSONArray -> response
+            is JSONObject -> JSONArray().put(response)
+            else -> JSONArray()
+        }
+
         DesktopSearchResults(
             profiles = (0 until profiles.length()).mapNotNull { profiles.optJSONObject(it)?.let(::parseProfile) },
             posts = fetchFeed(search = clean).take(30),
@@ -739,7 +955,7 @@ class DesktopSupabaseClient(
         }.getOrNull()
         val summaryRows = summaryResponse as? JSONArray
         if (summaryRows != null) {
-            return@withContext (0 until summaryRows.length()).mapNotNull { i ->
+            return@withContext withChatControls((0 until summaryRows.length()).mapNotNull { i ->
                 summaryRows.optJSONObject(i)?.let { row ->
                     DesktopConversation(
                         id = row.optString("conversation_id"),
@@ -751,15 +967,16 @@ class DesktopSupabaseClient(
                         lastMessageAt = row.optNullableString("last_message_at"),
                         isOnline = row.optBoolean("partner_online", false),
                         lastSeenAt = row.optNullableString("partner_last_seen"),
+                        unreadCount = row.optLong("unread_count"),
                     )
                 }
-            }
+            })
         }
 
         val rows = getArray(
             "/rest/v1/conversations?select=id,title,avatar_url,is_group,last_message_at&order=last_message_at.desc.nullslast&limit=100",
         )
-        (0 until rows.length()).mapNotNull { i ->
+        withChatControls((0 until rows.length()).mapNotNull { i ->
             rows.optJSONObject(i)?.let { row ->
                 DesktopConversation(
                     id = row.optString("id"),
@@ -769,7 +986,61 @@ class DesktopSupabaseClient(
                     lastMessageAt = row.optNullableString("last_message_at"),
                 )
             }
+        })
+    }
+
+    private fun withChatControls(conversations: List<DesktopConversation>): List<DesktopConversation> {
+        if (conversations.isEmpty()) return conversations
+        val params = JSONObject().put("p_conversation_ids", JSONArray(conversations.map { it.id }))
+        fun rows(function: String): Map<String, JSONObject> {
+            val value = runCatching { postObject("/rest/v1/rpc/$function", params) as? JSONArray }.getOrNull()
+                ?: return emptyMap()
+            return (0 until value.length()).mapNotNull { value.optJSONObject(it) }
+                .associateBy { it.optString("conversation_id") }
         }
+        val inbox = rows("get_chat_inbox_state")
+        val notifications = rows("get_conversation_notification_settings")
+        return conversations.map { conversation ->
+            val entry = inbox[conversation.id]
+            val preference = notifications[conversation.id]
+            conversation.copy(
+                isArchived = entry?.optBoolean("is_archived") ?: false,
+                isPinned = entry?.optBoolean("is_pinned") ?: false,
+                markedUnread = entry?.optBoolean("marked_unread") ?: false,
+                requestStatus = entry?.optString("request_status") ?: "accepted",
+                notificationMode = preference?.optString("notification_mode") ?: "all",
+                muteUntil = preference?.optNullableString("mute_until"),
+                controlsAvailable = entry != null,
+            )
+        }
+    }
+
+    suspend fun setChatInboxState(
+        conversationId: String, archived: Boolean? = null, pinned: Boolean? = null, unread: Boolean? = null,
+    ): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/set_chat_inbox_state", JSONObject()
+            .put("p_conversation_id", conversationId)
+            .put("p_archived", archived ?: JSONObject.NULL)
+            .put("p_pinned", pinned ?: JSONObject.NULL)
+            .put("p_marked_unread", unread ?: JSONObject.NULL)))
+    }
+
+    suspend fun respondMessageRequest(conversationId: String, accept: Boolean): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/respond_direct_message_request", JSONObject()
+            .put("p_conversation_id", conversationId).put("p_accept", accept)))
+    }
+
+    suspend fun setChatNotifications(conversationId: String, mode: String, muteUntil: String? = null): Boolean =
+        withContext(Dispatchers.IO) {
+            rpcBoolean(postObject("/rest/v1/rpc/set_conversation_notification_settings", JSONObject()
+                .put("p_conversation_id", conversationId).put("p_notification_mode", mode)
+                .put("p_mute_until", muteUntil ?: JSONObject.NULL)))
+        }
+
+    suspend fun forwardChatMessage(messageId: String, username: String) = withContext(Dispatchers.IO) {
+        postObject("/rest/v1/rpc/forward_chat_message", JSONObject()
+            .put("p_message_id", messageId).put("p_target_username", username.trim().removePrefix("@")))
+        Unit
     }
 
     suspend fun fetchMessages(conversationId: String): List<DesktopMessage> = withContext(Dispatchers.IO) {
@@ -1082,7 +1353,7 @@ class DesktopSupabaseClient(
     private suspend fun fetchMyLikedPostIds(): Set<String> = withContext(Dispatchers.IO) {
         val active = session ?: return@withContext emptySet()
         val rows = runCatching {
-            getArray("/rest/v1/post_likes?user_id=eq.${encode(active.userId)}&select=post_id&limit=1000")
+            getAllProfileRows("/rest/v1/post_likes?user_id=eq.${encode(active.userId)}&select=post_id&order=created_at.desc,post_id.desc")
         }.getOrNull() ?: return@withContext emptySet()
         buildSet {
             for (i in 0 until rows.length()) rows.optJSONObject(i)?.optString("post_id")?.takeIf(String::isNotBlank)?.let(::add)
@@ -1092,7 +1363,7 @@ class DesktopSupabaseClient(
     private suspend fun fetchMyBookmarkedPostIds(): Set<String> = withContext(Dispatchers.IO) {
         val active = session ?: return@withContext emptySet()
         val rows = runCatching {
-            getArray("/rest/v1/post_bookmarks?user_id=eq.${encode(active.userId)}&select=post_id&limit=1000")
+            getAllProfileRows("/rest/v1/post_bookmarks?user_id=eq.${encode(active.userId)}&select=post_id&order=created_at.desc,post_id.desc")
         }.getOrNull() ?: return@withContext emptySet()
         buildSet {
             for (i in 0 until rows.length()) {
@@ -1150,6 +1421,10 @@ class DesktopSupabaseClient(
         blinkVipUntil = row.optNullableString("blink_vip_until"),
         verifiedAtMillis = parseTimestampMillis(row.optNullableString("verified_at")),
         profileViewsThisWeek = row.optInt("profile_views_this_week"),
+        email = row.optNullableString("email"),
+        phone = row.optNullableString("phone"),
+        whatsapp = row.optNullableString("whatsapp"),
+        presenceVisibility = row.optString("presence_visibility").ifBlank { "PUBLIC" },
     )
 
     private fun parseFeedPost(
@@ -1177,6 +1452,7 @@ class DesktopSupabaseClient(
         shareCount = row.optInt("share_count"),
         viewCount = row.optInt("view_count"),
         isReel = row.optBoolean("is_reel"),
+        isPinned = row.optBoolean("is_pinned"),
         createdAt = row.optString("created_at"),
         isLiked = liked,
         isBookmarked = bookmarked,

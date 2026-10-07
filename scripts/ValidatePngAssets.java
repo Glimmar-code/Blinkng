@@ -2,6 +2,7 @@ import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.awt.image.BufferedImage;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,6 +11,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.zip.CRC32;
+import javax.imageio.ImageIO;
 
 public final class ValidatePngAssets {
     private static final byte[] PNG_SIGNATURE = new byte[] {
@@ -98,6 +100,17 @@ public final class ValidatePngAssets {
             if (input.read() != -1) {
                 fail(displayPath, "unexpected data after IEND");
             }
+        }
+        // CRCs only protect the chunk bytes. A CRC-correct PNG can still contain
+        // an invalid compressed pixel stream, which crashes Android resource decoding.
+        try {
+            BufferedImage decoded = ImageIO.read(file.toFile());
+            if (decoded == null || decoded.getWidth() < 1 || decoded.getHeight() < 1) {
+                fail(displayPath, "pixel data could not be decoded");
+            }
+            decoded.getRGB(0, 0, decoded.getWidth(), decoded.getHeight(), null, 0, decoded.getWidth());
+        } catch (IOException | RuntimeException error) {
+            throw invalid(displayPath, "pixel data could not be decoded", error);
         }
     }
 

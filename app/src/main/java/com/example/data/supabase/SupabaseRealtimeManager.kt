@@ -34,6 +34,13 @@ import org.json.JSONObject
 sealed class RealtimeEvent {
     data class MessageEvent(val eventType: String, val message: ChatMessage) : RealtimeEvent()
     data class ConversationEvent(val eventType: String, val conversationId: String, val lastMessage: String, val updatedAt: String) : RealtimeEvent()
+    data class ConversationPresenceEvent(
+        val eventType: String,
+        val conversationId: String,
+        val userId: String,
+        val state: String,
+        val expiresAt: String
+    ) : RealtimeEvent()
     data class NotificationEvent(
         val eventType: String,
         val id: String,
@@ -70,6 +77,12 @@ sealed class RealtimeEvent {
         val conversationId: String
     ) : RealtimeEvent()
     data class ConnectHubEvent(val eventType: String, val table: String) : RealtimeEvent()
+    data class WalletBalanceEvent(
+        val eventType: String,
+        val userId: String,
+        val balance: Long,
+        val updatedAt: String
+    ) : RealtimeEvent()
 }
 
 class SupabaseRealtimeManager private constructor() {
@@ -135,8 +148,8 @@ class SupabaseRealtimeManager private constructor() {
         if (uid.isBlank()) return
         scope.launch {
             try {
-                val body = JSONObject().apply { put("is_online", online); put("online_now", online); put("last_seen", nowIso()); put("last_seen_at", nowIso()) }
-                val request = Request.Builder().url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/profiles?id=eq.$uid").addHeader("apikey", SupabaseConfig.anonKey).addHeader("Authorization", "Bearer ${SupabaseService.accessToken() ?: SupabaseConfig.anonKey}").addHeader("Content-Type", "application/json").patch(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString())).build()
+                val body = JSONObject().put("p_online", online)
+                val request = Request.Builder().url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/set_my_presence").addHeader("apikey", SupabaseConfig.anonKey).addHeader("Authorization", "Bearer ${SupabaseService.accessToken() ?: SupabaseConfig.anonKey}").addHeader("Content-Type", "application/json").post(okhttp3.RequestBody.create("application/json".toMediaType(), body.toString())).build()
                 client.newCall(request).execute().use { response -> if (!response.isSuccessful) Log.w(TAG, "Presence update failed: ${response.code}") }
             } catch (e: Exception) { Log.w(TAG, "Presence update exception", e) }
         }
@@ -174,7 +187,7 @@ class SupabaseRealtimeManager private constructor() {
         if (sent) lastAccessTokenSent = token
     }
     private fun subscribeToTables() {
-        val tables = listOf("messages","conversations","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","calls","roommate_profiles","roommate_applications","mentor_profiles","mentor_requests","reading_mate_profiles","reading_mate_requests","housing_agent_profiles","housing_requests","housing_request_applications","game_challenges","skill_endorsements","poll_votes")
+        val tables = listOf("messages","conversations","conversation_presence","notifications","activities","feed_posts","post_likes","post_bookmarks","comments","comment_likes","comment_replies","stories","story_likes","story_reactions","story_replies","story_views","market_items","connection_requests","study_circles","study_circle_members","calls","roommate_profiles","roommate_applications","mentor_profiles","mentor_requests","reading_mate_profiles","reading_mate_requests","housing_agent_profiles","housing_requests","housing_request_applications","game_challenges","skill_endorsements","poll_votes","user_balances")
         tables.forEach { table -> val join = JSONObject().apply { put("topic", "realtime:public:$table"); put("event", "phx_join"); put("payload", JSONObject().apply { put("config", JSONObject().apply { put("postgres_changes", org.json.JSONArray().apply { put(JSONObject().apply { put("event", "*"); put("schema", "public"); put("table", table) }) }) }) }); put("ref", refCounter.getAndIncrement().toString()) }; webSocket?.send(join.toString()) }
     }
     private fun handleIncomingMessage(text: String) {
@@ -244,12 +257,39 @@ class SupabaseRealtimeManager private constructor() {
                                     record.optBoolean("is_read", false) || record.optString("read_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.READ
                                     record.optString("delivered_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.DELIVERED
                                     else -> MessageStatus.SENT
-                                }
+                                },
+                                messageType = record.optString("message_type").ifBlank { "text" },
+                                isVoiceNote = record.optString("message_type").equals("voice", true),
+                                attachedImageUrl = record.optString("media_url")
+                                    .takeIf { record.optString("message_type").equals("image", true) && it.isNotBlank() },
+                                attachedVideoUrl = record.optString("media_url")
+                                    .takeIf { record.optString("message_type").equals("video", true) && it.isNotBlank() },
+                                attachedAudioUrl = record.optString("media_url")
+                                    .takeIf {
+                                        (record.optString("message_type").equals("audio", true) ||
+                                            record.optString("message_type").equals("voice", true)) &&
+                                            it.isNotBlank()
+                                    },
+                                attachedDocumentUrl = record.optString("media_url")
+                                    .takeIf { record.optString("message_type").equals("document", true) && it.isNotBlank() },
+                                forwardedFromMessageId = record.optString("forwarded_from_message_id")
+                                    .takeIf { it.isNotBlank() && !it.equals("null", true) },
+                                isForwarded = record.optString("forwarded_from_message_id")
+                                    .let { it.isNotBlank() && !it.equals("null", true) }
                             )
                         )
                     )
                 }
                 "conversations" -> publishEvent(RealtimeEvent.ConversationEvent(type, record.optString("id"), record.optString("last_message"), record.optString("updated_at", record.optString("last_message_at"))))
+                "conversation_presence" -> publishEvent(
+                    RealtimeEvent.ConversationPresenceEvent(
+                        eventType = type,
+                        conversationId = record.optString("conversation_id"),
+                        userId = record.optString("user_id"),
+                        state = record.optString("state"),
+                        expiresAt = record.optString("expires_at")
+                    )
+                )
                 "notifications" -> {
                     if (type.equals("INSERT", ignoreCase = true)) {
                         publishEvent(
@@ -289,6 +329,22 @@ class SupabaseRealtimeManager private constructor() {
                     }
                 }
                 "feed_posts" -> publishEvent(RealtimeEvent.FeedPostEvent(type, record.optString("id")))
+                "user_balances" -> {
+                    val userId = record.optString("user_id")
+                    if (userId == activeUserId) {
+                        val rawBalance = record.optString("spendable_coin_balance")
+                        val balance = rawBalance.toBigDecimalOrNull()?.toLong()
+                            ?: record.optLong("spendable_coin_balance", 0L)
+                        publishEvent(
+                            RealtimeEvent.WalletBalanceEvent(
+                                eventType = type,
+                                userId = userId,
+                                balance = balance.coerceAtLeast(0L),
+                                updatedAt = record.optString("updated_at")
+                            )
+                        )
+                    }
+                }
                 "calls" -> {
                     val calleeId = record.optString("callee_id")
                     val status = record.optString("status")

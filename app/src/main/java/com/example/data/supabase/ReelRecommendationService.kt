@@ -94,6 +94,99 @@ class ReelRecommendationService {
         result.success
     }
 
+
+    fun recordRecommendationSignalAsync(
+        postId: String,
+        eventType: String,
+        surface: String = "reels"
+    ) {
+        telemetryScope.launch {
+            recordRecommendationSignal(
+                postId = postId,
+                eventType = eventType,
+                surface = surface
+            )
+        }
+    }
+
+    suspend fun recordRecommendationSignal(
+        postId: String,
+        eventType: String,
+        surface: String = "reels"
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanPostId = postId.trim()
+        val cleanEvent = eventType.trim().lowercase()
+        val cleanSurface = surface.trim().lowercase()
+        if (cleanPostId.isBlank() ||
+            cleanEvent !in setOf("hide", "report", "open", "click", "skip") ||
+            cleanSurface !in setOf("feed", "reels")
+        ) {
+            return@withContext false
+        }
+
+        val body = JSONObject()
+            .put("p_surface", cleanSurface)
+            .put("p_target_type", "post")
+            .put("p_target_key", cleanPostId)
+            .put("p_event_type", cleanEvent)
+            .put("p_dwell_ms", 0)
+            .put("p_session_id", JSONObject.NULL)
+            .put(
+                "p_metadata",
+                JSONObject()
+                    .put("source", "content_actions")
+                    .put("client", "android")
+            )
+            .toString()
+
+        var token = SupabaseService.accessToken()?.takeIf { it.isNotBlank() }
+            ?: return@withContext false
+
+        var result = executeRecommendation(token, body)
+        if (result.code == 401) {
+            val refreshToken = SupabaseService.refreshToken().orEmpty()
+            val refreshed = SupabaseSessionRefresher.refresh(refreshToken).getOrNull()
+            if (refreshed != null) {
+                SupabaseService.saveSession(refreshed.accessToken, refreshed.refreshToken)
+                token = refreshed.accessToken
+                result = executeRecommendation(token, body)
+            }
+        }
+
+        if (!result.success) {
+            Log.w(
+                TAG,
+                "RECOMMENDATION_SIGNAL failed event=$cleanEvent surface=$cleanSurface status=${result.code} body=${result.body}"
+            )
+        }
+        result.success
+    }
+
+    private fun executeRecommendation(token: String, body: String): RpcResult {
+        return try {
+            val request = Request.Builder()
+                .url("${SupabaseConfig.url.trimEnd('/')}/rest/v1/rpc/record_recommendation_event")
+                .addHeader("apikey", SupabaseConfig.anonKey)
+                .addHeader("Authorization", "Bearer $token")
+                .addHeader("Accept", "application/json")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toRequestBody(JSON))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                RpcResult(
+                    success = response.isSuccessful,
+                    code = response.code,
+                    body = response.body?.string().orEmpty().take(500)
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "RECOMMENDATION_SIGNAL exception", e)
+            RpcResult(false, -1, e.message.orEmpty())
+        }
+    }
+
+
     private fun execute(token: String, body: String): RpcResult {
         return try {
             val request = Request.Builder()

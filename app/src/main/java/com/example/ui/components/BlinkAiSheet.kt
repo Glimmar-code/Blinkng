@@ -1083,15 +1083,32 @@ fun BlinkAiSheet(
                             color = Color(0xFF061411)
                         ) {
                             Column(Modifier.padding(10.dp)) {
-                                OutlinedTextField(
-                                    value = input,
-                                    onValueChange = { if (it.length <= 8_000) input = it },
+                                Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    placeholder = { Text("Message BLINK AI…") },
-                                    minLines = 1,
-                                    maxLines = 5,
-                                    enabled = !isSending && pendingAction == null
-                                )
+                                    verticalAlignment = Alignment.Bottom,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = input,
+                                        onValueChange = { if (it.length <= 8_000) input = it },
+                                        modifier = Modifier.weight(1f),
+                                        placeholder = { Text("Message BLINK AI…") },
+                                        minLines = 1,
+                                        maxLines = 5,
+                                        enabled = !isSending && pendingAction == null
+                                    )
+                                    Button(
+                                        onClick = { sendMessage() },
+                                        enabled = (input.isNotBlank() || imageUris.isNotEmpty() || audioUri != null) &&
+                                            !isSending && pendingAction == null
+                                    ) {
+                                        if (isSending) {
+                                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                        } else {
+                                            Text("Send")
+                                        }
+                                    }
+                                }
 
                                 Spacer(Modifier.height(6.dp))
 
@@ -1131,17 +1148,6 @@ fun BlinkAiSheet(
                                         enabled = !isSending && pendingAction == null
                                     ) {
                                         Text("Voice")
-                                    }
-                                    Button(
-                                        onClick = { sendMessage() },
-                                        enabled = (input.isNotBlank() || imageUris.isNotEmpty() || audioUri != null) &&
-                                            !isSending && pendingAction == null
-                                    ) {
-                                        if (isSending) {
-                                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                                        } else {
-                                            Text("Send")
-                                        }
                                     }
                                 }
                             }

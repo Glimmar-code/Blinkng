@@ -1,0 +1,7 @@
+{
+  "name": "blink-testlab-migration-regressions",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node run-testlab-promotion.mjs" },
+  "dependencies": { "@electric-sql/pglite": "0.5.8" }
+}

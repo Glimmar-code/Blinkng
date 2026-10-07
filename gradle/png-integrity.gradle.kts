@@ -17,7 +17,7 @@ val blinkPngAssets = fileTree(blinkRepositoryRoot) {
 
 tasks.register<Exec>("validatePngIntegrity") {
     group = "verification"
-    description = "Validates PNG signatures, structure, and every chunk CRC used by BLINK clients."
+    description = "Validates PNG structure, chunk CRCs, and complete pixel decoding used by BLINK clients."
     inputs.file(blinkPngValidator)
     inputs.files(blinkPngAssets)
     workingDir(blinkRepositoryRoot)
