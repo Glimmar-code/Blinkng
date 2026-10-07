@@ -333,7 +333,14 @@ class MainActivity : ComponentActivity() {
         adConsentManager.gatherConsent {
             if (BlinkAdsRuntime.canRequestAds.value) rewardedAdManager.load()
         }
-        enableEdgeToEdge()
+        runCatching { enableEdgeToEdge() }
+            .onFailure { error ->
+                android.util.Log.w(
+                    "MainActivity",
+                    "Edge-to-edge setup unavailable; continuing with the platform default window insets.",
+                    error
+                )
+            }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
