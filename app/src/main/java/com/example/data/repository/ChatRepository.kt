@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
+import com.example.data.models.ChatPrivacySettings
 import com.example.data.models.MessageStatus
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
@@ -38,6 +39,62 @@ class ChatRepository(
         val nextBeforeId: String?,
         val hasMore: Boolean
     )
+
+    suspend fun fetchChatPrivacySettings(): ChatPrivacySettings = withContext(Dispatchers.IO) {
+        val token = SupabaseService.accessToken()?.takeIf { it.isNotBlank() }
+            ?: return@withContext ChatPrivacySettings()
+        runCatching {
+            client.newCall(
+                Request.Builder()
+                    .url(
+                        "${SupabaseConfig.url.trimEnd('/')}/rest/v1/user_chat_privacy" +
+                            "?select=who_can_message,who_can_call,who_can_group_invite,show_online," +
+                            "show_last_seen,send_read_receipts,show_typing,show_recording," +
+                            "show_profile_photo_in_chat,allow_link_previews,notification_preview&limit=1"
+                    )
+                    .addHeader("apikey", SupabaseConfig.anonKey)
+                    .addHeader("Authorization", "Bearer $token")
+                    .addHeader("Accept", "application/json")
+                    .get()
+                    .build()
+            ).execute().use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) return@use ChatPrivacySettings()
+                val row = org.json.JSONArray(raw.ifBlank { "[]" }).optJSONObject(0)
+                    ?: return@use ChatPrivacySettings()
+                ChatPrivacySettings(
+                    whoCanMessage = row.optString("who_can_message").ifBlank { "everyone" },
+                    whoCanCall = row.optString("who_can_call").ifBlank { "everyone" },
+                    whoCanGroupInvite = row.optString("who_can_group_invite").ifBlank { "everyone" },
+                    showOnline = row.optBoolean("show_online", true),
+                    showLastSeen = row.optBoolean("show_last_seen", true),
+                    sendReadReceipts = row.optBoolean("send_read_receipts", true),
+                    showTyping = row.optBoolean("show_typing", true),
+                    showRecording = row.optBoolean("show_recording", true),
+                    showProfilePhotoInChat = row.optBoolean("show_profile_photo_in_chat", true),
+                    allowLinkPreviews = row.optBoolean("allow_link_previews", true),
+                    notificationPreview = row.optString("notification_preview").ifBlank { "full" }
+                )
+            }
+        }.getOrDefault(ChatPrivacySettings())
+    }
+
+    suspend fun updateChatPrivacySettings(settings: ChatPrivacySettings): Boolean =
+        booleanRpc(
+            "update_chat_privacy",
+            JSONObject()
+                .put("p_who_can_message", settings.whoCanMessage)
+                .put("p_who_can_call", settings.whoCanCall)
+                .put("p_who_can_group_invite", settings.whoCanGroupInvite)
+                .put("p_show_online", settings.showOnline)
+                .put("p_show_last_seen", settings.showLastSeen)
+                .put("p_send_read_receipts", settings.sendReadReceipts)
+                .put("p_show_typing", settings.showTyping)
+                .put("p_show_recording", settings.showRecording)
+                .put("p_show_profile_photo_in_chat", settings.showProfilePhotoInChat)
+                .put("p_allow_link_previews", settings.allowLinkPreviews)
+                .put("p_notification_preview", settings.notificationPreview)
+        )
 
     suspend fun fetchConversations(): List<ChatConversation> = withContext(Dispatchers.IO) {
         // Conversation summaries are account data, not cache data. Walk the full server
@@ -148,9 +205,21 @@ class ChatRepository(
                             o.optString("delivered_at").let { it.isNotBlank() && !it.equals("null", true) } -> MessageStatus.DELIVERED
                             else -> MessageStatus.SENT
                         },
-                        isVoiceNote = mediaType.equals("voice", true) || mediaType.equals("audio", true),
+                        isVoiceNote = mediaType.equals("voice", true),
                         attachedImageUrl = mediaUrl.takeIf { mediaType.equals("image", true) },
                         attachedVideoUrl = mediaUrl.takeIf { mediaType.equals("video", true) },
+                        attachedAudioUrl = mediaUrl.takeIf {
+                            mediaType.equals("voice", true) || mediaType.equals("audio", true)
+                        },
+                        attachedDocumentUrl = mediaUrl.takeIf { mediaType.equals("document", true) },
+                        attachmentName = o.optString("content").takeIf {
+                            mediaType.equals("document", true) && it.isNotBlank()
+                        },
+                        messageType = mediaType.ifBlank { "text" },
+                        forwardedFromMessageId = o.optString("forwarded_from_message_id")
+                            .takeIf { it.isNotBlank() && !it.equals("null", true) },
+                        isForwarded = o.optString("forwarded_from_message_id")
+                            .let { it.isNotBlank() && !it.equals("null", true) },
                         replyToMessageId = o.optString("reply_to_message_id")
                             .takeIf { it.isNotBlank() && !it.equals("null", true) },
                         editedAt = o.optString("edited_at")
@@ -323,6 +392,18 @@ class ChatRepository(
         val isMuted: Boolean = false
     )
 
+    private data class InboxState(
+        val isArchived: Boolean = false,
+        val isPinned: Boolean = false,
+        val markedUnread: Boolean = false,
+        val requestStatus: String = "accepted"
+    )
+
+    private data class NotificationState(
+        val mode: String = "all",
+        val muteUntil: String? = null
+    )
+
     private fun isServerUuid(value: String?): Boolean =
         !value.isNullOrBlank() && runCatching { java.util.UUID.fromString(value) }.isSuccess
 
@@ -419,12 +500,110 @@ class ChatRepository(
         )
     }
 
+    suspend fun updateConversationPresence(
+        conversationId: String,
+        deviceId: String,
+        state: String,
+        ttlSeconds: Int = 30
+    ): Boolean {
+        if (!isServerUuid(conversationId) || deviceId.isBlank()) return false
+        val cleanState = state.lowercase().takeIf {
+            it in setOf("online", "typing", "recording", "uploading")
+        } ?: return false
+        return booleanRpc(
+            "upsert_conversation_presence",
+            JSONObject()
+                .put("p_conversation_id", conversationId)
+                .put("p_device_id", deviceId.take(200))
+                .put("p_state", cleanState)
+                .put("p_ttl_seconds", ttlSeconds.coerceIn(5, 120))
+        )
+    }
+
     suspend fun reportConversation(conversationId: String, reason: String): Boolean {
         if (!isServerUuid(conversationId) || reason.isBlank()) return false
         return booleanRpc(
             "report_conversation",
             JSONObject().put("p_conversation_id", conversationId).put("p_reason", reason.take(500))
         )
+    }
+
+    private suspend fun setConversationInboxState(
+        conversationId: String,
+        archived: Boolean? = null,
+        pinned: Boolean? = null,
+        markedUnread: Boolean? = null
+    ): Boolean {
+        if (!isServerUuid(conversationId)) return false
+        val body = JSONObject().put("p_conversation_id", conversationId)
+        archived?.let { body.put("p_archived", it) }
+        pinned?.let { body.put("p_pinned", it) }
+        markedUnread?.let { body.put("p_marked_unread", it) }
+        return booleanRpc("set_chat_inbox_state", body)
+    }
+
+    suspend fun setConversationArchived(conversationId: String, archived: Boolean): Boolean =
+        setConversationInboxState(conversationId, archived = archived)
+
+    suspend fun setConversationPinned(conversationId: String, pinned: Boolean): Boolean =
+        setConversationInboxState(conversationId, pinned = pinned)
+
+    suspend fun setConversationMarkedUnread(conversationId: String, unread: Boolean): Boolean =
+        setConversationInboxState(conversationId, markedUnread = unread)
+
+    suspend fun respondMessageRequest(conversationId: String, accept: Boolean): Boolean {
+        if (!isServerUuid(conversationId)) return false
+        return booleanRpc(
+            "respond_direct_message_request",
+            JSONObject()
+                .put("p_conversation_id", conversationId)
+                .put("p_accept", accept)
+        )
+    }
+
+    suspend fun blockChatUser(username: String, blocked: Boolean = true): Boolean {
+        val clean = username.trim().removePrefix("@")
+        if (clean.isBlank()) return false
+        return booleanRpc(
+            "block_chat_user",
+            JSONObject()
+                .put("p_username", clean)
+                .put("p_blocked", blocked)
+        )
+    }
+
+    suspend fun forwardMessage(messageId: String, targetUsername: String): String? {
+        if (!isServerUuid(messageId)) return null
+        val cleanTarget = targetUsername.trim().removePrefix("@")
+        if (cleanTarget.isBlank()) return null
+        val raw = runCatching {
+            postAuthenticatedRpc(
+                "forward_chat_message",
+                JSONObject()
+                    .put("p_message_id", messageId)
+                    .put("p_target_username", cleanTarget)
+            )
+        }.getOrNull() ?: return null
+        return raw.trim().trim('"').takeIf(::isServerUuid)
+    }
+
+    suspend fun setConversationNotificationSettings(
+        conversationId: String,
+        mode: String,
+        muteUntil: String? = null,
+        previewMode: String = "inherit",
+        vibrationEnabled: Boolean = true
+    ): Boolean {
+        if (!isServerUuid(conversationId)) return false
+        val cleanMode = mode.lowercase().takeIf { it in setOf("all", "mentions", "none") }
+            ?: return false
+        val body = JSONObject()
+            .put("p_conversation_id", conversationId)
+            .put("p_notification_mode", cleanMode)
+            .put("p_preview_mode", previewMode)
+            .put("p_vibration_enabled", vibrationEnabled)
+        body.put("p_mute_until", muteUntil ?: JSONObject.NULL)
+        return booleanRpc("set_conversation_notification_settings", body)
     }
 
     private suspend fun enrichMessageActions(messages: List<ChatMessage>): List<ChatMessage> {
@@ -504,17 +683,93 @@ class ChatRepository(
         }
     }
 
+    private suspend fun fetchInboxStates(conversationIds: List<String>): Map<String, InboxState> {
+        val ids = conversationIds.filter(::isServerUuid)
+        if (ids.isEmpty()) return emptyMap()
+        val raw = runCatching {
+            postAuthenticatedRpc(
+                "get_chat_inbox_state",
+                JSONObject().put("p_conversation_ids", org.json.JSONArray(ids))
+            )
+        }.getOrNull() ?: return emptyMap()
+        val array = runCatching { org.json.JSONArray(if (raw.isBlank()) "[]" else raw) }.getOrNull()
+            ?: return emptyMap()
+        return buildMap {
+            for (i in 0 until array.length()) {
+                val o = array.optJSONObject(i) ?: continue
+                val id = o.optString("conversation_id")
+                if (id.isBlank()) continue
+                put(
+                    id,
+                    InboxState(
+                        isArchived = o.optBoolean("is_archived", false),
+                        isPinned = o.optBoolean("is_pinned", false),
+                        markedUnread = o.optBoolean("marked_unread", false),
+                        requestStatus = o.optString("request_status").ifBlank { "accepted" }
+                    )
+                )
+            }
+        }
+    }
+
+    private suspend fun fetchNotificationStates(
+        conversationIds: List<String>
+    ): Map<String, NotificationState> {
+        val ids = conversationIds.filter(::isServerUuid)
+        if (ids.isEmpty()) return emptyMap()
+        val raw = runCatching {
+            postAuthenticatedRpc(
+                "get_conversation_notification_settings",
+                JSONObject().put("p_conversation_ids", org.json.JSONArray(ids))
+            )
+        }.getOrNull() ?: return emptyMap()
+        val array = runCatching { org.json.JSONArray(if (raw.isBlank()) "[]" else raw) }.getOrNull()
+            ?: return emptyMap()
+        return buildMap {
+            for (i in 0 until array.length()) {
+                val o = array.optJSONObject(i) ?: continue
+                val id = o.optString("conversation_id")
+                if (id.isBlank()) continue
+                put(
+                    id,
+                    NotificationState(
+                        mode = o.optString("notification_mode").ifBlank { "all" },
+                        muteUntil = o.optString("mute_until")
+                            .takeIf { it.isNotBlank() && !it.equals("null", true) }
+                    )
+                )
+            }
+        }
+    }
+
     private suspend fun applyConversationState(conversations: List<ChatConversation>): List<ChatConversation> {
-        val states = fetchConversationStates(conversations.map { it.id })
-        if (states.isEmpty()) return conversations
+        val conversationIds = conversations.map { it.id }
+        val states = fetchConversationStates(conversationIds)
+        val inboxStates = fetchInboxStates(conversationIds)
+        val notificationStates = fetchNotificationStates(conversationIds)
+        if (states.isEmpty() && inboxStates.isEmpty() && notificationStates.isEmpty()) return conversations
+
         return conversations.mapNotNull { conversation ->
-            val state = states[conversation.id] ?: return@mapNotNull conversation
+            val state = states[conversation.id] ?: ConversationUserState()
+            val inbox = inboxStates[conversation.id] ?: InboxState()
+            val notifications = notificationStates[conversation.id] ?: NotificationState()
             val cleared = state.clearedAt
             val lastAt = conversation.lastMessageRawTime.takeIf { it.isNotBlank() }?.let { raw ->
                 runCatching { java.time.OffsetDateTime.parse(raw).toInstant() }.getOrNull()
             }
-            if (cleared != null && (lastAt == null || !lastAt.isAfter(cleared))) null
-            else conversation.copy(isMuted = state.isMuted)
+            if (cleared != null && (lastAt == null || !lastAt.isAfter(cleared))) {
+                null
+            } else {
+                conversation.copy(
+                    isMuted = state.isMuted || notifications.mode == "none",
+                    isArchived = inbox.isArchived,
+                    isConversationPinned = inbox.isPinned,
+                    isMarkedUnread = inbox.markedUnread,
+                    inboxCategory = if (inbox.requestStatus == "pending") "requests" else "primary",
+                    notificationMode = notifications.mode,
+                    muteUntil = notifications.muteUntil
+                )
+            }
         }
     }
 

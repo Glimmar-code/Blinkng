@@ -77,6 +77,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -100,6 +101,7 @@ import com.example.data.models.BlinkStoreItem
 import com.example.data.models.BlinkStoreItemType
 import com.example.data.models.BlinkStoreTarget
 import com.example.data.supabase.BlinkEconomyService
+import com.example.data.supabase.BlinkWalletStore
 import com.example.ui.components.invalidateBlinkPublicPremiumIdentityCache
 import com.example.ui.components.BlinkMark
 import com.example.ui.components.BlinkStoreLivePreview
@@ -140,6 +142,7 @@ private enum class BlinkStoreTab(val label: String) {
 internal fun BlinkStoreRoute(onClose: () -> Unit) {
     val service = remember { BlinkEconomyService() }
     val scope = rememberCoroutineScope()
+    val liveWalletBalance by BlinkWalletStore.balance.collectAsState()
     var snapshot by remember { mutableStateOf(JSONObject()) }
     var loading by remember { mutableStateOf(true) }
     var working by remember { mutableStateOf(false) }
@@ -154,7 +157,10 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
     suspend fun refresh() {
         loading = true
         service.state()
-            .onSuccess { snapshot = it }
+            .onSuccess {
+                snapshot = it
+                it.takeIf { payload -> payload.has("balance") }?.optLong("balance")?.let(BlinkWalletStore::publish)
+            }
             .onFailure { message = it.message ?: "Unable to load Blink Store." }
         loading = false
     }
@@ -175,7 +181,7 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
 
     LaunchedEffect(Unit) { refresh() }
 
-    val balance = snapshot.optLong("balance", 0L)
+    val balance = liveWalletBalance ?: snapshot.optLong("balance", 0L)
     val inventory = snapshot.optJSONArray("inventory").objects()
     val equippedIds = snapshot.optJSONArray("equipped").objects().map { it.optString("catalog_id") }.toSet()
     val vipActive = snapshot.optJSONObject("vip")?.optBoolean("active", false) ?: false

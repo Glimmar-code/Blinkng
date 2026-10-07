@@ -1,3 +1,13 @@
+## 2026-10-07 — Android edge-to-edge startup resilience
+
+PARITY-EXCEPTION: android-edge-to-edge-startup-resilience-20261007
+
+- Android: treats `enableEdgeToEdge()` as a non-critical window enhancement. If the Android window/content container is unavailable during startup, BLINK logs the platform failure and continues to Compose instead of crashing before the welcome surface renders.
+- Why Android-only: `enableEdgeToEdge()` and the affected window/content-container lifecycle are Android Activity APIs. The Windows desktop client does not use Android window-inset plumbing.
+- Windows equivalent: none required; Windows keeps its existing desktop window setup and startup behavior.
+- Shared/backend behavior preserved: no feed/Reels ranking, qualified views, auth, wallet, messaging, notifications, profile, Supabase schema/RPC/RLS, or user-data rules change.
+- Validation: Android runtime smoke plus normal Android quality/release checks, Windows build/parity, and Supabase migration safety must pass before promotion.
+
 ## 2026-10-07 — Connect reliability, discovery and unified inbox overhaul
 
 - Android: Connect now uses a coordinated full-height scroll surface instead of nesting the main LazyColumn around a fixed-height pager; student discovery adds Same Department and Verified filters plus Recommended/Recently Active/Campus First/A–Z sorting and resettable empty states. The 20 Connect directory entries are grouped into Housing, Study, Career & Skills, People & Community and Games. A profile-aware For You rail and unified Connect Inbox surface requests/challenges without changing the authoritative request RPCs. Pending badges ignore completed request history.
@@ -5,6 +15,13 @@
 - Reliability/backend: Android Connect snapshot loading now isolates Roommate, Mentor, Reading Mate, Housing Agent, Housing Request, Challenge, Smart Match, Inbox and game-stat failures so one unavailable dataset cannot blank the whole Hub. No production Supabase schema, ranking, coins, auth, messaging, moderation or notification rules are changed.
 - Safety: implemented on `Testlab-connect-overhaul-20261007`; production `main` remains unchanged until Android and Windows checks pass.
 
+
+## 2026-10-07 — Final BLINK logo parity
+
+- Android: applies the approved black-background BLINK eye mark to the launcher, round launcher, adaptive foreground, splash/in-app brand asset, and keeps the artwork centered without stretching or cropping. The manifest now uses the launcher resources so platform masking is handled correctly; themed monochrome is intentionally omitted because the approved artwork has an opaque black background.
+- Windows: uses the same approved artwork for in-app branding, window/tray icon, and the native EXE/MSI package icon through the shared ICO resource.
+- Web/PWA: uses the same approved artwork for boot/brand surfaces, favicon/apple touch icon target, PWA manifest icons, social preview reference, and refreshes the service-worker cache key so clients do not retain the older mark.
+- Safety: branding-only change. No feed/Reels ranking, qualified views, auth, notifications, wallet/coins, Store, payments, Supabase schema/RPC/RLS, or user-data behavior is changed.
 
 ## 2026-10-07 — X-style feed polish, restoration and performance hardening
 
@@ -303,6 +320,19 @@ Tests/validation: Shared/Android pulse range tests, Android quality/release smok
 
 ---
 
+PARITY-EXCEPTION: android-reels-interaction-hardening-20261007
+Date: 2026-10-07
+Feature: Android Reels playback and interaction hardening
+Android behavior: Hardens the existing Android vertical Reels experience with adjacent media preloading, persistent sound state, tap-to-pause, seekable playback progress, privacy-aware action availability, interaction-sheet playback pausing, retry handling, and actionable Not Interested feedback through the existing recommendation path. Existing For You/Following routing and server-authoritative Reel data remain in place.
+Why this is genuinely Android-specific presentation: The changed playback lifecycle, VerticalPager behavior, gesture handling, Compose sheets, ExoPlayer preparation/retry state, and mobile media controls are Android UI/media-adapter concerns. They do not change the cross-platform Reel ranking formula, qualified-view rules, visibility/privacy rules, or shared content model.
+Windows equivalent or reason no equivalent is needed: Windows keeps its desktop-native Reel/video playback and navigation controls rather than copying Android touch gestures, VerticalPager lifecycle, or ExoPlayer state handling. No Windows user capability, shared recommendation rule, or server contract is removed or changed by this Android reliability/presentation patch.
+Backend/shared behavior preserved: Feed/Reels ranking, qualified-view timing and multipliers, points/XP, coins, verification, authentication, notifications, moderation, Supabase schema/RLS, and existing user data are unchanged. Not Interested uses the existing recommendation feedback path and does not redefine ranking weights or shared recommendation policy.
+Tests/validation: Android quality, Android runtime smoke, Android release smoke, Supabase safety, BLINK domain integration, and Windows desktop build/parity gates must pass on the Testlab head before promotion to main.
+Owner/reviewer note: This exception is limited to Android Reels UI/media lifecycle and touch presentation. Any future cross-platform Reel capability, recommendation algorithm, backend contract, or business-rule change still requires Windows/shared parity.
+
+
+---
+
 PARITY-EXCEPTION: android-feed-scroll-polish-20261007
 Date: 2026-10-07
 Feature: Android phone Home feed touch-scroll chrome, keyed restoration, inline media preparation and aggregate frame telemetry
@@ -325,3 +355,39 @@ Windows equivalent or reason no equivalent is needed: Windows does not contain t
 Backend/shared behavior preserved: Supabase schema, Market rows, authentication, wallet, feed/reels, messaging, ranking and shared contracts are unchanged.
 Tests/validation: Android validate, runtime-smoke, release-smoke, Windows build, parity and migration-safety must pass in Testlab before this hotfix is merged to main.
 Owner/reviewer note: This exception is limited to this compile-only duplicate declaration removal and cannot be reused for future Market feature changes.
+
+
+---
+
+PARITY-EXCEPTION: android-professional-chat-upgrade-20261007
+Date: 2026-10-07
+Feature: Android professional messaging/chat interaction upgrade
+Android behavior: Adds Android-native chat interaction polish including persistent composer drafts, media and voice-recorder flows, conversation interaction sheets, realtime message controls, richer message state handling, and Android-specific navigation/lifecycle wiring. Optional server-side conversation inbox state remains backward-compatible.
+Why this is genuinely Android-specific in this PR: The changed presentation and capture flows depend on Android Compose touch interaction, Activity/URI media pickers, microphone capture, Android lifecycle/navigation, and Android realtime adapters. This PR does not redefine the shared message payload contract or remove Windows messaging capabilities.
+Windows equivalent or reason no equivalent is needed: Windows keeps its existing desktop-native Messages surface with conversation search, chat search, send, reply, copy, forward, contact actions and desktop layout. The optional backend chat-control schema is additive, so Windows remains compatible without adopting phone-style voice recording, sheets, gestures, or Android lifecycle behavior in this PR.
+Backend/shared behavior preserved: Existing conversations, messages, auth, read/delivery state, feed/reels, ranking, wallet and user data remain intact. New chat-control columns/tables are additive and guarded by RLS.
+Tests/validation: Android validate/runtime/release/verify, Supabase migration-safety, Windows build and parity must pass in Testlab before production promotion.
+Owner/reviewer note: This exception only covers Android-native interaction/capture/lifecycle presentation. It cannot be used to waive Windows parity for future shared messaging business rules or message data-model changes.
+
+---
+
+PARITY-CHANGE: profile-user-profile-hardening-20261007
+Date: 2026-10-07
+Feature: BLINK own-profile and public user-profile hardening
+Shared/backend behavior: Adds explicit PUBLIC/FOLLOWERS/PRIVATE contact and presence visibility policy, server-redacted authenticated profile-detail reads, real daily follower snapshots for owner analytics, profile-specific notification modes, reusable mute/report/block contracts, follower/following lists, and a server-enforced maximum of three pinned profile posts/reels. Profile notification delivery reuses the existing notifications table and push pipeline: ALL receives public posts/reels, REELS receives public reels only, and IMPORTANT receives newly pinned public updates.
+Android behavior: Public profiles now separate Posts and Reels, keep Liked/Saved activity owner-only, show real rather than fabricated follower analytics, expose searchable follower/following lists, scope search to the viewed profile, wire Share/Notifications/Mute/Report/Block menu actions, enforce contact/presence visibility, show private owner insights, and allow owners to pin/unpin content through the server limit. Edit Profile exposes privacy selectors for email, phone, WhatsApp and online/last-seen visibility.
+Windows behavior: Other-user profile detail is now reachable from Search and Connect and uses the same server-redacted profile contract. The Windows profile dialog supports Posts/Reels/About, profile-local content search, follow state, profile sharing, notification mode, mute/report/block, and follower/following lists. External desktop profile reads no longer rely on the private owner projection.
+Backend safety: Existing follow, block, report, mute, ranking, XP, Blink Coin, verification, feed/reel ranking and qualified-view algorithms are not rewritten. New contracts are additive; Android profile updates include a compatibility fallback while Testlab may still point at the pre-migration production schema. The migration is not applied to production from this branch.
+Tests/validation required before promotion: shared tests, Android unit/lint/instrumentation compile/debug/release-smoke, Windows build/tests/package, Supabase safety, parity gates, and domain integration. Because this Supabase project currently has no preview database branch, the migration must not be applied to production merely to test this PR.
+
+---
+
+PARITY-EXCEPTION: android-growth-suite-wallet-ui-hardening-20261006
+Date: 2026-10-06
+Feature: Android Growth/Boost/Drops production hardening and wallet presentation
+Android behavior: Adds Android realtime Blink Coin wallet mirroring, resilient loading/retry/offline states, Boost budget presets and campaign analytics/history/receipts, Drop eligibility previews/history/receipts, spend confirmations, process-local draft preservation, and Android notification routing into Boost/Drops. Duplicate spend submissions are protected by additive server-side idempotency RPC wrappers.
+Why this is genuinely Android-specific presentation: The modified app files are Android Compose UI, Android notification/deep-link routing, and the Android Realtime adapter. They do not alter which Growth capabilities Windows is entitled to or the organic Feed/Reels ranking model.
+Windows equivalent or reason no equivalent is needed: Windows keeps its existing Boost desktop experience and the existing server-authoritative Growth contracts. The new backend RPCs are additive wrappers/analytics and the prior APIs remain compatible. Phone bottom-sheet navigation, Android notification intents, pull-to-refresh, and Android Compose layout do not map one-to-one to the desktop shell.
+Backend/shared behavior preserved: public.user_balances.spendable_coin_balance remains the single wallet authority. Boost pricing/delivery, Drop follower snapshots/reward/refund rules, Store pricing, verification, XP/Rank Points, authentication, and organic recommendation/ranking behavior remain server-authoritative. The new backend work adds idempotency, read-only analytics/receipts, lifecycle notifications, scheduled settlement, and realtime publication for the existing wallet table.
+Tests/validation: Android unit/lint/instrumentation/debug/release checks, Windows build/package/parity, and Supabase safety must pass on Testlab PR #172 before merge. The production migration is applied only after those gates pass and the Testlab PR is merged.
+Owner/reviewer note: This exception covers Android presentation/notification/realtime adapters only. It cannot waive Windows parity for future Growth business-rule, pricing, wallet, reward, or ranking changes.

@@ -104,6 +104,11 @@ object PersistentTextDraftStore {
         null
     }
 
+    fun readDraft(context: Context, key: String, scope: String = ""): String? {
+        val storage = storageKey(context.applicationContext, key, scope)
+        return readStorageKey(context.applicationContext, storage)?.takeIf { it.isNotBlank() }
+    }
+
     internal fun writeStorageKey(context: Context, storageKey: String, value: String) {
         val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
         if (value.isEmpty()) {

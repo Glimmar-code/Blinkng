@@ -25,8 +25,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -50,7 +51,7 @@ fun BlinkMark(
         modifier = modifier
     ) {
         Image(
-            painter = painterResource(id = R.drawable.app_icon),
+            bitmap = ImageBitmap.imageResource(id = R.drawable.app_icon),
             contentDescription = "BLINK logo",
             contentScale = ContentScale.Fit,
             modifier = Modifier.size(size)

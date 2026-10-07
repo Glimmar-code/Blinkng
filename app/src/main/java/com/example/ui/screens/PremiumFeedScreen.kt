@@ -316,7 +316,8 @@ fun PremiumFeedScreen(
     onBottomBarVisibilityChange: (Boolean) -> Unit = {},
     hasUnreadNotifications: Boolean = false,
     unreadNotificationCount: Int = 0,
-    routedReelId: String? = null
+    routedReelId: String? = null,
+    isInteractionOverlayOpen: Boolean = false
 ) {
     val context = LocalContext.current
     val resumePrefs = remember(context) {
@@ -419,6 +420,7 @@ fun PremiumFeedScreen(
         1 -> FeedScreen(
             posts = posts,
             reels = reels,
+            followingReels = followingPosts.filter { it.isReel || !it.videoUrl.isNullOrBlank() },
             stories = stories,
             profiles = profiles,
             leaderboardUsers = leaderboardUsers,
@@ -459,10 +461,14 @@ fun PremiumFeedScreen(
             onMessageClick = onMessageClick,
             hasMorePosts = hasMorePosts,
             hasMoreReels = hasMoreReels,
+            hasMoreFollowingReels = hasMoreFollowingPosts,
             isLoadingMorePosts = isLoadingMorePosts,
             isLoadingMoreReels = isLoadingMoreReels,
+            isLoadingMoreFollowingReels = isLoadingMoreFollowingPosts,
             onLoadMorePosts = onLoadMorePosts,
             onLoadMoreReels = onLoadMoreReels,
+            onLoadMoreFollowingReels = onLoadMoreFollowingPosts,
+            isInteractionOverlayOpen = isInteractionOverlayOpen,
             homeReselectSignal = homeReselectSignal,
             onBottomBarVisibilityChange = onBottomBarVisibilityChange,
             initialReelId = routedReelId ?: launchReelId,

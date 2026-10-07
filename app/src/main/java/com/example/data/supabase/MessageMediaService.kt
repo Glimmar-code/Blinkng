@@ -72,7 +72,7 @@ object MessageMediaService {
                     .build()
             ).execute().use { response ->
                 val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(raw, "Could not open private video."))
+                if (!response.isSuccessful) throw IllegalStateException(error(raw, "Could not open private media."))
                 val obj = JSONObject(raw)
                 val signed = obj.optString("signedURL").ifBlank { obj.optString("signedUrl") }
                 if (signed.isBlank()) null
@@ -86,8 +86,27 @@ object MessageMediaService {
         context: Context,
         receiverUsername: String,
         uri: Uri
+    ): Result<ChatMessage> = sendAttachmentMessage(
+        context = context,
+        receiverUsername = receiverUsername,
+        uri = uri,
+        kind = "video"
+    )
+
+    suspend fun sendAttachmentMessage(
+        context: Context,
+        receiverUsername: String,
+        uri: Uri,
+        kind: String,
+        displayName: String? = null
     ): Result<ChatMessage> = withContext(Dispatchers.IO) {
         try {
+            val normalizedKind = kind.trim().lowercase().let {
+                when (it) {
+                    "image", "video", "audio", "voice", "document" -> it
+                    else -> return@withContext Result.failure(Exception("Unsupported attachment type."))
+                }
+            }
             val senderId = uid() ?: return@withContext Result.failure(Exception("Please sign in again."))
             val receiver = receiverUsername.trim().removePrefix("@")
             if (receiver.isBlank() || receiver.equals("null", ignoreCase = true)) {
@@ -174,18 +193,53 @@ object MessageMediaService {
                 }
             }
 
-            val mime = context.contentResolver.getType(uri) ?: "video/mp4"
-            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: return@withContext Result.failure(Exception("Could not read video."))
-            if (bytes.isEmpty()) return@withContext Result.failure(Exception("Video is empty."))
+            val resolver = context.contentResolver
+            val mime = resolver.getType(uri) ?: when (normalizedKind) {
+                "image" -> "image/jpeg"
+                "video" -> "video/mp4"
+                "voice", "audio" -> "audio/mp4"
+                else -> "application/octet-stream"
+            }
+            val bytes = if (uri.scheme.equals("file", true)) {
+                java.io.File(uri.path.orEmpty()).takeIf { it.isFile }?.readBytes()
+            } else {
+                resolver.openInputStream(uri)?.use { it.readBytes() }
+            } ?: return@withContext Result.failure(Exception("Could not read attachment."))
 
-            val extension = when {
-                mime.contains("webm", true) -> "webm"
-                mime.contains("quicktime", true) -> "mov"
-                else -> "mp4"
+            if (bytes.isEmpty()) return@withContext Result.failure(Exception("Attachment is empty."))
+            val maxBytes = if (normalizedKind == "video") 256L * 1024L * 1024L else 64L * 1024L * 1024L
+            if (bytes.size.toLong() > maxBytes) {
+                val maxMb = maxBytes / 1024L / 1024L
+                return@withContext Result.failure(Exception("Attachment is larger than $maxMb MB."))
+            }
+
+            val resolvedName = displayName?.takeIf { it.isNotBlank() }
+                ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+                ?: "$normalizedKind-${System.currentTimeMillis()}"
+            val extension = resolvedName.substringAfterLast('.', "").takeIf { it.length in 1..8 }
+                ?: when {
+                    mime.contains("png", true) -> "png"
+                    mime.contains("webp", true) -> "webp"
+                    mime.contains("jpeg", true) || mime.contains("jpg", true) -> "jpg"
+                    mime.contains("webm", true) -> "webm"
+                    mime.contains("quicktime", true) -> "mov"
+                    mime.contains("mpeg", true) -> "mp3"
+                    mime.contains("ogg", true) -> "ogg"
+                    mime.contains("wav", true) -> "wav"
+                    mime.contains("pdf", true) -> "pdf"
+                    normalizedKind == "video" -> "mp4"
+                    normalizedKind == "voice" || normalizedKind == "audio" -> "m4a"
+                    else -> "bin"
+                }
+            val directory = when (normalizedKind) {
+                "image" -> "images"
+                "video" -> "videos"
+                "voice" -> "voice"
+                "audio" -> "audio"
+                else -> "documents"
             }
             val objectPath =
-                "conversations/$conversationId/users/$senderId/videos/${UUID.randomUUID()}.$extension"
+                "conversations/$conversationId/users/$senderId/$directory/${UUID.randomUUID()}.$extension"
 
             client.newCall(
                 builder("/storage/v1/object/$PRIVATE_BUCKET/${encodedPath(objectPath)}")
@@ -195,17 +249,24 @@ object MessageMediaService {
                     .build()
             ).execute().use { response ->
                 val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(raw, "Video upload failed."))
+                if (!response.isSuccessful) throw IllegalStateException(error(raw, "Attachment upload failed."))
             }
 
             val storedReference = "$PRIVATE_BUCKET:$objectPath"
+            val label = when (normalizedKind) {
+                "image" -> "Photo"
+                "video" -> "Video"
+                "voice" -> "Voice message"
+                "audio" -> "Audio"
+                else -> resolvedName
+            }
             val messageBody = JSONObject()
                 .put("conversation_id", conversationId)
                 .put("sender_id", senderId)
-                .put("content", "Video")
+                .put("content", label)
                 .put("media_url", storedReference)
                 .put("is_read", false)
-                .put("message_type", "video")
+                .put("message_type", normalizedKind)
 
             val raw = client.newCall(
                 builder("/rest/v1/messages")
@@ -214,7 +275,7 @@ object MessageMediaService {
                     .build()
             ).execute().use { response ->
                 val text = response.body?.string().orEmpty()
-                if (!response.isSuccessful) throw IllegalStateException(error(text, "Video message failed."))
+                if (!response.isSuccessful) throw IllegalStateException(error(text, "Attachment message failed."))
                 text
             }
             val row = JSONArray(raw).getJSONObject(0)
@@ -224,23 +285,62 @@ object MessageMediaService {
                 ChatMessage(
                     id = row.optString("id"),
                     senderId = senderId,
-                    text = "Video",
+                    text = label,
                     timestamp = "Just now",
                     isFromMe = true,
                     conversationId = conversationId,
                     rawTimestamp = row.optString("created_at"),
                     isRead = false,
                     status = MessageStatus.SENT,
-                    attachedVideoUrl = playableUrl
+                    isVoiceNote = normalizedKind == "voice",
+                    attachedImageUrl = playableUrl.takeIf { normalizedKind == "image" },
+                    attachedVideoUrl = playableUrl.takeIf { normalizedKind == "video" },
+                    attachedAudioUrl = playableUrl.takeIf { normalizedKind == "audio" || normalizedKind == "voice" },
+                    attachedDocumentUrl = playableUrl.takeIf { normalizedKind == "document" },
+                    attachmentName = resolvedName,
+                    attachmentMimeType = mime,
+                    messageType = normalizedKind
                 )
             )
         } catch (e: Exception) {
-            Log.e(TAG, "sendVideoMessage failed", e)
+            Log.e(TAG, "sendAttachmentMessage failed", e)
             Result.failure(e)
         }
     }
 
     suspend fun hydrateVideos(
+        conversations: List<ChatConversation>
+    ): List<ChatConversation> = hydrateMedia(conversations)
+
+    suspend fun hydrateMessagePage(
+        messages: List<ChatMessage>
+    ): List<ChatMessage> = withContext(Dispatchers.IO) {
+        if (messages.isEmpty() || SupabaseService.accessToken().isNullOrBlank()) {
+            return@withContext messages
+        }
+        val signedCache = mutableMapOf<String, String?>()
+        fun resolve(reference: String?): String? {
+            if (reference.isNullOrBlank()) return reference
+            return when {
+                reference.startsWith("$PRIVATE_BUCKET:") -> {
+                    val objectPath = reference.removePrefix("$PRIVATE_BUCKET:")
+                    signedCache.getOrPut(objectPath) { signedUrl(objectPath) }
+                }
+                reference.startsWith("http") -> reference
+                else -> reference
+            }
+        }
+        messages.map { message ->
+            message.copy(
+                attachedImageUrl = resolve(message.attachedImageUrl),
+                attachedVideoUrl = resolve(message.attachedVideoUrl),
+                attachedAudioUrl = resolve(message.attachedAudioUrl),
+                attachedDocumentUrl = resolve(message.attachedDocumentUrl)
+            )
+        }
+    }
+
+    suspend fun hydrateMedia(
         conversations: List<ChatConversation>
     ): List<ChatConversation> = withContext(Dispatchers.IO) {
         if (conversations.isEmpty() || SupabaseService.accessToken().isNullOrBlank()) {
@@ -248,43 +348,55 @@ object MessageMediaService {
         }
         try {
             val raw = client.newCall(
-                builder("/rest/v1/messages?select=id,media_url,message_type&message_type=eq.video&limit=300")
+                builder("/rest/v1/messages?select=id,media_url,message_type,content&media_url=not.is.null&limit=1000")
                     .get().build()
             ).execute().use { response ->
                 if (!response.isSuccessful) return@withContext conversations
                 response.body?.string().orEmpty()
             }
 
+            data class MediaRef(val reference: String, val kind: String, val name: String)
             val rows = JSONArray(raw.ifBlank { "[]" })
-            val references = mutableMapOf<String, String>()
+            val references = mutableMapOf<String, MediaRef>()
             val signedCache = mutableMapOf<String, String?>()
             for (i in 0 until rows.length()) {
                 val row = rows.optJSONObject(i) ?: continue
                 val id = row.optString("id")
                 val reference = row.optString("media_url")
-                if (id.isNotBlank() && reference.isNotBlank()) references[id] = reference
+                val kind = row.optString("message_type").lowercase()
+                if (id.isNotBlank() && reference.isNotBlank()) {
+                    references[id] = MediaRef(reference, kind, row.optString("content"))
+                }
             }
 
             conversations.map { conversation ->
                 conversation.copy(
                     messages = conversation.messages.map { message ->
-                        val reference = references[message.id]
+                        val media = references[message.id] ?: return@map message
                         val playable = when {
-                            reference.isNullOrBlank() -> null
-                            reference.startsWith("$PRIVATE_BUCKET:") -> {
-                                val objectPath = reference.removePrefix("$PRIVATE_BUCKET:")
+                            media.reference.startsWith("$PRIVATE_BUCKET:") -> {
+                                val objectPath = media.reference.removePrefix("$PRIVATE_BUCKET:")
                                 signedCache.getOrPut(objectPath) { signedUrl(objectPath) }
                             }
-                            reference.startsWith("http") -> reference
+                            media.reference.startsWith("http") -> media.reference
                             else -> null
                         }
-                        message.copy(attachedVideoUrl = playable)
+                        message.copy(
+                            messageType = media.kind.ifBlank { message.messageType },
+                            isVoiceNote = media.kind == "voice" || message.isVoiceNote,
+                            attachedImageUrl = playable.takeIf { media.kind == "image" } ?: message.attachedImageUrl,
+                            attachedVideoUrl = playable.takeIf { media.kind == "video" } ?: message.attachedVideoUrl,
+                            attachedAudioUrl = playable.takeIf { media.kind == "audio" || media.kind == "voice" } ?: message.attachedAudioUrl,
+                            attachedDocumentUrl = playable.takeIf { media.kind == "document" } ?: message.attachedDocumentUrl,
+                            attachmentName = message.attachmentName ?: media.name.takeIf { media.kind == "document" }
+                        )
                     }.toMutableList()
                 )
             }
         } catch (e: Exception) {
-            Log.w(TAG, "hydrateVideos failed", e)
+            Log.w(TAG, "hydrateMedia failed", e)
             conversations
         }
     }
+
 }

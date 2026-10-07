@@ -81,7 +81,7 @@ class BlinkEconomyService {
     suspend fun state() = runCatching { rpc("get_blink_store_state") }
     suspend fun boostableContent() = runCatching { rpc("get_my_blink_boostable_content") }
 
-    suspend fun boostGrowthState() = runCatching { rpc("get_blink_boost_growth_state") }
+    suspend fun boostGrowthState() = runCatching { rpc("get_blink_boost_growth_state_v2") }
 
     suspend fun boostMissions(limit: Int = 12) = runCatching {
         rpc("get_blink_boost_missions", JSONObject().put("p_limit", limit.coerceIn(1, 30)))
@@ -109,7 +109,7 @@ class BlinkEconomyService {
     ) = runCatching {
         require(targetId.isNotBlank()) { "Choose something to boost." }
         rpc(
-            "quote_blink_boost_campaign",
+            "quote_blink_boost_campaign_v2",
             JSONObject()
                 .put("p_target_type", targetType.trim().uppercase())
                 .put("p_target_id", targetId.trim())
@@ -129,14 +129,40 @@ class BlinkEconomyService {
         audienceScope: String,
         durationDays: Int,
         targetUniversity: String? = null,
+        requestId: String,
     ) = runCatching {
         require(targetId.isNotBlank()) { "Choose something to boost." }
+        require(requestId.isNotBlank()) { "Boost request is missing." }
         rpc(
-            "create_blink_boost_campaign",
+            "create_blink_boost_campaign_v2",
             JSONObject()
                 .put("p_target_type", targetType.trim().uppercase())
                 .put("p_target_id", targetId.trim())
                 .put("p_boost_power", boostPower.coerceIn(1, 100))
+                .put("p_objective", objective.trim().uppercase())
+                .put("p_audience_scope", audienceScope.trim().uppercase())
+                .put("p_duration_days", durationDays)
+                .put("p_target_university", targetUniversity?.trim()?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
+                .put("p_request_id", requestId.trim())
+        )
+    }
+
+    suspend fun recommendBoostPower(
+        targetType: String,
+        targetId: String,
+        budget: Long,
+        objective: String,
+        audienceScope: String,
+        durationDays: Int,
+        targetUniversity: String? = null,
+    ) = runCatching {
+        require(targetId.isNotBlank()) { "Choose something to boost first." }
+        rpc(
+            "recommend_blink_boost_power",
+            JSONObject()
+                .put("p_target_type", targetType.trim().uppercase())
+                .put("p_target_id", targetId.trim())
+                .put("p_budget", budget.coerceAtLeast(50L))
                 .put("p_objective", objective.trim().uppercase())
                 .put("p_audience_scope", audienceScope.trim().uppercase())
                 .put("p_duration_days", durationDays)
@@ -358,6 +384,8 @@ class BlinkEconomyService {
         val message = runCatching { JSONObject(raw).optString("message") }.getOrDefault(raw)
         return when {
             message.contains("INSUFFICIENT_BLINK_COINS") -> "You don't have enough Blink Coins."
+            message.contains("BOOST_BUDGET_TOO_LOW") -> "Choose a Boost budget of at least 50 Blink Coins."
+            message.contains("REQUEST_ID_REQUIRED") -> "That request could not be secured. Please try again."
             message.contains("ALREADY_OWNED") -> "You already own this item."
             message.contains("VIP_REQUIRED") -> "An active Blink VIP pass is required."
             message.contains("TARGET_REQUIRED") -> "Choose where you want to use this item."

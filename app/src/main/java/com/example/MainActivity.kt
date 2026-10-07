@@ -56,6 +56,7 @@ class MainActivity : ComponentActivity() {
     private var presenceHeartbeatJob: Job? = null
     private var rewardedAdShowPending = false
     private var itemsOpenSignal by mutableIntStateOf(0)
+    private var boostOpenSignal by mutableIntStateOf(0)
 
     private val inAppUpdateLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -224,6 +225,12 @@ class MainActivity : ComponentActivity() {
                 viewModel.setFeedSubTab(0)
                 itemsOpenSignal += 1
             }
+
+            BlinkNotificationHelper.ACTION_OPEN_BOOST -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(0)
+                boostOpenSignal += 1
+            }
         }
 
         intent.removeExtra(BlinkNotificationHelper.EXTRA_ACTION)
@@ -286,6 +293,12 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
+            BlinkInAppNotificationDestination.BOOST -> {
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(0)
+                boostOpenSignal += 1
+            }
+
             BlinkInAppNotificationDestination.ITEMS -> {
                 viewModel.setTab(MainTab.HOME)
                 viewModel.setFeedSubTab(0)
@@ -333,7 +346,14 @@ class MainActivity : ComponentActivity() {
         adConsentManager.gatherConsent {
             if (BlinkAdsRuntime.canRequestAds.value) rewardedAdManager.load()
         }
-        enableEdgeToEdge()
+        runCatching { enableEdgeToEdge() }
+            .onFailure { error ->
+                android.util.Log.w(
+                    "MainActivity",
+                    "Edge-to-edge setup unavailable; continuing with the platform default window insets.",
+                    error
+                )
+            }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
@@ -512,6 +532,7 @@ class MainActivity : ComponentActivity() {
                                         viewModel = viewModel,
                                         onWatchAdForCoins = ::showRewardedAdForCoins,
                                         itemsOpenSignal = itemsOpenSignal,
+                                        boostOpenSignal = boostOpenSignal,
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
                                         onAdPrivacyOptions = ::showAdPrivacyOptions
                                     )
@@ -544,6 +565,7 @@ fun MainAppContent(
     viewModel: BlinkViewModel,
     onWatchAdForCoins: () -> Unit,
     itemsOpenSignal: Int,
+    boostOpenSignal: Int,
     isAdPrivacyOptionsRequired: Boolean,
     onAdPrivacyOptions: () -> Unit
 ) {
@@ -553,6 +575,9 @@ fun MainAppContent(
     var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(itemsOpenSignal) {
         if (itemsOpenSignal > 0) feedUtilitySheet = "items"
+    }
+    LaunchedEffect(boostOpenSignal) {
+        if (boostOpenSignal > 0) feedUtilitySheet = "boost"
     }
     val context = androidx.compose.ui.platform.LocalContext.current
     val connectHubActions = remember(viewModel) {
@@ -730,6 +755,8 @@ fun MainAppContent(
                         onMessageClick = { viewModel.setTab(MainTab.MESSAGES) },
                         hasUnreadNotifications = uiState.activities.any { it.isUnread },
                         unreadNotificationCount = uiState.activities.count { it.isUnread },
+                        isInteractionOverlayOpen =
+                            uiState.activeCommentsPostId != null || uiState.activePostOptionsPost != null,
                         hasMorePosts = uiState.hasMorePosts,
                         hasMoreFollowingPosts = uiState.hasMoreFollowingPosts,
                         hasMoreReels = uiState.hasMoreReels,
@@ -821,6 +848,7 @@ fun MainAppContent(
                         conversations = uiState.conversations,
                         stories = uiState.stories,
                         activities = uiState.activities,
+                        chatPrivacySettings = uiState.chatPrivacySettings,
                         myAvatar = uiState.myProfile.avatarUrl,
                         myName = uiState.myProfile.fullName.ifBlank { uiState.myProfile.username },
                         activePartner = uiState.activeConversationPartner,
@@ -833,6 +861,9 @@ fun MainAppContent(
                         onSendMessage = { partner, text, replyTo ->
                             viewModel.sendMessage(partner, text, replyToMessageId = replyTo)
                         },
+                        onForwardMessage = { target, message ->
+                            viewModel.forwardChatMessage(target, message)
+                        },
                         interactionActions = ChatInteractionActions(
                             onReact = { partner, message, emoji -> viewModel.toggleMessageReaction(partner, message, emoji) },
                             onEdit = { partner, message, content -> viewModel.editChatMessage(partner, message, content) },
@@ -844,8 +875,22 @@ fun MainAppContent(
                             onClearConversation = { conversation -> viewModel.clearConversationForMe(conversation) },
                             onMuteConversation = { conversation, muted -> viewModel.setConversationMuted(conversation, muted) },
                             onMuteConversationFor = { conversation, duration -> viewModel.muteConversationFor(conversation, duration) },
+                            onNotificationSettings = { conversation, mode, muteUntil ->
+                                viewModel.setChatNotificationSettings(conversation, mode, muteUntil)
+                            },
+                            onArchiveConversation = { conversation, archived -> viewModel.setConversationArchived(conversation, archived) },
+                            onPinConversation = { conversation, pinned -> viewModel.setConversationPinned(conversation, pinned) },
+                            onMarkConversationUnread = { conversation, unread -> viewModel.setConversationMarkedUnread(conversation, unread) },
+                            onRespondMessageRequest = { conversation, accept -> viewModel.respondToMessageRequest(conversation, accept) },
+                            onBlockConversation = { conversation -> viewModel.blockChatUser(conversation) },
                             onReportConversation = { conversation, reason -> viewModel.reportConversation(conversation, reason) }
                         ),
+                        onSendAttachment = { partner, uri, kind ->
+                            viewModel.sendAttachmentMessage(partner, uri, kind)
+                        },
+                        onPresenceChange = { partner, state ->
+                            viewModel.updateChatPresence(partner, state)
+                        },
                         onSendVideo = { partner, uri -> viewModel.sendVideoMessage(partner, uri) },
                         onRetryMessage = { partner, message ->
                             viewModel.retrySendMessage(partner, message)
@@ -864,6 +909,9 @@ fun MainAppContent(
                         onStoryClick = { story -> viewModel.openStory(story) },
                         onAddStoryClick = { viewModel.openCreateStory(true) },
                         onOpenActivity = { viewModel.openActivity(true) },
+                        onUpdateChatPrivacy = { settings ->
+                            viewModel.updateChatPrivacySettings(settings)
+                        },
                         onComposeMessage = { viewModel.setTab(MainTab.SEARCH) },
                         isDark = uiState.isDarkMode,
                         isConnected = uiState.isOnline,
@@ -972,10 +1020,15 @@ fun MainAppContent(
                                     viewModel.openProductDetail(listing)
                                 }
                             },
+                            onGetCoins = { feedUtilitySheet = "store" },
+                            onCreateContent = {
+                                dismissUtility { viewModel.openCreatePost(true) }
+                            },
                             onClose = { dismissUtility() },
                         )
 
                         "drops" -> BlinkDropsRoute(
+                            onGetCoins = { feedUtilitySheet = "store" },
                             onClose = { dismissUtility() }
                         )
 
@@ -1221,8 +1274,16 @@ fun MainAppContent(
                 } else {
                     (uiState.posts + uiState.reels).distinctBy { it.id }.filter { it.author.equals(profile.username, ignoreCase = true) || it.author.equals(profile.fullName, ignoreCase = true) }
                 }
-                val profileLikedPosts = (uiState.posts + uiState.reels).filter { it.isLiked }
-                val profileSavedPosts = (uiState.posts + uiState.reels).filter { it.isBookmarked }
+                val profileLikedPosts = if (isMyProfile) {
+                    (uiState.posts + uiState.reels).distinctBy { it.id }.filter { it.isLiked }
+                } else {
+                    emptyList()
+                }
+                val profileSavedPosts = if (isMyProfile) {
+                    (uiState.posts + uiState.reels).distinctBy { it.id }.filter { it.isBookmarked }
+                } else {
+                    emptyList()
+                }
 
                 val userMarketItems = if (isMyProfile) {
                     uiState.marketItems.filter {
@@ -1372,7 +1433,8 @@ fun MainAppContent(
                 onShare = { sharePostOrReel(post.id) },
                 onDelete = { viewModel.deletePost(post.id) },
                 onReport = { reason -> viewModel.reportPost(post.id, reason) },
-                onMuteUser = { username -> viewModel.muteUser(username) }
+                onMuteUser = { username -> viewModel.muteUser(username) },
+                onNotInterested = { viewModel.markPostNotInterested(post.id) }
             )
         }
 

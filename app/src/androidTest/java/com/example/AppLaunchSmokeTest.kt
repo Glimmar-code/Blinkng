@@ -19,7 +19,9 @@ class AppLaunchSmokeTest {
         composeRule.waitUntil(timeoutMillis = 15_000) {
             composeRule
                 .onAllNodesWithText("Connect. Share. Discover.")
-                .fetchSemanticsNodes()
+                // The first Compose root may attach after the Activity resumes.
+                // Keep waiting until the deadline while still requiring the welcome UI.
+                .fetchSemanticsNodes(atLeastOneRootRequired = false)
                 .isNotEmpty()
         }
 

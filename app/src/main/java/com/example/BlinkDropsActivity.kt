@@ -26,6 +26,9 @@ class BlinkDropsActivity : ComponentActivity() {
                     BlinkDropsRoute(
                         onClose = { finish() },
                         initialDropId = dropId,
+                        onGetCoins = {
+                            startActivity(android.content.Intent(this@BlinkDropsActivity, BlinkStoreActivity::class.java))
+                        },
                     )
                 }
             }
