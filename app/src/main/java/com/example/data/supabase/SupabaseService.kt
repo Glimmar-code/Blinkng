@@ -2163,7 +2163,7 @@ fun getCurrentUserId(): String? {
                 ?.trim()
                 ?.takeIf { isValidUuid(it) }
 
-            fun existingRowByRequestId(requestId: String): JSONObject? {
+            suspend fun existingRowByRequestId(requestId: String): JSONObject? {
                 val path = "/rest/v1/feed_posts" +
                     "?select=*&id=eq.$requestId&user_id=eq.$uid&limit=1"
                 return executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
@@ -2176,7 +2176,7 @@ fun getCurrentUserId(): String? {
                 }
             }
 
-            fun existingPollId(postId: String): String? {
+            suspend fun existingPollId(postId: String): String? {
                 val path = "/rest/v1/polls?select=id&post_id=eq.$postId&limit=1"
                 return executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
                     val raw = response.body?.string().orEmpty()
@@ -2190,7 +2190,7 @@ fun getCurrentUserId(): String? {
                 }
             }
 
-            fun existingPollOptions(pollId: String): Set<String> {
+            suspend fun existingPollOptions(pollId: String): Set<String> {
                 val path = "/rest/v1/poll_options?select=option_text&poll_id=eq.$pollId"
                 return executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
                     val raw = response.body?.string().orEmpty()
@@ -2214,7 +2214,11 @@ fun getCurrentUserId(): String? {
                 }
             }
 
-            val existingCreatedRow = cleanClientRequestId?.let(::existingRowByRequestId)
+            val existingCreatedRow = if (cleanClientRequestId != null) {
+                existingRowByRequestId(cleanClientRequestId)
+            } else {
+                null
+            }
 
             val mentionIds = JSONArray()
             for (mention in mentions) {
@@ -2564,7 +2568,7 @@ suspend fun uploadPostMedia(
         return path to "$baseUrl/storage/v1/object/public/post-media/$path"
     }
 
-    private fun uploadPostMediaStreaming(
+    private suspend fun uploadPostMediaStreaming(
         context: Context,
         userId: String,
         uri: Uri,
@@ -2608,7 +2612,7 @@ suspend fun uploadPostMedia(
         }
     }
 
-    private fun uploadPostMediaResumable(
+    private suspend fun uploadPostMediaResumable(
         context: Context,
         userId: String,
         uri: Uri,
@@ -2713,7 +2717,7 @@ suspend fun uploadPostMedia(
                 offset = nextOffset
             }
         }
-        publicUrl
+        return publicUrl
     }
 
     // ============================================================
