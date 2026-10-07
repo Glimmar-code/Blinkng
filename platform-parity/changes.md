@@ -1,3 +1,9 @@
+## 2026-10-07 — Logo decoding repair across clients
+
+- Android, Windows and web: re-encode the approved compact purple-eye artwork into fully decodable PNGs, with launcher density sizes and a valid multi-size Windows ICO. All clients use the same source artwork.
+- Verification: the shared asset gate now decodes the complete pixel stream as well as checking chunk CRCs. A regression fixture with correct CRCs and broken compression must fail before Android builds.
+- Backend and ranking behavior: unchanged.
+
 ## 2026-10-07 — Android edge-to-edge startup resilience
 
 PARITY-EXCEPTION: android-edge-to-edge-startup-resilience-20261007

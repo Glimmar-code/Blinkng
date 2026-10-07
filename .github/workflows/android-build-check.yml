@@ -26,6 +26,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Verify image decoder regression
+        run: python3 scripts/test_png_asset_validator.py
+
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Unit tests

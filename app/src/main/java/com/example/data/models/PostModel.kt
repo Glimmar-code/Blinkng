@@ -345,4 +345,3 @@ data class ChatPrivacySettings(
     val allowLinkPreviews: Boolean = true,
     val notificationPreview: String = "full"
 )
-
