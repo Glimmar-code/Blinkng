@@ -1527,7 +1527,7 @@ fun MainAppContent(
                 savedDrafts = uiState.savedDrafts,
                 scheduledPosts = uiState.scheduledPosts,
                 onDismiss = { viewModel.openCreatePost(false) },
-                onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText, textStyle ->
+                onSubmitPost = { text, faculty, imageUri, videoUri, tags, mentions, poll, isReel, audience, category, location, linkUrl, allowComments, hideLikes, isPinned, isDisappearing, audioTitle, altText, textStyle, clientRequestId ->
                     // Keep the composer alive until Supabase confirms the save. The ViewModel
                     // closes it only after success, so a failed publish keeps the user's draft.
                     viewModel.addPost(
@@ -1549,7 +1549,8 @@ fun MainAppContent(
                         isDisappearing = isDisappearing,
                         audioTitle = audioTitle,
                         altText = altText,
-                        textStyle = textStyle
+                        textStyle = textStyle,
+                        clientRequestId = clientRequestId
                     )
                 },
                 onSaveDraft = { draft ->
@@ -1560,6 +1561,12 @@ fun MainAppContent(
                 },
                 onSchedulePost = { post, timeMillis, timeFormatted ->
                     viewModel.schedulePost(post, timeMillis, timeFormatted)
+                },
+                onPublishScheduledPostNow = { scheduleId ->
+                    viewModel.publishScheduledPostNow(scheduleId)
+                },
+                onCancelScheduledPost = { scheduleId ->
+                    viewModel.deleteScheduledPost(scheduleId)
                 },
                 isDark = uiState.isDarkMode,
                 isSubmitting = uiState.isCreatingPost
