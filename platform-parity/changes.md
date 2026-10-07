@@ -1,3 +1,13 @@
+## 2026-10-07 — Android edge-to-edge startup resilience
+
+PARITY-EXCEPTION: android-edge-to-edge-startup-resilience-20261007
+
+- Android: treats `enableEdgeToEdge()` as a non-critical window enhancement. If the Android window/content container is unavailable during startup, BLINK logs the platform failure and continues to Compose instead of crashing before the welcome surface renders.
+- Why Android-only: `enableEdgeToEdge()` and the affected window/content-container lifecycle are Android Activity APIs. The Windows desktop client does not use Android window-inset plumbing.
+- Windows equivalent: none required; Windows keeps its existing desktop window setup and startup behavior.
+- Shared/backend behavior preserved: no feed/Reels ranking, qualified views, auth, wallet, messaging, notifications, profile, Supabase schema/RPC/RLS, or user-data rules change.
+- Validation: Android runtime smoke plus normal Android quality/release checks, Windows build/parity, and Supabase migration safety must pass before promotion.
+
 ## 2026-10-07 — Connect reliability, discovery and unified inbox overhaul
 
 - Android: Connect now uses a coordinated full-height scroll surface instead of nesting the main LazyColumn around a fixed-height pager; student discovery adds Same Department and Verified filters plus Recommended/Recently Active/Campus First/A–Z sorting and resettable empty states. The 20 Connect directory entries are grouped into Housing, Study, Career & Skills, People & Community and Games. A profile-aware For You rail and unified Connect Inbox surface requests/challenges without changing the authoritative request RPCs. Pending badges ignore completed request history.
