@@ -71,7 +71,7 @@ Deno.serve(async (req: Request) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const service = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
-  let orderKind: "COIN_PACK" | "BLUE_VERIFICATION" | null = null;
+  let orderKind: "COIN_PACK" | "BLUE_VERIFICATION" | "MARKET_SELLER_ACTIVATION" | null = null;
   let order: any = null;
 
   const coinResult = await service
@@ -92,6 +92,16 @@ Deno.serve(async (req: Request) => {
     if (verificationResult.data) {
       orderKind = "BLUE_VERIFICATION";
       order = verificationResult.data;
+    } else {
+      const sellerActivationResult = await service
+        .from("market_seller_activation_orders")
+        .select("id,user_id,amount_ngn,currency,status,provider_reference,metadata")
+        .eq("provider_reference", reference)
+        .maybeSingle();
+      if (sellerActivationResult.data) {
+        orderKind = "MARKET_SELLER_ACTIVATION";
+        order = sellerActivationResult.data;
+      }
     }
   }
 
@@ -123,7 +133,13 @@ Deno.serve(async (req: Request) => {
     String(verified?.reference ?? "") !== reference
   ) {
     await service
-      .from(orderKind === "COIN_PACK" ? "blink_coin_purchase_orders" : "blink_verification_purchase_orders")
+      .from(
+        orderKind === "COIN_PACK"
+          ? "blink_coin_purchase_orders"
+          : orderKind === "BLUE_VERIFICATION"
+            ? "blink_verification_purchase_orders"
+            : "market_seller_activation_orders"
+      )
       .update({
         status: "failed",
         metadata: {
@@ -143,7 +159,9 @@ Deno.serve(async (req: Request) => {
   const rpcName =
     orderKind === "COIN_PACK"
       ? "fulfill_blink_coin_purchase_order"
-      : "fulfill_blink_verification_purchase_order";
+      : orderKind === "BLUE_VERIFICATION"
+        ? "fulfill_blink_verification_purchase_order"
+        : "fulfill_market_seller_activation_order";
 
   const rpcArgs =
     orderKind === "COIN_PACK"

@@ -72,6 +72,7 @@ object DeepLinkRouter {
             ShareContentType.PROFILE -> "profile/$encoded"
             ShareContentType.POST -> "post/$encoded"
             ShareContentType.REEL -> "reel/$encoded"
+            ShareContentType.MARKET -> "market/$encoded"
         }
         navController.navigate(route) { launchSingleTop = true }
     }
