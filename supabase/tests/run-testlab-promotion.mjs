@@ -12,6 +12,7 @@ const migrations = [
   '20261007114500_correct_legacy_rls_policy_commands.sql',
   '20261007115500_optimize_flagged_rls_auth_initplans.sql',
   '20261007120500_keep_ranked_profile_projections_private.sql',
+  '20261007121500_fix_study_circle_rls_recursion.sql',
 ];
 const db = new PGlite({ extensions: { pg_trgm } });
 try {
