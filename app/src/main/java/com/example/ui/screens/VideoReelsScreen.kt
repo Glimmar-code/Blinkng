@@ -1452,6 +1452,7 @@ private fun StaticDisc(avatar: String) {
 internal fun InlineReelPreviewCard(
     reel: FeedPost,
     isActive: Boolean,
+    shouldPreload: Boolean = false,
     onContinue: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1489,7 +1490,7 @@ internal fun InlineReelPreviewCard(
         Box(Modifier.fillMaxSize()) {
             ReelPreview(reel)
 
-            if (url.isNotBlank() && (isActive || previewFinished)) {
+            if (url.isNotBlank() && (isActive || shouldPreload || previewFinished)) {
                 ReelVideo(
                     url = url,
                     isActive = isActive && !previewFinished,

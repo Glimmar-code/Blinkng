@@ -206,6 +206,21 @@ Deno.serve(async (req) => {
   const recipientId = String(recipientParticipant?.user_id ?? "").trim();
   if (!recipientId) return json({ ok: true, skipped: "no_recipient" });
 
+  const { data: recipientState, error: recipientStateError } = await admin
+    .from("conversation_user_state")
+    .select("is_muted,muted_until")
+    .eq("conversation_id", message.conversation_id)
+    .eq("user_id", recipientId)
+    .maybeSingle();
+
+  if (!recipientStateError && recipientState?.is_muted === true) {
+    const mutedUntil = String(recipientState.muted_until ?? "").trim();
+    const timedMuteActive = !mutedUntil || Date.parse(mutedUntil) > Date.now();
+    if (timedMuteActive) {
+      return json({ ok: true, skipped: "conversation_muted" });
+    }
+  }
+
   const { data: allowed, error: allowedError } = await admin.rpc("notification_push_allowed", {
     p_user_id: recipientId,
     p_type: "message",
