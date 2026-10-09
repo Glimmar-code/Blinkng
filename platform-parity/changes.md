@@ -1,3 +1,10 @@
+## 2026-10-09 — Official BLINK logo master, conflict-free Testlab promotion
+
+- Android and Windows: use the exact approved official logo PNG from the previously staged Testlab logo branch, preserving the original shared blob bytes for both clients.
+- The existing Android launcher, splash and Compose entry points continue to load `R.drawable.app_icon`; the Windows desktop/tray entry points continue to load `blink-logo.png`.
+- Both platform resources are intentionally identical. This is an asset-only change; existing web assets, layouts, icon positioning, account data, auth, wallet, Boost, feeds/Reels, notifications and backend behavior are unchanged.
+- Safety: cleanly reapplied to current `main` in a new Testlab branch, avoiding the previous 212-commit conflict. Require shared-asset integrity, Android/Windows and parity CI before merge.
+
 ## 2026-10-07 — Verified Testlab promotion compatibility
 
 - Shared: Android and Windows share inbox classification and immutable Boost/Drop request fingerprints. Retry IDs stay bound to the same submitted inputs.
