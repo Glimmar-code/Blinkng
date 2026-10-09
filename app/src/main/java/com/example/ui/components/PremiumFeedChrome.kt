@@ -129,8 +129,8 @@ fun FeedTopBar(
                 .padding(
                     start = horizontalPadding,
                     end = horizontalPadding,
-                    top = 4.dp,
-                    bottom = 4.dp
+                    top = 0.dp,
+                    bottom = 0.dp
                 ),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -180,7 +180,7 @@ private fun FeedProfileAvatar(
 ) {
     Box(
         modifier = Modifier
-            .size(50.dp)
+            .size(48.dp)
             .background(feedAccentBrush(), CircleShape)
             .padding(2.dp)
             .background(FeedBackground, CircleShape)
@@ -197,7 +197,7 @@ private fun FeedProfileAvatar(
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
-                .size(42.dp)
+                .size(40.dp)
                 .background(FeedElevatedSurface, CircleShape)
                 .graphicsLayer { clip = true; shape = CircleShape }
         )
@@ -319,7 +319,7 @@ fun FeedUtilityRow(
         modifier = modifier
             .fillMaxWidth()
             .background(FeedBackground)
-            .height(52.dp)
+            .height(48.dp)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -403,7 +403,7 @@ fun FeedTabs(
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(
-        modifier = modifier.fillMaxWidth().background(FeedBackground).height(54.dp)
+        modifier = modifier.fillMaxWidth().background(FeedBackground).height(48.dp)
     ) {
         val availableWidth = maxWidth
         val filterWidth = if (availableWidth < 360.dp) 42.dp else 48.dp
@@ -425,7 +425,7 @@ fun FeedTabs(
             Box(
                 modifier = Modifier
                     .width(filterWidth)
-                    .height(52.dp)
+                    .height(48.dp)
                     .clickable(role = Role.Button, onClick = onFilterClick)
                     .semantics { contentDescription = "Filter feed" }
                     .testTag("feed_filter_action"),
@@ -465,7 +465,7 @@ private fun FeedTabLabel(
         label = "feedTabLabelColor"
     )
     Box(
-        modifier = modifier.height(52.dp).clickable(role = Role.Tab, onClick = onClick),
+        modifier = modifier.height(48.dp).clickable(role = Role.Tab, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
