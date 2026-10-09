@@ -471,6 +471,7 @@ fun LeaderboardScreen(
                 key = { _, user -> user.username },
                 contentType = { _, _ -> "leaderboard_user" }
             ) { _, user ->
+                Box(modifier = if (reduceMotion) Modifier else Modifier.animateItem()) {
                 LeaderboardRow(
                     user = user,
                     isCurrentUser = user.username.equals(userProfile.username, ignoreCase = true),
@@ -491,6 +492,7 @@ fun LeaderboardScreen(
                     },
                     onShare = { shareLeaderboardUser(context, it) }
                 )
+                }
             }
         }
     }
