@@ -1291,7 +1291,7 @@ private fun PremiumHomeFeed(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(top = 6.dp, bottom = 16.dp)
+                        contentPadding = PaddingValues(top = 0.dp, bottom = 16.dp)
                     ) {
                         if (!errorMessage.isNullOrBlank() && stableRankedPosts.isNotEmpty()) {
                             item(key = "refresh_error") {
@@ -1376,7 +1376,8 @@ private fun PremiumHomeFeed(
                                                                 post.author.trim().removePrefix("@").lowercase() == currentUserKey ||
                                                                     post.authorUsername.trim().removePrefix("@").lowercase() == currentUserKey
                                                             ),
-                                                    onDelete = { onDeletePost(post.id) }
+                                                    onDelete = { onDeletePost(post.id) },
+                                                    xFeedStyle = true
                                                 )
                                             }
                                         }
@@ -1402,7 +1403,8 @@ private fun PremiumHomeFeed(
                                                 onOptionsClick = { onOptionsClick(post) },
                                                 onProfileClick = onProfileClick,
                                                 isAuthor = false,
-                                                trackExposure = false
+                                                trackExposure = false,
+                                                xFeedStyle = true
                                             )
                                         }
 
@@ -1423,7 +1425,7 @@ private fun PremiumHomeFeed(
                                             BlinkSponsoredNativeAd(
                                                 adUnitId = BuildConfig.ADMOB_FEED_NATIVE_AD_UNIT_ID,
                                                 placement = BlinkNativeAdPlacement.FEED,
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                                modifier = Modifier.fillMaxWidth()
                                             )
                                         }
 
@@ -1803,14 +1805,11 @@ private fun PremiumFeedSkeleton() {
     val base = FeedElevatedSurface
     val highlight = Color.White.copy(alpha = 0.08f)
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(24.dp),
-        color = FeedCardSurface,
-        border = BorderStroke(1.dp, FeedBorder)
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(0.dp),
+        color = Color.Black
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(48.dp).shimmerBackground(CircleShape, base, highlight))
                 Spacer(Modifier.width(11.dp))
@@ -1848,9 +1847,12 @@ private fun PremiumFeedSkeleton() {
             Box(
                 Modifier
                     .fillMaxWidth()
+                    .padding(start = 60.dp)
                     .height(210.dp)
-                    .shimmerBackground(RoundedCornerShape(18.dp), base, highlight)
+                    .shimmerBackground(RoundedCornerShape(14.dp), base, highlight)
             )
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = FeedBorder.copy(alpha = 0.65f))
         }
     }
 }

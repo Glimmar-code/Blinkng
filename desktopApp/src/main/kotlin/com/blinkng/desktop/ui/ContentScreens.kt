@@ -182,13 +182,17 @@ fun HomeScreen(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        item { ScreenHeader("Home", "Your live Blinkng feed") }
+        item {
+            Box(Modifier.padding(bottom = 14.dp)) {
+                ScreenHeader("Home", "Your live Blinkng feed")
+            }
+        }
         item {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedButton(onClick = { state.selectedRoute = "leaderboard" }) {
@@ -209,7 +213,11 @@ fun HomeScreen(
             }
         }
         item {
-            Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 2.dp) {
+            Surface(
+                modifier = Modifier.padding(bottom = 20.dp),
+                shape = RoundedCornerShape(20.dp),
+                tonalElevation = 2.dp
+            ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = composer,
@@ -462,6 +470,7 @@ fun HomeScreen(
                 onCopyLink = {
                     DesktopShareLinkManager.copyToClipboard(post.id, post.isReel)
                 },
+                xFeedStyle = true,
             )
             if (commentsFor == post.id) CommentsPanel(state, post.id)
         }
@@ -2344,6 +2353,7 @@ private fun PostCard(
     onRepost: () -> Unit,
     onComments: () -> Unit,
     onCopyLink: () -> Unit,
+    xFeedStyle: Boolean = false,
 ) {
     var expandedText by remember(post.id) { mutableStateOf(false) }
     var textCanExpand by remember(post.id) { mutableStateOf(false) }
@@ -2357,11 +2367,17 @@ private fun PostCard(
     }
 
     Surface(
-        shape = RoundedCornerShape(20.dp),
-        tonalElevation = 1.dp,
-        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(if (xFeedStyle) 0.dp else 20.dp),
+        tonalElevation = if (xFeedStyle) 0.dp else 1.dp,
+        color = if (xFeedStyle) Color.Black else MaterialTheme.colorScheme.surface,
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(
+                horizontal = if (xFeedStyle) 14.dp else 18.dp,
+                vertical = if (xFeedStyle) 10.dp else 18.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(if (xFeedStyle) 8.dp else 10.dp)
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 PresenceAvatar(post.authorName, post.authorOnline, showStatus = false)
                 Spacer(Modifier.width(10.dp))
@@ -2373,12 +2389,14 @@ private fun PostCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                IconButton(onClick = onBookmark) {
-                    Icon(
-                        if (post.isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                        contentDescription = if (post.isBookmarked) "Remove saved post" else "Save post",
-                        tint = if (post.isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                if (!xFeedStyle) {
+                    IconButton(onClick = onBookmark) {
+                        Icon(
+                            if (post.isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                            contentDescription = if (post.isBookmarked) "Remove saved post" else "Save post",
+                            tint = if (post.isBookmarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
 
@@ -2386,6 +2404,7 @@ private fun PostCard(
             if (body.isNotBlank()) {
                 Text(
                     text = body,
+                    modifier = Modifier.padding(start = if (xFeedStyle) 58.dp else 0.dp),
                     fontSize = 15.sp,
                     maxLines = if (expandedText) Int.MAX_VALUE else 7,
                     overflow = TextOverflow.Ellipsis,
@@ -2399,7 +2418,9 @@ private fun PostCard(
                         color = MaterialTheme.colorScheme.primary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.clickable { expandedText = !expandedText },
+                        modifier = Modifier
+                            .padding(start = if (xFeedStyle) 58.dp else 0.dp)
+                            .clickable { expandedText = !expandedText },
                     )
                 }
             }
@@ -2408,6 +2429,7 @@ private fun PostCard(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .padding(start = if (xFeedStyle) 58.dp else 0.dp)
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
@@ -2415,15 +2437,16 @@ private fun PostCard(
                         var loadingMedia by remember(url) { mutableStateOf(true) }
                         var failedMedia by remember(url) { mutableStateOf(false) }
                         Surface(
-                            modifier = Modifier.width(520.dp).height(320.dp),
-                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.width(if (xFeedStyle) 440.dp else 520.dp)
+                                .height(if (xFeedStyle) 360.dp else 320.dp),
+                            shape = RoundedCornerShape(if (xFeedStyle) 14.dp else 16.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant,
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 AsyncImage(
                                     model = url,
                                     contentDescription = "Post image ${index + 1} of ${mediaUrls.size}",
-                                    contentScale = ContentScale.Fit,
+                                    contentScale = if (xFeedStyle) ContentScale.Crop else ContentScale.Fit,
                                     onLoading = {
                                         loadingMedia = true
                                         failedMedia = false
@@ -2468,56 +2491,103 @@ private fun PostCard(
                 }
             }
 
-            val primaryMetrics = buildList {
-                add("${post.viewCount} views")
-                if (post.likeCount > 0) add("${post.likeCount} likes")
-            }
-            val secondaryMetrics = buildList {
-                if (post.commentCount > 0) add("${post.commentCount} comments")
-                if (post.shareCount > 0) add("${post.shareCount} shares")
-                if (post.repostCount > 0) add("${post.repostCount} reposts")
-            }
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    primaryMetrics.joinToString("  ·  "),
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.weight(1f))
-                if (secondaryMetrics.isNotEmpty()) {
+            if (xFeedStyle) {
+                // Align media and action metrics with the post text, as on X's timeline.
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 58.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onComments) {
+                            Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
+                        }
+                        Text("${post.commentCount}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onRepost) {
+                            Icon(
+                                Icons.Rounded.Repeat,
+                                contentDescription = if (post.isRepostedByMe) "Undo repost" else "Repost",
+                                tint = if (post.isRepostedByMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text("${post.repostCount}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onLike) {
+                            Icon(
+                                if (post.isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                contentDescription = if (post.isLiked) "Unlike" else "Like",
+                                tint = if (post.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text("${post.likeCount}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Text("${post.viewCount} views", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    IconButton(onClick = onBookmark) {
+                        Icon(
+                            if (post.isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                            contentDescription = if (post.isBookmarked) "Remove saved post" else "Save post"
+                        )
+                    }
+                    TextButton(onClick = onCopyLink) {
+                        Text("Share", fontSize = 11.sp)
+                    }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+            } else {
+                val primaryMetrics = buildList {
+                    add("${post.viewCount} views")
+                    if (post.likeCount > 0) add("${post.likeCount} likes")
+                }
+                val secondaryMetrics = buildList {
+                    if (post.commentCount > 0) add("${post.commentCount} comments")
+                    if (post.shareCount > 0) add("${post.shareCount} shares")
+                    if (post.repostCount > 0) add("${post.repostCount} reposts")
+                }
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        secondaryMetrics.joinToString("  ·  "),
+                        primaryMetrics.joinToString("  ·  "),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Spacer(Modifier.weight(1f))
+                    if (secondaryMetrics.isNotEmpty()) {
+                        Text(
+                            secondaryMetrics.joinToString("  ·  "),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-            }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                IconButton(onClick = onLike) {
-                    Icon(
-                        if (post.isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        contentDescription = if (post.isLiked) "Unlike" else "Like",
-                        tint = if (post.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconButton(onClick = onComments) {
-                    Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
-                }
-                IconButton(onClick = onRepost) {
-                    Icon(
-                        Icons.Rounded.Repeat,
-                        contentDescription = if (post.isRepostedByMe) "Undo repost" else "Repost",
-                        tint = if (post.isRepostedByMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                OutlinedButton(onClick = onCopyLink) {
-                    Text("Copy link", fontSize = 11.sp)
+    
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    IconButton(onClick = onLike) {
+                        Icon(
+                            if (post.isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                            contentDescription = if (post.isLiked) "Unlike" else "Like",
+                            tint = if (post.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(onClick = onComments) {
+                        Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
+                    }
+                    IconButton(onClick = onRepost) {
+                        Icon(
+                            Icons.Rounded.Repeat,
+                            contentDescription = if (post.isRepostedByMe) "Undo repost" else "Repost",
+                            tint = if (post.isRepostedByMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedButton(onClick = onCopyLink) {
+                        Text("Copy link", fontSize = 11.sp)
+                    }
                 }
             }
         }
