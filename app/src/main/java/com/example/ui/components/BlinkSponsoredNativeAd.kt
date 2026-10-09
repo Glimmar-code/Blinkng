@@ -2,11 +2,14 @@ package com.example.ui.components
 
 import android.graphics.Color as AndroidColor
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.content.res.ColorStateList
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -148,13 +151,13 @@ private fun createBlinkNativeAdView(
     fun dp(value: Int): Int = (value * density).toInt()
 
     val adView = NativeAdView(context)
-    adView.setBackgroundColor(
-        if (placement == BlinkNativeAdPlacement.REEL) AndroidColor.BLACK else AndroidColor.rgb(20, 20, 24)
-    )
+    // Feed ads share the same edge-to-edge black timeline as organic posts.
+    // The SDK retains the native ad view and its AdChoices disclosure.
+    adView.setBackgroundColor(AndroidColor.BLACK)
 
     val root = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(14), dp(12), dp(14), dp(14))
+        setPadding(dp(12), dp(12), dp(12), dp(14))
         gravity = Gravity.CENTER_HORIZONTAL
         layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -164,35 +167,47 @@ private fun createBlinkNativeAdView(
 
     val attribution = TextView(context).apply {
         text = "Sponsored"
-        textSize = 11f
+        textSize = 12f
         setTypeface(typeface, Typeface.BOLD)
-        setTextColor(AndroidColor.WHITE)
-        setBackgroundColor(AndroidColor.rgb(98, 70, 234))
-        setPadding(dp(8), dp(4), dp(8), dp(4))
+        setTextColor(AndroidColor.LTGRAY)
+        setPadding(dp(6), dp(4), 0, dp(4))
     }
 
     val advertiser = TextView(context).apply {
-        textSize = 12f
+        textSize = 15f
         setTypeface(typeface, Typeface.BOLD)
         setTextColor(AndroidColor.WHITE)
         maxLines = 1
+    }
+
+    val brandIcon = ImageView(context).apply {
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        background = GradientDrawable().apply {
+            setColor(AndroidColor.rgb(26, 26, 26))
+            cornerRadius = dp(18).toFloat()
+        }
+        clipToOutline = true
     }
 
     val topRow = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         addView(
+            brandIcon,
+            LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+                marginEnd = dp(8)
+            }
+        )
+        addView(
+            advertiser,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        addView(
             attribution,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-        )
-        addView(
-            advertiser,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = dp(10)
-            }
         )
     }
 
@@ -205,7 +220,11 @@ private fun createBlinkNativeAdView(
     }
 
     val media = MediaView(context).apply {
-        setBackgroundColor(AndroidColor.BLACK)
+        background = GradientDrawable().apply {
+            setColor(AndroidColor.rgb(22, 22, 22))
+            cornerRadius = dp(14).toFloat()
+        }
+        clipToOutline = true
     }
 
     val body = TextView(context).apply {
@@ -219,8 +238,8 @@ private fun createBlinkNativeAdView(
         isAllCaps = false
         textSize = 14f
         setTypeface(typeface, Typeface.BOLD)
-        setTextColor(AndroidColor.WHITE)
-        setBackgroundColor(AndroidColor.rgb(98, 70, 234))
+        setTextColor(AndroidColor.BLACK)
+        backgroundTintList = ColorStateList.valueOf(AndroidColor.WHITE)
         minHeight = dp(44)
     }
 
@@ -239,6 +258,16 @@ private fun createBlinkNativeAdView(
         )
     )
 
+    if (placement == BlinkNativeAdPlacement.FEED) {
+        root.addView(
+            body,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+    }
+
     if (placement == BlinkNativeAdPlacement.REEL) {
         root.addView(
             media,
@@ -256,7 +285,7 @@ private fun createBlinkNativeAdView(
             media,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(210)
+                dp(240)
             ).apply {
                 topMargin = dp(4)
                 bottomMargin = dp(4)
@@ -264,13 +293,15 @@ private fun createBlinkNativeAdView(
         )
     }
 
-    root.addView(
-        body,
-        LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
+    if (placement == BlinkNativeAdPlacement.REEL) {
+        root.addView(
+            body,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         )
-    )
+    }
     root.addView(
         cta,
         LinearLayout.LayoutParams(
@@ -285,6 +316,7 @@ private fun createBlinkNativeAdView(
     adView.bodyView = body
     adView.callToActionView = cta
     adView.advertiserView = advertiser
+    adView.iconView = brandIcon
     adView.mediaView = media
     adView.addView(root)
 
@@ -301,6 +333,12 @@ private fun bindBlinkNativeAd(
         val value = nativeAd.advertiser
         text = value.orEmpty()
         visibility = if (value.isNullOrBlank()) View.GONE else View.VISIBLE
+    }
+
+    (adView.iconView as? ImageView)?.apply {
+        val iconDrawable = nativeAd.icon?.drawable
+        setImageDrawable(iconDrawable)
+        visibility = if (iconDrawable == null) View.GONE else View.VISIBLE
     }
 
     (adView.bodyView as? TextView)?.apply {
