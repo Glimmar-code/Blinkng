@@ -1,5 +1,13 @@
 package com.example.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.graphicsLayer
+import com.example.performance.rememberBlinkReduceMotion
+import com.example.ui.theme.BlinkMotion
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,6 +41,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.FeedBlue
@@ -80,6 +90,7 @@ fun FeedBottomBar(
         else -> null
     }
 
+    val reduceMotion = rememberBlinkReduceMotion()
     val navigationSurface = if (isDark) Color.Black else Color.White
     val navigationBorder = if (isDark) Color(0xFF242424) else Color(0xFFE1E4E8)
 
@@ -103,6 +114,7 @@ fun FeedBottomBar(
                 FeedBottomBarItem(
                     item = item,
                     selected = selected,
+                    reduceMotion = reduceMotion,
                     onClick = {
                         when (item.destination) {
                             FeedBottomDestination.HOME -> onHomeClick()
@@ -122,15 +134,31 @@ fun FeedBottomBar(
 private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     item: FeedBottomItem,
     selected: Boolean,
+    reduceMotion: Boolean,
     onClick: () -> Unit
 ) {
-    val tint = if (selected) FeedBlue else MaterialTheme.colorScheme.onSurfaceVariant
+    val tint by animateColorAsState(
+        targetValue = if (selected) FeedBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(if (reduceMotion) 0 else BlinkMotion.revealMillis),
+        label = "bottomNavTint"
+    )
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected) BlinkMotion.selectedScale else 1f,
+        animationSpec = tween(if (reduceMotion) 0 else BlinkMotion.revealMillis),
+        label = "bottomNavIconScale"
+    )
+    val indicatorColor by animateColorAsState(
+        targetValue = if (selected) FeedBlue else Color.Transparent,
+        animationSpec = tween(if (reduceMotion) 0 else BlinkMotion.revealMillis),
+        label = "bottomNavIndicator"
+    )
 
     Column(
         modifier = Modifier
             .weight(1f)
             .height(56.dp)
             .clickable(role = Role.Tab, onClick = onClick)
+            .semantics { this.selected = selected }
             .testTag("feed_nav_${item.destination.name.lowercase()}"),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top
@@ -139,14 +167,14 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
             modifier = Modifier
                 .fillMaxWidth(0.62f)
                 .height(3.dp)
-                .background(if (selected) FeedBlue else Color.Transparent)
+                .background(indicatorColor)
         )
         Spacer(Modifier.height(5.dp))
         Icon(
             imageVector = if (selected) item.filledIcon else item.outlinedIcon,
             contentDescription = item.label,
             tint = tint,
-            modifier = Modifier.size(23.dp)
+            modifier = Modifier.size(23.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale }
         )
         Spacer(Modifier.height(2.dp))
         Text(

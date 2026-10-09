@@ -648,8 +648,8 @@ fun PostCard(
                         onClick = {
                             scope.launch {
                                 likeScale.snapTo(1f)
-                                likeScale.animateTo(1.15f, tween(80))
-                                likeScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+                                likeScale.animateTo(1.10f, tween(90))
+                                likeScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium))
                             }
                             onLike()
                         }

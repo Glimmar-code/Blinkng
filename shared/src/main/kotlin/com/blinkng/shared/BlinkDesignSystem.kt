@@ -88,6 +88,11 @@ object BlinkDesignTokens {
         const val Standard = 220
         const val Emphasized = 300
         const val Slow = 420
+        // Shared motion budget across Android and Windows. Animate UI, not ranking/data.
+        const val Navigation = 220
+        const val ContentReveal = 180
+        const val Interaction = 120
+        const val SubtleSelectedScale = 1.035f
         const val PressedScale = 0.97f
     }
 }

@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import com.blinkng.shared.BlinkDesignTokens
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -573,10 +577,15 @@ private fun DropsTab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val selectionColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.surface else androidx.compose.ui.graphics.Color.Transparent,
+        animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+        label = "dropsTabSelection"
+    )
     Surface(
         modifier = modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(13.dp),
-        color = if (selected) MaterialTheme.colorScheme.surface else androidx.compose.ui.graphics.Color.Transparent,
+        color = selectionColor,
         tonalElevation = if (selected) 2.dp else 0.dp,
     ) {
         Row(

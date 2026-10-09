@@ -690,8 +690,9 @@ fun MainAppContent(
             targetState = uiState.selectedTab,
             label = "TabAnimatedContent",
             transitionSpec = {
-                androidx.compose.animation.fadeIn(animationSpec = tween(140)) togetherWith
-                    androidx.compose.animation.fadeOut(animationSpec = tween(90))
+                (androidx.compose.animation.fadeIn(animationSpec = tween(180)) +
+                    androidx.compose.animation.scaleIn(initialScale = .988f, animationSpec = tween(220))) togetherWith
+                    androidx.compose.animation.fadeOut(animationSpec = tween(110))
             }
         ) { tab ->
             when (tab) {

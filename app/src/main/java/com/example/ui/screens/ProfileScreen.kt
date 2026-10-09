@@ -361,7 +361,7 @@ fun ProfileScreen(
                                     overlayOffset.animateTo(
                                         0f,
                                         spring(
-                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            dampingRatio = Spring.DampingRatioNoBouncy,
                                             stiffness = Spring.StiffnessMediumLow
                                         )
                                     )
@@ -370,7 +370,7 @@ fun ProfileScreen(
                         },
                         onDragCancel = {
                             overlayScope.launch {
-                                overlayOffset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                                overlayOffset.animateTo(0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
                             }
                         }
                     )

@@ -1,5 +1,13 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
+import com.example.performance.rememberBlinkReduceMotion
+import com.blinkng.shared.BlinkDesignTokens
+
 import android.Manifest
 import android.content.Intent
 import android.os.Build
@@ -166,13 +174,19 @@ private fun BlinkItemsHeader(
         } else {
             Spacer(Modifier.width(48.dp))
         }
-        Text(
-            text = title,
-            color = FeedTextPrimary,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f)
-        )
+        val reduceMotion = rememberBlinkReduceMotion()
+        AnimatedContent(
+            targetState = title,
+            modifier = Modifier.weight(1f),
+            transitionSpec = {
+                fadeIn(tween(if (reduceMotion) 0 else BlinkDesignTokens.Motion.ContentReveal)) togetherWith
+                    fadeOut(tween(if (reduceMotion) 0 else BlinkDesignTokens.Motion.Interaction))
+            },
+            label = "itemsHeaderTitle"
+        ) { activeTitle ->
+            Text(activeTitle, color = FeedTextPrimary,
+                style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        }
         IconButton(onClick = onClose) {
             Icon(Icons.Default.Close, contentDescription = "Close Items", tint = FeedTextPrimary)
         }

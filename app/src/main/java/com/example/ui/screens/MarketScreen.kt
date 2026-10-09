@@ -1,5 +1,13 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.graphicsLayer
+import com.blinkng.shared.BlinkDesignTokens
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -586,13 +594,21 @@ fun ProductCard(
     onToggleSave: (() -> Unit)? = null
 ) {
     val nairaFormat = remember { NumberFormat.getNumberInstance(Locale.US) }
+    val pressInteraction = remember { MutableInteractionSource() }
+    val pressed by pressInteraction.collectIsPressedAsState()
+    val cardScale by animateFloatAsState(
+        targetValue = if (pressed) BlinkDesignTokens.Motion.PressedScale else 1f,
+        animationSpec = tween(BlinkDesignTokens.Motion.Interaction),
+        label = "marketProductPress"
+    )
 
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         modifier = modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .graphicsLayer { scaleX = cardScale; scaleY = cardScale }
+            .clickable(interactionSource = pressInteraction, indication = null, onClick = onClick)
             .testTag("product_card_${item.id}")
     ) {
         Column {

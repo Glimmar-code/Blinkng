@@ -12,6 +12,10 @@ object BlinkMotion {
     const val emphasizedMillis = BlinkDesignTokens.Motion.Emphasized
     const val slowMillis = BlinkDesignTokens.Motion.Slow
     const val pressedScale = BlinkDesignTokens.Motion.PressedScale
+    const val navigationMillis = BlinkDesignTokens.Motion.Navigation
+    const val revealMillis = BlinkDesignTokens.Motion.ContentReveal
+    const val interactionMillis = BlinkDesignTokens.Motion.Interaction
+    const val selectedScale = BlinkDesignTokens.Motion.SubtleSelectedScale
 
     fun <T> fastTween() = tween<T>(durationMillis = fastMillis)
     fun <T> standardTween() = tween<T>(durationMillis = standardMillis)

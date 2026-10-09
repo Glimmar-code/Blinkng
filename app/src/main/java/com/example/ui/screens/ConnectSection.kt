@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import com.blinkng.shared.BlinkDesignTokens
+
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
@@ -679,15 +683,24 @@ private fun ConnectTopTab(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val background by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+        label = "connectTopTabBackground"
+    )
+    val foreground by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+        label = "connectTopTabText"
+    )
     Surface(
         modifier = Modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(100.dp),
-        color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent
+        color = background
     ) {
         Text(
             text = text,
-            color = if (selected) MaterialTheme.colorScheme.onPrimary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = foreground,
             fontSize = 13.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)

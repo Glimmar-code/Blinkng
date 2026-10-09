@@ -428,8 +428,8 @@ private fun Phase3SearchContent(
         AnimatedVisibility(
             visible = heroResult != null,
             modifier = Modifier.fillMaxSize().zIndex(20f),
-            enter = fadeIn(tween(120)) + scaleIn(tween(170), initialScale = 0.90f),
-            exit = fadeOut(tween(90)) + scaleOut(tween(90), targetScale = 1.03f),
+            enter = fadeIn(tween(160)) + scaleIn(tween(180), initialScale = 0.985f),
+            exit = fadeOut(tween(110)) + scaleOut(tween(110), targetScale = 0.985f),
         ) { heroResult?.let(::SearchHeroCard) }
     }
 

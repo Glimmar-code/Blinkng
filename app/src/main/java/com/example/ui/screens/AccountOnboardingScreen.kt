@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import com.blinkng.shared.BlinkDesignTokens
+
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -213,6 +217,11 @@ fun AccountOnboardingScreen(
             .toList()
     }
 
+    val stepProgress by animateFloatAsState(
+        targetValue = (step + 1) / 4f,
+        animationSpec = tween(BlinkDesignTokens.Motion.Navigation),
+        label = "onboardingStepProgress"
+    )
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -244,7 +253,7 @@ fun AccountOnboardingScreen(
                 Spacer(Modifier.height(12.dp))
 
                 LinearProgressIndicator(
-                    progress = (step + 1) / 4f,
+                    progress = stepProgress,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(4.dp),

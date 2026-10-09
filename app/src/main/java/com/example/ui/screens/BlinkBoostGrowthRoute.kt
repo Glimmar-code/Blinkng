@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import com.blinkng.shared.BlinkDesignTokens
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -223,10 +227,15 @@ private fun GrowthColumnTab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val selectedBackground by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
+        animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+        label = "boostColumnTab"
+    )
     Surface(
         modifier = modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(13.dp),
-        color = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
+        color = selectedBackground,
         tonalElevation = if (selected) 2.dp else 0.dp,
     ) {
         Row(

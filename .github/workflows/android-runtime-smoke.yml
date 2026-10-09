@@ -68,9 +68,15 @@ jobs:
           arch: x86_64
           profile: pixel_6
           force-avd-creation: false
-          disable-animations: true
+          # Exercise real Compose transitions; the old smoke suite forcibly disabled them.
+          disable-animations: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: gradle :app:connectedDebugAndroidTest --stacktrace --no-daemon
+          script: |
+            adb shell settings put global window_animation_scale 1.0
+            adb shell settings put global transition_animation_scale 1.0
+            adb shell settings put global animator_duration_scale 1.0
+            echo "System animator duration scale: $(adb shell settings get global animator_duration_scale)"
+            gradle :app:connectedDebugAndroidTest --stacktrace --no-daemon
 
       - name: Upload instrumentation reports
         if: always()
