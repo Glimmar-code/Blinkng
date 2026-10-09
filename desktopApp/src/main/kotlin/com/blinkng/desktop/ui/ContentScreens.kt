@@ -1853,7 +1853,10 @@ fun LeaderboardScreen(state: DesktopAppState) {
             entries.sortedBy { it.worldRank ?: Int.MAX_VALUE }.take(20),
             key = { it.userId }
         ) { entry ->
-            Surface(shape = RoundedCornerShape(14.dp), tonalElevation = 1.dp) {
+            Surface(
+                modifier = if (reduceMotion) Modifier else Modifier.animateItem(),
+                shape = RoundedCornerShape(14.dp), tonalElevation = 1.dp
+            ) {
                 Row(modifier = Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("#${entry.worldRank ?: "–"}", modifier = Modifier.width(64.dp), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
                     Column(modifier = Modifier.weight(1f)) {
