@@ -41,6 +41,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.FeedBlue
@@ -156,6 +158,7 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
             .weight(1f)
             .height(56.dp)
             .clickable(role = Role.Tab, onClick = onClick)
+            .semantics { this.selected = selected }
             .testTag("feed_nav_${item.destination.name.lowercase()}"),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top
