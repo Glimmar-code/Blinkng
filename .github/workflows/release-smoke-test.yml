@@ -50,6 +50,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Test secure Firebase release config restoration
+        shell: bash
+        run: bash .github/scripts/test_restore_google_services.sh
+
       - name: Restore disposable Firebase client configuration
         shell: bash
         run: bash .github/scripts/restore_google_services.sh ci

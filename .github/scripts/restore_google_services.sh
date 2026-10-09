@@ -7,9 +7,14 @@ example="${dest}.example"
 
 if [[ -n "${GOOGLE_SERVICES_JSON_BASE64:-}" ]]; then
   printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > "$dest"
-  source_label="protected secret"
+  source_label="protected base64 secret"
+elif [[ -n "${GOOGLE_SERVICES_JSON:-}" ]]; then
+  # GitHub repository secrets also support pasting the complete JSON file directly.
+  # Never echo the value or write it to Git history; this remains runner-local.
+  printf '%s' "$GOOGLE_SERVICES_JSON" > "$dest"
+  source_label="protected JSON secret"
 elif [[ "$mode" == "production" ]]; then
-  echo "::error::GOOGLE_SERVICES_JSON_BASE64 is not configured. Refusing to build a production Firebase client."
+  echo "::error::Production Firebase config is missing. Add GOOGLE_SERVICES_JSON (raw Firebase JSON) or GOOGLE_SERVICES_JSON_BASE64 as a GitHub Actions secret."
   exit 1
 else
   cp "$example" "$dest"

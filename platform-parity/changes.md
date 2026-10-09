@@ -1,3 +1,11 @@
+## 2026-10-09 — Secure Android production Firebase secret setup (Testlab)
+
+- Release CI only: allow the existing base64 Firebase config secret or a protected multiline `GOOGLE_SERVICES_JSON` repository secret, simplifying setup on mobile without embedding credentials in source.
+- Keep production Firebase project, app package, release-signing certificate continuity, Google Maps key and pinned-source verification mandatory. No placeholder config is allowed in production.
+- Release smoke CI tests both restore formats and rejects missing credentials using synthetic fixtures.
+- Windows, Android runtime feature parity, web and Supabase are unchanged; release-signing is an Android-specific packaging concern.
+- Does not make any production secrets available; the repository owner must add actual values in GitHub Actions secrets before the signed APK can be published.
+
 ## 2026-10-09 — X-inspired Home feed media and timeline (Testlab)
 
 - Android: Home For You/Following and boosted feed posts now render as a flat, pure-black timeline without separate outlined cards. The author row retains verification and post actions; photo galleries and styled text align beneath the author row with rounded 14dp media, stable natural-ratio framing and X-style cropped previews. Tapping photos still opens the existing full-screen zoomable gallery.
