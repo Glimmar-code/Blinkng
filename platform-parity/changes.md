@@ -3,7 +3,8 @@
 - Shared Android/Windows design tokens: unify navigation, selection, interaction and content-reveal durations while keeping Supabase and ranking semantics untouched.
 - Android: refine screen/tab transitions, press feedback, Connect and Boost/Drops selection, story image crossfades, Reels controls, messages, leaderboard, notifications, search hero, composer poll, Store selection, Items header and onboarding progress. Existing feed header and post-loading motion remains lightweight and respects reduced-motion settings where already supported.
 - Windows: add a corresponding subtle route crossfade and selected sidebar indicator, rather than stretching Android transitions onto desktop. All existing screen routes remain unchanged.
-- Safe development: staged in `Testlab-premium-motion-suite-20261009` branched from current `main`. Do not merge until Android, Windows and test workflows pass; verify scroll and navigation on devices.
+- Verification: Android runtime CI now enables system animation scales and tests rapid navigation changes and accessible selected-tab state; Windows NavigationDrawerItem already exposes the selected state. Retain the existing native animation reduced-motion preference. Visual review on real hardware remains recommended for fine tuning.
+- Safe development: staged in `Testlab-premium-motion-suite-20261009` branched from current `main`. Require Android, Windows and runtime workflow gates before merging.
 
 ## 2026-10-09 — Compact Android Home top chrome (Testlab)
 
