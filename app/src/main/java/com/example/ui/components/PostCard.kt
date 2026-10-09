@@ -169,6 +169,7 @@ fun PostCard(
     onConnectHubAuthor: () -> Unit = {},
     authorOnline: Boolean? = null,
     trackExposure: Boolean = true,
+    xFeedStyle: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val resolvedAuthorName = authorName.trim().ifBlank { post.author.trim() }
@@ -177,7 +178,7 @@ fun PostCard(
     }
     val profileTarget = resolvedAuthorUsername.ifBlank { post.author }
     val displayedViewsCount = rememberDelayedContentViewCount(post.id, post.viewsCount)
-    val surfaceColor = if (isDark) FeedCardSurface else LightSurface
+    val surfaceColor = if (xFeedStyle && isDark) Color.Black else if (isDark) FeedCardSurface else LightSurface
     val primaryText = if (isDark) FeedTextPrimary else LightTextPrimary
     val secondaryText = if (isDark) FeedTextSecondary else LightTextSecondary
     val dividerColor = if (isDark) FeedBorder else LightBorder
@@ -221,12 +222,15 @@ fun PostCard(
         modifier = modifier
             .then(exposureModifier)
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(16.dp),
+            .padding(
+                horizontal = if (xFeedStyle) 0.dp else 12.dp,
+                vertical = if (xFeedStyle) 0.dp else 6.dp
+            ),
+        shape = RoundedCornerShape(if (xFeedStyle) 0.dp else 16.dp),
         color = surfaceColor,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
-        border = BorderStroke(1.dp, dividerColor.copy(alpha = 0.72f))
+        border = if (xFeedStyle) null else BorderStroke(1.dp, dividerColor.copy(alpha = 0.72f))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             if (post.isSponsored) {
@@ -277,7 +281,7 @@ fun PostCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 14.dp, top = 12.dp, end = 6.dp, bottom = 8.dp),
+                    .padding(start = 12.dp, top = if (xFeedStyle) 10.dp else 12.dp, end = 6.dp, bottom = if (xFeedStyle) 6.dp else 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val avatarModifier = if (hasActiveStory) {
@@ -418,7 +422,7 @@ fun PostCard(
                         }
                     }
 
-                    if (!isAuthor && authorProfileId.isNotBlank()) {
+                    if (!xFeedStyle && !isAuthor && authorProfileId.isNotBlank()) {
                         Spacer(Modifier.size(6.dp))
                         ProfileFollowInteractButton(
                             isFollowing = isFollowingAuthor,
@@ -437,16 +441,18 @@ fun PostCard(
                     }
                 }
 
-                IconButton(
-                    onClick = onBookmark,
-                    modifier = Modifier.size(38.dp)
-                ) {
-                    Icon(
-                        imageVector = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                        contentDescription = if (post.isBookmarked) "Remove saved post" else "Save post",
-                        tint = savedTint,
-                        modifier = Modifier.size(21.dp)
-                    )
+                if (!xFeedStyle) {
+                    IconButton(
+                        onClick = onBookmark,
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                            contentDescription = if (post.isBookmarked) "Remove saved post" else "Save post",
+                            tint = savedTint,
+                            modifier = Modifier.size(21.dp)
+                        )
+                    }
                 }
                 IconButton(
                     onClick = onOptionsClick,
@@ -480,6 +486,8 @@ fun PostCard(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .padding(start = if (xFeedStyle) 74.dp else 0.dp, end = if (xFeedStyle) 12.dp else 0.dp)
+                            .clip(RoundedCornerShape(if (xFeedStyle) 14.dp else 0.dp))
                             .heightIn(min = textCardMinHeight)
                             .background(textStyle.brush())
                             .padding(horizontal = 24.dp, vertical = 28.dp),
@@ -509,7 +517,7 @@ fun PostCard(
                             text = post.text,
                             color = primaryText,
                             style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp),
+                            modifier = Modifier.padding(start = if (xFeedStyle) 74.dp else 14.dp, end = 14.dp, bottom = 10.dp),
                             maxLines = if (expandedText) Int.MAX_VALUE else 7,
                             overflow = TextOverflow.Ellipsis,
                             onTextLayout = { result ->
@@ -527,24 +535,36 @@ fun PostCard(
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
-                            .padding(start = 14.dp, top = 6.dp, bottom = 8.dp)
+                            .padding(start = if (xFeedStyle) 74.dp else 14.dp, top = 6.dp, bottom = 8.dp)
                             .clickable { expandedText = !expandedText }
                     )
                 }
             }
 
             post.poll?.let { poll ->
-                PremiumPollCard(poll = poll) { optionId ->
+                PremiumPollCard(
+                    poll = poll,
+                    modifier = Modifier.padding(start = if (xFeedStyle) 60.dp else 0.dp)
+                ) { optionId ->
                     onVotePoll(post.id, optionId)
                 }
             }
 
             if (displayImages.isNotEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = if (xFeedStyle) 74.dp else 0.dp,
+                            end = if (xFeedStyle) 12.dp else 0.dp,
+                            bottom = if (xFeedStyle) 6.dp else 0.dp
+                        )
+                ) {
                     if (displayImages.size == 1) {
                         NaturalAspectPostImage(
                             imageUrl = displayImages.first(),
                             contentDescription = post.altText?.takeIf(String::isNotBlank) ?: "Post image",
+                            cropToFrame = xFeedStyle,
                             onClick = {
                                 imagePage = 0
                                 showImageFullscreen = true
@@ -566,6 +586,7 @@ fun PostCard(
                                     imageUrl = image,
                                     contentDescription = "Post image ${index + 1} of ${displayImages.size}",
                                     modifier = Modifier.fillParentMaxWidth(),
+                                    cropToFrame = xFeedStyle,
                                     onClick = {
                                         imagePage = index
                                         showImageFullscreen = true
@@ -591,96 +612,166 @@ fun PostCard(
                 }
             }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val primaryMetrics = buildList {
-                    add("${formatNumber(displayedViewsCount)} views")
-                    if (!post.hideLikes && post.likes > 0) {
-                        add("${formatNumber(post.likes)} likes")
+            if (xFeedStyle) {
+                // X-inspired compact metrics. Keep the existing callbacks and the
+                // delayed qualified-view count; no ranking or counters are changed.
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val showCounts = maxWidth >= 340.dp
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 64.dp, end = 6.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        PremiumPostAction(
+                            icon = Icons.Default.ChatBubbleOutline,
+                            value = if (showCounts && post.commentsCount > 0) formatNumber(post.commentsCount) else null,
+                            tint = secondaryText,
+                            description = "${post.commentsCount} comments",
+                            onClick = onComment
+                        )
+                        if (!isAuthor) {
+                            PremiumPostAction(
+                                icon = Icons.Default.Repeat,
+                                value = if (showCounts && post.sharesCount > 0) formatNumber(post.sharesCount) else null,
+                                tint = repostTint,
+                                description = if (post.isRepostedByMe) "Undo repost" else "Repost",
+                                onClick = onRepost
+                            )
+                        }
+                        PremiumPostAction(
+                            icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            value = if (showCounts && !post.hideLikes && post.likes > 0) formatNumber(post.likes) else null,
+                            tint = likedTint,
+                            description = if (post.isLiked) "Unlike post" else "Like post",
+                            iconScale = likeScale.value,
+                            onClick = {
+                                scope.launch {
+                                    likeScale.snapTo(1f)
+                                    likeScale.animateTo(1.10f, tween(90))
+                                    likeScale.animateTo(1f, spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMedium
+                                    ))
+                                }
+                                onLike()
+                            }
+                        )
+                        ReadOnlyMetricAction(
+                            icon = Icons.Default.Visibility,
+                            value = if (showCounts) formatNumber(displayedViewsCount) else "",
+                            description = "${displayedViewsCount} views"
+                        )
+                        PremiumPostAction(
+                            icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                            value = null,
+                            tint = savedTint,
+                            description = if (post.isBookmarked) "Remove saved post" else "Save post",
+                            onClick = onBookmark
+                        )
+                        PremiumPostAction(
+                            icon = Icons.Default.Share,
+                            value = null,
+                            tint = secondaryText,
+                            description = "Share post",
+                            onClick = onShare
+                        )
                     }
                 }
-                val secondaryMetrics = buildList {
-                    if (post.commentsCount > 0) {
-                        add("${formatNumber(post.commentsCount)} comments")
+                HorizontalDivider(color = dividerColor.copy(alpha = 0.65f))
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val primaryMetrics = buildList {
+                        add("${formatNumber(displayedViewsCount)} views")
+                        if (!post.hideLikes && post.likes > 0) {
+                            add("${formatNumber(post.likes)} likes")
+                        }
                     }
-                    if (post.sharesCount > 0) {
-                        add("${formatNumber(post.sharesCount)} shares")
+                    val secondaryMetrics = buildList {
+                        if (post.commentsCount > 0) {
+                            add("${formatNumber(post.commentsCount)} comments")
+                        }
+                        if (post.sharesCount > 0) {
+                            add("${formatNumber(post.sharesCount)} shares")
+                        }
                     }
-                }
-                Text(
-                    text = primaryMetrics.joinToString("  ·  "),
-                    color = secondaryText,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1
-                )
-                Spacer(Modifier.weight(1f))
-                if (secondaryMetrics.isNotEmpty()) {
                     Text(
-                        text = secondaryMetrics.joinToString("  ·  "),
+                        text = primaryMetrics.joinToString("  ·  "),
                         color = secondaryText,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1
                     )
-                }
-            }
-
-            HorizontalDivider(color = dividerColor)
-
-            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val compactActions = maxWidth < 360.dp
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 1.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    PremiumPostAction(
-                        icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        value = if (compactActions) null else "Like",
-                        tint = likedTint,
-                        description = if (post.isLiked) "Unlike" else "Like",
-                        iconScale = likeScale.value,
-                        onClick = {
-                            scope.launch {
-                                likeScale.snapTo(1f)
-                                likeScale.animateTo(1.10f, tween(90))
-                                likeScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium))
-                            }
-                            onLike()
-                        }
-                    )
-                    PremiumPostAction(
-                        icon = Icons.Default.ChatBubbleOutline,
-                        value = if (compactActions) null else "Comment",
-                        tint = secondaryText,
-                        description = "Comment",
-                        onClick = onComment
-                    )
-                    if (!isAuthor) {
-                        PremiumPostAction(
-                            icon = Icons.Default.Repeat,
-                            value = if (compactActions) null else "Repost",
-                            tint = repostTint,
-                            description = if (post.isRepostedByMe) "Undo repost" else "Repost",
-                            onClick = onRepost
+                    Spacer(Modifier.weight(1f))
+                    if (secondaryMetrics.isNotEmpty()) {
+                        Text(
+                            text = secondaryMetrics.joinToString("  ·  "),
+                            color = secondaryText,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1
                         )
                     }
-                    PremiumPostAction(
-                        icon = Icons.Default.Share,
-                        value = if (compactActions) null else "Share",
-                        tint = secondaryText,
-                        description = "Share",
-                        onClick = onShare
-                    )
                 }
+    
+                HorizontalDivider(color = dividerColor)
+    
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val compactActions = maxWidth < 360.dp
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        PremiumPostAction(
+                            icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            value = if (compactActions) null else "Like",
+                            tint = likedTint,
+                            description = if (post.isLiked) "Unlike" else "Like",
+                            iconScale = likeScale.value,
+                            onClick = {
+                                scope.launch {
+                                    likeScale.snapTo(1f)
+                                    likeScale.animateTo(1.10f, tween(90))
+                                    likeScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium))
+                                }
+                                onLike()
+                            }
+                        )
+                        PremiumPostAction(
+                            icon = Icons.Default.ChatBubbleOutline,
+                            value = if (compactActions) null else "Comment",
+                            tint = secondaryText,
+                            description = "Comment",
+                            onClick = onComment
+                        )
+                        if (!isAuthor) {
+                            PremiumPostAction(
+                                icon = Icons.Default.Repeat,
+                                value = if (compactActions) null else "Repost",
+                                tint = repostTint,
+                                description = if (post.isRepostedByMe) "Undo repost" else "Repost",
+                                onClick = onRepost
+                            )
+                        }
+                        PremiumPostAction(
+                            icon = Icons.Default.Share,
+                            value = if (compactActions) null else "Share",
+                            tint = secondaryText,
+                            description = "Share",
+                            onClick = onShare
+                        )
+                    }
+                }
+    
+                HorizontalDivider(color = dividerColor)
             }
-
-            HorizontalDivider(color = dividerColor)
         }
     }
 
@@ -696,12 +787,13 @@ fun PostCard(
 @Composable
 private fun PremiumPollCard(
     poll: PostPoll,
+    modifier: Modifier = Modifier,
     onVote: (String) -> Unit
 ) {
     val outline = MaterialTheme.colorScheme.outlineVariant
     val selectedColor = MaterialTheme.colorScheme.primary
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
@@ -891,6 +983,7 @@ private fun NaturalAspectPostImage(
     imageUrl: String,
     contentDescription: String,
     modifier: Modifier = Modifier,
+    cropToFrame: Boolean = false,
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
@@ -909,6 +1002,7 @@ private fun NaturalAspectPostImage(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(imageAspectRatio.coerceIn(0.72f, 1.91f))
+            .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f))
             .clickable(enabled = !loadFailed, onClick = onClick),
         contentAlignment = Alignment.Center
@@ -916,7 +1010,7 @@ private fun NaturalAspectPostImage(
         AsyncImage(
             model = request,
             contentDescription = contentDescription,
-            contentScale = ContentScale.Fit,
+            contentScale = if (cropToFrame) ContentScale.Crop else ContentScale.Fit,
             onLoading = {
                 isLoading = true
                 loadFailed = false
