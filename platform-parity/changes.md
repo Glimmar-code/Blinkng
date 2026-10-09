@@ -1,3 +1,13 @@
+## 2026-10-09 — Compact Android Home top chrome (Testlab)
+
+PARITY-EXCEPTION: android-home-compact-density-20261009
+
+- Android Home: reduced the feed's brand/header vertical padding, profile-ring footprint, shortcut-row height and For You/Following tab-row height. The three rows now use 48dp each rather than approximately 58dp + 52dp + 54dp, saving about 20dp above posts on regular phones.
+- Safe area/accessibility: preserve the system status bar inset and existing 48dp utility/tab tap targets; the X-style scroll-linked header collapse and pinned tabs remain unchanged. No icons, shortcuts, filter, feeds, gestures or routes are removed.
+- Windows: desktop-native Home layout already controls top chrome independently and has no phone status-bar inset. This mobile screen-density change has no desktop behavior or business-logic equivalent; Windows navigation remains unchanged.
+- Shared/backend: no ranking, views, notifications, wallet, Supabase, auth, Reels, content, or database contract changes.
+- Validation: staged on a `Testlab-*` branch pending Android/Windows CI and on-device visual verification before promotion to `main`.
+
 ## 2026-10-09 — Official BLINK logo master, conflict-free Testlab promotion
 
 - Android and Windows: use the exact approved official logo PNG from the previously staged Testlab logo branch, preserving the original shared blob bytes for both clients.
