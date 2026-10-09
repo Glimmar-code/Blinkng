@@ -1,3 +1,11 @@
+## 2026-10-09 — X-inspired Home feed media and timeline (Testlab)
+
+- Android: Home For You/Following and boosted feed posts now render as a flat, pure-black timeline without separate outlined cards. The author row retains verification and post actions; photo galleries and styled text align beneath the author row with rounded 14dp media, stable natural-ratio framing and X-style cropped previews. Tapping photos still opens the existing full-screen zoomable gallery.
+- Android engagement: comments, reposts, likes, qualified views, bookmarks and sharing appear in one compact bar. Existing server ranking, 30-second view reflection, counts, reactions, post management and navigation callbacks are unchanged; Profile uses its previous post-card style.
+- Android ads: Google native Feed placements keep clear Sponsored attribution, SDK-owned assets/AdChoices/clicks, an advertiser icon when present and a black timeline surface. Reels ad placement and ad cadence remain unaffected; failed/no-fill ads still leave no fake sponsored content.
+- Windows: Home now shows flat black rows, inset and rounded cropped media, and a compact metrics/actions bar. Existing desktop comments, likes, bookmarks, reposts and share-link actions remain connected to their original backend paths. The desktop-native layout remains optimized for wider windows; Android-specific AdMob NativeAdView has no Windows SDK equivalent.
+- Validation: staged on `Testlab-x-feed-style-20261009`. Promote to main only if Android quality/build, runtime smoke, Windows build/parity, release smoke and Supabase safety checks pass. No migrations or modifications to live user data.
+
 ## 2026-10-09 — Premium motion upgrade (Testlab staging)
 
 - Shared Android/Windows design tokens: unify navigation, selection, interaction and content-reveal durations while keeping Supabase and ranking semantics untouched.
