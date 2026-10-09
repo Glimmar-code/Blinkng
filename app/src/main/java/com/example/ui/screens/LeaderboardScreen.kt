@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import com.blinkng.shared.BlinkDesignTokens
+
 import android.content.Intent
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.BorderStroke
@@ -694,6 +698,12 @@ private fun LeaderboardRow(
     onProfileClick: (String) -> Unit,
     onShare: (LeaderboardUser) -> Unit
 ) {
+    val cardColor by animateColorAsState(
+        targetValue = if (isCurrentUser) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .35f)
+            else MaterialTheme.colorScheme.surface,
+        animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+        label = "leaderboardRowColor"
+    )
     Surface(
         Modifier
             .fillMaxWidth()
@@ -704,11 +714,7 @@ private fun LeaderboardRow(
             if (isCurrentUser) 1.5.dp else 1.dp,
             if (isCurrentUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
         ),
-        color = if (isCurrentUser) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = .35f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        }
+        color = cardColor
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(

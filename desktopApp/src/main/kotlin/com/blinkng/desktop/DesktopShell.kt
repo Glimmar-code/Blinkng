@@ -1,5 +1,9 @@
 package com.blinkng.desktop
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import com.blinkng.shared.BlinkDesignTokens
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -501,7 +505,12 @@ private fun AuthenticatedShell(
                 )
                 Box(modifier = Modifier.width(1.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)))
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    when (state.selectedRoute) {
+                    Crossfade(
+                        targetState = state.selectedRoute,
+                        animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+                        label = "desktopRouteTransition"
+                    ) { activeRoute ->
+                    when (activeRoute) {
                         "home" -> com.blinkng.desktop.ui.HomeWithBlinkAiScreen(state)
                         "reels" -> ReelsScreen(state)
                         "connect" -> ConnectScreen(state)
@@ -517,6 +526,7 @@ private fun AuthenticatedShell(
                         "settings" -> SettingsScreen(state)
                         "search" -> com.blinkng.desktop.ui.PremiumSearchScreen(state)
                         else -> com.blinkng.desktop.ui.HomeWithBlinkAiScreen(state)
+                    }
                     }
                 }
                 if (showRightPanel) {
@@ -619,11 +629,17 @@ private fun DesktopSidebar(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         items(destinations, key = { it.id }) { destination ->
+            val iconTint by animateColorAsState(
+                targetValue = if (selectedId == destination.id) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+                label = "desktopSidebarIcon"
+            )
             NavigationDrawerItem(
                 label = { if (!compact) Text(destination.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 selected = selectedId == destination.id,
                 onClick = { onSelect(destination.id) },
-                icon = { Icon(destination.icon, contentDescription = destination.title) },
+                icon = { Icon(destination.icon, contentDescription = destination.title, tint = iconTint) },
                 shape = RoundedCornerShape(14.dp),
                 colors = NavigationDrawerItemDefaults.colors(
                     selectedContainerColor = BlinkPurple.copy(alpha = 0.18f),

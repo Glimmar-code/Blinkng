@@ -222,8 +222,8 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
                     BlinkStoreTab.entries.forEach { item ->
                         val selected = tab == item
                         val scale by animateFloatAsState(
-                            targetValue = if (selected) 1.08f else 1f,
-                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                            targetValue = if (selected) com.blinkng.shared.BlinkDesignTokens.Motion.SubtleSelectedScale else 1f,
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
                             label = "storeTabScale"
                         )
                         Column(

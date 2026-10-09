@@ -28,6 +28,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
@@ -1748,7 +1749,11 @@ private fun PremiumChatDetail(
                 }
             }
 
-            AnimatedVisibility(visible = newMessagesBelow > 0) {
+            AnimatedVisibility(
+                visible = newMessagesBelow > 0,
+                enter = fadeIn(tween(140)) + slideInVertically(initialOffsetY = { it / 2 }, animationSpec = tween(200)),
+                exit = fadeOut(tween(110)) + slideOutVertically(targetOffsetY = { it / 2 }, animationSpec = tween(150))
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.End

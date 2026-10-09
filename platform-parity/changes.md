@@ -1,3 +1,10 @@
+## 2026-10-09 — Premium motion upgrade (Testlab staging)
+
+- Shared Android/Windows design tokens: unify navigation, selection, interaction and content-reveal durations while keeping Supabase and ranking semantics untouched.
+- Android: refine screen/tab transitions, press feedback, Connect and Boost/Drops selection, story image crossfades, Reels controls, messages, leaderboard, notifications, search hero, composer poll, Store selection, Items header and onboarding progress. Existing feed header and post-loading motion remains lightweight and respects reduced-motion settings where already supported.
+- Windows: add a corresponding subtle route crossfade and selected sidebar indicator, rather than stretching Android transitions onto desktop. All existing screen routes remain unchanged.
+- Safe development: staged in `Testlab-premium-motion-suite-20261009` branched from current `main`. Do not merge until Android, Windows and test workflows pass; verify scroll and navigation on devices.
+
 ## 2026-10-09 — Compact Android Home top chrome (Testlab)
 
 PARITY-EXCEPTION: android-home-compact-density-20261009

@@ -631,7 +631,7 @@ private fun ReelsTopTabs(
             )
             val indicatorWidth by animateDpAsState(
                 targetValue = if (isSelected) 24.dp else 0.dp,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
                 label = "tabIndicatorWidth"
             )
             Column(

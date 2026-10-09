@@ -132,10 +132,12 @@ fun StoryViewerDialog(
             .testTag("story_viewer_dialog")
     ) {
         // Story Background Image / Media
-        if (currentStory.storyImage.isNotBlank()) {
+        Crossfade(targetState = currentStory.id, animationSpec = tween(180), label = "storyMediaReveal") { storyId ->
+            val displayedStory = storyList.firstOrNull { it.id == storyId } ?: currentStory
+            if (displayedStory.storyImage.isNotBlank()) {
             AsyncImage(
-                model = currentStory.storyImage,
-                contentDescription = "Story by ${currentStory.displayLabel}",
+                model = displayedStory.storyImage,
+                contentDescription = "Story by ${displayedStory.displayLabel}",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
@@ -154,6 +156,8 @@ fun StoryViewerDialog(
                         )
                     )
             )
+        }
+
         }
 
         // Dark gradients top and bottom for readable controls

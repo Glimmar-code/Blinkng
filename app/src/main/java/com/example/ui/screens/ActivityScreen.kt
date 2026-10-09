@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import com.blinkng.shared.BlinkDesignTokens
+
 import com.example.R
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -707,12 +711,14 @@ private fun NotificationCard(
     val verificationBadge = profile?.verificationBadge ?: item.verificationBadge
     val canOpenProfile = username.isNotBlank() && !isOfficial
 
+    val highlight by animateColorAsState(
+        targetValue = if (item.isUnread) accent.copy(alpha = .075f)
+            else MaterialTheme.colorScheme.background,
+        animationSpec = tween(BlinkDesignTokens.Motion.ContentReveal),
+        label = "notificationReadHighlight"
+    )
     Surface(
-        color = if (item.isUnread) {
-            accent.copy(alpha = .075f)
-        } else {
-            MaterialTheme.colorScheme.background
-        },
+        color = highlight,
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onNotificationClick(item) }

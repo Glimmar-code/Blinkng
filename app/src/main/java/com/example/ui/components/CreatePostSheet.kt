@@ -1,5 +1,13 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
+import com.blinkng.shared.BlinkDesignTokens
+
 import com.example.data.local.PersistentTextDraftStore
 import com.example.data.local.rememberPersistentStringListState
 import com.example.data.local.rememberPersistentTextState
@@ -891,7 +899,12 @@ fun CreatePostSheet(
                     )
                 }
 
-                if (showPoll) {
+                AnimatedVisibility(
+                    visible = showPoll,
+                    enter = fadeIn(tween(BlinkDesignTokens.Motion.ContentReveal)) + expandVertically(tween(BlinkDesignTokens.Motion.ContentReveal)),
+                    exit = fadeOut(tween(BlinkDesignTokens.Motion.Interaction)) + shrinkVertically(tween(BlinkDesignTokens.Motion.Interaction)),
+                    label = "composerPollReveal"
+                ) {
                     PollComposer(
                         question = pollQuestion,
                         onQuestionChanged = { pollQuestion = it.take(240) },
