@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -81,6 +82,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopComment
+import com.blinkng.desktop.data.DesktopConnectApplication
 import com.blinkng.desktop.data.DesktopConnectInbox
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
@@ -879,6 +881,11 @@ fun ConnectScreen(state: DesktopAppState) {
     var students by remember { mutableStateOf<List<DesktopProfile>>(emptyList()) }
     var followingIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var inbox by remember { mutableStateOf(DesktopConnectInbox()) }
+    var directoryApplications by remember { mutableStateOf<List<DesktopConnectApplication>>(emptyList()) }
+    var requestTarget by remember { mutableStateOf<DesktopConnectListing?>(null) }
+    var requestMessage by remember { mutableStateOf("") }
+    var connectError by remember { mutableStateOf<String?>(null) }
+    var selectedDirectorySlug by remember { mutableStateOf("all") }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
     var selectedPane by remember { mutableStateOf(0) }
@@ -890,7 +897,6 @@ fun ConnectScreen(state: DesktopAppState) {
     var studentFilter by remember { mutableStateOf("all") }
     var studentSort by remember { mutableStateOf("recommended") }
 
-    var type by remember { mutableStateOf("community") }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var pulsePolicy by remember { mutableStateOf(BlinkActivityPulseDefaults.policy) }
@@ -898,6 +904,19 @@ fun ConnectScreen(state: DesktopAppState) {
     var pulseImpressionRecorded by remember { mutableStateOf(false) }
     var selectedStudentProfile by remember { mutableStateOf<DesktopProfile?>(null) }
     val scope = rememberCoroutineScope()
+
+    val directoryOptions = remember { listOf(
+        "all" to "All", "roommates" to "Roommates", "mentors" to "Mentors",
+        "reading_mates" to "Reading Mates", "housing_agents" to "Housing Agents",
+        "accommodation_requests" to "Housing Requests", "study_partners" to "Study Partners",
+        "project_teammates" to "Project Teammates", "skill_exchange" to "Skill Exchange",
+        "career_guidance" to "Career Guidance", "internship_network" to "Internships",
+        "research_partners" to "Research Partners", "founders_builders" to "Founders & Builders",
+        "freelance_collaborators" to "Freelancers", "campus_communities" to "Communities",
+        "event_partners" to "Event Partners", "accountability_partners" to "Accountability",
+        "alumni_network" to "Alumni & Seniors", "course_tutors" to "Course Tutors",
+        "relocation_support" to "Relocation Support", "game_challenges" to "Game Challenges"
+    ) }
 
     fun connectGroup(listing: DesktopConnectListing): String {
         val text = buildString {
@@ -926,6 +945,9 @@ fun ConnectScreen(state: DesktopAppState) {
         val policyResult = runCatching { state.client.fetchActivityPulsePolicy() }
 
         listings = listingsResult.getOrDefault(listings)
+        directoryApplications = runCatching {
+            state.client.fetchConnectApplications(listings.filter { it.userId == state.profile?.id }.map { it.id })
+        }.getOrDefault(directoryApplications)
         students = studentsResult.getOrDefault(students).filterNot { it.id == state.profile?.id }
         followingIds = followingResult.getOrDefault(followingIds)
         inbox = inboxResult.getOrDefault(inbox)
@@ -939,7 +961,7 @@ fun ConnectScreen(state: DesktopAppState) {
     val myCampus = state.profile?.university.orEmpty()
     val myDepartment = state.profile?.department.orEmpty()
 
-    val visibleListings = remember(listings, listingQuery, listingGroup) {
+    val visibleListings = remember(listings, listingQuery, listingGroup, selectedDirectorySlug) {
         val query = listingQuery.trim()
         listings.filter { listing ->
             val groupMatches = listingGroup == "All" || connectGroup(listing) == listingGroup
@@ -952,7 +974,8 @@ fun ConnectScreen(state: DesktopAppState) {
                 listing.location.orEmpty().contains(query, ignoreCase = true) ||
                 listing.tags.any { it.contains(query, ignoreCase = true) }
 
-            groupMatches && queryMatches
+            val categoryMatches = selectedDirectorySlug == "all" || listing.categorySlug == selectedDirectorySlug
+            groupMatches && categoryMatches && queryMatches
         }
     }
 
@@ -1019,7 +1042,7 @@ fun ConnectScreen(state: DesktopAppState) {
     }
 
     val policy = remember(pulsePolicy) { pulsePolicy.normalized() }
-    val realOnlineCount = remember(students) { 1 + students.count { it.isOnline } }
+    val realOnlineCount = remember(students) { students.count { it.isOnline } }
     val reduceMotion = state.settings?.reduceMotion == true
     val communityActivity = rememberDesktopManagedPulse(
         key = "desktop-connect:" + state.profile?.username.orEmpty().lowercase(),
@@ -1039,7 +1062,7 @@ fun ConnectScreen(state: DesktopAppState) {
     val realCampusOnline = remember(students, myCampus) {
         students.count {
             it.isOnline && myCampus.isNotBlank() && it.university.orEmpty().equals(myCampus, ignoreCase = true)
-        } + if (myCampus.isNotBlank()) 1 else 0
+        }
     }
     val campusLabel = remember(realCampusOnline, policy) {
         campusActivityLabel(realCampusOnline, policy)
@@ -1252,6 +1275,23 @@ fun ConnectScreen(state: DesktopAppState) {
                             }
                         }
 
+                        Text("Find by category", fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            directoryOptions.forEach { (slug, label) ->
+                                FilterChip(
+                                    selected = selectedDirectorySlug == slug,
+                                    onClick = {
+                                        selectedDirectorySlug = slug
+                                        listingGroup = "All"
+                                    },
+                                    label = { Text(label) }
+                                )
+                            }
+                        }
+
                         OutlinedTextField(
                             value = listingQuery,
                             onValueChange = { listingQuery = it },
@@ -1286,7 +1326,7 @@ fun ConnectScreen(state: DesktopAppState) {
                                 modifier = Modifier.fillMaxWidth().padding(24.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                Text("No Connect listings match these filters.", fontWeight = FontWeight.Bold)
+                                Text("No Connect listings in this category yet. Create one to get started.", fontWeight = FontWeight.Bold)
                                 Text(
                                     "Clear the search or switch category to see more.",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1339,12 +1379,21 @@ fun ConnectScreen(state: DesktopAppState) {
                                         fontSize = 12.sp,
                                     )
                                 }
+                                if (listing.userId == state.profile?.id) {
+                                    Text("Your listing", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                } else if (listing.categorySlug != null) {
+                                    Button(onClick = {
+                                        requestTarget = listing
+                                        requestMessage = "Hi, I'm interested in ${listing.title}."
+                                    }) { Text("Request to connect") }
+                                }
                             }
                         }
                     }
                 }
             } else if (selectedPane == 1) {
                 item {
+                    Text("Active now · $realOnlineCount", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     OutlinedTextField(
                         value = studentQuery,
                         onValueChange = { studentQuery = it },
@@ -1602,6 +1651,43 @@ fun ConnectScreen(state: DesktopAppState) {
             )
         }
 
+        if (requestTarget != null) {
+            val target = requestTarget!!
+            AlertDialog(
+                onDismissRequest = { requestTarget = null },
+                title = { Text("Request to connect") },
+                text = {
+                    Column {
+                        Text("Request ${target.title}")
+                        OutlinedTextField(
+                            value = requestMessage,
+                            onValueChange = { requestMessage = it.take(500) },
+                            label = { Text("Message") },
+                        )
+                        if (connectError != null) {
+                            Text(connectError.orEmpty(), color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        scope.launch {
+                            connectError = null
+                            runCatching { state.client.applyConnectListing(target.id, requestMessage) }
+                                .onSuccess {
+                                    requestTarget = null
+                                    reload()
+                                }
+                                .onFailure { connectError = it.message ?: "Unable to send request." }
+                        }
+                    }) { Text("Send") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { requestTarget = null }) { Text("Cancel") }
+                },
+            )
+        }
+
         if (showCreate) {
             Box(
                 modifier = Modifier
@@ -1641,14 +1727,26 @@ fun ConnectScreen(state: DesktopAppState) {
                         }
                     }
                     HorizontalDivider()
-                    OutlinedTextField(type, { type = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Type") }, singleLine = true)
+                    Text("Directory: " + directoryOptions.firstOrNull { it.first == selectedDirectorySlug }?.second.orEmpty())
                     OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Title") })
                     OutlinedTextField(description, { description = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Description") }, minLines = 4)
+                    if (connectError != null) Text(connectError.orEmpty(), color = MaterialTheme.colorScheme.error)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
                             onClick = {
                                 scope.launch {
-                                    runCatching { state.client.createConnectListing(type, title, description) }
+                                    connectError = null
+                                    val slug = selectedDirectorySlug.takeUnless { it == "all" } ?: "campus_communities"
+                                    val listingType = when (slug) {
+                                        "study_partners", "research_partners", "accountability_partners" -> "study_mate"
+                                        "project_teammates", "founders_builders", "freelance_collaborators", "event_partners" -> "project_partner"
+                                        "skill_exchange" -> "skill_swap"
+                                        "relocation_support" -> "housing_need"
+                                        "campus_communities" -> "campus_guide"
+                                        else -> "mentor_available"
+                                    }
+                                    runCatching { state.client.createConnectListing(listingType, title, description, slug) }
+                                        .onFailure { connectError = it.message ?: "Could not create listing." }
                                         .onSuccess {
                                             title = ""
                                             description = ""
