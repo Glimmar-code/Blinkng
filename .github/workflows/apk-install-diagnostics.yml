@@ -43,45 +43,18 @@ jobs:
             "$BUILD_TOOLS/aapt" dump badging "$path" | head -n 1
           done
 
-      - name: Check that published APK has native libraries for ARM phones
+      - name: Verify ARM native libraries for Android phones
         shell: bash
         run: |
           set -euo pipefail
-          for version in current previous; do
-            echo "=== Native CPU libraries: $version ==="
-            unzip -Z1 "production/$version/Blink-latest.apk" |
-              awk -F/ '/^lib\\/[^/]+\\/[^/]+[.]so$/ {print $2}' | sort -u
+          for variant in current previous; do
+            echo "=== Native ABIs in $variant ==="
+            unzip -Z1 "production/$variant/Blink-latest.apk" |
+              awk -F/ '$1 == "lib" && $3 ~ /[.]so$/ {print $2}' | sort -u
           done
-          current_abis="$(unzip -Z1 production/current/Blink-latest.apk | awk -F/ '/^lib\\/[^/]+\\/[^/]+[.]so$/ {print $2}' | sort -u)"
-          if [ -n "$current_abis" ] && ! grep -q '^arm64-v8a
-          set -euo pipefail
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Install published APK fresh and as an in-place upgrade (Android 15)
-        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            set -eu
-            echo '=== Fresh install of published October 10 BLINK APK ==='
-            adb install -r production/current/Blink-latest.apk
-            adb shell pm path com.aistudio.blink.appvtwo
-            echo '=== Installing previous October 6 BLINK APK ==='
-            adb uninstall com.aistudio.blink.appvtwo
-            adb install production/previous/Blink-latest.apk
-            echo '=== In-place upgrade to the October 10 production APK ==='
-            adb install -r production/current/Blink-latest.apk
-            adb shell pm path com.aistudio.blink.appvtwo
-            echo 'Published APK fresh-install and in-place upgrade passed on Android 15.'
- <<< "$current_abis"; then
-            echo "::error::Published APK bundles native code but omits arm64-v8a, which many Android phones need."
+          current_abis="$(unzip -Z1 production/current/Blink-latest.apk | awk -F/ '$1 == "lib" && $3 ~ /[.]so$/ {print $2}' | sort -u)"
+          if [[ -n "$current_abis" && "$current_abis" != *"arm64-v8a"* ]]; then
+            echo "::error::APK has native libraries, but not for ARM64 phones."
             exit 1
           fi
 
