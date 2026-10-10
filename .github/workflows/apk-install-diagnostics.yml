@@ -1,0 +1,89 @@
+name: Diagnose released BLINK APK installation
+
+on:
+  push:
+    branches: ['Testlab-apk-install-diagnostics-*']
+    paths: ['.github/workflows/apk-install-diagnostics.yml']
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/apk-install-diagnostics.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install-production-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download exact published production APKs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p production/current production/previous
+          gh release download v1.0.298604067 --repo "$GITHUB_REPOSITORY" --pattern Blink-latest.apk --dir production/current
+          gh release download v1.0.298554690 --repo "$GITHUB_REPOSITORY" --pattern Blink-latest.apk --dir production/previous
+          echo '091e153dfaf38a3de6d659a6f96b33413b57b67802b274bef7c7038483aa450e  production/current/Blink-latest.apk' | sha256sum --check
+          echo '74bb950eefc8dca921511f175d2050b7d582cc7d86ab623d9444b9eff15d250a  production/previous/Blink-latest.apk' | sha256sum --check
+
+      - name: Inspect ZIP integrity, signatures and Android package identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          for path in production/current/Blink-latest.apk production/previous/Blink-latest.apk; do
+            echo "Verifying $path"
+            unzip -t "$path" | tail -n 2
+            "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$path"
+            "$BUILD_TOOLS/aapt" dump badging "$path" | head -n 1
+          done
+
+      - name: Verify ARM native libraries for Android phones
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variant in current previous; do
+            echo "=== Native ABIs in $variant ==="
+            unzip -Z1 "production/$variant/Blink-latest.apk" |
+              awk -F/ '$1 == "lib" && $3 ~ /[.]so$/ {print $2}' | sort -u
+          done
+          current_abis="$(unzip -Z1 production/current/Blink-latest.apk | awk -F/ '$1 == "lib" && $3 ~ /[.]so$/ {print $2}' | sort -u)"
+          if [[ -n "$current_abis" && "$current_abis" != *"arm64-v8a"* ]]; then
+            echo "::error::APK has native libraries, but not for ARM64 phones."
+            exit 1
+          fi
+
+      - name: Enable Android emulator acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install published APK fresh and as an in-place upgrade (Android 15)
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            set -eu
+            echo '=== Fresh install of published October 10 BLINK APK ==='
+            adb install -r production/current/Blink-latest.apk
+            adb shell pm path com.aistudio.blink.appvtwo
+            echo '=== Installing previous October 6 BLINK APK ==='
+            adb uninstall com.aistudio.blink.appvtwo
+            adb install production/previous/Blink-latest.apk
+            echo '=== In-place upgrade to the October 10 production APK ==='
+            adb install -r production/current/Blink-latest.apk
+            adb shell pm path com.aistudio.blink.appvtwo
+            echo 'Published APK fresh-install and in-place upgrade passed on Android 15.'
