@@ -171,7 +171,9 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -euo pipefail
+            # android-emulator-runner executes this script with /bin/sh (dash) by default.
+            # pipefail is a Bash-only option and prevented the APK install from running.
+            set -eu
             APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
             test -s "$APK"
             adb install -r "$APK"
