@@ -653,8 +653,8 @@ fun ConnectHubPremiumPanel(
                                         primaryLabel = if (listing.userId == current?.id) "Your listing" else "Apply",
                                         onPrimary = if (listing.userId == current?.id) null else { { actions.applyRoommate(listing.id) } },
                                         isFollowing = owner != null && owner.id in followingIds,
-                                        onFollow = owner?.let { o -> { toggleFollow(o.id) } },
-                                        onMessage = owner?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
+                                        onFollow = owner?.takeIf { it.id != current?.id }?.let { o -> { toggleFollow(o.id) } },
+                                        onMessage = owner?.takeIf { it.id != current?.id }?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
                                         onOpen = owner?.let { o -> { onProfileClick(o.username) } }
                                     )
                                 }
@@ -708,8 +708,8 @@ fun ConnectHubPremiumPanel(
                                         primaryLabel = if (listing.userId == current?.id) "Your listing" else "Request mentor",
                                         onPrimary = if (listing.userId == current?.id) null else { { actions.requestMentor(listing.id) } },
                                         isFollowing = owner != null && owner.id in followingIds,
-                                        onFollow = owner?.let { o -> { toggleFollow(o.id) } },
-                                        onMessage = owner?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
+                                        onFollow = owner?.takeIf { it.id != current?.id }?.let { o -> { toggleFollow(o.id) } },
+                                        onMessage = owner?.takeIf { it.id != current?.id }?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
                                         onOpen = owner?.let { o -> { onProfileClick(o.username) } }
                                     )
                                 }
@@ -763,8 +763,8 @@ fun ConnectHubPremiumPanel(
                                         primaryLabel = if (listing.userId == current?.id) "Your listing" else "Study together",
                                         onPrimary = if (listing.userId == current?.id) null else { { actions.requestReadingMate(listing.id) } },
                                         isFollowing = owner != null && owner.id in followingIds,
-                                        onFollow = owner?.let { o -> { toggleFollow(o.id) } },
-                                        onMessage = owner?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
+                                        onFollow = owner?.takeIf { it.id != current?.id }?.let { o -> { toggleFollow(o.id) } },
+                                        onMessage = owner?.takeIf { it.id != current?.id }?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
                                         onOpen = owner?.let { o -> { onProfileClick(o.username) } }
                                     )
                                 }
@@ -2638,7 +2638,10 @@ private fun HubListingCard(
                 )
             }
 
-            if (onPrimary != null && primaryLabel != null || onMessage != null) {
+            if (onPrimary == null && primaryLabel == "Your listing") {
+                Text("Your listing", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+            }
+            if ((onPrimary != null && primaryLabel != null) || onMessage != null) {
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (onMessage != null) {
