@@ -1,3 +1,12 @@
+## 2026-10-10 — Private feed permissions and active post counters (Testlab)
+
+- Root cause: signed-in users have no USAGE on the private PostgreSQL schema, while public.get_feed_page depended on its private owner-check routine. Preserve locked-down private schema; make only the scoped, authenticated-only feed RPC SECURITY DEFINER with an explicit auth.uid() guard and existing filtering.
+- Profiles posts_count was zero even for authors with active posts because the old sync function had no trigger. Reattach a narrow insert/delete/active-status/author trigger; perform one idempotent backfill based exclusively on active posts/reels.
+- The author's 16 inactive, textless 2026-09-01 rows are preserved as inactive. This migration never deletes, reactivates, or hides any feed row; it updates only the profile counters and permissions on the specific feed RPC.
+- Android + Windows: the corrected shared backend returns following/Home feed rows and consistent counters to both clients; Android profile Posts counts the actual hydrated active non-reels.
+- Production protection: verify migration in disposable PostgreSQL via supabase/tests/feed-recovery-tests.mjs; promote with Supabase preview when available, then verify role permissions and actual profiles counters before releasing.
+- Rollback: remove the new active-post counter trigger and restore the original invoker permissions of get_feed_page; retain prior rows and recompute counts from active posts if necessary.
+
 ## 2026-10-10 — Feed, publishing, profile, and long-swipe reliability (Testlab)
 
 - Android: Home uses loading placeholders until a real post-fetch completes and distinguishes failed fetches from confirmed empty results. Existing Room cache remains visible while refreshing. Feed author enrichment reads only explicitly selected public profile fields and no longer relies on the absent `get_public_profiles_by_ids` RPC.
