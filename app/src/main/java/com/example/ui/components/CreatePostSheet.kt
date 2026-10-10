@@ -7,6 +7,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.tween
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.BlinkSmartTags
+import com.example.data.repository.SearchDiscoveryRepository
 
 import com.example.data.local.PersistentTextDraftStore
 import com.example.data.local.rememberPersistentStringListState
@@ -180,6 +182,13 @@ fun CreatePostSheet(
         key = "create_post_text",
         scope = composerScope
     )
+    var selectedTags by rememberPersistentStringListState("create_post_tags", emptyList(), composerScope)
+    var tagInput by rememberSaveable { mutableStateOf("") }
+    var tagWarning by rememberSaveable { mutableStateOf<String?>(null) }
+    var showMoreTrendingTags by rememberSaveable { mutableStateOf(false) }
+    var trendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    val tagsRepository = remember { SearchDiscoveryRepository() }
+    LaunchedEffect(profile.university) { trendingTags = tagsRepository.trendingTags(profile.university, 40) }
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
     var mode by rememberSaveable { mutableStateOf("post") }
@@ -286,6 +295,7 @@ fun CreatePostSheet(
 
     fun clearComposerPersistence() {
         text = ""
+        selectedTags = emptyList()
         pollQuestion = ""
         pollOptions = listOf("", "")
         PersistentTextDraftStore.clearValue(context, "create_post_text", composerScope)
@@ -330,6 +340,11 @@ fun CreatePostSheet(
                 hideLikes = value.optBoolean("hide_likes", false)
                 isDisappearing = value.optBoolean("is_disappearing", false)
                 audioTitle = value.optString("audio_title")
+                value.optJSONArray("selected_tags")?.let { saved ->
+                    selectedTags = (0 until saved.length()).mapNotNull { i ->
+                        BlinkSmartTags.normalize(saved.optString(i))
+                    }.distinct().take(BlinkSmartTags.MAX_TAGS)
+                }
                 clientRequestId = value.optString("client_request_id")
                     .takeIf { runCatching { UUID.fromString(it) }.isSuccess }
                     ?: clientRequestId
@@ -346,6 +361,7 @@ fun CreatePostSheet(
         mode,
         pollQuestion,
         pollOptions,
+        selectedTags,
         audience,
         category,
         allowComments,
@@ -395,6 +411,7 @@ fun CreatePostSheet(
                 put("is_disappearing", isDisappearing)
                 put("audio_title", audioTitle)
                 put("client_request_id", clientRequestId)
+                put("selected_tags", JSONArray(selectedTags))
             }
             PersistentTextDraftStore.writeValue(
                 context,
@@ -406,6 +423,9 @@ fun CreatePostSheet(
     }
 
     val cleanText = text.trim()
+    val allTags = BlinkSmartTags.allTags(cleanText, selectedTags)
+    val effectiveTags = allTags.take(BlinkSmartTags.MAX_TAGS)
+    val tagsValid = allTags.size in 1..BlinkSmartTags.MAX_TAGS
     val validPollOptions = pollOptions.map(String::trim).filter(String::isNotBlank)
     val pollValid = showPoll &&
         PostComposerRules.validPoll(pollQuestion, pollOptions)
@@ -459,6 +479,7 @@ fun CreatePostSheet(
             sharesCount = 0,
             isReel = selectedVideo != null,
             videoUrl = selectedVideo,
+            tags = effectiveTags,
             poll = poll,
             audience = audience,
             category = category,
@@ -475,6 +496,11 @@ fun CreatePostSheet(
 
     fun scheduleAt(timeMillis: Long) {
         if (!canSubmit) return
+        if (!tagsValid) {
+            showScheduleDialog = false
+            tagWarning = "Include 1–5 relevant hashtags before scheduling."
+            return
+        }
         if (timeMillis < System.currentTimeMillis() + 60_000L) {
             Toast.makeText(context, "Choose a time at least one minute from now.", Toast.LENGTH_SHORT).show()
             return
@@ -523,6 +549,11 @@ fun CreatePostSheet(
     }
 
     fun submit() {
+        if (canSubmit && !tagsValid) {
+            tagWarning = if (allTags.isEmpty()) "Include at least one relevant hashtag. 1–3 works best."
+                         else "Use no more than 5 unique hashtags, including tags in the caption."
+            return
+        }
         if (!canSubmit) {
             if (!isSubmitting) {
                 Toast.makeText(
@@ -558,7 +589,7 @@ fun CreatePostSheet(
             profile.faculty,
             imagePayload(selectedImages),
             selectedVideo,
-            extractedTags(cleanText),
+            effectiveTags,
             extractedMentions(cleanText),
             poll,
             selectedVideo != null,
@@ -596,7 +627,7 @@ fun CreatePostSheet(
                 imageUri = imagePayload(selectedImages),
                 videoUri = selectedVideo,
                 isReel = selectedVideo != null,
-                tags = extractedTags(text),
+                tags = effectiveTags,
                 mentions = extractedMentions(text),
                 category = category,
                 audience = audience,
@@ -943,6 +974,72 @@ fun CreatePostSheet(
                 )
 
                 Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .3f))
+                ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🔥 Trending hashtags", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                            if (trendingTags.size > 7) TextButton(onClick = { showMoreTrendingTags = !showMoreTrendingTags }) {
+                                Text(if (showMoreTrendingTags) "Show less" else "See more")
+                            }
+                        }
+                        Text("Use 1–3 relevant tags. Maximum 5 per post.", style = MaterialTheme.typography.bodySmall)
+                        if (trendingTags.isNotEmpty()) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                items(trendingTags.take(if (showMoreTrendingTags) 40 else 7), key = { it }) { tag ->
+                                    FilterChip(
+                                        selected = tag in effectiveTags,
+                                        onClick = {
+                                            if (tag !in allTags && allTags.size >= BlinkSmartTags.MAX_TAGS)
+                                                tagWarning = "Maximum 5 hashtags per post."
+                                            else selectedTags = BlinkSmartTags.add(selectedTags, tag)
+                                        },
+                                        label = { Text("#$tag") },
+                                        enabled = !isSubmitting
+                                    )
+                                }
+                            }
+                        } else {
+                            Text("No trending tags available yet. Add your own.", style = MaterialTheme.typography.labelSmall)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = tagInput,
+                                onValueChange = { tagInput = it.take(33) },
+                                modifier = Modifier.weight(1f),
+                                label = { Text("Add hashtag") },
+                                enabled = !isSubmitting,
+                                singleLine = true
+                            )
+                            TextButton(onClick = {
+                                val tag = BlinkSmartTags.normalize(tagInput)
+                                when {
+                                    tag == null -> tagWarning = "Use 2–32 letters, numbers or underscores."
+                                    tag !in allTags && allTags.size >= BlinkSmartTags.MAX_TAGS -> tagWarning = "Maximum 5 hashtags per post."
+                                    else -> { selectedTags = BlinkSmartTags.add(selectedTags, tag); tagInput = "" }
+                                }
+                            }, enabled = !isSubmitting) { Text("Add") }
+                        }
+                        if (effectiveTags.isNotEmpty()) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                items(effectiveTags, key = { it }) { tag ->
+                                    AssistChip(
+                                        onClick = {
+                                            if (tag in selectedTags) selectedTags = selectedTags - tag
+                                            else tagWarning = "Remove #$tag from the caption to delete it."
+                                        },
+                                        label = { Text("#$tag ×") },
+                                        enabled = !isSubmitting
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -1147,6 +1244,7 @@ fun CreatePostSheet(
                                 draft = draft,
                                 onLoad = {
                                     text = draft.text
+                                    selectedTags = draft.tags
                                     selectedImages = parseDraftImages(draft.imageUri)
                                     selectedVideo = draft.videoUri
                                     mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
@@ -1275,6 +1373,15 @@ fun CreatePostSheet(
             }
         }
         }
+    }
+
+    tagWarning?.let { message ->
+        AlertDialog(
+            onDismissRequest = { tagWarning = null },
+            title = { Text("Hashtag guidance") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { tagWarning = null }) { Text("Got it") } }
+        )
     }
 
     if (showScheduleDialog) {

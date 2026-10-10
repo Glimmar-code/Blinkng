@@ -25,6 +25,14 @@
 - Backend: no live schema, RLS, function, or data mutations were made. Missing/unhealthy PostgREST RPCs and inaccurate stored post counters require separate preview/staging validation before any production migration.
 - Validation: GitHub Android unit tests/build/lint and desktop build must be green before production merge.
 
+## 2026-10-10 — Home and Reels manual refresh (Testlab only)
+
+- Android: Home For You, Home Following, Reels For You, and Reels Following now have isolated refresh requests. Manual refresh queries existing Supabase feed RPCs only, never reloads Market, messages or leaderboards. Per-lane progress coalesces repeated taps; requests are serialized against background syncs, cached rows survive failures, and fresh pages retain deduplicated paginated content.
+- Android UX: Home has a pinned accessible refresh action beside Filter; both Home and Reels have 96dp intentional pull thresholds. Reels accepts pull gestures only at page zero, does not intercept normal vertical paging, and has an explicit refresh action. Existing BLINK purple loading indicator and first-load skeletons are retained.
+- Windows parity: Home refresh and Reels refresh use the same backend feed contract, preserve the visible list on network errors, and prevent duplicate refresh button requests. Desktop uses its native button-based gesture alternative.
+- No changes to Supabase schema/RLS/RPC, ranking, qualified views, ads, rewards, authentication, or post publishing.
+- Validation: branch `Testlab-smart-home-reels-refresh-20261010` is unpromoted. Require Android compile/unit checks, Windows build, and on-device verification of pull gestures, paged feeds, offline cache, deep-linked Reels and both Following lanes before promoting to `main`.
+
 ## 2026-10-10 — Official BLINK launcher and install reliability
 
 PARITY-EXCEPTION: android-adaptive-launcher-and-package-installer

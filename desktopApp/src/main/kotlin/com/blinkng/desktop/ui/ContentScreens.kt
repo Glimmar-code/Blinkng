@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -46,6 +47,7 @@ import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -96,6 +98,7 @@ import com.blinkng.desktop.data.DesktopSearchResults
 import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
+import com.blinkng.shared.BlinkSmartTags
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkPulseSessionStore
@@ -132,6 +135,10 @@ fun HomeScreen(
 ) {
     var posts by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var composer by remember { mutableStateOf("") }
+    var selectedTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var tagInput by remember { mutableStateOf("") }
+    var trendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showMoreTags by remember { mutableStateOf(false) }
     var composerAudience by remember { mutableStateOf("Everyone") }
     var composerCategory by remember { mutableStateOf("Campus Life") }
     var composerLocation by remember { mutableStateOf("") }
@@ -156,14 +163,25 @@ fun HomeScreen(
     }
 
     suspend fun reload() {
+        if (loading && posts.isNotEmpty()) return
         loading = true
-        runCatching { state.client.fetchFeed() }
-            .onSuccess { posts = it; error = null }
-            .onFailure { error = it.message }
-        loading = false
+        try {
+            posts = state.client.fetchFeed().distinctBy { it.id }
+            error = null
+        } catch (cause: Exception) {
+            // Keep the previous page and its scroll position on network failures.
+            error = cause.message ?: "Could not refresh Home."
+        } finally {
+            loading = false
+        }
     }
 
-    LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(Unit) {
+        reload()
+        trendingTags = state.client.trendingTags(
+            runCatching { state.client.fetchProfile().university }.getOrNull(), 40
+        )
+    }
 
     fun normalizedComposerLink(): String? {
         val raw = composerLink.trim()
@@ -230,6 +248,56 @@ fun HomeScreen(
                         label = { Text("Create a post") },
                         placeholder = { Text("What's happening on campus?") },
                     )
+                    Text("🔥 Trending hashtags • 1–3 recommended, maximum 5", style = MaterialTheme.typography.labelMedium)
+                    if (trendingTags.isNotEmpty()) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            items(trendingTags.take(if (showMoreTags) 40 else 7)) { tag ->
+                                FilterChip(
+                                    selected = tag in BlinkSmartTags.allTags(composer, selectedTags),
+                                    onClick = {
+                                        if (BlinkSmartTags.allTags(composer, selectedTags).size < 5)
+                                            selectedTags = BlinkSmartTags.add(selectedTags, tag)
+                                    },
+                                    label = { Text("#$tag") }
+                                )
+                            }
+                        }
+                        if (trendingTags.size > 7) TextButton(onClick = { showMoreTags = !showMoreTags }) {
+                            Text(if (showMoreTags) "Show less" else "See more trending tags")
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = tagInput,
+                            onValueChange = { tagInput = it.take(33) },
+                            label = { Text("Add hashtag") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                        Button(onClick = {
+                            val tag = BlinkSmartTags.normalize(tagInput)
+                            when {
+                                tag == null -> error = "Use 2–32 letters, numbers or underscores."
+                                tag !in BlinkSmartTags.allTags(composer, selectedTags) &&
+                                    BlinkSmartTags.allTags(composer, selectedTags).size >= BlinkSmartTags.MAX_TAGS ->
+                                    error = "Maximum 5 hashtags per post."
+                                else -> { selectedTags = BlinkSmartTags.add(selectedTags, tag); tagInput = ""; error = null }
+                            }
+                        }) { Text("Add") }
+                    }
+                    if (BlinkSmartTags.merge(composer, selectedTags).isNotEmpty()) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(BlinkSmartTags.merge(composer, selectedTags)) { tag ->
+                                AssistChip(
+                                    onClick = {
+                                        if (tag in selectedTags) selectedTags = selectedTags - tag
+                                        else error = "Remove #$tag from the post text to delete it."
+                                    },
+                                    label = { Text("#$tag ×") }
+                                )
+                            }
+                        }
+                    }
                     Text(
                         "Audience",
                         style = MaterialTheme.typography.labelMedium,
@@ -323,9 +391,15 @@ fun HomeScreen(
                         Button(
                             onClick = {
                                 scope.launch {
+                                    val tags = BlinkSmartTags.allTags(composer, selectedTags)
+                                    if (tags.size !in 1..BlinkSmartTags.MAX_TAGS) {
+                                        error = "Include 1–5 relevant hashtags before posting."
+                                        return@launch
+                                    }
                                     runCatching {
                                         state.client.createPost(
                                             text = composer,
+                                            tags = tags,
                                             audience = composerAudience,
                                             category = composerCategory,
                                             location = composerLocation.trim().takeIf(String::isNotBlank),
@@ -338,6 +412,7 @@ fun HomeScreen(
                                     }
                                         .onSuccess {
                                             composer = ""
+                                            selectedTags = emptyList()
                                             composerLocation = ""
                                             composerLink = ""
                                             composerAllowComments = true
@@ -356,27 +431,23 @@ fun HomeScreen(
                             Text("Post")
                         }
                         OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    reload()
-                                    if (listState.firstVisibleItemIndex <= 10) {
-                                        listState.animateScrollToItem(0)
-                                    } else {
-                                        listState.scrollToItem(0)
-                                    }
-                                }
-                            }
+                            onClick = { scope.launch { reload() } },
+                            enabled = !loading
                         ) {
-                            Icon(Icons.Rounded.Refresh, contentDescription = null)
+                            if (loading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Rounded.Refresh, contentDescription = null)
+                            }
                             Spacer(Modifier.width(6.dp))
-                            Text("Refresh")
+                            Text(if (loading) "Refreshing" else "Refresh")
                         }
                     }
                 }
             }
         }
         error?.let { item { InlineError(it) } }
-        if (loading) item { LoadingRow() }
+        if (loading && posts.isEmpty()) item { LoadingRow() }
         if (!loading && posts.isEmpty()) item { EmptyState("No posts are available yet.") }
         items(posts, key = { it.id }) { post ->
             PostCard(
@@ -550,17 +621,41 @@ private fun CommentsPanel(state: DesktopAppState, postId: String) {
 fun ReelsScreen(state: DesktopAppState) {
     var reels by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) {
-        reels = runCatching { state.client.fetchFeed(reelsOnly = true) }.getOrDefault(emptyList())
-        loading = false
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    suspend fun reloadReels() {
+        if (loading && reels.isNotEmpty()) return
+        loading = true
+        try {
+            reels = state.client.fetchFeed(reelsOnly = true).distinctBy { it.id }
+            error = null
+        } catch (cause: Exception) {
+            error = cause.message ?: "Could not refresh Reels."
+        } finally {
+            loading = false
+        }
     }
+
+    LaunchedEffect(Unit) { reloadReels() }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { ScreenHeader("Reels", "Short videos from the same Blinkng feed") }
-        if (loading) item { LoadingRow() }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                ScreenHeader("Reels", "Short videos from the same Blinkng feed")
+                OutlinedButton(onClick = { scope.launch { reloadReels() } }, enabled = !loading) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (loading) "Refreshing" else "Refresh")
+                }
+            }
+        }
+        error?.let { item { InlineError(it) } }
+        if (loading && reels.isEmpty()) item { LoadingRow() }
         if (!loading && reels.isEmpty()) item { EmptyState("No reels are available yet.") }
         items(reels, key = { it.id }) { reel ->
             Surface(shape = RoundedCornerShape(22.dp), tonalElevation = 2.dp) {
@@ -598,6 +693,8 @@ fun ReelsScreen(state: DesktopAppState) {
 fun SearchScreen(state: DesktopAppState) {
     var query by remember { mutableStateOf(state.globalSearch) }
     var results by remember { mutableStateOf(DesktopSearchResults(emptyList(), emptyList())) }
+    var trendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showMoreTrending by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var selectedProfile by remember { mutableStateOf<DesktopProfile?>(null) }
     val scope = rememberCoroutineScope()
@@ -614,6 +711,11 @@ fun SearchScreen(state: DesktopAppState) {
         loading = false
     }
 
+    LaunchedEffect(Unit) {
+        trendingTags = state.client.trendingTags(
+            runCatching { state.client.fetchProfile().university }.getOrNull(), 40
+        )
+    }
     LaunchedEffect(state.globalSearch) {
         if (state.globalSearch.isNotBlank()) {
             query = state.globalSearch
@@ -626,7 +728,25 @@ fun SearchScreen(state: DesktopAppState) {
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item { ScreenHeader("Search", "Find people and posts") }
+        item { ScreenHeader("Search", "Find people, posts and hashtags") }
+        if (trendingTags.isNotEmpty()) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("🔥 Trending now", fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        items(trendingTags.take(if (showMoreTrending) 40 else 7)) { tag ->
+                            AssistChip(
+                                onClick = { query = "#$tag"; scope.launch { searchNow() } },
+                                label = { Text("#$tag") }
+                            )
+                        }
+                    }
+                    if (trendingTags.size > 7) TextButton(onClick = { showMoreTrending = !showMoreTrending }) {
+                        Text(if (showMoreTrending) "Show less" else "See more")
+                    }
+                }
+            }
+        }
         item {
             OutlinedTextField(
                 value = query,
