@@ -20,9 +20,9 @@ jobs:
       - name: Get actual public signed APK from successful release run
         uses: actions/download-artifact@v4
         with:
-          name: blink-production-1.0.298604067-298604067
+          name: blink-production-1.0.298604418-298604418
           repository: ${{ github.repository }}
-          run-id: 38025670548
+          run-id: 38043456378
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: release-artifact
 
@@ -34,7 +34,7 @@ jobs:
           test -n "$apk"
           echo "APK=$apk" >> "$GITHUB_ENV"
           echo "APK bytes: $(stat -c %s "$apk")"
-          echo "091e153dfaf38a3de6d659a6f96b33413b57b67802b274bef7c7038483aa450e  $apk" | sha256sum --check --status
+          echo "90eb72de1e084125800231373e608f95f4dce4805a8622435dbf7363adce63fc  $apk" | sha256sum --check --status
           echo "Production signed APK digest confirmed."
           build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
           "$build_tools/apksigner" verify --verbose --print-certs "$apk"
@@ -58,7 +58,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: |
-            set -uo pipefail
+            set -u
             adb shell getprop ro.build.version.release
             adb shell getprop ro.product.cpu.abilist
             # Capture installer code instead of relying on the phone's generic error message.
