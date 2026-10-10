@@ -1,6 +1,7 @@
 package com.blinkng.desktop.data
 
 import com.blinkng.shared.BlinkBackendDefaults
+import com.blinkng.shared.BlinkSmartTags
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -220,13 +221,39 @@ class DesktopSupabaseClient(
         return fetchProfile(userId)
     }
 
+    suspend fun trendingTags(university: String? = null, limit: Int = 40): List<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val body = JSONObject()
+                    .put("p_limit", limit.coerceIn(1, 50))
+                    .put("p_university", university?.takeIf { it.isNotBlank() } ?: JSONObject.NULL)
+                val rows = postArray("/rest/v1/rpc/blink_trending_tags", body, prefer = "return=representation")
+                (0 until rows.length()).mapNotNull { i ->
+                    BlinkSmartTags.normalize(rows.optJSONObject(i)?.optString("tag").orEmpty())
+                }.distinct()
+            }.getOrDefault(emptyList())
+        }
+
+    private fun recordTagSearch(query: String) {
+        if (!query.startsWith("#")) return
+        val tag = BlinkSmartTags.normalize(query) ?: return
+        runCatching {
+            postArray(
+                "/rest/v1/rpc/blink_record_tag_search",
+                JSONObject().put("p_tag", tag), prefer = "return=minimal",
+            )
+        }
+    }
+
     suspend fun fetchFeed(reelsOnly: Boolean = false, search: String? = null): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
         val filter = buildString {
             append("/rest/v1/feed_posts?select=id,user_id,text,caption,image_url,video_url,images,hashtags,like_count,comment_count,share_count,view_count,is_reel,created_at")
             append("&is_active=eq.true")
             if (reelsOnly) append("&is_reel=eq.true")
             search?.trim()?.takeIf { it.isNotBlank() }?.let { q ->
-                append("&or=${encode("(text.ilike.*$q*,caption.ilike.*$q*)")}")
+                val tag = if (q.startsWith("#")) BlinkSmartTags.normalize(q) else null
+                if (tag != null) append("&tags=cs.${encode("{$tag}")}")
+                else append("&or=${encode("(text.ilike.*$q*,caption.ilike.*$q*)")}")
             }
             append("&order=created_at.desc&limit=60")
         }
@@ -240,9 +267,11 @@ class DesktopSupabaseClient(
         }
     }
 
-    suspend fun createPost(text: String, isReel: Boolean = false, videoUrl: String? = null): DesktopFeedPost = withContext(Dispatchers.IO) {
+    suspend fun createPost(text: String, isReel: Boolean = false, videoUrl: String? = null, tags: List<String> = emptyList()): DesktopFeedPost = withContext(Dispatchers.IO) {
         val active = requireSession()
         val clean = text.trim()
+        val effectiveTags = BlinkSmartTags.allTags(clean, tags)
+        require(effectiveTags.size in 1..BlinkSmartTags.MAX_TAGS) { "Include 1–5 relevant hashtags." }
         require(clean.isNotBlank() || !videoUrl.isNullOrBlank()) { "Write something or attach media." }
         val last = getArray(
             "/rest/v1/feed_posts?user_id=eq.${encode(active.userId)}&select=creator_post_number&order=creator_post_number.desc&limit=1",
@@ -255,6 +284,8 @@ class DesktopSupabaseClient(
             .put("is_reel", isReel)
             .put("type", if (isReel) "video" else "text")
             .put("creator_post_number", nextNumber)
+            .put("tags", JSONArray(effectiveTags))
+            .put("hashtags", JSONArray(effectiveTags))
         if (!videoUrl.isNullOrBlank()) body.put("video_url", videoUrl)
         val created = postArray("/rest/v1/feed_posts", body, prefer = "return=representation")
             .optJSONObject(0) ?: throw IllegalStateException("Post was created but no row was returned.")
@@ -317,6 +348,7 @@ class DesktopSupabaseClient(
 
     suspend fun search(query: String): DesktopSearchResults = withContext(Dispatchers.IO) {
         val clean = query.trim()
+        recordTagSearch(clean)
         if (clean.isBlank()) return@withContext DesktopSearchResults(emptyList(), emptyList())
         val encodedPattern = encode("*$clean*")
         val profiles = getArray(
