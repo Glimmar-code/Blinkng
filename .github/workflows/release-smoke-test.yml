@@ -50,6 +50,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify launcher images match the approved BLINK logo
+        shell: bash
+        run: |
+          python3 -m pip install --disable-pip-version-check Pillow==11.3.0
+          python3 scripts/sync_android_launcher_assets.py --check
+
       - name: Test secure Firebase release config restoration
         shell: bash
         run: bash .github/scripts/test_restore_google_services.sh
