@@ -154,11 +154,17 @@ fun HomeScreen(
     }
 
     suspend fun reload() {
+        if (loading && posts.isNotEmpty()) return
         loading = true
-        runCatching { state.client.fetchFeed() }
-            .onSuccess { posts = it; error = null }
-            .onFailure { error = it.message }
-        loading = false
+        try {
+            posts = state.client.fetchFeed().distinctBy { it.id }
+            error = null
+        } catch (cause: Exception) {
+            // Keep the previous page and its scroll position on network failures.
+            error = cause.message ?: "Could not refresh Home."
+        } finally {
+            loading = false
+        }
     }
 
     LaunchedEffect(Unit) { reload() }
@@ -354,27 +360,23 @@ fun HomeScreen(
                             Text("Post")
                         }
                         OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    reload()
-                                    if (listState.firstVisibleItemIndex <= 10) {
-                                        listState.animateScrollToItem(0)
-                                    } else {
-                                        listState.scrollToItem(0)
-                                    }
-                                }
-                            }
+                            onClick = { scope.launch { reload() } },
+                            enabled = !loading
                         ) {
-                            Icon(Icons.Rounded.Refresh, contentDescription = null)
+                            if (loading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Rounded.Refresh, contentDescription = null)
+                            }
                             Spacer(Modifier.width(6.dp))
-                            Text("Refresh")
+                            Text(if (loading) "Refreshing" else "Refresh")
                         }
                     }
                 }
             }
         }
         error?.let { item { InlineError(it) } }
-        if (loading) item { LoadingRow() }
+        if (loading && posts.isEmpty()) item { LoadingRow() }
         if (!loading && posts.isEmpty()) item { EmptyState("No posts are available yet.") }
         items(posts, key = { it.id }) { post ->
             PostCard(
@@ -548,17 +550,41 @@ private fun CommentsPanel(state: DesktopAppState, postId: String) {
 fun ReelsScreen(state: DesktopAppState) {
     var reels by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) {
-        reels = runCatching { state.client.fetchFeed(reelsOnly = true) }.getOrDefault(emptyList())
-        loading = false
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    suspend fun reloadReels() {
+        if (loading && reels.isNotEmpty()) return
+        loading = true
+        try {
+            reels = state.client.fetchFeed(reelsOnly = true).distinctBy { it.id }
+            error = null
+        } catch (cause: Exception) {
+            error = cause.message ?: "Could not refresh Reels."
+        } finally {
+            loading = false
+        }
     }
+
+    LaunchedEffect(Unit) { reloadReels() }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { ScreenHeader("Reels", "Short videos from the same Blinkng feed") }
-        if (loading) item { LoadingRow() }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                ScreenHeader("Reels", "Short videos from the same Blinkng feed")
+                OutlinedButton(onClick = { scope.launch { reloadReels() } }, enabled = !loading) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (loading) "Refreshing" else "Refresh")
+                }
+            }
+        }
+        error?.let { item { InlineError(it) } }
+        if (loading && reels.isEmpty()) item { LoadingRow() }
         if (!loading && reels.isEmpty()) item { EmptyState("No reels are available yet.") }
         items(reels, key = { it.id }) { reel ->
             Surface(shape = RoundedCornerShape(22.dp), tonalElevation = 2.dp) {
