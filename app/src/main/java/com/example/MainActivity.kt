@@ -12,12 +12,18 @@ import androidx.activity.viewModels
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.zIndex
@@ -743,6 +749,7 @@ fun MainAppContent(
                         isRefreshingFollowing = uiState.isRefreshingFollowing || uiState.isRefreshingContent,
                         isRefreshingReels = uiState.isRefreshingReels || uiState.isRefreshingContent,
                         errorMessage = uiState.feedErrorMessage,
+                        followingErrorMessage = uiState.followingFeedErrorMessage,
                         onRefresh = { viewModel.refreshFeedLane() },
                         onRefreshFollowing = { viewModel.refreshFeedLane(following = true) },
                         onRefreshReels = { viewModel.refreshFeedLane(isReel = true) },
@@ -930,11 +937,22 @@ fun MainAppContent(
         }
 
         feedUtilitySheet?.let { utility ->
-            val utilitySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            var intentionalLongSwipe by remember(utility) { mutableStateOf(false) }
+            val utilitySheetState = rememberModalBottomSheetState(
+                skipPartiallyExpanded = true,
+                confirmValueChange = { target ->
+                    target != SheetValue.Hidden || intentionalLongSwipe
+                }
+            )
             val utilityScope = rememberCoroutineScope()
+            val utilityWindowHeightPx = with(LocalDensity.current) {
+                LocalConfiguration.current.screenHeightDp.dp.toPx()
+            }
 
             fun dismissUtility(afterDismiss: () -> Unit = {}) {
                 utilityScope.launch {
+                    // Explicit navigation and close actions are never swipe-gated.
+                    intentionalLongSwipe = true
                     runCatching { utilitySheetState.hide() }
                     feedUtilitySheet = null
                     afterDismiss()
@@ -945,7 +963,26 @@ fun MainAppContent(
                 onDismissRequest = { feedUtilitySheet = null },
                 sheetState = utilitySheetState,
                 dragHandle = { BottomSheetDefaults.DragHandle() },
-                modifier = Modifier.testTag("feedUtilitySheet")
+                // Listen without consuming motion. Inner LazyColumns and games still
+                // scroll normally; a small pull can no longer dismiss the whole page.
+                modifier = Modifier
+                    .testTag("feedUtilitySheet")
+                    .pointerInput(utility, utilityWindowHeightPx) {
+                        awaitEachGesture {
+                            intentionalLongSwipe = false
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val startY = down.position.y
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Final)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                intentionalLongSwipe = UtilitySheetDismissPolicy.allowsDownwardDismiss(
+                                    change.position.y - startY,
+                                    utilityWindowHeightPx
+                                )
+                                if (!change.pressed) break
+                            }
+                        }
+                    }
             ) {
                 Box(
                     modifier = Modifier
@@ -1282,6 +1319,12 @@ fun MainAppContent(
                     currentProfileToDisplay.username.trim().removePrefix("@").lowercase()
                 }
                 val profilePosts = uiState.profilePostsByUserId[profileKey].orEmpty()
+                val isProfilePostsLoading = profilePosts.isEmpty() &&
+                    (profileKey in uiState.profileSurfaceLoadingIds ||
+                     (profileKey !in uiState.profileSurfaceLoadedIds &&
+                      profileKey !in uiState.profileSurfaceFailedIds))
+                val profilePostsLoadFailed = profilePosts.isEmpty() &&
+                    profileKey in uiState.profileSurfaceFailedIds
                 val profileLikedPosts = if (isMyProfile) uiState.myLikedPosts.filter { it.isLiked } else emptyList()
                 val profileSavedPosts = if (isMyProfile) uiState.mySavedPosts.filter { it.isBookmarked } else emptyList()
 
@@ -1297,6 +1340,8 @@ fun MainAppContent(
                     profile = currentProfileToDisplay,
                     isMe = isMyProfile,
                     userPosts = profilePosts,
+                    isPostsLoading = isProfilePostsLoading,
+                    hasPostsLoadError = profilePostsLoadFailed,
                     likedPosts = profileLikedPosts,
                     savedPosts = profileSavedPosts,
                     userMarketItems = userMarketItems,

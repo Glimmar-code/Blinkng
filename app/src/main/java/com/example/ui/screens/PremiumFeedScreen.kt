@@ -291,6 +291,7 @@ fun PremiumFeedScreen(
     isRefreshingFollowing: Boolean = isRefreshing,
     isRefreshingReels: Boolean = isRefreshing,
     errorMessage: String? = null,
+    followingErrorMessage: String? = null,
     onRefresh: () -> Unit = {},
     onRefreshFollowing: () -> Unit = onRefresh,
     onRefreshReels: () -> Unit = onRefresh,
@@ -383,7 +384,7 @@ fun PremiumFeedScreen(
             isLoading = isLoading,
             isRefreshing = if (feedLane == 1) isRefreshingFollowing else isRefreshing,
             isServerConnected = isServerConnected,
-            errorMessage = errorMessage,
+            errorMessage = if (feedLane == 1) followingErrorMessage else errorMessage,
             hasMorePosts = if (feedLane == 1) hasMoreFollowingPosts else hasMorePosts,
             hasMoreReels = hasMoreReels,
             isLoadingMorePosts = if (feedLane == 1) isLoadingMoreFollowingPosts else isLoadingMorePosts,
@@ -410,7 +411,7 @@ fun PremiumFeedScreen(
             onBoostClick = onBoostClick,
             onDropsClick = onDropsClick,
             onRefresh = if (feedLane == 1) onRefreshFollowing else onRefresh,
-            onRetry = onRetry,
+            onRetry = if (feedLane == 1) onRefreshFollowing else onRetry,
             onViewedPost = onViewedPost,
             onVotePoll = onVotePoll,
             onLoadMorePosts = if (feedLane == 1) onLoadMoreFollowingPosts else onLoadMorePosts,
@@ -1310,6 +1311,14 @@ private fun PremiumHomeFeed(
                             isLoading && stableRankedPosts.isEmpty() -> {
                                 items(4, key = { "skeleton:$it" }) {
                                     PremiumFeedSkeleton()
+                                }
+                            }
+
+                            // A failed first load is not an empty feed. Keep the
+                            // user on a recoverable state instead of inviting a new post.
+                            !errorMessage.isNullOrBlank() && stableRankedPosts.isEmpty() && isOnline -> {
+                                item(key = "first_load_error") {
+                                    PremiumFeedRefreshNotice(errorMessage, onRetry)
                                 }
                             }
 

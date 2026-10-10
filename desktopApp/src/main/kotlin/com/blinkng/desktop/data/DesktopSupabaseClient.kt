@@ -698,7 +698,11 @@ class DesktopSupabaseClient(
 
         val created = postArray("/rest/v1/feed_posts", body, prefer = "return=representation")
             .optJSONObject(0) ?: throw IllegalStateException("Post was created but no row was returned.")
-        parseFeedPost(created, fetchProfile(active.userId), false)
+        // A follow-up author refresh is optional. Once the server returns the
+        // inserted row, a temporary profile timeout must not turn this into a
+        // false "post failed" message on Windows either.
+        val author = runCatching { fetchProfile(active.userId) }.getOrNull()
+        parseFeedPost(created, author, false)
     }
 
     suspend fun toggleLike(postId: String): Boolean = withContext(Dispatchers.IO) {
