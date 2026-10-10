@@ -20,7 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -146,22 +146,18 @@ fun VideoReelsScreen(
         if (followingSelected) onRefreshFollowing() else onRefresh()
     }
 
-    PullToRefreshBox(
-        isRefreshing = activeRefreshing,
-        onRefresh = refreshSelected,
-        state = pullToRefreshState,
-        // Pager swipes must not refresh or interrupt a playing reel.
-        enabled = firstPageVisible && !isInteractionOverlayOpen && !activeRefreshing,
-        threshold = 96.dp,
-        modifier = Modifier.fillMaxSize().background(Color.Black),
-        indicator = {
-            PremiumPullRefreshIndicator(
-                state = pullToRefreshState,
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pullToRefresh(
                 isRefreshing = activeRefreshing,
-                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
-                darkSurface = true
+                onRefresh = refreshSelected,
+                state = pullToRefreshState,
+                // Pager swipes must not refresh or interrupt a playing reel.
+                enabled = firstPageVisible && !isInteractionOverlayOpen && !activeRefreshing,
+                threshold = 96.dp
             )
-        }
     ) {
         val hasAnyReels = reels.isNotEmpty() || followingReels.isNotEmpty()
         val uiState = when {
@@ -211,6 +207,12 @@ fun VideoReelsScreen(
                 )
             }
         }
+        PremiumPullRefreshIndicator(
+            state = pullToRefreshState,
+            isRefreshing = activeRefreshing,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
+            darkSurface = true
+        )
     }
 }
 
