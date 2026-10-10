@@ -1512,8 +1512,9 @@ fun ConnectScreen(state: DesktopAppState) {
                 val currentId = state.profile?.id.orEmpty()
                 val requestItems = inbox.requests.sortedByDescending { it.createdAt }
                 val challengeItems = inbox.challenges.sortedByDescending { it.createdAt }
+                val pendingDirectoryApplications = directoryApplications.filter { it.status == "pending" }
 
-                if (requestItems.isEmpty() && challengeItems.isEmpty()) {
+                if (requestItems.isEmpty() && challengeItems.isEmpty() && pendingDirectoryApplications.isEmpty()) {
                     item {
                         Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
                             Column(Modifier.fillMaxWidth().padding(24.dp)) {
@@ -1580,6 +1581,37 @@ fun ConnectScreen(state: DesktopAppState) {
                                         },
                                     ) { Text("Decline") }
                                 }
+                            }
+                        }
+                    }
+
+                    items(pendingDirectoryApplications, key = { "directory-app-${it.id}" }) { application ->
+                        val applicant = students.firstOrNull { it.id == application.applicantId }
+                        Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("New Connect category request", fontWeight = FontWeight.Bold)
+                                    Text(applicant?.fullName ?: "Student", fontSize = 11.sp)
+                                    Text(application.message, fontSize = 11.sp)
+                                }
+                                Button(onClick = {
+                                    scope.launch {
+                                        runCatching { state.client.respondConnectApplication(application.id, true) }
+                                            .onFailure { connectError = it.message }
+                                        reload()
+                                    }
+                                }) { Text("Accept") }
+                                OutlinedButton(onClick = {
+                                    scope.launch {
+                                        runCatching { state.client.respondConnectApplication(application.id, false) }
+                                            .onFailure { connectError = it.message }
+                                        reload()
+                                    }
+                                }) { Text("Decline") }
                             }
                         }
                     }
