@@ -48,3 +48,28 @@ production credential.
 
 Official references:
 - https://firebase.google.com/docs/android/google-services-plugin-and-file
+
+## Brand consistency
+
+All Android adaptive, splash and density-specific launcher icons and both web/PWA
+icon sizes are generated from the same approved `app/src/main/res/drawable/app_icon.png`
+(B) master. Run `python3 scripts/sync_android_launcher_assets.py` (requires Pillow)
+to regenerate assets and `python3 scripts/sync_android_launcher_assets.py --check`
+to verify. Testlab automatically regenerates and commits logo assets; CI refuses
+stale images. The website service worker uses a fresh cache version so returning
+visitors receive the B mark rather than the old purple-eye logo.
+
+## Diagnose 'App not installed: package appears invalid'
+
+1. Only distribute the current `releases/latest/download/Blink-latest.apk` from
+   the **successful signed production** workflow (never a debug or CI-smoke APK).
+2. Compare the downloaded file SHA-256 to `release-info.txt` and ensure the
+   browser downloaded an actual APK rather than an HTML error/partial download.
+3. Compare `apksigner verify --print-certs` SHA-256 to the previously published
+   production certificate; do not rotate the keystore to resolve an update conflict.
+4. The Android release smoke gate checks APK/AAB signatures and installs the
+   disposable-key **test** release on an Android 15 emulator. That test artifact
+   must not be published or presented as an update for production users.
+5. For a device-specific failure, collect the exact package-manager error via
+   `adb install -r Blink-latest.apk`. Back up local drafts before considering
+   uninstalling an older, differently signed app.

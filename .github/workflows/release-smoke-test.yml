@@ -53,6 +53,12 @@ jobs:
       - name: Verify Google Maps SDK is removed
         run: python3 scripts/test_no_google_maps_sdk.py
 
+      - name: Verify launcher images match the approved BLINK logo
+        shell: bash
+        run: |
+          python3 -m pip install --disable-pip-version-check Pillow==11.3.0
+          python3 scripts/sync_android_launcher_assets.py --check
+
       - name: Test secure Firebase release config restoration
         shell: bash
         run: bash .github/scripts/test_restore_google_services.sh
@@ -147,3 +153,24 @@ jobs:
           echo "$BADGING" | grep -F "versionName='ci-smoke'" >/dev/null
 
           echo "Release smoke APK/AAB package, version and signatures verified."
+
+      # Verify the actual release APK can be installed by Android 15's package manager,
+      # not merely read by aapt or apksigner. CI's disposable key is never published.
+      - name: Enable KVM for Android 15 release installation test
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install release smoke APK on Android 15
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash .github/scripts/install_release_smoke_apk.sh

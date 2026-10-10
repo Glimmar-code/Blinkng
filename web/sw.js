@@ -1,4 +1,4 @@
-const CACHE='blink-web-v11-final-brand-logo';
+const CACHE='blink-web-v12-approved-b-logo';
 const SHELL=[
   './',
   './index.html',

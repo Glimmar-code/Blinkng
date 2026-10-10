@@ -1,3 +1,13 @@
+## 2026-10-10 — Official BLINK launcher and install reliability
+
+PARITY-EXCEPTION: android-adaptive-launcher-and-package-installer
+
+- Android: use the approved B artwork for adaptive, legacy/round density icons, install icon and splash; validate all PNG assets against the approved master and install test-signed release APK on Android 15.
+- Windows: desktop already ships the same B artwork; Windows does not use Android adaptive icon layers, splash screens, or the Android Package Installer.
+- Web/PWA: synchronize 192/512 PWA icons and refresh cache for the approved B branding.
+- Signed release: check the previous published production signing certificate and versionCode; retain Firebase and original signing key requirements.
+- Google Maps removal was already merged into main in #206; retain its map-free Android UI and no-Maps CI guards rather than overwriting them.
+
 ## 2026-10-10 — Remove Google Maps SDK and production Maps key dependency
 
 - Android: remove interactive Google Maps preview and marker/camera controls from Items → Live Location; keep private sharing, active recipients, recipient selection, sharing duration and existing Supabase live-location service/stop flow. Private active shares appear in a compact list without a map.
