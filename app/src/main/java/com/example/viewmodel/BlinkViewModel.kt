@@ -1934,8 +1934,8 @@ private suspend fun restoreSupabaseSession() {
     fun loadMoreFeed(isReel: Boolean) {
         val state = _uiState.value
         if (!state.isOnline) return
-        if (isReel && (state.isLoadingMoreReels || !state.hasMoreReels)) return
-        if (!isReel && (state.isLoadingMorePosts || !state.hasMorePosts)) return
+        if (isReel && (state.isLoadingMoreReels || state.isRefreshingReels || !state.hasMoreReels)) return
+        if (!isReel && (state.isLoadingMorePosts || state.isRefreshingHome || !state.hasMorePosts)) return
 
         val current = if (isReel) state.reels else state.posts
         val last = current.lastOrNull() ?: return
@@ -1986,7 +1986,7 @@ private suspend fun restoreSupabaseSession() {
 
     fun loadMoreFollowingFeed() {
         val state = _uiState.value
-        if (!state.isOnline || state.isLoadingMoreFollowingPosts || !state.hasMoreFollowingPosts) return
+        if (!state.isOnline || state.isLoadingMoreFollowingPosts || state.isRefreshingFollowing || !state.hasMoreFollowingPosts) return
         val last = state.followingPosts.lastOrNull() ?: return
         if (last.createdAt.isBlank()) return
 
