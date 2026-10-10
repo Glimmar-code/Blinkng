@@ -2,6 +2,7 @@ package com.example
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -204,7 +205,8 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
             row.optString("id"), row.optInt("price_ngn"), row.optInt("coins")
         )
     }
-    val coinCheckoutEnabled = economy.optBoolean("cash_checkout_enabled", false)
+    val coinCheckoutEnabled = economy.optBoolean("cash_checkout_enabled", false) &&
+        !isInstalledFromGooglePlay(context)
 
     Scaffold(
         topBar = {
@@ -680,6 +682,22 @@ private fun StoreTab(
         item { Spacer(Modifier.height(18.dp)) }
     }
 }
+
+/**
+ * Third-party hosted payments must never run inside Play-distributed Android builds,
+ * unless a separately reviewed eligible billing program is deliberately integrated.
+ * This app currently has no Play Billing adapter; fail closed.
+ */
+@Suppress("DEPRECATION")
+private fun isInstalledFromGooglePlay(context: android.content.Context): Boolean =
+    runCatching {
+        val installer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.packageManager.getInstallSourceInfo(context.packageName).installingPackageName
+        } else {
+            context.packageManager.getInstallerPackageName(context.packageName)
+        }
+        installer == "com.android.vending"
+    }.getOrDefault(true)
 
 @Composable
 private fun BlinkCoinPackShelf(
