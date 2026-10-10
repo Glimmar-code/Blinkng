@@ -43,7 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -1273,29 +1273,26 @@ private fun PremiumHomeFeed(
                 }
                 HorizontalDivider(color = FeedBorder.copy(alpha = 0.72f))
 
-                PullToRefreshBox(
-                    isRefreshing = isRefreshing,
-                    enabled = !isRefreshing,
-                    threshold = 96.dp,
-                    onRefresh = {
-                        headerOffsetPx.value = 0f
-                        headerScrollDirection[0] = 0
-                        pendingDirectionDistancePx[0] = 0f
-                        lastFlingVelocityY[0] = 0f
-                        fabExpanded = true
-                        onBottomBarVisibilityChange(true)
-                        latestRefresh()
-                    },
-                    state = pullState,
-                    modifier = Modifier.weight(1f),
-                    indicator = {
-                        PremiumPullRefreshIndicator(
-                            state = pullState,
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .pullToRefresh(
                             isRefreshing = isRefreshing,
-                            darkSurface = true,
-                            modifier = Modifier.align(Alignment.TopCenter)
+                            onRefresh = {
+                                if (!isRefreshing) {
+                                    headerOffsetPx.value = 0f
+                                    headerScrollDirection[0] = 0
+                                    pendingDirectionDistancePx[0] = 0f
+                                    lastFlingVelocityY[0] = 0f
+                                    fabExpanded = true
+                                    onBottomBarVisibilityChange(true)
+                                    latestRefresh()
+                                }
+                            },
+                            state = pullState,
+                            enabled = !isRefreshing,
+                            threshold = 96.dp
                         )
-                    }
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
@@ -1516,6 +1513,12 @@ private fun PremiumHomeFeed(
                             )
                         }
                     }
+                    PremiumPullRefreshIndicator(
+                        state = pullState,
+                        isRefreshing = isRefreshing,
+                        darkSurface = true,
+                        modifier = Modifier.align(Alignment.TopCenter)
+                    )
                 }
 
                 AnimatedVisibility(
