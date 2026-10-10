@@ -2114,25 +2114,22 @@ fun getCurrentUserId(): String? {
             }
         }
 
+        // The legacy get_public_profiles_by_ids RPC is not deployed everywhere.
+        // Request only public author fields from the authenticated profiles table:
+        // a missing enrichment RPC must never turn a populated feed into "no posts".
         val profiles = mutableMapOf<String, JSONObject>()
         if (userIds.isNotEmpty()) {
-            val body = JSONObject().put("p_ids", JSONArray(userIds.toList()))
-            executeRequest(
-                newRequestBuilder(
-                    "/rest/v1/rpc/get_public_profiles_by_ids",
-                    authenticated = true
-                )
-                    .addHeader("Content-Type", "application/json")
-                    .post(body.toString().toRequestBody(jsonMediaType))
-                    .build()
-            ).use { response ->
+            val profilePath = "/rest/v1/profiles?select=id,username,full_name,avatar_url,is_verified,verification_badge" +
+                "&id=in.(${userIds.joinToString(",")})"
+            executeRequest(newRequestBuilder(profilePath, true).get().build()).use { response ->
                 val raw = response.body?.string().orEmpty()
-                if (response.isSuccessful && raw.isNotBlank() && raw != "[]") {
-                    val array = JSONArray(raw)
-                    for (i in 0 until array.length()) {
-                        val profile = array.getJSONObject(i)
-                        profiles[profile.optString("id")] = profile
-                    }
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Could not load post authors."))
+                }
+                val array = JSONArray(raw.ifBlank { "[]" })
+                for (i in 0 until array.length()) {
+                    val profile = array.getJSONObject(i)
+                    profiles[profile.optString("id")] = profile
                 }
             }
         }
@@ -2537,7 +2534,18 @@ fun getCurrentUserId(): String? {
                     }
                 }
             }
-            fetchFeedPosts().firstOrNull { it.id == postId } ?: parseFeedPost(created)
+            // A 201 + returned post row is a successful publish. Never re-fetch
+            // the entire feed here: an unrelated feed/RPC timeout was incorrectly
+            // reported as "The server did not save the post" after a real insert.
+            val publishedRow = JSONObject(created.toString()).apply {
+                put("author", author)
+                put("author_name", author)
+                put("full_name", author)
+                put("username", author)
+                put("author_username", author)
+                put("author_avatar", authorAvatar)
+            }
+            parseFeedPost(publishedRow)
         } catch (e: Exception) { Log.e(TAG, "POST_CREATE exception", e); null }
     }
 suspend fun uploadPostMedia(
