@@ -1,3 +1,11 @@
+## 2026-10-10 — Remove Google Maps SDK and production Maps key dependency
+
+- Android: remove interactive Google Maps preview and marker/camera controls from Items → Live Location; keep private sharing, active recipients, recipient selection, sharing duration and existing Supabase live-location service/stop flow. Private active shares appear in a compact list without a map.
+- Android infrastructure: remove Maps Compose SDK, Google Maps application metadata, Gradle Maps key placeholder and production `MAPS_API_KEY` requirement. Retain Google Play Services **Location** for opted-in Weather and time-limited Live Location; fused GPS does not need a Maps API key.
+- Windows: Google Maps SDK and Maps release key were Android-only. Existing Windows Items semantics continue without modification; Supabase sharing contracts remain unchanged. This is an SDK-level platform exception.
+- Production Firebase JSON, pinned release-signing certificate and keystore remain mandatory; no placeholder credentials and no production database mutations.
+- Tests: assert no Maps SDK/UI/manifest/Gradle/release secret references in Android quality and release smoke.
+
 ## 2026-10-09 — Secure Android production Firebase secret setup (Testlab)
 
 - Release CI only: allow the existing base64 Firebase config secret or a protected multiline `GOOGLE_SERVICES_JSON` repository secret, simplifying setup on mobile without embedding credentials in source.
