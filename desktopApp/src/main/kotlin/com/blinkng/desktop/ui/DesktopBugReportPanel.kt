@@ -20,14 +20,14 @@ fun DesktopBugReportPanel(state: DesktopAppState, admin: Boolean = false) {
     var description by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var reports by remember { mutableStateOf(JSONArray()) }
-    var pending by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var pending by remember { mutableStateOf<Triple<String, String, Int>?>(null) }
     var busy by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf("") }
     var showReports by remember { mutableStateOf(admin) }
 
     suspend fun refreshReports() {
         runCatching { if (admin) actions.adminBugReports() else actions.myBugReports() }
-            .onSuccess { reports = it; feedback = "" }
+            .onSuccess { reports = it }
             .onFailure { feedback = it.message.orEmpty() }
     }
     LaunchedEffect(admin) { if (admin) refreshReports() }
@@ -97,7 +97,7 @@ fun DesktopBugReportPanel(state: DesktopAppState, admin: Boolean = false) {
                             listOf("reviewing" to 0, "fixed" to 0, "rejected" to 0,
                                 "rewarded" to 20, "rewarded" to 50, "rewarded" to 100).forEach { (status, reward) ->
                                 OutlinedButton(onClick = {
-                                    pending = id to reward
+                                    pending = Triple(id, status, reward)
                                 }, enabled = !busy, contentPadding = PaddingValues(horizontal = 8.dp)) {
                                     Text(if (reward > 0) "+$reward" else status, style = MaterialTheme.typography.labelSmall)
                                 }
@@ -108,8 +108,7 @@ fun DesktopBugReportPanel(state: DesktopAppState, admin: Boolean = false) {
             }
         }
     }
-    pending?.let { (reportId, amount) ->
-        val targetStatus = if (amount > 0) "rewarded" else "reviewing"
+    pending?.let { (reportId, targetStatus, amount) ->
         // Reviewer confirmation is required for every wallet or status change.
         AlertDialog(
             onDismissRequest = { if (!busy) pending = null },
@@ -120,11 +119,14 @@ fun DesktopBugReportPanel(state: DesktopAppState, admin: Boolean = false) {
                 Button(onClick = {
                     busy = true
                     scope.launch {
-                        actions.reviewBugReport(reportId, targetStatus, amount, note)
-                            .let { feedback = "Report updated successfully." }
+                        runCatching { actions.reviewBugReport(reportId, targetStatus, amount, note) }
+                            .onSuccess {
+                                feedback = "Report updated successfully."
+                                note = ""
+                                refreshReports()
+                            }
+                            .onFailure { feedback = it.message ?: "Review failed." }
                         pending = null
-                        note = ""
-                        refreshReports()
                         busy = false
                     }
                 }, enabled = !busy) { Text("Confirm") }
