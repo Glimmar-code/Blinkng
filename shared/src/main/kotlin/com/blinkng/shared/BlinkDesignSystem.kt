@@ -22,10 +22,10 @@ enum class BlinkAppearanceMode(val persistedValue: String) {
 
 object BlinkDesignTokens {
     object Brand {
-        const val Primary: Long = 0xFF8B5CF6L
-        const val PrimaryBright: Long = 0xFFA66CFFL
-        const val PrimaryDeep: Long = 0xFF6D28D9L
-        const val Lavender: Long = 0xFFC4B5FDL
+        const val Primary: Long = 0xFF737373L
+        const val PrimaryBright: Long = 0xFF757575L
+        const val PrimaryDeep: Long = 0xFF404040L
+        const val Lavender: Long = 0xFFBDBDBDL
         const val Blue: Long = 0xFF3B82F6L
         const val Cyan: Long = 0xFF35C7E8L
     }
@@ -40,7 +40,7 @@ object BlinkDesignTokens {
         const val BorderSoft: Long = 0xFF1A1A1AL
         const val TextPrimary: Long = 0xFFF7F7FAL
         const val TextSecondary: Long = 0xFFA7ABB8L
-        const val TextMuted: Long = 0xFF707583L
+        const val TextMuted: Long = 0xFF949494L
     }
 
     object Light {
@@ -53,7 +53,7 @@ object BlinkDesignTokens {
         const val BorderSoft: Long = 0xFFEAEBF1L
         const val TextPrimary: Long = 0xFF161820L
         const val TextSecondary: Long = 0xFF616675L
-        const val TextMuted: Long = 0xFF878C99L
+        const val TextMuted: Long = 0xFF666666L
     }
 
     object Semantic {

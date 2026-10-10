@@ -94,7 +94,7 @@ fun BlinkPrimaryButton(
         shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = colors.primary,
-            contentColor = Color.White,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
             disabledContainerColor = colors.surfaceHighest,
             disabledContentColor = colors.textMuted,
         ),

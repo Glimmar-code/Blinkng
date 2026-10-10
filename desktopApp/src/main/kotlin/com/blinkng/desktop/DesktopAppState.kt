@@ -187,7 +187,8 @@ class DesktopAppState(
         try {
             block()
         } catch (t: Throwable) {
-            errorMessage = t.message ?: "Unable to save your profile."
+            if (t is kotlinx.coroutines.CancellationException) throw t
+            errorMessage = com.blinkng.shared.BlinkUiRecovery.profileSaveMessage(t)
             throw t
         } finally {
             busy = false

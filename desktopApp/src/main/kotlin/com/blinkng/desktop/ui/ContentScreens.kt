@@ -810,6 +810,10 @@ fun NotificationsScreen(state: DesktopAppState) {
 @Composable
 fun MarketplaceScreen(state: DesktopAppState) {
     var itemsList by remember { mutableStateOf<List<DesktopMarketItem>>(emptyList()) }
+    var minimum by remember { mutableStateOf("") }
+    var maximum by remember { mutableStateOf("") }
+    val rangeError = com.blinkng.shared.BlinkUiRecovery.priceRangeError(minimum, maximum)
+    val visibleItems = itemsList.filter { com.blinkng.shared.BlinkUiRecovery.matchesPrice(it.price, minimum, maximum) }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
@@ -831,6 +835,24 @@ fun MarketplaceScreen(state: DesktopAppState) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 ScreenHeader("Marketplace", "Real campus listings")
                 Button(onClick = { showCreate = !showCreate }) { Text(if (showCreate) "Close" else "Sell item") }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(minimum, { minimum = it.filter(Char::isDigit).take(12) },
+                        label = { Text("Min ₦") }, isError = rangeError != null, singleLine = true,
+                        modifier = Modifier.weight(1f))
+                    OutlinedTextField(maximum, { maximum = it.filter(Char::isDigit).take(12) },
+                        label = { Text("Max ₦") }, isError = rangeError != null, singleLine = true,
+                        modifier = Modifier.weight(1f))
+                    TextButton(onClick = { minimum = ""; maximum = "" }) { Text("Reset") }
+                }
+                rangeError?.let { InlineError(it) }
+                if (!loading && visibleItems.isEmpty() && rangeError == null) {
+                    Text("No matches in loaded listings. Adjust the price range or refresh.")
+                }
+                TextButton(onClick = { scope.launch { reload() } }, enabled = !loading) { Text("Refresh listings") }
             }
         }
         if (showCreate) {
@@ -856,7 +878,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
             }
         }
         if (loading) item { LoadingRow() }
-        items(itemsList, key = { it.id }) { market ->
+        items(visibleItems, key = { it.id }) { market ->
             Surface(shape = RoundedCornerShape(18.dp), tonalElevation = if (market.isFeatured) 3.dp else 1.dp) {
                 Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

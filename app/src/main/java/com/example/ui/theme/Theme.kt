@@ -27,8 +27,8 @@ fun blinkBackgroundBrush(isDark: Boolean): Brush = if (isDark) {
 } else {
     Brush.radialGradient(
         colors = listOf(
-            Color(0xFFF0EBFF),
-            Color(0xFFF7F6FB),
+            LightSurfaceCream,
+            LightBackground,
             LightBackground
         ),
         radius = 1200f

@@ -491,3 +491,14 @@ Date: 2026-10-07
 Shared/backend behavior: Circle and member SELECT policies use a scoped authenticated owner/member/public access helper, avoiding mutual RLS recursion and uncorrelated membership matches. Existing circle mutations, requests and ranking formulas remain intact.
 Android and Windows behavior: Existing study-circle and owner-request reads keep working through the same backend contract.
 Validation: Isolated PostgreSQL checks prove private circles/members stay hidden from an account that belongs to a different circle, while the owner and approved members retain access. All eight promotion migrations reapply.
+
+
+## 2026-10-10 — UI audit polish (Testlab)
+
+- Shared neutral brand tokens and higher-contrast muted text feed both clients; semantic verification/status colors remain distinct. Android and Windows themes pair neutral controls with contrasting content colors.
+- Android feed now follows appearance; Windows already uses its Material theme. Android Market replaces a fixed top spacer with status-bar insets; Windows retains its desktop content padding.
+- Shared price-range validation is used in both Market surfaces. Android retains pagination even when local filters hide every loaded listing, and filter edits commit only on Apply. Windows adds validated price filters and refresh for its existing loaded listing set (its existing 100-listing fetch is unchanged).
+- Android starred-content rows now jump to the original loaded message and clear conflicting filters. Windows gains Open in conversation on message results using the same index policy. Windows has no existing per-message starred-content browser; this change does not claim to port that broader feature.
+- Shared safe profile-save messages replace raw exception payloads on both clients. Android and Windows message metadata is enlarged.
+- Added price/error/jump policy tests, Market interaction regression tests, and actual feed/profile/Market/messages screenshots including narrow-screen large-text Market. Store remains outside this screenshot harness because its route owns live economy loading; no purchase behavior was changed.
+- Promotion requires Android and Windows build gates plus visual review; local dependency resolution blocked both full builds in this environment.
