@@ -110,6 +110,7 @@ import com.example.ui.theme.BlinkTheme
 import com.example.util.startActivitySafely
 import com.blinkng.shared.BlinkStoreProductGroup
 import com.blinkng.shared.BlinkStoreProductGroups
+import com.blinkng.shared.BlinkStoreJourneys
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -422,8 +423,14 @@ private fun StoreTab(
 ) {
     var category by remember { mutableStateOf("For You") }
     var query by remember { mutableStateOf("") }
+    var selectedJourney by remember { mutableStateOf<String?>(null) }
     val catalog = BlinkStoreCatalog.items
-    val filteredGroups = BlinkStoreProductGroups.groupsForCategory(category).filter { group ->
+    val journeyGroupIds = remember(selectedJourney) {
+        BlinkStoreJourneys.availableGroups(selectedJourney).map { it.id }.toSet()
+    }
+    val filteredGroups = BlinkStoreProductGroups.groupsForCategory(category)
+        .filter { it.id in journeyGroupIds }
+        .filter { group ->
         if (query.isBlank()) {
             true
         } else {
@@ -445,6 +452,72 @@ private fun StoreTab(
     ) {
         item {
             PremiumStoreHero(vipActive = vipActive, itemCount = BlinkStoreProductGroups.all.size)
+        }
+        item {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Text("Explore by goal", fontWeight = FontWeight.Black, fontSize = 17.sp)
+                Text(
+                    "Only available products appear here. Browse freely, preview first, and choose what is useful to you.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item {
+                        FilterChip(
+                            selected = selectedJourney == null,
+                            onClick = { selectedJourney = null; category = "For You" },
+                            label = { Text("All collections") },
+                        )
+                    }
+                    items(BlinkStoreJourneys.live, key = { it.id }) { journey ->
+                        FilterChip(
+                            selected = selectedJourney == journey.id,
+                            onClick = {
+                                selectedJourney = if (selectedJourney == journey.id) null else journey.id
+                                category = "For You"
+                            },
+                            label = { Text(journey.title) },
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                Text("Build your BLINK Identity", fontWeight = FontWeight.Black, fontSize = 17.sp)
+                Text(
+                    "Coordinated ideas, not paid bundles. Select and preview individual pieces before buying.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(BlinkStoreJourneys.looks, key = { it.id }) { look ->
+                        Card(
+                            modifier = Modifier.width(215.dp).clickable {
+                                BlinkStoreProductGroups.byId(look.entryGroupId)?.let { onOpenGroup(it) }
+                            },
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        ) {
+                            Column(Modifier.padding(14.dp)) {
+                                Text(look.title, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(5.dp))
+                                Text(
+                                    look.description,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    minLines = 3,
+                                )
+                                Spacer(Modifier.height(7.dp))
+                                Text("Explore pieces →", color = BlinkPink, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
         }
         item {
             OutlinedTextField(

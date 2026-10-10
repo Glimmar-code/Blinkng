@@ -61,6 +61,7 @@ import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.shared.BlinkStoreProductGroup
 import com.blinkng.shared.BlinkStoreProductGroups
+import com.blinkng.shared.BlinkStoreJourneys
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -81,6 +82,7 @@ fun StoreProScreen(state: DesktopAppState) {
     var previewItem by remember { mutableStateOf<DesktopStoreItem?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("For You") }
+    var selectedJourney by remember { mutableStateOf<String?>(null) }
     var targetState by remember { mutableStateOf(JSONObject()) }
     var heroShown by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -146,9 +148,12 @@ fun StoreProScreen(state: DesktopAppState) {
         .filter(String::isNotBlank)
         .toSet()
     val vipActive = serverState?.optJSONObject("vip")?.optBoolean("active", false) ?: false
-    val filteredGroups = remember(catalog, searchQuery, selectedCategory) {
+    val filteredGroups = remember(catalog, searchQuery, selectedCategory, selectedJourney) {
+        val journeyGroupIds = BlinkStoreJourneys.availableGroups(selectedJourney).map { it.id }.toSet()
         val query = searchQuery.trim()
-        BlinkStoreProductGroups.groupsForCategory(selectedCategory).filter { group ->
+        BlinkStoreProductGroups.groupsForCategory(selectedCategory)
+            .filter { it.id in journeyGroupIds }
+            .filter { group ->
             query.isBlank() ||
                 group.title.contains(query, true) ||
                 group.description.contains(query, true) ||
@@ -248,6 +253,68 @@ fun StoreProScreen(state: DesktopAppState) {
             }
         }
 
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("Explore by goal", fontWeight = FontWeight.Black, fontSize = 20.sp)
+                Text(
+                    "Only existing Store products are listed. Explore and preview without pressure to buy.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item {
+                        FilterChip(
+                            selected = selectedJourney == null,
+                            onClick = { selectedJourney = null; selectedCategory = "For You" },
+                            label = { Text("All collections") },
+                        )
+                    }
+                    items(BlinkStoreJourneys.live, key = { it.id }) { journey ->
+                        FilterChip(
+                            selected = selectedJourney == journey.id,
+                            onClick = {
+                                selectedJourney = if (selectedJourney == journey.id) null else journey.id
+                                selectedCategory = "For You"
+                            },
+                            label = { Text(journey.title) },
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("Build your BLINK Identity", fontWeight = FontWeight.Black, fontSize = 20.sp)
+                Text(
+                    "Mix and match individually priced pieces. Each purchase remains optional.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(BlinkStoreJourneys.looks, key = { it.id }) { look ->
+                        Surface(
+                            modifier = Modifier.width(245.dp).clickable {
+                                BlinkStoreProductGroups.byId(look.entryGroupId)?.let { selectedGroup = it }
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(look.title, fontWeight = FontWeight.Bold)
+                                Text(
+                                    look.description,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    minLines = 3,
+                                )
+                                Text("Explore pieces →", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
         item { Text("Store collections", fontWeight = FontWeight.Black, fontSize = 21.sp) }
         item {
             OutlinedTextField(
