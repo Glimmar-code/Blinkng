@@ -1126,13 +1126,21 @@ class DesktopSupabaseClient(
         Unit
     }
 
-    suspend fun fetchConnectApplications(listingIds: List<String>): List<JSONObject> = withContext(Dispatchers.IO) {
+    suspend fun fetchConnectApplications(listingIds: List<String>): List<DesktopConnectApplication> = withContext(Dispatchers.IO) {
         if (listingIds.isEmpty()) return@withContext emptyList()
         val rows = getArray(
             "/rest/v1/connect_applications?select=id,listing_id,applicant_id,message,status" +
                 "&listing_id=in.(${listingIds.joinToString(",")})&order=created_at.desc&limit=80",
         )
-        (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
+        (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.map { row ->
+            DesktopConnectApplication(
+                id = row.optString("id"),
+                listingId = row.optString("listing_id"),
+                applicantId = row.optString("applicant_id"),
+                message = row.optString("message"),
+                status = row.optString("status"),
+            )
+        }
     }
 
     suspend fun respondConnectApplication(applicationId: String, accept: Boolean) = withContext(Dispatchers.IO) {
