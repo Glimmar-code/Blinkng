@@ -1306,6 +1306,14 @@ private fun PremiumHomeFeed(
                                 }
                             }
 
+                            // A failed first load is not an empty feed. Keep the
+                            // user on a recoverable state instead of inviting a new post.
+                            !errorMessage.isNullOrBlank() && stableRankedPosts.isEmpty() && isOnline -> {
+                                item(key = "first_load_error") {
+                                    PremiumFeedRefreshNotice(errorMessage, onRetry)
+                                }
+                            }
+
                             filteredPosts.isEmpty() -> {
                                 when {
                                     filter != PremiumFeedFilter.ALL || laneIndex == 1 -> {
