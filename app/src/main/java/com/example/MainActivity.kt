@@ -747,6 +747,7 @@ fun MainAppContent(
                         isLoading = uiState.isFeedLoading,
                         isRefreshing = uiState.isRefreshingContent,
                         errorMessage = uiState.feedErrorMessage,
+                        followingErrorMessage = uiState.followingFeedErrorMessage,
                         onRefresh = { viewModel.refreshContent() },
                         onRetry = { viewModel.refreshContent() },
                         onViewedPost = { viewModel.recordPostView(it) },
