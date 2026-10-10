@@ -5,11 +5,11 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/production-apk-device-install-diagnostic.yml'
+      - '.github/scripts/diagnose_production_apk_install.sh'
   workflow_dispatch:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   signed-apk-install:
@@ -17,30 +17,39 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Get actual public signed APK from successful release run
-        uses: actions/download-artifact@v4
-        with:
-          name: blink-production-1.0.298604418-298604418
-          repository: ${{ github.repository }}
-          run-id: 38043456378
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: release-artifact
 
-      - name: Verify the exact production APK bytes and manifest
+      - name: Download exact public APK releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p production/current production/previous
+          gh release download v1.0.298604769 --repo "$GITHUB_REPOSITORY" --pattern Blink-latest.apk --dir production/current
+          gh release download v1.0.298604418 --repo "$GITHUB_REPOSITORY" --pattern Blink-latest.apk --dir production/previous
+          echo '4614e66bbc9611eb21b24056b83f66e16a297bfc4c40504fdf056eec245bc27e  production/current/Blink-latest.apk' | sha256sum --check
+          echo '90eb72de1e084125800231373e608f95f4dce4805a8622435dbf7363adce63fc  production/previous/Blink-latest.apk' | sha256sum --check
+
+      - name: Inspect ZIP, signatures, package and ARM64 libraries
         shell: bash
         run: |
           set -euo pipefail
-          apk="$(find release-artifact -type f -name '*.apk' | head -n 1)"
-          test -n "$apk"
-          echo "APK=$apk" >> "$GITHUB_ENV"
-          echo "APK bytes: $(stat -c %s "$apk")"
-          echo "90eb72de1e084125800231373e608f95f4dce4805a8622435dbf7363adce63fc  $apk" | sha256sum --check --status
-          echo "Production signed APK digest confirmed."
-          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
-          "$build_tools/apksigner" verify --verbose --print-certs "$apk"
-          "$build_tools/aapt" dump badging "$apk" | head -n 12
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          for variant in previous current; do
+            apk="production/$variant/Blink-latest.apk"
+            echo "=== Checking $apk ==="
+            unzip -t "$apk" | tail -n 2
+            "$build_tools/apksigner" verify --verbose --print-certs "$apk"
+            "$build_tools/aapt" dump badging "$apk" | head -n 4
+            abis="$(unzip -Z1 "$apk" | awk -F/ '$1 == "lib" && $3 ~ /[.]so$/ {print $2}' | sort -u)"
+            printf 'Native libraries: %s\n' "$abis"
+            if [[ -n "$abis" && "$abis" != *"arm64-v8a"* ]]; then
+              echo "::error::Published APK contains native libraries but does not support ARM64 phones."
+              exit 1
+            fi
+          done
 
-      - name: Enable KVM
+      - name: Enable emulator KVM
         shell: bash
         run: |
           set -euo pipefail
@@ -48,7 +57,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Attempt clean install of exact production APK on Android 15
+      - name: Install and upgrade actual published APK on Android 15
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: 35
@@ -57,24 +66,9 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            set -u
-            adb shell getprop ro.build.version.release
-            adb shell getprop ro.product.cpu.abilist
-            # Capture installer code instead of relying on the phone's generic error message.
-            adb install -r "$APK" > install-output.txt 2>&1
-            result=$?
-            cat install-output.txt
-            if [ "$result" -ne 0 ]; then
-              echo "::error::Android 15 rejected BLINK production APK (adb exit $result)."
-              adb logcat -d -s PackageManager:* PackageInstaller:* installd:* | tail -n 150 || true
-              exit "$result"
-            fi
-            adb shell pm path com.aistudio.blink.appvtwo
-            adb shell dumpsys package com.aistudio.blink.appvtwo | grep -E 'version(Code|Name)|primaryCpuAbi' | head -n 12 || true
-            echo "Exact public BLINK production APK installed on clean Android 15 emulator."
+          script: bash .github/scripts/diagnose_production_apk_install.sh
 
-      - name: Save installer diagnosis
+      - name: Save package installer output
         if: always()
         uses: actions/upload-artifact@v4
         with:
