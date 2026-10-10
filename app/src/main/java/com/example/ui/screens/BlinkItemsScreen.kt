@@ -92,13 +92,6 @@ import com.example.ui.theme.FeedElevatedSurface
 import com.example.ui.theme.FeedPurple
 import com.example.ui.theme.FeedTextPrimary
 import com.example.ui.theme.FeedTextSecondary
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.Marker
-import com.google.maps.android.compose.MarkerState
-import com.google.maps.android.compose.rememberCameraPositionState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -876,7 +869,6 @@ private fun BlinkLiveLocationItem(
     var durationMinutes by remember { mutableStateOf(60) }
     var currentSession by remember { mutableStateOf<BlinkMyLiveLocationSession?>(null) }
     var sharedLocations by remember { mutableStateOf<List<BlinkSharedLocation>>(emptyList()) }
-    var myLocation by remember { mutableStateOf<LatLng?>(null) }
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var pendingStart by remember { mutableStateOf(false) }
@@ -896,15 +888,10 @@ private fun BlinkLiveLocationItem(
             .toList()
     }
 
-    fun refreshMap() {
+    fun refreshLocations() {
         scope.launch {
             currentSession = repository.currentSession().getOrNull()
             sharedLocations = repository.activeLocationsSharedWithMe().getOrDefault(emptyList())
-            if (BlinkLocationClient.hasFinePermission(context)) {
-                BlinkLocationClient.currentLocation(context, highAccuracy = true)
-                    .getOrNull()
-                    ?.let { myLocation = LatLng(it.latitude, it.longitude) }
-            }
         }
     }
 
@@ -936,7 +923,6 @@ private fun BlinkLiveLocationItem(
                     location.longitude,
                     location.accuracy
                 )
-                myLocation = LatLng(location.latitude, location.longitude)
             }
 
             ContextCompat.startForegroundService(
@@ -971,7 +957,7 @@ private fun BlinkLiveLocationItem(
 
     LaunchedEffect(Unit) {
         FollowStateStore.refresh()
-        refreshMap()
+        refreshLocations()
         while (true) {
             delay(8_000L)
             sharedLocations = repository.activeLocationsSharedWithMe().getOrDefault(sharedLocations)
@@ -985,49 +971,32 @@ private fun BlinkLiveLocationItem(
         }
     }
 
-    val initial = myLocation ?: sharedLocations.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
-        ?: LatLng(0.0, 0.0)
-    val camera = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(initial, if (initial == LatLng(0.0, 0.0)) 2f else 14f)
-    }
-    val focus = myLocation ?: sharedLocations.firstOrNull()?.let { LatLng(it.latitude, it.longitude) }
-    LaunchedEffect(focus) {
-        focus?.let {
-            runCatching { camera.animate(CameraUpdateFactory.newLatLngZoom(it, 14f), 500) }
-        }
-    }
-
     Column(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(280.dp)
-                .background(FeedElevatedSurface)
+        Surface(
+            color = FeedElevatedSurface,
+            shape = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, FeedBorder),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
-            GoogleMap(
-                modifier = Modifier.fillMaxSize(),
-                cameraPositionState = camera
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                myLocation?.let {
-                    Marker(
-                        state = MarkerState(position = it),
-                        title = "You"
+                Icon(Icons.Default.LocationOn, contentDescription = null, tint = FeedPurple)
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(
+                        "Private Live Location",
+                        color = FeedTextPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        if (sharedLocations.isEmpty()) "No one is sharing a location with you right now."
+                        else "${sharedLocations.size} active location ${if (sharedLocations.size == 1) "share" else "shares"} listed below.",
+                        color = FeedTextSecondary,
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
-                sharedLocations.forEach { shared ->
-                    Marker(
-                        state = MarkerState(position = LatLng(shared.latitude, shared.longitude)),
-                        title = shared.fullName.ifBlank { shared.username },
-                        snippet = "Shared with you"
-                    )
-                }
-            }
-            if (myLocation == null && sharedLocations.isEmpty()) {
-                Text(
-                    "No live positions to show yet",
-                    color = FeedTextSecondary,
-                    modifier = Modifier.align(Alignment.Center)
-                )
             }
         }
 
