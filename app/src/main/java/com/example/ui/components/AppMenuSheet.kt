@@ -45,6 +45,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.AddShoppingCart
 import androidx.compose.material.icons.outlined.Block
@@ -131,7 +132,8 @@ fun AppMenuSheet(
     onShowToast: (String) -> Unit,
     showAdPrivacyOptions: Boolean,
     onAdPrivacyOptions: () -> Unit,
-    onSimulateNotification: () -> Unit
+    onSimulateNotification: () -> Unit,
+    onReportBug: () -> Unit
 ) {
     val context = LocalContext.current
     val adminService = remember { AdminSupabaseService() }
@@ -280,6 +282,11 @@ fun AppMenuSheet(
                 expanded = "Account and support" in expandedSections,
                 onToggle = { toggle("Account and support") }
             ) {
+                MenuItemRow(Icons.Outlined.BugReport, "Report a bug • Earn Coins",
+                    "Shake phone or tap here to send a report to BLINK Admin") {
+                    onDismiss()
+                    onReportBug()
+                }
                 MenuItemRow(Icons.Outlined.Edit, "Edit profile", "Edit your campus profile") {
                     onDismiss(); onEditProfile()
                 }
