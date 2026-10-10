@@ -90,7 +90,12 @@ class SearchDiscoveryRepository {
     suspend fun search(request: DiscoverySearchRequest): Result<DiscoverySearchPage> = withContext(Dispatchers.IO) {
         runCatching {
             val body = JSONObject().apply {
-                put("p_query", request.query.trim())
+                put(
+                    "p_query",
+                    if (request.query.trim().startsWith("#"))
+                        BlinkSmartTags.normalize(request.query) ?: request.query.trim()
+                    else request.query.trim()
+                )
                 put("p_types", JSONArray(request.types.map { it.backendValue }))
                 put("p_limit", request.limit.coerceIn(1, 60))
                 put("p_following_only", request.followingOnly)
