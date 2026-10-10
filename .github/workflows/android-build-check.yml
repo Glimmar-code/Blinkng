@@ -29,6 +29,9 @@ jobs:
       - name: Verify image decoder regression
         run: python3 scripts/test_png_asset_validator.py
 
+      - name: Reject retired Google Maps SDK configuration
+        run: python3 scripts/test_no_google_maps_sdk.py
+
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Unit tests
