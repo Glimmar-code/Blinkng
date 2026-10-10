@@ -1774,6 +1774,82 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /**
+     * Refresh one visible lane without refetching Market, conversations, or leaderboards.
+     * Existing rows stay on screen and in the offline cache if the request fails.
+     */
+    fun refreshFeedLane(isReel: Boolean = false, following: Boolean = false) {
+        val before = _uiState.value
+        if (!before.isOnline) {
+            showToast("You're offline. Showing saved content.")
+            return
+        }
+        if ((following && before.isRefreshingFollowing) ||
+            (!following && isReel && before.isRefreshingReels) ||
+            (!following && !isReel && before.isRefreshingHome)
+        ) return
+
+        _uiState.value = when {
+            following -> before.copy(isRefreshingFollowing = true, feedErrorMessage = null)
+            isReel -> before.copy(isRefreshingReels = true, feedErrorMessage = null)
+            else -> before.copy(isRefreshingHome = true, feedErrorMessage = null)
+        }
+
+        viewModelScope.launch {
+            try {
+                // Lifecycle/background synchronization cannot overwrite this user's refresh.
+                syncMutex.withLock {
+                    val page = when {
+                        following -> postRepository.fetchFollowingFeedPage(limit = 30)
+                        isReel -> postRepository.fetchFeedPage(isReel = true, limit = 30)
+                        else -> postRepository.fetchFeedPage(isReel = false, limit = 30)
+                    }
+                    val now = _uiState.value
+                    _uiState.value = when {
+                        following -> now.copy(
+                            followingPosts = reconcileRefreshedFeed(now.followingPosts, page),
+                            hasMoreFollowingPosts = page.size >= 30
+                        )
+                        isReel -> now.copy(
+                            reels = reconcileRefreshedFeed(now.reels, page),
+                            hasMoreReels = page.size >= 30
+                        )
+                        else -> now.copy(
+                            posts = reconcileRefreshedFeed(now.posts, page),
+                            hasMorePosts = page.size >= 30
+                        )
+                    }
+                    lastSuccessfulSyncAt = SystemClock.elapsedRealtime()
+                    if (!following) {
+                        val updated = _uiState.value
+                        cacheWriteMutex.withLock {
+                            runCatching {
+                                offlineContentStore.replaceFeed(
+                                    updated.posts, updated.reels, updated.myProfile.username
+                                )
+                            }.onFailure { Log.w(TAG, "Manual refresh cache write failed", it) }
+                        }
+                    }
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Manual feed refresh failed", error)
+                _uiState.value = _uiState.value.copy(
+                    feedErrorMessage = "Couldn't refresh right now. Showing existing posts."
+                )
+                showToast("Refresh failed. Please try again.")
+            } finally {
+                val latest = _uiState.value
+                _uiState.value = when {
+                    following -> latest.copy(isRefreshingFollowing = false)
+                    isReel -> latest.copy(isRefreshingReels = false)
+                    else -> latest.copy(isRefreshingHome = false)
+                }
+            }
+        }
+    }
+
     fun refreshContent() = fetchSupabaseData(showRefreshIndicator = true)
 
     fun refreshProgressState() {
