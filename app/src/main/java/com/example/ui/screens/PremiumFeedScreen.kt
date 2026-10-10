@@ -288,8 +288,12 @@ fun PremiumFeedScreen(
     onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit = { _, _, _, _, _ -> },
     isLoading: Boolean = false,
     isRefreshing: Boolean = false,
+    isRefreshingFollowing: Boolean = isRefreshing,
+    isRefreshingReels: Boolean = isRefreshing,
     errorMessage: String? = null,
     onRefresh: () -> Unit = {},
+    onRefreshFollowing: () -> Unit = onRefresh,
+    onRefreshReels: () -> Unit = onRefresh,
     onRetry: () -> Unit = {},
     onViewedPost: (String) -> Unit = {},
     onVotePoll: (postId: String, optionId: String) -> Unit = { _, _ -> },
@@ -377,7 +381,7 @@ fun PremiumFeedScreen(
             laneIndex = feedLane,
             followedAuthorKeys = followedAuthorKeys,
             isLoading = isLoading,
-            isRefreshing = isRefreshing,
+            isRefreshing = if (feedLane == 1) isRefreshingFollowing else isRefreshing,
             isServerConnected = isServerConnected,
             errorMessage = errorMessage,
             hasMorePosts = if (feedLane == 1) hasMoreFollowingPosts else hasMorePosts,
@@ -405,7 +409,7 @@ fun PremiumFeedScreen(
             onStoreClick = onStoreClick,
             onBoostClick = onBoostClick,
             onDropsClick = onDropsClick,
-            onRefresh = onRefresh,
+            onRefresh = if (feedLane == 1) onRefreshFollowing else onRefresh,
             onRetry = onRetry,
             onViewedPost = onViewedPost,
             onVotePoll = onVotePoll,
@@ -448,9 +452,11 @@ fun PremiumFeedScreen(
             onToggleTheme = onToggleTheme,
             isServerConnected = isServerConnected,
             isLoading = isLoading,
-            isRefreshing = isRefreshing,
+            isRefreshing = isRefreshingReels,
+            isRefreshingFollowing = isRefreshingFollowing,
             errorMessage = errorMessage,
-            onRefresh = onRefresh,
+            onRefresh = onRefreshReels,
+            onRefreshFollowing = onRefreshFollowing,
             onRetry = onRetry,
             onViewedPost = onViewedPost,
             onVotePoll = onVotePoll,
@@ -1240,7 +1246,9 @@ private fun PremiumHomeFeed(
                         selectedIndex = laneIndex,
                         onForYouClick = { onLaneChanged(0) },
                         onFollowingClick = { onLaneChanged(1) },
-                        onFilterClick = { filterMenuVisible = true }
+                        onFilterClick = { filterMenuVisible = true },
+                        onRefreshClick = { if (!isRefreshing) latestRefresh() },
+                        isRefreshing = isRefreshing
                     )
                     Box(modifier = Modifier.align(Alignment.TopEnd)) {
                         DropdownMenu(
@@ -1267,6 +1275,8 @@ private fun PremiumHomeFeed(
 
                 PullToRefreshBox(
                     isRefreshing = isRefreshing,
+                    enabled = !isRefreshing,
+                    threshold = 96.dp,
                     onRefresh = {
                         headerOffsetPx.value = 0f
                         headerScrollDirection[0] = 0
