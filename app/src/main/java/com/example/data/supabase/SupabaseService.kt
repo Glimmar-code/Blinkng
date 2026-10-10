@@ -1980,7 +1980,10 @@ fun getCurrentUserId(): String? {
         }
 
     suspend fun fetchFeedPosts(): List<FeedPost> =
-        fetchFeedPage(limit = 40, feedType = "all")
+        // The ranked feed RPC is accessible and already enforces discovery rules.
+        // The retired unranked get_feed_page RPC currently fails on private-schema
+        // permissions, so it must not be used for generic feed retrieval.
+        fetchFeedPage(limit = 40, feedType = "ranked_all")
 
     suspend fun fetchFeedPostById(postId: String): FeedPost? = withContext(Dispatchers.IO) {
         val cleanId = postId.trim()
