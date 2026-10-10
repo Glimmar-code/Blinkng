@@ -207,6 +207,16 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
     }
     val coinCheckoutEnabled = economy.optBoolean("cash_checkout_enabled", false) &&
         !isInstalledFromGooglePlay(context)
+    // Keep merchandising consistent with the actual server catalog. It can be smaller
+    // than the app's bundled visual registry; never offer absent SKUs or stale prices.
+    val liveRows = snapshot.optJSONArray("catalog").objects()
+        .associateBy { it.optString("id") }
+    val liveCatalog = BlinkStoreCatalog.items.mapNotNull { definition ->
+        val live = liveRows[definition.id] ?: return@mapNotNull null
+        val serverPrice = live.optInt("price", -1)
+        if (!live.optBoolean("is_active", true) || serverPrice < 1) return@mapNotNull null
+        definition.copy(price = serverPrice, vipOnly = live.optBoolean("vip_only", definition.vipOnly))
+    }
 
     Scaffold(
         topBar = {
@@ -287,6 +297,7 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
                             inventory = inventory,
                             equippedIds = equippedIds,
                             vipActive = vipActive,
+                            catalog = liveCatalog,
                             coinOffers = coinOffers,
                             coinCheckoutEnabled = coinCheckoutEnabled,
                             onCoinPack = { selectedCoinPack = it },
@@ -417,6 +428,7 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
     selectedGroup?.let { group ->
         StoreGroupDialog(
             group = group,
+            catalog = liveCatalog,
             inventory = inventory,
             equippedIds = equippedIds,
             balance = balance,
@@ -502,6 +514,7 @@ private fun StoreTab(
     inventory: List<JSONObject>,
     equippedIds: Set<String>,
     vipActive: Boolean,
+    catalog: List<BlinkStoreItem>,
     coinOffers: List<BlinkCoinCheckoutOffer>,
     coinCheckoutEnabled: Boolean,
     onCoinPack: (BlinkCoinCheckoutOffer) -> Unit,
@@ -512,12 +525,11 @@ private fun StoreTab(
     var category by remember { mutableStateOf("For You") }
     var query by remember { mutableStateOf("") }
     var selectedJourney by remember { mutableStateOf<String?>(null) }
-    val catalog = BlinkStoreCatalog.items
     val journeyGroupIds = remember(selectedJourney) {
         BlinkStoreJourneys.availableGroups(selectedJourney).map { it.id }.toSet()
     }
     val filteredGroups = BlinkStoreProductGroups.groupsForCategory(category)
-        .filter { it.id in journeyGroupIds }
+        .filter { it.id in journeyGroupIds && it.itemIds.any { id -> catalog.any { item -> item.id == id } } }
         .filter { group ->
         if (query.isBlank()) {
             true
@@ -539,7 +551,7 @@ private fun StoreTab(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            PremiumStoreHero(vipActive = vipActive, itemCount = BlinkStoreProductGroups.all.size)
+            PremiumStoreHero(vipActive = vipActive, itemCount = filteredGroups.size, variantCount = catalog.size)
         }
         item {
             BlinkCoinPackShelf(
@@ -758,8 +770,8 @@ private fun StoreGroupCard(
     vipActive: Boolean,
     onOpen: () -> Unit,
 ) {
-    val primary = catalog.firstOrNull { it.id == group.primaryItemId } ?: return
     val variants = group.itemIds.mapNotNull { id -> catalog.firstOrNull { it.id == id } }
+    val primary = variants.firstOrNull { it.id == group.primaryItemId } ?: variants.firstOrNull() ?: return
     val accent = premiumAccent(primary.premiumExperience())
     val applied = variants.any { it.id in equippedIds }
     val active = variants.any { variant ->
@@ -844,6 +856,7 @@ private fun StoreGroupCard(
 @Composable
 private fun StoreGroupDialog(
     group: BlinkStoreProductGroup,
+    catalog: List<BlinkStoreItem>,
     inventory: List<JSONObject>,
     equippedIds: Set<String>,
     balance: Long,
@@ -852,7 +865,7 @@ private fun StoreGroupDialog(
     onPreview: (BlinkStoreItem) -> Unit,
     onBuy: (BlinkStoreItem) -> Unit,
 ) {
-    val variants = group.itemIds.mapNotNull { id -> BlinkStoreCatalog.items.firstOrNull { it.id == id } }
+    val variants = group.itemIds.mapNotNull { id -> catalog.firstOrNull { it.id == id } }
     val primary = variants.firstOrNull { it.id == group.primaryItemId } ?: variants.firstOrNull()
 
     AlertDialog(
@@ -968,7 +981,7 @@ private fun StoreGroupDialog(
 }
 
 @Composable
-private fun PremiumStoreHero(vipActive: Boolean, itemCount: Int) {
+private fun PremiumStoreHero(vipActive: Boolean, itemCount: Int, variantCount: Int) {
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
     val scale by animateFloatAsState(
@@ -1008,7 +1021,7 @@ private fun PremiumStoreHero(vipActive: Boolean, itemCount: Int) {
                 Column(Modifier.weight(1f)) {
                     Text("Browse premium collections", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Black)
                     Text(
-                        "$itemCount premium collections • 70 existing variants • buy → Vault → use/apply",
+                        "$itemCount available collections • $variantCount live variants • buy → Vault → use/apply",
                         color = Color.White.copy(alpha = .82f),
                         fontSize = 11.sp
                     )
