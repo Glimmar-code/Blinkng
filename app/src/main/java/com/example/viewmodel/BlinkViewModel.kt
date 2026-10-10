@@ -2536,17 +2536,32 @@ private suspend fun restoreSupabaseSession() {
                 val resolved = if (profile.id.isNotBlank()) profile
                     else profileRepository.fetchByUsername(profile.username) ?: profile
                 if (resolved.id.isBlank()) return@launch
-                val content = supabaseService.fetchProfileSurfaceContent(resolved.id)
+                // Show actual profile posts as soon as one short request completes.
+                // The liked/saved collections are optional secondary requests and
+                // must not hold the entire Posts/Reels timeline hostage.
+                val posts = supabaseService.fetchProfilePostsOnly(resolved.id)
                 if (supabaseService.getCurrentUserId() != ownerId) return@launch
                 val latest = _uiState.value
                 val isOwner = resolved.id == ownerId
                 _uiState.value = latest.copy(
-                    profilePostsByUserId = latest.profilePostsByUserId + mapOf(key to content.posts, resolved.id to content.posts),
-                    myLikedPosts = if (isOwner) content.likedPosts else latest.myLikedPosts,
-                    mySavedPosts = if (isOwner) content.savedPosts else latest.mySavedPosts,
+                    profilePostsByUserId = latest.profilePostsByUserId + mapOf(key to posts, resolved.id to posts),
                     profileSurfaceLoadedIds = latest.profileSurfaceLoadedIds + key + resolved.id,
                     profileSurfaceFailedIds = latest.profileSurfaceFailedIds - key - resolved.id
                 )
+                if (isOwner) {
+                    runCatching { supabaseService.fetchProfileSurfaceContent(resolved.id) }
+                        .onSuccess { content ->
+                            if (supabaseService.getCurrentUserId() != ownerId) return@onSuccess
+                            val current = _uiState.value
+                            _uiState.value = current.copy(
+                                profilePostsByUserId = current.profilePostsByUserId +
+                                    mapOf(key to content.posts, resolved.id to content.posts),
+                                myLikedPosts = content.likedPosts,
+                                mySavedPosts = content.savedPosts
+                            )
+                        }
+                        .onFailure { Log.w(TAG, "Optional profile collections sync failed", it) }
+                }
             } catch (error: Exception) {
                 Log.w(TAG, "PROFILE_SURFACE_LOAD failed", error)
                 _uiState.value = _uiState.value.copy(
