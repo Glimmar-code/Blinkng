@@ -745,11 +745,15 @@ fun MainAppContent(
                             )
                         },
                         isLoading = uiState.isFeedLoading,
-                        isRefreshing = uiState.isRefreshingContent,
+                        isRefreshing = uiState.isRefreshingHome || uiState.isRefreshingContent,
+                        isRefreshingFollowing = uiState.isRefreshingFollowing || uiState.isRefreshingContent,
+                        isRefreshingReels = uiState.isRefreshingReels || uiState.isRefreshingContent,
                         errorMessage = uiState.feedErrorMessage,
                         followingErrorMessage = uiState.followingFeedErrorMessage,
-                        onRefresh = { viewModel.refreshContent() },
-                        onRetry = { viewModel.refreshContent() },
+                        onRefresh = { viewModel.refreshFeedLane() },
+                        onRefreshFollowing = { viewModel.refreshFeedLane(following = true) },
+                        onRefreshReels = { viewModel.refreshFeedLane(isReel = true) },
+                        onRetry = { viewModel.refreshFeedLane() },
                         onViewedPost = { viewModel.recordPostView(it) },
                         onVotePoll = { postId, optId -> viewModel.votePoll(postId, optId) },
                         onDirectMessage = { partner, partnerName, partnerAvatar ->
