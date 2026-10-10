@@ -78,6 +78,7 @@ import com.example.ui.components.ProfileNotificationPreferenceDialog
 import com.example.ui.components.ProfileOwnerInsightsCard
 import com.example.ui.components.ProfileReportDialog
 import com.example.ui.components.PostCard
+import com.example.ui.components.shimmerBackground
 import com.example.ui.components.VerifiedMark
 import com.example.ui.components.BlinkVipMarkForUsername
 import com.example.ui.components.BlinkPremiumAvatarFrame
@@ -118,6 +119,8 @@ fun ProfileScreen(
     profile: UserProfile,
     isMe: Boolean,
     userPosts: List<FeedPost>,
+    isPostsLoading: Boolean = false,
+    hasPostsLoadError: Boolean = false,
     likedPosts: List<FeedPost>,
     savedPosts: List<FeedPost>,
     userMarketItems: List<MarketItem>,
@@ -1065,6 +1068,9 @@ fun ProfileScreen(
                     "Posts" -> profilePostItems(
                         keyPrefix = "posts",
                         posts = matchingContent(reelsOnly = false),
+                        isLoading = isPostsLoading,
+                        loadFailed = hasPostsLoadError,
+                        onRetry = onRefreshProfile,
                         profile = profile,
                         canDelete = isMe,
                         onDelete = onDeletePost,
@@ -1089,6 +1095,9 @@ fun ProfileScreen(
                     "Reels" -> profilePostItems(
                         keyPrefix = "reels",
                         posts = matchingContent(reelsOnly = true),
+                        isLoading = isPostsLoading,
+                        loadFailed = hasPostsLoadError,
+                        onRetry = onRefreshProfile,
                         profile = profile,
                         canDelete = isMe,
                         onDelete = onDeletePost,
@@ -1726,9 +1735,30 @@ private fun AnimatedTabRow(
 // PROFILE POSTS
 // =====================================================================
 
+@Composable
+private fun ProfilePostSkeleton() {
+    val base = Color(0xFF15131A)
+    val highlight = Color(0xFF292333)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(42.dp).shimmerBackground(CircleShape, base, highlight))
+            Spacer(Modifier.width(12.dp))
+            Box(Modifier.width(148.dp).height(15.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
+        }
+        Spacer(Modifier.height(14.dp))
+        Box(Modifier.fillMaxWidth().height(14.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.fillMaxWidth(0.74f).height(14.dp).shimmerBackground(RoundedCornerShape(8.dp), base, highlight))
+        Spacer(Modifier.height(20.dp))
+    }
+}
+
 private fun LazyListScope.profilePostItems(
     keyPrefix: String,
     posts: List<FeedPost>,
+    isLoading: Boolean = false,
+    loadFailed: Boolean = false,
+    onRetry: () -> Unit = {},
     profile: UserProfile,
     canDelete: Boolean,
     onDelete: (String) -> Unit,
@@ -1745,6 +1775,27 @@ private fun LazyListScope.profilePostItems(
     onProfileClick: (String) -> Unit,
     onPin: ((FeedPost) -> Unit)? = null
 ) {
+    if (posts.isEmpty() && isLoading) {
+        items(3, key = { index -> "${keyPrefix}_skeleton_$index" }, contentType = { "profile_skeleton" }) {
+            ProfilePostSkeleton()
+        }
+        return
+    }
+    if (posts.isEmpty() && loadFailed) {
+        item(key = "${keyPrefix}_error", contentType = "profile_error") {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(26.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Posts couldn't load", color = textPrimary, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Text("Your posts are safe. Check your connection and try again.", color = textSecondary)
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onRetry) { Text("Retry") }
+            }
+        }
+        return
+    }
     if (posts.isEmpty()) {
         item(key = "${keyPrefix}_empty", contentType = "profile_empty") {
             EmptyProfileState(
