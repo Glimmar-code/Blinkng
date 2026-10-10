@@ -54,6 +54,8 @@ as $$
       from public.feed_posts fp
       left join public.profiles pr on pr.id = fp.user_id
      where fp.is_active is true
+       -- SECURITY DEFINER: never derive public trends from restricted posts.
+       and lower(coalesce(fp.audience, 'everyone')) in ('everyone', 'public')
        and coalesce(fp.is_flagged, false) is false
        and fp.created_at >= now() - interval '7 days'
        and (select auth.uid()) is not null
