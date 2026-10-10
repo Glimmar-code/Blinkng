@@ -2101,7 +2101,11 @@ private fun CategoryTabBar(
                 val targetCategory = directoryTargetCategory(item)
                 val targetIndex = categories.indexOf(targetCategory).coerceAtLeast(0)
                 val selected = selectedSlug == item.slug
-                val pendingCount = badgeCounts.getOrElse(targetIndex) { 0 }
+                val nativeCategory = item.slug in setOf(
+                    "roommates", "mentors", "reading_mates", "housing_agents",
+                    "accommodation_requests", "game_challenges"
+                )
+                val pendingCount = if (nativeCategory) badgeCounts.getOrElse(targetIndex) { 0 } else 0
 
                 val background by animateColorAsState(
                     targetValue = if (selected) {
@@ -2129,10 +2133,7 @@ private fun CategoryTabBar(
                             selectedSlug = item.slug
                             // Core flows retain their existing screens. Every other directory row
                             // owns an independent, persisted category instead of reusing Mentors.
-                            if (item.slug in setOf(
-                                    "roommates", "mentors", "reading_mates", "housing_agents",
-                                    "accommodation_requests", "game_challenges"
-                                )) {
+                            if (nativeCategory) {
                                 onOpenCategory(targetIndex)
                             } else {
                                 onOpenDirectory(item)
@@ -2219,7 +2220,7 @@ private fun CategoryTabBar(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f)
                         ) {
                             Text(
-                                text = targetCategory.shortLabel,
+                                text = if (nativeCategory) targetCategory.shortLabel else "Explore",
                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 9.5.sp,
