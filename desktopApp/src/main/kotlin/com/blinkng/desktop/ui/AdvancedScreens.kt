@@ -197,7 +197,7 @@ fun StoreProScreen(state: DesktopAppState) {
         val journeyGroupIds = BlinkStoreJourneys.availableGroups(selectedJourney).map { it.id }.toSet()
         val query = searchQuery.trim()
         BlinkStoreProductGroups.groupsForCategory(selectedCategory)
-            .filter { it.id in journeyGroupIds }
+            .filter { it.id in journeyGroupIds && it.itemIds.any { id -> id in catalogById } }
             .filter { group ->
             query.isBlank() ||
                 group.title.contains(query, true) ||
@@ -336,10 +336,17 @@ fun StoreProScreen(state: DesktopAppState) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(BlinkStoreJourneys.looks, key = { it.id }) { look ->
+                    items(
+                        BlinkStoreJourneys.looks.filter { look ->
+                            look.groupIds.any { id -> BlinkStoreProductGroups.byId(id)?.itemIds?.any { it in catalogById } == true }
+                        },
+                        key = { it.id },
+                    ) { look ->
                         Surface(
                             modifier = Modifier.width(245.dp).clickable {
-                                BlinkStoreProductGroups.byId(look.entryGroupId)?.let { selectedGroup = it }
+                                look.groupIds.mapNotNull(BlinkStoreProductGroups::byId)
+                                    .firstOrNull { group -> group.itemIds.any { it in catalogById } }
+                                    ?.let { selectedGroup = it }
                             },
                             shape = RoundedCornerShape(20.dp),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
