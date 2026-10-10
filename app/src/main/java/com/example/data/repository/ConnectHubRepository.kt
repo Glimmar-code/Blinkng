@@ -502,9 +502,15 @@ class ConnectHubRepository(
     private fun JSONObject.optNullableInt(key: String): Int? =
         if (isNull(key) || !has(key)) null else optInt(key)
 
-    private fun errorMessage(raw: String, code: Int): String =
-        runCatching { JSONObject(raw).optString("message") }.getOrNull()
-            .orEmpty().ifBlank { "Connect Hub request failed ($code)." }
+    private fun errorMessage(raw: String, code: Int): String {
+        val payload = runCatching { JSONObject(raw) }.getOrNull()
+        return when (payload?.optString("code")) {
+            "42501" -> "Request not permitted. You can only request someone else's active listing. Please sign in again if the problem persists."
+            "23505" -> "You've already sent a request to this person."
+            else -> payload?.optString("message").orEmpty()
+                .ifBlank { "Unable to complete your Connect request ($code). Please retry." }
+        }
+    }
 
     private fun encode(value: String): String =
         java.net.URLEncoder.encode(value, "UTF-8")
