@@ -1,3 +1,11 @@
+## 2026-10-10 — Preview-first Store journeys and BLINK Identity looks (Testlab)
+
+- Shared: `BlinkStoreJourneys` introduces eight honest, goal-based discovery routes backed exclusively by existing Store groups and three curated identity looks. School-specific, dated seasonal and game SKUs stay explicitly planned; those are not available for purchase.
+- Android: adds a horizontal goal filter and browseable Identity lookbook above the same 25/70 grouped catalog. All selection leads to the existing preview, confirmation, purchase and Collection flow.
+- Windows: mirrors the same shared journeys/lookbook and desktop-appropriate horizontal layouts; identical group and catalog IDs, no fake data or new purchase endpoints.
+- No server migrations, new purchases, checkout activation, wallet/ranking/verification changes or misleading discount claims. This PR stages discovery only; detailed remaining rollout requirements live in `docs/coin-economy-expansion-v1.md`.
+- Validate the shared mapping tests, Android compilation/lint/UI, Windows parity, and manual previews before any production promotion.
+
 ## 2026-10-10 — Official BLINK launcher and install reliability
 
 PARITY-EXCEPTION: android-adaptive-launcher-and-package-installer
