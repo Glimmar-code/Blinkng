@@ -1,5 +1,6 @@
 package com.blinkng.desktop.data
 
+import com.blinkng.shared.BlinkSmartTags
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkBackendDefaults
@@ -619,13 +620,35 @@ class DesktopSupabaseClient(
         true
     }
 
+    suspend fun trendingTags(university: String? = null, limit: Int = 40): List<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val body = JSONObject()
+                    .put("p_limit", limit.coerceIn(1, 50))
+                    .put("p_university", university?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
+                val rows = postArray("/rest/v1/rpc/blink_trending_tags", body, prefer = "return=representation")
+                (0 until rows.length()).mapNotNull { i ->
+                    BlinkSmartTags.normalize(rows.optJSONObject(i)?.optString("tag").orEmpty())
+                }.distinct()
+            }.getOrDefault(emptyList())
+        }
+
+    private fun recordTagSearch(query: String) {
+        val tag = if (query.startsWith("#")) BlinkSmartTags.normalize(query) else null
+        if (tag != null) runCatching {
+            postArray("/rest/v1/rpc/blink_record_tag_search", JSONObject().put("p_tag", tag), prefer = "return=minimal")
+        }
+    }
+
     suspend fun fetchFeed(reelsOnly: Boolean = false, search: String? = null): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
         val filter = buildString {
             append("/rest/v1/feed_posts?select=id,user_id,text,caption,image_url,video_url,images,hashtags,like_count,comment_count,share_count,repost_count,view_count,is_reel,is_pinned,created_at")
             append("&is_active=eq.true")
             if (reelsOnly) append("&is_reel=eq.true")
             search?.trim()?.takeIf { it.isNotBlank() }?.let { q ->
-                append("&or=${encode("(text.ilike.*$q*,caption.ilike.*$q*)")}")
+                val tag = if (q.startsWith("#")) BlinkSmartTags.normalize(q) else null
+                if (tag != null) append("&tags=cs.${encode("{$tag}")}")
+                else append("&or=${encode("(text.ilike.*$q*,caption.ilike.*$q*)")}")
             }
             append("&order=created_at.desc&limit=60")
         }
@@ -652,6 +675,7 @@ class DesktopSupabaseClient(
         text: String,
         isReel: Boolean = false,
         videoUrl: String? = null,
+        tags: List<String> = emptyList(),
         audience: String = "Everyone",
         category: String = "Campus Life",
         location: String? = null,
@@ -663,6 +687,8 @@ class DesktopSupabaseClient(
     ): DesktopFeedPost = withContext(Dispatchers.IO) {
         val active = requireSession()
         val clean = text.trim()
+        val effectiveTags = BlinkSmartTags.allTags(clean, tags)
+        require(effectiveTags.size in 1..BlinkSmartTags.MAX_TAGS) { "Include 1–5 relevant hashtags." }
         require(clean.isNotBlank() || !videoUrl.isNullOrBlank()) { "Write something or attach media." }
 
         val requestId = runCatching { UUID.fromString(clientRequestId.trim()).toString() }
@@ -687,6 +713,8 @@ class DesktopSupabaseClient(
             .put("is_reel", isReel)
             .put("type", if (isReel) "video" else "text")
             .put("creator_post_number", nextNumber)
+            .put("tags", JSONArray(effectiveTags))
+            .put("hashtags", JSONArray(effectiveTags))
             .put("audience", audience)
             .put("category", category)
             .put("allow_comments", allowComments)
@@ -807,6 +835,7 @@ class DesktopSupabaseClient(
 
     suspend fun search(query: String): DesktopSearchResults = withContext(Dispatchers.IO) {
         val clean = query.trim()
+        recordTagSearch(clean)
         if (clean.isBlank()) return@withContext DesktopSearchResults(emptyList(), emptyList())
 
         val response = postObject(
