@@ -137,6 +137,7 @@ data class BlinkUiState(
     val isRefreshingContent: Boolean = false,
     val isSyncingContent: Boolean = false,
     val feedErrorMessage: String? = null,
+    val followingFeedErrorMessage: String? = null,
     val isCreatingPost: Boolean = false,
     val pendingMessageCount: Int = 0,
     val blinkCoinBalance: Long = 0L,
@@ -1537,7 +1538,8 @@ private suspend fun restoreSupabaseSession() {
                     isRefreshingContent = showRefreshIndicator,
                     isSyncingContent = true,
                     isConversationsLoading = before.conversations.isEmpty(),
-                    feedErrorMessage = null
+                    feedErrorMessage = null,
+                    followingFeedErrorMessage = null
                 )
 
                 try {
@@ -1590,6 +1592,9 @@ private suspend fun restoreSupabaseSession() {
                             "Posts couldn't load right now. Pull to retry."
                         } else if (!feedSucceeded) {
                             "Couldn't refresh live Supabase data. Check your connection and try again."
+                        } else null,
+                        followingFeedErrorMessage = if (followingResult.isFailure && fetchedFollowing.isEmpty()) {
+                            "Following posts couldn't load right now. Pull to retry."
                         } else null
                     )
 
