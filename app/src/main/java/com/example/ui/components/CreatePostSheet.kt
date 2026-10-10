@@ -300,6 +300,11 @@ fun CreatePostSheet(
 
     fun scheduleAfter(delayMillis: Long) {
         if (!canSubmit) return
+        if (effectiveTags.isEmpty() || tooManyTags) {
+            showScheduleDialog = false
+            tagValidationMessage = "Choose 1–5 relevant hashtags before scheduling a post."
+            return
+        }
         val timeMillis = System.currentTimeMillis() + delayMillis
         val formatted = Instant.ofEpochMilli(timeMillis)
             .atZone(ZoneId.systemDefault())
@@ -997,6 +1002,8 @@ fun CreatePostSheet(
                 TextButton(
                     onClick = {
                         showDiscardDialog = false
+                        text = ""
+                        selectedTags = emptyList()
                         onDismiss()
                     }
                 ) {
