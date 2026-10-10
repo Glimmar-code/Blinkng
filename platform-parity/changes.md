@@ -1,3 +1,13 @@
+## 2026-10-10 — Feed, publishing, profile, and long-swipe reliability (Testlab)
+
+- Android: Home uses loading placeholders until a real post-fetch completes and distinguishes failed fetches from confirmed empty results. Existing Room cache remains visible while refreshing. Feed author enrichment reads only explicitly selected public profile fields and no longer relies on the absent `get_public_profiles_by_ids` RPC.
+- Android/Windows shared backend semantics: a confirmed `201 Created` with a returned post is a published post; a later feed-refresh failure must not reclassify it as an unsuccessful publish. Android now stops re-fetching the whole feed inside the post-create call. Windows already returns the inserted row directly rather than waiting for a global feed refresh.
+- Android: profile Posts/Reels hydrate independently before optional liked/saved collections and show retry or placeholders while loading. Windows profile content remains a separate request; neither platform shows mock posts.
+- Android: Home utility surfaces (Rank, Game, Store, Boost, Drops, Items) preserve their downward-swipe gesture, but the gesture cannot dismiss the full sheet until the pointer travels 58% of the window height. Inner scroll remains independent. Explicit close/back actions remain immediate.
+- PARITY-EXCEPTION: android-compose-bottom-sheet-long-swipe — Material 3 modal-sheet swipe physics is Android-only; Windows uses desktop-native window/panel navigation with explicit close affordances.
+- Backend: no live schema, RLS, function, or data mutations were made. Missing/unhealthy PostgREST RPCs and inaccurate stored post counters require separate preview/staging validation before any production migration.
+- Validation: GitHub Android unit tests/build/lint and desktop build must be green before production merge.
+
 ## 2026-10-10 — Official BLINK launcher and install reliability
 
 PARITY-EXCEPTION: android-adaptive-launcher-and-package-installer
