@@ -177,7 +177,7 @@ fun VideoReelsScreen(
         ) { state ->
             when (state) {
                 ReelsUiState.Loading -> ReelsLoadingSkeleton()
-                ReelsUiState.Empty -> EmptyReelsState(onBackToPosts)
+                ReelsUiState.Empty -> EmptyReelsState(onBackToPosts, refreshSelected, activeRefreshing)
                 ReelsUiState.Content -> ReelsContent(
                     reels = reels,
                     followingReels = followingReels,
@@ -767,7 +767,11 @@ private fun ReelsLoadingSkeleton() {
 }
 
 @Composable
-private fun EmptyReelsState(onBackToPosts: () -> Unit) {
+private fun EmptyReelsState(
+    onBackToPosts: () -> Unit,
+    onRefresh: () -> Unit,
+    isRefreshing: Boolean
+) {
     val visibleState = remember { MutableTransitionState(false) }.apply { targetState = true }
     AnimatedVisibility(
         visibleState = visibleState,
@@ -794,6 +798,12 @@ private fun EmptyReelsState(onBackToPosts: () -> Unit) {
                     color = Color.White.copy(alpha = .65f),
                     fontSize = 11.sp
                 )
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(onClick = onRefresh, enabled = !isRefreshing) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White)
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (isRefreshing) "Refreshing" else "Refresh reels", color = Color.White)
+                }
                 Spacer(Modifier.height(4.dp))
                 TextButton(onClick = onBackToPosts) { Text("Back to Home") }
             }
