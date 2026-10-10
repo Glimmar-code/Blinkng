@@ -32,6 +32,9 @@ jobs:
           python3 -m pip install --disable-pip-version-check Pillow==11.3.0
           python3 scripts/sync_android_launcher_assets.py --check
 
+      - name: Verify X-style circular launcher and full BLINK artwork
+        run: python3 scripts/test_launcher_circle.py
+
       - name: Verify image decoder regression
         run: python3 scripts/test_png_asset_validator.py
 
