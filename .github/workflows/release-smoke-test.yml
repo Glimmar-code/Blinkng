@@ -150,3 +150,32 @@ jobs:
           echo "$BADGING" | grep -F "versionName='ci-smoke'" >/dev/null
 
           echo "Release smoke APK/AAB package, version and signatures verified."
+
+      # Verify the actual release APK can be installed by Android 15's package manager,
+      # not merely read by aapt or apksigner. CI's disposable key is never published.
+      - name: Enable KVM for Android 15 release installation test
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install release smoke APK on Android 15
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: |
+            set -euo pipefail
+            APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+            test -s "$APK"
+            adb install -r "$APK"
+            adb shell pm path com.aistudio.blink.appvtwo | grep -F 'package:'
+            adb shell dumpsys package com.aistudio.blink.appvtwo | grep -F 'versionCode=1999000000'
+            echo "Android 15 package manager installed signed release smoke APK successfully."
+
