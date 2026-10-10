@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,7 +37,10 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -79,6 +83,7 @@ import com.blinkng.desktop.data.DesktopSearchResults
 import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
+import com.blinkng.shared.BlinkSmartTags
 import com.blinkng.shared.BlinkCoinPack
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
@@ -95,6 +100,10 @@ import org.json.JSONObject
 fun HomeScreen(state: DesktopAppState) {
     var posts by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var composer by remember { mutableStateOf("") }
+    var selectedTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var tagInput by remember { mutableStateOf("") }
+    var trendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showMoreTrending by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var commentsFor by remember { mutableStateOf<String?>(null) }
@@ -108,7 +117,13 @@ fun HomeScreen(state: DesktopAppState) {
         loading = false
     }
 
-    LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(Unit) {
+        reload()
+        trendingTags = state.client.trendingTags(
+            runCatching { state.client.fetchProfile().university }.getOrNull(),
+            limit = 40,
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -128,12 +143,68 @@ fun HomeScreen(state: DesktopAppState) {
                         label = { Text("Create a post") },
                         placeholder = { Text("What's happening on campus?") },
                     )
+                    Text("🔥 Trending hashtags • add 1–3 relevant tags (maximum 5)", fontSize = 12.sp)
+                    if (trendingTags.isNotEmpty()) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(trendingTags.take(if (showMoreTrending) 40 else 7)) { tag ->
+                                FilterChip(
+                                    selected = tag in BlinkSmartTags.merge(composer, selectedTags),
+                                    onClick = { selectedTags = BlinkSmartTags.add(selectedTags, tag) },
+                                    label = { Text("#$tag") },
+                                )
+                            }
+                        }
+                        if (trendingTags.size > 7) {
+                            TextButton(onClick = { showMoreTrending = !showMoreTrending }) {
+                                Text(if (showMoreTrending) "Show less" else "See more trending tags")
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = tagInput,
+                            onValueChange = { tagInput = it.take(33) },
+                            label = { Text("Add hashtag") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Button(onClick = {
+                            val tag = BlinkSmartTags.normalize(tagInput)
+                            if (tag == null) error = "Hashtags need 2–32 letters, numbers or underscores."
+                            else if (BlinkSmartTags.allTags(composer, selectedTags).size >= BlinkSmartTags.MAX_TAGS &&
+                                     tag !in BlinkSmartTags.allTags(composer, selectedTags)) {
+                                error = "Maximum 5 hashtags per post."
+                            } else {
+                                selectedTags = BlinkSmartTags.add(selectedTags, tag)
+                                tagInput = ""
+                                error = null
+                            }
+                        }) { Text("Add") }
+                    }
+                    if (BlinkSmartTags.merge(composer, selectedTags).isNotEmpty()) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(BlinkSmartTags.merge(composer, selectedTags)) { tag ->
+                                AssistChip(
+                                    onClick = {
+                                        if (tag in selectedTags) selectedTags = selectedTags - tag
+                                        else error = "Remove #$tag from the post text to delete it."
+                                    },
+                                    label = { Text("#$tag ×") },
+                                )
+                            }
+                        }
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
                             onClick = {
                                 scope.launch {
-                                    runCatching { state.client.createPost(composer) }
-                                        .onSuccess { composer = ""; reload() }
+                                    val tags = BlinkSmartTags.allTags(composer, selectedTags)
+                                    if (tags.size !in 1..BlinkSmartTags.MAX_TAGS) {
+                                        error = "Add 1–5 relevant hashtags before posting."
+                                        return@launch
+                                    }
+                                    runCatching { state.client.createPost(composer, tags = tags) }
+                                        .onSuccess { composer = ""; selectedTags = emptyList(); reload() }
                                         .onFailure { error = it.message }
                                 }
                             },
@@ -298,6 +369,8 @@ fun ReelsScreen(state: DesktopAppState) {
 fun SearchScreen(state: DesktopAppState) {
     var query by remember { mutableStateOf(state.globalSearch) }
     var results by remember { mutableStateOf(DesktopSearchResults(emptyList(), emptyList())) }
+    var trendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showMoreTrending by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -313,6 +386,12 @@ fun SearchScreen(state: DesktopAppState) {
         loading = false
     }
 
+    LaunchedEffect(Unit) {
+        trendingTags = state.client.trendingTags(
+            runCatching { state.client.fetchProfile().university }.getOrNull(),
+            limit = 40,
+        )
+    }
     LaunchedEffect(state.globalSearch) {
         if (state.globalSearch.isNotBlank()) {
             query = state.globalSearch
@@ -325,7 +404,25 @@ fun SearchScreen(state: DesktopAppState) {
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item { ScreenHeader("Search", "Find people and posts") }
+        item { ScreenHeader("Search", "Find people, posts and hashtags") }
+        if (trendingTags.isNotEmpty()) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("🔥 Trending now", fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(trendingTags.take(if (showMoreTrending) 40 else 7)) { tag ->
+                            AssistChip(
+                                onClick = { query = "#$tag"; scope.launch { searchNow() } },
+                                label = { Text("#$tag") },
+                            )
+                        }
+                    }
+                    if (trendingTags.size > 7) TextButton(onClick = { showMoreTrending = !showMoreTrending }) {
+                        Text(if (showMoreTrending) "Show less" else "See more")
+                    }
+                }
+            }
+        }
         item {
             OutlinedTextField(
                 value = query,
