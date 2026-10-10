@@ -54,12 +54,12 @@ using (
 -- Reuse the existing admin capability check for private screenshot reads.
 -- A failed check returns false rather than breaking a user's own storage read.
 create or replace function private.blink_bug_admin_screenshot_access()
-returns boolean language plpgsql stable security definer set search_path='' as $
+returns boolean language plpgsql stable security definer set search_path='' as $$
 begin
  perform private.require_blink_admin();
  return true;
 exception when others then return false;
-end $;
+end $$;
 drop policy if exists blink_bug_screenshots_admin_read on storage.objects;
 create policy blink_bug_screenshots_admin_read on storage.objects
 for select to authenticated
