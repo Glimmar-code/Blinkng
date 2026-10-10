@@ -602,10 +602,21 @@ private fun StoreTab(
                 )
                 Spacer(Modifier.height(8.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(BlinkStoreJourneys.looks, key = { it.id }) { look ->
+                    items(
+                        BlinkStoreJourneys.looks.filter { look ->
+                            look.groupIds.any { id ->
+                                BlinkStoreProductGroups.byId(id)?.itemIds?.any { catalogId ->
+                                    catalog.any { it.id == catalogId }
+                                } == true
+                            }
+                        },
+                        key = { it.id },
+                    ) { look ->
                         Card(
                             modifier = Modifier.width(215.dp).clickable {
-                                BlinkStoreProductGroups.byId(look.entryGroupId)?.let { onOpenGroup(it) }
+                                look.groupIds.mapNotNull(BlinkStoreProductGroups::byId)
+                                    .firstOrNull { group -> group.itemIds.any { id -> catalog.any { it.id == id } } }
+                                    ?.let { onOpenGroup(it) }
                             },
                             shape = RoundedCornerShape(18.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
