@@ -1,9 +1,9 @@
 # BLINK signed Android release — required GitHub secrets
 
 The signed release pipeline **must not** publish an APK with a disposable signing key,
-placeholder Firebase project or missing Google Maps credentials. The latest failure
-at the “Verify permanent production secrets” step means the repository owner still
-needs to configure the actual production values in GitHub.
+placeholder Firebase configuration. Google Maps is not part of the BLINK Android
+client anymore. The repository owner must still configure production Firebase
+credentials to publish a signed APK.
 
 ## Configure securely
 
@@ -11,15 +11,7 @@ In the **Glimmar-code/Blinkng** repository open
 **Settings → Secrets and variables → Actions → Repository secrets → New repository secret**.
 Do not commit credentials, attach them to an issue, or paste them into chat.
 
-1. **`MAPS_API_KEY`** — A Google Cloud **Maps SDK for Android** key for BLINK.
-   Enable Maps SDK for Android for the relevant Google Cloud project. Restrict the
-   key to Android package `com.aistudio.blink.appvtwo` and the **production release
-   signing certificate SHA-1** (not just the debug certificate); API-restrict it
-   to the Maps SDK for Android. Ensure the intended project has Maps Platform
-   billing/configuration as required by Google. Do not set `DEFAULT_API_KEY` or
-   any example key.
-
-2. **`GOOGLE_SERVICES_JSON`** — Recommended, especially from a phone: In the
+1. **`GOOGLE_SERVICES_JSON`** — Recommended, especially from a phone: In the
    Firebase Console, select the existing BLINK production Firebase project,
    **Project settings → General → Your apps → Android**, and download the
    `google-services.json` for `com.aistudio.blink.appvtwo`. Open the file in a
@@ -32,7 +24,7 @@ Do not commit credentials, attach them to an issue, or paste them into chat.
    `base64 -w0 google-services.json`. The workflow accepts **either** secret;
    if both are set, base64 takes precedence.
 
-3. Confirm the existing permanent signing secrets are configured:
+2. Confirm the existing permanent signing secrets are configured:
    `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
    `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`.
    **Do not generate a new production keystore** to bypass a build problem.
@@ -56,4 +48,3 @@ production credential.
 
 Official references:
 - https://firebase.google.com/docs/android/google-services-plugin-and-file
-- https://developers.google.com/maps/api-security-best-practices

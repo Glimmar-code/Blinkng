@@ -50,6 +50,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify Google Maps SDK is removed
+        run: python3 scripts/test_no_google_maps_sdk.py
+
       - name: Test secure Firebase release config restoration
         shell: bash
         run: bash .github/scripts/test_restore_google_services.sh
