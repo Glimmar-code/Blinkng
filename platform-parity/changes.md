@@ -7,6 +7,14 @@
 - Production protection: verify migration in disposable PostgreSQL via supabase/tests/feed-recovery-tests.mjs; promote with Supabase preview when available, then verify role permissions and actual profiles counters before releasing.
 - Rollback: remove the new active-post counter trigger and restore the original invoker permissions of get_feed_page; retain prior rows and recompute counts from active posts if necessary.
 
+## 2026-10-10 — Preview-first Store journeys and BLINK Identity looks (Testlab)
+
+- Shared: `BlinkStoreJourneys` introduces eight honest, goal-based discovery routes backed exclusively by existing Store groups and three curated identity looks. School-specific, dated seasonal and game SKUs stay explicitly planned; those are not available for purchase.
+- Android: adds a horizontal goal filter and browseable Identity lookbook above the same 25/70 grouped catalog. All selection leads to the existing preview, confirmation, purchase and Collection flow.
+- Windows: mirrors the same shared journeys/lookbook and desktop-appropriate horizontal layouts; identical group and catalog IDs, no fake data or new purchase endpoints.
+- No server migrations, new purchases, checkout activation, wallet/ranking/verification changes or misleading discount claims. This PR stages discovery only; detailed remaining rollout requirements live in `docs/coin-economy-expansion-v1.md`.
+- Validate the shared mapping tests, Android compilation/lint/UI, Windows parity, and manual previews before any production promotion.
+
 ## 2026-10-10 — Feed, publishing, profile, and long-swipe reliability (Testlab)
 
 - Android: Home uses loading placeholders until a real post-fetch completes and distinguishes failed fetches from confirmed empty results. Existing Room cache remains visible while refreshing. Feed author enrichment reads only explicitly selected public profile fields and no longer relies on the absent `get_public_profiles_by_ids` RPC.
