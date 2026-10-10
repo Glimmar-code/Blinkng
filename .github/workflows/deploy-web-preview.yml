@@ -6,6 +6,9 @@ on:
     paths:
       - 'web/**'
       - '.github/workflows/deploy-web-preview.yml'
+      - '.github/scripts/restore_google_services.sh'
+      - 'scripts/sync_android_launcher_assets.py'
+      - 'app/src/main/res/drawable/app_icon.png'
   workflow_dispatch:
 
 permissions:
@@ -42,6 +45,17 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Verify approved BLINK branding
+        run: |
+          python3 -m pip install --disable-pip-version-check Pillow==11.3.0
+          python3 scripts/sync_android_launcher_assets.py --check
+
+      - name: Restore production Firebase client configuration
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: bash .github/scripts/restore_google_services.sh production
 
       - name: Generate Android Digital Asset Links
         shell: bash
