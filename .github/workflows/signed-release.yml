@@ -54,13 +54,12 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           set -euo pipefail
           missing=0
-          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD MAPS_API_KEY; do
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
             if [ -z "${!name:-}" ]; then
               echo "::error::$name is not configured. Add the production value in GitHub Actions secrets (see docs/android-release-secrets.md)."
               missing=1
@@ -68,10 +67,6 @@ jobs:
           done
           if [ -z "${GOOGLE_SERVICES_JSON_BASE64:-}" ] && [ -z "${GOOGLE_SERVICES_JSON:-}" ]; then
             echo "::error::Firebase config is missing. Add GOOGLE_SERVICES_JSON (paste raw app google-services.json) or GOOGLE_SERVICES_JSON_BASE64 to GitHub Actions secrets. See docs/android-release-secrets.md."
-            missing=1
-          fi
-          if [ "${MAPS_API_KEY:-}" = "DEFAULT_API_KEY" ] || [[ "${MAPS_API_KEY:-}" == YOUR_* ]]; then
-            echo "::error::MAPS_API_KEY is a placeholder, not a production Android Maps SDK key."
             missing=1
           fi
           exit "$missing"
@@ -180,7 +175,6 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
-          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
         run: gradle :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
 
       - name: Verify embedded source revision
