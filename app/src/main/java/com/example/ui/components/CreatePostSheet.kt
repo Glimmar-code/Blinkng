@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.blinkng.shared.BlinkSmartTags
+import com.example.data.repository.SearchDiscoveryRepository
 import com.example.data.local.rememberPersistentStringListState
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
@@ -72,6 +74,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -157,6 +160,19 @@ fun CreatePostSheet(
         key = "create_post_text",
         scope = profile.id.ifBlank { profile.username }
     )
+    var selectedTags by rememberPersistentStringListState(
+        key = "create_post_tags",
+        initialValue = emptyList(),
+        scope = profile.id.ifBlank { profile.username }
+    )
+    var tagInput by rememberSaveable { mutableStateOf("") }
+    var tagValidationMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var showMoreTags by rememberSaveable { mutableStateOf(false) }
+    var trendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    val tagRepository = remember { SearchDiscoveryRepository() }
+    LaunchedEffect(profile.university) {
+        trendingTags = tagRepository.trendingTags(profile.university, limit = 40)
+    }
     var selectedImages by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var selectedVideo by rememberSaveable { mutableStateOf<String?>(null) }
     var mode by rememberSaveable { mutableStateOf("post") }
@@ -236,6 +252,8 @@ fun CreatePostSheet(
     }
 
     val cleanText = text.trim()
+    val effectiveTags = BlinkSmartTags.merge(cleanText, selectedTags)
+    val tooManyTags = BlinkSmartTags.allTags(cleanText, selectedTags).size > BlinkSmartTags.MAX_TAGS
     val validPollOptions = pollOptions.map(String::trim).filter(String::isNotBlank)
     val pollValid = showPoll && pollQuestion.isNotBlank() && validPollOptions.size >= 2
     val hasContent = cleanText.isNotBlank() ||
@@ -271,6 +289,7 @@ fun CreatePostSheet(
             sharesCount = 0,
             isReel = selectedVideo != null,
             videoUrl = selectedVideo,
+            tags = effectiveTags,
             poll = poll,
             audience = audience,
             category = category,
@@ -290,6 +309,14 @@ fun CreatePostSheet(
     }
 
     fun submit() {
+        if (canSubmit && (effectiveTags.isEmpty() || tooManyTags)) {
+            tagValidationMessage = if (tooManyTags) {
+                "Choose no more than 5 unique hashtags (including those in your caption)."
+            } else {
+                "Include at least one relevant hashtag before publishing. 1–3 works best."
+            }
+            return
+        }
         if (!canSubmit) {
             if (!isSubmitting) {
                 Toast.makeText(
@@ -315,7 +342,7 @@ fun CreatePostSheet(
             profile.faculty,
             imagePayload(selectedImages),
             selectedVideo,
-            emptyList(),
+            effectiveTags,
             emptyList(),
             poll,
             selectedVideo != null,
@@ -352,6 +379,7 @@ fun CreatePostSheet(
                 imageUri = imagePayload(selectedImages),
                 videoUri = selectedVideo,
                 isReel = selectedVideo != null,
+                tags = effectiveTags,
                 category = category,
                 audience = audience,
                 textStyle = selectedTextStyle.takeIf {
@@ -658,6 +686,90 @@ fun CreatePostSheet(
                 )
 
                 Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .3f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🔥 Trending hashtags", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            if (trendingTags.size > 7) {
+                                TextButton(onClick = { showMoreTags = !showMoreTags }) {
+                                    Text(if (showMoreTags) "Show less" else "See more")
+                                }
+                            }
+                        }
+                        Text(
+                            "Use 1–3 relevant tags for better discovery. Maximum 5.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (trendingTags.isNotEmpty()) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(trendingTags.take(if (showMoreTags) 40 else 7), key = { it }) { tag ->
+                                    FilterChip(
+                                        selected = tag in effectiveTags,
+                                        onClick = { selectedTags = BlinkSmartTags.add(selectedTags, tag) },
+                                        enabled = !isSubmitting,
+                                        label = { Text(BlinkSmartTags.display(tag)) }
+                                    )
+                                }
+                            }
+                        } else {
+                            Text(
+                                "Trending tags will appear when available. You can add your own.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = tagInput,
+                                onValueChange = { tagInput = it.take(33) },
+                                modifier = Modifier.weight(1f),
+                                enabled = !isSubmitting,
+                                label = { Text("Add hashtag") },
+                                singleLine = true,
+                                placeholder = { Text("CampusLife") }
+                            )
+                            TextButton(
+                                onClick = {
+                                    val candidate = BlinkSmartTags.normalize(tagInput)
+                                    if (candidate == null) {
+                                        tagValidationMessage = "Use 2–32 letters, numbers or underscores."
+                                    } else if (effectiveTags.size >= BlinkSmartTags.MAX_TAGS && candidate !in effectiveTags) {
+                                        tagValidationMessage = "Maximum 5 hashtags per post."
+                                    } else {
+                                        selectedTags = BlinkSmartTags.add(selectedTags, candidate)
+                                        tagInput = ""
+                                    }
+                                },
+                                enabled = !isSubmitting
+                            ) { Text("Add") }
+                        }
+                        if (effectiveTags.isNotEmpty()) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(effectiveTags, key = { it }) { tag ->
+                                    AssistChip(
+                                        onClick = {
+                                            if (tag in selectedTags) selectedTags = selectedTags - tag
+                                            else tagValidationMessage = "Remove #$tag from the caption to delete it."
+                                        },
+                                        label = { Text("#$tag  ×") },
+                                        enabled = !isSubmitting
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -746,6 +858,7 @@ fun CreatePostSheet(
                                 draft = draft,
                                 onLoad = {
                                     text = draft.text
+                                    selectedTags = draft.tags
                                     selectedImages = parseDraftImages(draft.imageUri)
                                     selectedVideo = draft.videoUri
                                     mode = if (draft.isReel || !draft.videoUri.isNullOrBlank()) "reel" else "post"
@@ -825,6 +938,17 @@ fun CreatePostSheet(
             }
         }
         }
+    }
+
+    tagValidationMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { tagValidationMessage = null },
+            title = { Text("Hashtag guidance") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { tagValidationMessage = null }) { Text("Got it") }
+            }
+        )
     }
 
     if (showScheduleDialog) {
