@@ -37,7 +37,7 @@ Useful checks:
 
 Production APK/AAB files should be produced by the signed GitHub Actions release workflow, not with an ad-hoc local signing key.
 
-If the signed release fails due to `MAPS_API_KEY` or `GOOGLE_SERVICES_JSON_BASE64`,
+If the signed release fails due to `GOOGLE_SERVICES_JSON_BASE64`,
 see [secure Android release configuration](docs/android-release-secrets.md). The
 workflow now also supports `GOOGLE_SERVICES_JSON` containing the original
 Firebase JSON directly, without requiring manual base64 conversion.
@@ -49,7 +49,6 @@ Never commit production secrets or signing material.
 Protected CI/backend configuration includes, as applicable:
 
 - Android release keystore values
-- `MAPS_API_KEY`
 - production Firebase client configuration
 - Supabase/backend service credentials
 - Paystack secret credentials
