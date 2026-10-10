@@ -491,3 +491,18 @@ Date: 2026-10-07
 Shared/backend behavior: Circle and member SELECT policies use a scoped authenticated owner/member/public access helper, avoiding mutual RLS recursion and uncorrelated membership matches. Existing circle mutations, requests and ranking formulas remain intact.
 Android and Windows behavior: Existing study-circle and owner-request reads keep working through the same backend contract.
 Validation: Isolated PostgreSQL checks prove private circles/members stay hidden from an account that belongs to a different circle, while the owner and approved members retain access. All eight promotion migrations reapply.
+
+
+## 2026-10-10 — UI audit polish (isolated Testlab baseline)
+
+- Shared neutral brand tokens and higher-contrast muted text feed both clients; semantic verification/status colors remain distinct. Android and Windows themes pair neutral controls with contrasting content colors.
+- Android feed now follows appearance; Windows already uses its Material theme. Android Market replaces a fixed top spacer with status-bar insets; Windows retains its desktop content padding.
+- Shared price-range validation is used in both Market surfaces. Android retains pagination even when local filters hide every loaded listing, and filter edits commit only on Apply. Windows adds validated price filters and refresh for its existing loaded listing set (its existing 100-listing fetch is unchanged).
+- Android starred-content rows now jump to the original loaded message and clear conflicting filters. Windows gains Open in conversation on message results using the same index policy. Windows has no existing per-message starred-content browser; this change does not claim to port that broader feature.
+- Shared safe profile-save messages replace raw exception payloads on both clients. Android and Windows message metadata is enlarged.
+- Added price/error/jump policy tests, Market interaction regression tests, and actual feed/profile/Market/messages screenshots including narrow-screen large-text Market. A real Store item card is also captured without invoking the live economy route; no purchase behavior was changed.
+- Promotion requires Android and Windows build gates plus visual review; local dependency resolution blocked both full builds in this environment.
+
+- Feed header, tabs, utility row and create controls now use theme surfaces/text as well as the post cards; removed fixed header glow. CI uploads actual-screen captures for visual review.
+
+- Follow-up CI: Windows build/installer and secret checks passed. Android compiled and ran 123 tests; only the new dialog test failed waiting for JVM UI idleness. Kept its assertions and moved that real-window/keyboard interaction to Android instrumentation, with the runtime workflow now including isolated Testlab PRs. PNG recording is explicitly enabled in the Android test command (the previous upload contained reports but no screenshots). New checks must pass before promotion.

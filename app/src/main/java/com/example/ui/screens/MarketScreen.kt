@@ -6,6 +6,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.graphicsLayer
+import com.blinkng.shared.BlinkUiRecovery
+import androidx.compose.ui.text.input.KeyboardType
 import com.blinkng.shared.BlinkDesignTokens
 
 import androidx.compose.foundation.background
@@ -109,6 +111,11 @@ fun MarketScreen(
         )
     }
 
+    var draftMinimum by remember(showFilters) { mutableStateOf(minPriceText) }
+    var draftMaximum by remember(showFilters) { mutableStateOf(maxPriceText) }
+    var draftSavedOnly by remember(showFilters) { mutableStateOf(savedOnly) }
+    var draftVerifiedOnly by remember(showFilters) { mutableStateOf(verifiedOnly) }
+    val draftRangeError = BlinkUiRecovery.priceRangeError(draftMinimum, draftMaximum)
     val minPrice = minPriceText.toLongOrNull()
     val maxPrice = maxPriceText.toLongOrNull()
     val visibleItems = remember(items, savedOnly, verifiedOnly, minPrice, maxPrice) {
@@ -131,13 +138,14 @@ fun MarketScreen(
         contentPadding = PaddingValues(bottom = 120.dp),
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .testTag("market_screen")
     ) {
         item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 18.dp, end = 18.dp, top = 44.dp, bottom = 8.dp)
+                    .padding(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 8.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -146,14 +154,15 @@ fun MarketScreen(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(9.dp)
+                        horizontalArrangement = Arrangement.spacedBy(9.dp),
+                        modifier = Modifier.weight(1f)
                     ) {
                         Icon(
                             Icons.Default.Storefront,
                             contentDescription = null,
                             modifier = Modifier.size(27.dp)
                         )
-                        Column {
+                        Column(Modifier.weight(1f)) {
                             Text(
                                 "BLINK MARKET",
                                 fontSize = 21.sp,
@@ -460,7 +469,7 @@ fun MarketScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         if (searchQuery.isNotBlank() || activeFilterCount > 0 || selectedCategory != "All Categories")
-                            "No listings match this search"
+                            if (hasMore) "No matches in loaded listings" else "No listings match this search"
                         else
                             "No Market listings yet",
                         fontWeight = FontWeight.Bold
@@ -468,7 +477,7 @@ fun MarketScreen(
                     Spacer(modifier = Modifier.height(5.dp))
                     Text(
                         if (searchQuery.isNotBlank() || activeFilterCount > 0)
-                            "Try a different search or clear your filters."
+                            if (hasMore) "Load more listings below, or adjust your filters." else "Try a different search or clear your filters."
                         else
                             "New listings will appear here when sellers publish them.",
                         fontSize = 12.5.sp,
@@ -513,20 +522,18 @@ fun MarketScreen(
                 }
             }
 
-            if (hasMore || isLoadingMore) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isLoadingMore) {
-                            CircularProgressIndicator(modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
-                        } else {
-                            OutlinedButton(onClick = onLoadMore, shape = RoundedCornerShape(100.dp)) {
-                                Text("Load more listings")
-                            }
+        }
+        if (hasMore || isLoadingMore) {
+            item(key = "market_pagination") {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isLoadingMore) {
+                        CircularProgressIndicator(modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
+                    } else {
+                        OutlinedButton(onClick = onLoadMore, shape = RoundedCornerShape(100.dp)) {
+                            Text("Load more listings")
                         }
                     }
                 }
@@ -542,26 +549,29 @@ fun MarketScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Saved only", modifier = Modifier.weight(1f))
-                        Switch(checked = savedOnly, onCheckedChange = { savedOnly = it })
+                        Switch(checked = draftSavedOnly, onCheckedChange = { draftSavedOnly = it })
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Verified sellers only", modifier = Modifier.weight(1f))
-                        Switch(checked = verifiedOnly, onCheckedChange = { verifiedOnly = it })
+                        Switch(checked = draftVerifiedOnly, onCheckedChange = { draftVerifiedOnly = it })
                     }
+                    draftRangeError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedTextField(
-                            value = minPriceText,
-                            onValueChange = { minPriceText = it.filter(Char::isDigit).take(12) },
+                            value = draftMinimum,
+                            onValueChange = { draftMinimum = it.filter(Char::isDigit).take(12) },
                             label = { Text("Min ₦") },
-                            keyboardOptions = KeyboardOptions.Default,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            isError = draftRangeError != null,
                             singleLine = true,
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedTextField(
-                            value = maxPriceText,
-                            onValueChange = { maxPriceText = it.filter(Char::isDigit).take(12) },
+                            value = draftMaximum,
+                            onValueChange = { draftMaximum = it.filter(Char::isDigit).take(12) },
                             label = { Text("Max ₦") },
-                            keyboardOptions = KeyboardOptions.Default,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            isError = draftRangeError != null,
                             singleLine = true,
                             modifier = Modifier.weight(1f)
                         )
@@ -569,15 +579,21 @@ fun MarketScreen(
                 }
             },
             confirmButton = {
-                Button(onClick = { showFilters = false }) { Text("Apply") }
+                Button(enabled = draftRangeError == null, onClick = {
+                    minPriceText = draftMinimum
+                    maxPriceText = draftMaximum
+                    savedOnly = draftSavedOnly
+                    verifiedOnly = draftVerifiedOnly
+                    showFilters = false
+                }) { Text("Apply") }
             },
             dismissButton = {
                 TextButton(
                     onClick = {
-                        savedOnly = false
-                        verifiedOnly = false
-                        minPriceText = ""
-                        maxPriceText = ""
+                        draftSavedOnly = false
+                        draftVerifiedOnly = false
+                        draftMinimum = ""
+                        draftMaximum = ""
                     }
                 ) { Text("Reset") }
             }

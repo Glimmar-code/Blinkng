@@ -87,6 +87,8 @@ fun MessagesScreen(state: DesktopAppState) {
     var forwardMessageId by remember { mutableStateOf<String?>(null) }
     var forwardUsername by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    val messageListState = androidx.compose.foundation.lazy.rememberLazyListState()
+    var pendingMessageJump by remember(selected?.id) { mutableStateOf<String?>(null) }
     val myUserId = state.session?.userId.orEmpty()
 
     suspend fun loadConversations() {
@@ -199,7 +201,7 @@ fun MessagesScreen(state: DesktopAppState) {
                             )
                             Text(
                                 conversation.title,
-                                fontSize = 10.sp,
+                                fontSize = 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(top = 5.dp)
@@ -299,6 +301,15 @@ fun MessagesScreen(state: DesktopAppState) {
         if (chatQuery.isBlank()) messages
         else messages.filter { it.content.contains(chatQuery, ignoreCase = true) }
     }
+    LaunchedEffect(pendingMessageJump, visibleMessages.map { it.id }) {
+        val target = pendingMessageJump ?: return@LaunchedEffect
+        val index = com.blinkng.shared.BlinkUiRecovery.messageScrollIndex(
+            visibleMessages.map { it.id }, target, false
+        ) ?: return@LaunchedEffect
+        messageListState.scrollToItem(index)
+        pendingMessageJump = null
+    }
+
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -370,6 +381,7 @@ fun MessagesScreen(state: DesktopAppState) {
             }
 
             LazyColumn(
+                state = messageListState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(18.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -398,10 +410,10 @@ fun MessagesScreen(state: DesktopAppState) {
                                                 message.deliveredAt != null -> "Delivered"
                                                 else -> "Sent"
                                             },
-                                            fontSize = 10.sp,
+                                            fontSize = 12.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
-                                        if (message.messageType != "text") Text(message.messageType, fontSize = 10.sp)
+                                        if (message.messageType != "text") Text(message.messageType, fontSize = 12.sp)
                                     }
                                 }
                             }
@@ -430,6 +442,15 @@ fun MessagesScreen(state: DesktopAppState) {
                                     text = { Text("Reply") },
                                     onClick = {
                                         draft = if (message.content.isBlank()) "" else "> " + message.content.take(80) + "\n"
+                                        actionMessageId = null
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Open in conversation") },
+                                    onClick = {
+                                        chatQuery = ""
+                                        chatSearchVisible = false
+                                        pendingMessageJump = message.id
                                         actionMessageId = null
                                     }
                                 )
@@ -652,7 +673,7 @@ private fun ContactActionButton(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(icon, contentDescription = label, modifier = Modifier.size(20.dp))
-            Text(label, fontSize = 9.sp, modifier = Modifier.padding(top = 5.dp))
+            Text(label, fontSize = 12.sp, modifier = Modifier.padding(top = 5.dp))
         }
     }
 }

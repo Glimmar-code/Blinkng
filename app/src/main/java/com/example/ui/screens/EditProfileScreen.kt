@@ -577,9 +577,9 @@ fun EditProfileScreen(
                                     e: Exception
                                 ) {
 
+                                    if (e is kotlinx.coroutines.CancellationException) throw e
                                     errorMessage =
-                                        e.message
-                                            ?: "Unable to save profile."
+                                        com.blinkng.shared.BlinkUiRecovery.profileSaveMessage(e)
 
                                 } finally {
 
@@ -1454,9 +1454,9 @@ fun EditProfileScreen(
                                 e: Exception
                             ) {
 
+                                if (e is kotlinx.coroutines.CancellationException) throw e
                                 errorMessage =
-                                    e.message
-                                        ?: "Profile save failed."
+                                    com.blinkng.shared.BlinkUiRecovery.profileSaveMessage(e)
 
                             } finally {
 
