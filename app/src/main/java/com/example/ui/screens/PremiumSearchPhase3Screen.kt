@@ -53,6 +53,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.example.data.repository.SearchDiscoveryRepository
 import com.example.data.models.DiscoveryResult
 import com.example.data.models.DiscoveryResultType
 import com.example.data.models.DiscoverySort
@@ -171,6 +172,12 @@ private fun Phase3SearchContent(
     var detailResult by remember { mutableStateOf<DiscoveryResult?>(null) }
     var heroResult by remember { mutableStateOf<DiscoveryResult?>(null) }
     var placeholderIndex by remember { mutableIntStateOf(0) }
+    var trendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showMoreTrending by remember { mutableStateOf(false) }
+    val smartTagsRepository = remember { SearchDiscoveryRepository() }
+    LaunchedEffect(Unit) {
+        trendingTags = smartTagsRepository.trendingTags(limit = 40)
+    }
 
     val placeholders = remember {
         listOf(
@@ -346,6 +353,28 @@ private fun Phase3SearchContent(
                 contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 30.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                if (state.query.isBlank() && !state.imageSearchActive && trendingTags.isNotEmpty()) {
+                    item(key = "smart-tags-title") {
+                        SearchSectionTitle("🔥 Trending hashtags", "Tap a tag to discover related posts and reels")
+                    }
+                    item(key = "smart-tags-list") {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                items(trendingTags.take(if (showMoreTrending) 40 else 7), key = { it }) { tag ->
+                                    AssistChip(
+                                        onClick = { viewModel.setQuery("#$tag") },
+                                        label = { Text("#$tag") }
+                                    )
+                                }
+                            }
+                            if (trendingTags.size > 7) {
+                                TextButton(onClick = { showMoreTrending = !showMoreTrending }) {
+                                    Text(if (showMoreTrending) "Show less" else "See more trending tags")
+                                }
+                            }
+                        }
+                    }
+                }
                 if (state.query.isBlank() && !state.imageSearchActive && state.history.isNotEmpty() && !state.privateHistory) {
                     item(key = "history-title") { SearchSectionTitle("Recent searches", "Synced privately to your Blink account") }
                     item(key = "history-row") {
