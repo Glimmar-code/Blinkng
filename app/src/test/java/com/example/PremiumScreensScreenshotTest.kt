@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.Density
 import com.example.ui.screens.PremiumFeedScreen
 import com.example.ui.screens.ProfileScreen
 import com.example.data.models.UserProfile
+import com.example.data.models.BlinkStoreCatalog
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.example.ui.screens.MarketScreen
@@ -72,6 +73,19 @@ class PremiumScreensScreenshotTest {
             }
         }
         compose.onRoot().captureRoboImage("build/outputs/ui-audit/profile-dark.png")
+    }
+
+    @Test fun storeCard() {
+        compose.setContent {
+            BlinkTheme {
+                Surface {
+                    StoreItemCard(item = BlinkStoreCatalog.items.first(), owned = false,
+                        active = false, equipped = false, vipLocked = false, vipActive = false,
+                        onPreview = {}, onBuy = {})
+                }
+            }
+        }
+        compose.onRoot().captureRoboImage("build/outputs/ui-audit/store-card.png")
     }
 
     @Test fun messageInbox() {

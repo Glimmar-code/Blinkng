@@ -801,7 +801,7 @@ private fun PremiumStoreHero(vipActive: Boolean, itemCount: Int) {
 }
 
 @Composable
-private fun StoreItemCard(
+internal fun StoreItemCard(
     item: BlinkStoreItem,
     owned: Boolean,
     active: Boolean,

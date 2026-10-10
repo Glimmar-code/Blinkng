@@ -500,7 +500,7 @@ Validation: Isolated PostgreSQL checks prove private circles/members stay hidden
 - Shared price-range validation is used in both Market surfaces. Android retains pagination even when local filters hide every loaded listing, and filter edits commit only on Apply. Windows adds validated price filters and refresh for its existing loaded listing set (its existing 100-listing fetch is unchanged).
 - Android starred-content rows now jump to the original loaded message and clear conflicting filters. Windows gains Open in conversation on message results using the same index policy. Windows has no existing per-message starred-content browser; this change does not claim to port that broader feature.
 - Shared safe profile-save messages replace raw exception payloads on both clients. Android and Windows message metadata is enlarged.
-- Added price/error/jump policy tests, Market interaction regression tests, and actual feed/profile/Market/messages screenshots including narrow-screen large-text Market. Store remains outside this screenshot harness because its route owns live economy loading; no purchase behavior was changed.
+- Added price/error/jump policy tests, Market interaction regression tests, and actual feed/profile/Market/messages screenshots including narrow-screen large-text Market. A real Store item card is also captured without invoking the live economy route; no purchase behavior was changed.
 - Promotion requires Android and Windows build gates plus visual review; local dependency resolution blocked both full builds in this environment.
 
 - Feed header, tabs, utility row and create controls now use theme surfaces/text as well as the post cards; removed fixed header glow. CI uploads actual-screen captures for visual review.

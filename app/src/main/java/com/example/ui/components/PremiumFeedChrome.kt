@@ -534,7 +534,7 @@ fun CreatePostFab(
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(21.dp)
                         )
                     },
