@@ -173,13 +173,4 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: |
-            # android-emulator-runner executes this script with /bin/sh (dash) by default.
-            # pipefail is a Bash-only option and prevented the APK install from running.
-            set -eu
-            APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
-            test -s "$APK"
-            adb install -r "$APK"
-            adb shell pm path com.aistudio.blink.appvtwo | grep -F 'package:'
-            adb shell dumpsys package com.aistudio.blink.appvtwo | grep -F 'versionCode=1999000000'
-            echo "Android 15 package manager installed signed release smoke APK successfully."
+          script: bash .github/scripts/install_release_smoke_apk.sh
