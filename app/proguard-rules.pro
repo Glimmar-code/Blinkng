@@ -11,11 +11,20 @@
 # Room generated implementations are discovered from the abstract database type.
 -keep class * extends androidx.room.RoomDatabase { *; }
 
-# Keep enum members serialized by name.
+# Moshi's EnumJsonAdapter reflects on public enum constants using
+# enumType.getField(constant.name). Keeping only values()/valueOf() is not enough:
+# R8 can rename the PUBLIC field while Enum.name stays "PUBLIC", causing
+# java.lang.AssertionError: Missing field in <minified enum> during app startup.
+# Preserve the names of the enum constant fields that Moshi discovers.
 -keepclassmembers enum * {
+    <fields>;
     public static **[] values();
     public static ** valueOf(java.lang.String);
 }
+
+# A cached UserProfile contains ProfileVisibilityScope (PUBLIC/FOLLOWERS/PRIVATE).
+# Keep its complete identity for JSON compatibility with previously cached data.
+-keep class com.blinkng.shared.ProfileVisibilityScope { *; }
 
 # Retrofit/OkHttp/Moshi rely on generic signatures and runtime annotations.
 -keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault
