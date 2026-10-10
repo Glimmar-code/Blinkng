@@ -1,14 +1,21 @@
-## 2026-10-10 — BLINK install/branding repair and Maps removal (Testlab)
+## 2026-10-10 — Official BLINK launcher and install reliability
 
-PARITY-EXCEPTION: android-launcher-icons-and-maps-removal-20261010
+PARITY-EXCEPTION: android-adaptive-launcher-and-package-installer
 
-- Android: the approved official B artwork is now the adaptive, legacy/round launcher, package-install and splash mark. Previously the foreground and density icons still used the old purple-eye PNG even after `app_icon.png` was changed. All density-specific icons are built deterministically from the approved source and checked in CI.
-- Android: the Google Maps tile/marker view is removed from the Items Live Location screen, together with its obsolete Maps SDK, manifest metadata, and `MAPS_API_KEY` production prerequisite. Sharing remains opt-in, visible and stoppable; location permission and coordinate reporting are requested only by the existing explicit sharing workflow. A compact location-sharing status and recipient list replace the map.
-- Windows equivalent: Windows already uses the exact same approved B source in `desktopApp/src/main/resources/blink-logo.png`. Windows has no Android adaptive/round launcher, Android splash window or Google Maps Compose dependency; the Windows client has no equivalent map surface to remove. No Windows UI or backend feature is being withheld or changed, and its existing icon remains correct.
-- Web/PWA: previously cached purple-eye logos are replaced with 192px and 512px B-derived PNGs, updated PWA manifest icon sizes and a rotated service-worker cache to avoid stale web branding.
-- Upgrade reliability: the release signing key is compared to the last published production certificate and versionCode cannot decrease; a signed release-smoke APK must install under Android 15's package manager. The disposable CI signing key is never used for public downloads.
-- Firebase configuration and the existing permanent signing keystore remain mandatory to publish a real signed production APK. No fake production credentials, silent uninstall, data-destructive reset or Supabase changes.
-- Promotion: Testlab PR must pass Android quality, release-install, runtime, web, Windows/parity, security and integration gates before merging.
+- Android: use the approved B artwork for adaptive, legacy/round density icons, install icon and splash; validate all PNG assets against the approved master and install test-signed release APK on Android 15.
+- Windows: desktop already ships the same B artwork; Windows does not use Android adaptive icon layers, splash screens, or the Android Package Installer.
+- Web/PWA: synchronize 192/512 PWA icons and refresh cache for the approved B branding.
+- Signed release: check the previous published production signing certificate and versionCode; retain Firebase and original signing key requirements.
+- Google Maps removal was already merged into main in #206; retain its map-free Android UI and no-Maps CI guards rather than overwriting them.
+
+## 2026-10-10 — Remove Google Maps SDK and production Maps key dependency
+
+- Android: remove interactive Google Maps preview and marker/camera controls from Items → Live Location; keep private sharing, active recipients, recipient selection, sharing duration and existing Supabase live-location service/stop flow. Private active shares appear in a compact list without a map.
+- Android infrastructure: remove Maps Compose SDK, Google Maps application metadata, Gradle Maps key placeholder and production `MAPS_API_KEY` requirement. Retain Google Play Services **Location** for opted-in Weather and time-limited Live Location; fused GPS does not need a Maps API key.
+- Windows: Google Maps SDK and Maps release key were Android-only. Existing Windows Items semantics continue without modification; Supabase sharing contracts remain unchanged. This is an SDK-level platform exception.
+- PARITY-EXCEPTION: android-google-maps-removal — The Android-only Google Maps renderer is removed because BLINK no longer ships a Google Maps key. Windows has no Google Maps SDK, Maps canvas, or key requirement; its existing private location-sharing view and Supabase-backed session semantics are the closest equivalent, so no desktop code change is necessary.
+- Production Firebase JSON, pinned release-signing certificate and keystore remain mandatory; no placeholder credentials and no production database mutations.
+- Tests: assert no Maps SDK/UI/manifest/Gradle/release secret references in Android quality and release smoke.
 
 ## 2026-10-09 — Secure Android production Firebase secret setup (Testlab)
 

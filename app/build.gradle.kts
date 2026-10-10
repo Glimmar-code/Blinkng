@@ -142,22 +142,6 @@ val resolvedTurnCredential = (
     ?: providers.environmentVariable("BLINK_TURN_CREDENTIAL").orNull
 ).orEmpty().trim()
 
-fun localEnvValue(key: String): String? {
-  val file = rootProject.file(".env")
-  if (!file.exists()) return null
-  return file.useLines { lines ->
-    lines.map(String::trim)
-      .firstOrNull { line ->
-        line.isNotEmpty() &&
-          !line.startsWith("#") &&
-          line.substringBefore('=', "").trim() == key
-      }
-      ?.substringAfter('=', "")
-      ?.trim()
-      ?.takeIf { it.isNotEmpty() }
-  }
-}
-
 val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
 val releaseStorePassword = System.getenv("STORE_PASSWORD")
 val releaseKeyAlias = System.getenv("KEY_ALIAS")

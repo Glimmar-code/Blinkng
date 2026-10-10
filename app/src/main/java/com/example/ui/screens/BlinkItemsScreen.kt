@@ -971,37 +971,28 @@ private fun BlinkLiveLocationItem(
         }
     }
 
-    // Location sharing remains available; no Maps SDK, key, tile downloads,
-    // or passive GPS collection are needed just to open this screen.
     Column(modifier = Modifier.fillMaxSize()) {
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
             color = FeedElevatedSurface,
-            shape = RoundedCornerShape(18.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, FeedBorder)
+            shape = RoundedCornerShape(14.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, FeedBorder),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    Icons.Default.LocationOn,
-                    contentDescription = null,
-                    tint = FeedTextPrimary,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(Modifier.width(12.dp))
+                Icon(Icons.Default.LocationOn, contentDescription = null, tint = FeedPurple)
+                Spacer(Modifier.width(10.dp))
                 Column {
                     Text(
-                        "Live location",
+                        "Private Live Location",
                         color = FeedTextPrimary,
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        if (sharedLocations.isEmpty()) "No one is currently sharing their location with you."
-                        else "${sharedLocations.size} active location ${if (sharedLocations.size == 1) "share" else "shares"} received.",
+                        if (sharedLocations.isEmpty()) "No one is sharing a location with you right now."
+                        else "${sharedLocations.size} active location ${if (sharedLocations.size == 1) "share" else "shares"} listed below.",
                         color = FeedTextSecondary,
                         style = MaterialTheme.typography.bodySmall
                     )

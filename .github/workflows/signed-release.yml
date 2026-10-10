@@ -214,7 +214,6 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
-          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
         run: gradle :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
 
       - name: Verify embedded source revision

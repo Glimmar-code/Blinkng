@@ -50,6 +50,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify Google Maps SDK is removed
+        run: python3 scripts/test_no_google_maps_sdk.py
+
       - name: Verify launcher images match the approved BLINK logo
         shell: bash
         run: |
@@ -180,4 +183,3 @@ jobs:
             adb shell pm path com.aistudio.blink.appvtwo | grep -F 'package:'
             adb shell dumpsys package com.aistudio.blink.appvtwo | grep -F 'versionCode=1999000000'
             echo "Android 15 package manager installed signed release smoke APK successfully."
-

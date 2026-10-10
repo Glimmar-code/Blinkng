@@ -1,19 +1,15 @@
 # BLINK signed Android release — required GitHub secrets
 
 The signed release pipeline **must not** publish an APK with a disposable signing key,
-placeholder Firebase project or invalid signing credentials. The latest failure
-at the “Verify permanent production secrets” step means the repository owner still
-needs to configure the actual production values in GitHub.
+placeholder Firebase configuration. Google Maps is not part of the BLINK Android
+client anymore. The repository owner must still configure production Firebase
+credentials to publish a signed APK.
 
 ## Configure securely
 
 In the **Glimmar-code/Blinkng** repository open
 **Settings → Secrets and variables → Actions → Repository secrets → New repository secret**.
 Do not commit credentials, attach them to an issue, or paste them into chat.
-
-The embedded Google Maps view was removed; **`MAPS_API_KEY` is no longer required**
-for production releases. Live-location sharing still uses the device's standard
-location service only after a person explicitly starts sharing.
 
 1. **`GOOGLE_SERVICES_JSON`** — Recommended, especially from a phone: In the
    Firebase Console, select the existing BLINK production Firebase project,
@@ -41,9 +37,7 @@ location service only after a person explicitly starts sharing.
 After the repository secrets are saved, open
 **Actions → Signed Android release → Run workflow**, select `main`, and run it.
 The workflow checks required secrets, production Firebase package, pinned
-certificate, certificate continuity against the latest published production
-APK, a versionCode greater than the last published version, build revision,
-package/version and APK/AAB signatures.
+certificate, build revision, package/version and APK/AAB signatures.
 A successful signed release triggers **Publish latest APK** automatically,
 which updates the public `Blink-latest.apk` asset. The production APK must
 **not** be replaced with the CI release-smoke/debug test artifact.
@@ -54,7 +48,6 @@ production credential.
 
 Official references:
 - https://firebase.google.com/docs/android/google-services-plugin-and-file
-- https://developers.google.com/maps/api-security-best-practices
 
 ## Brand consistency
 
