@@ -41,7 +41,9 @@ location service only after a person explicitly starts sharing.
 After the repository secrets are saved, open
 **Actions → Signed Android release → Run workflow**, select `main`, and run it.
 The workflow checks required secrets, production Firebase package, pinned
-certificate, build revision, package/version and APK/AAB signatures.
+certificate, certificate continuity against the latest published production
+APK, a versionCode greater than the last published version, build revision,
+package/version and APK/AAB signatures.
 A successful signed release triggers **Publish latest APK** automatically,
 which updates the public `Blink-latest.apk` asset. The production APK must
 **not** be replaced with the CI release-smoke/debug test artifact.

@@ -2,7 +2,8 @@ name: Synchronize BLINK launcher assets in Testlab
 on:
   push:
     branches:
-      - Testlab-fix-blink-apk-logo-20261010
+      - Testlab
+      - 'Testlab-*'
     paths:
       - 'scripts/sync_android_launcher_assets.py'
       - 'app/src/main/res/drawable/app_icon.png'

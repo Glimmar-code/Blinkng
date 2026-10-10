@@ -141,6 +141,36 @@ jobs:
           echo "RELEASE_CERT_SHA256=$ACTUAL_SHA256" >> "$GITHUB_ENV"
           echo "Production signing certificate continuity verified."
 
+      - name: Verify signing key matches the last published production APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! previous_tag="$(gh release view --json tagName --jq '.tagName' 2>/dev/null)"; then
+            echo "No previous production release found; initial-signature check skipped."
+            exit 0
+          fi
+
+          mkdir -p "$RUNNER_TEMP/previous-blink-release"
+          gh release download "$previous_tag" \
+            --pattern 'release-info.txt' \
+            --dir "$RUNNER_TEMP/previous-blink-release" \
+            --clobber
+          info="$RUNNER_TEMP/previous-blink-release/release-info.txt"
+          previous_cert="$(sed -n 's/^signingCertificateSha256=//p' "$info" | head -n 1 | tr '[:upper:]' '[:lower:]')"
+          previous_code="$(sed -n 's/^versionCode=//p' "$info" | head -n 1)"
+          if ! [[ "$previous_cert" =~ ^[a-f0-9]{64}$ && "$previous_code" =~ ^[0-9]+$ ]]; then
+            echo "::error::Previous production release has invalid signing/version metadata. Refusing potentially uninstallable upgrade."
+            exit 1
+          fi
+          if [ "$previous_cert" != "$RELEASE_CERT_SHA256" ]; then
+            echo "::error::Signing certificate differs from the previously published BLINK APK. Existing installations would reject this update."
+            exit 1
+          fi
+          echo "PREVIOUS_PUBLISHED_VERSION_CODE=$previous_code" >> "$GITHUB_ENV"
+          echo "Production signing continuity confirmed against $previous_tag."
+
       - name: Resolve monotonically increasing version
         id: version
         shell: bash
@@ -152,6 +182,9 @@ jobs:
           EPOCH_MINUTES=$(( $(date -u +%s) / 60 ))
           RUN_SLOT=$(( GITHUB_RUN_NUMBER % 10 ))
           VERSION_CODE=$(( EPOCH_MINUTES * 10 + RUN_SLOT ))
+          if [ -n "${PREVIOUS_PUBLISHED_VERSION_CODE:-}" ] && [ "$VERSION_CODE" -le "$PREVIOUS_PUBLISHED_VERSION_CODE" ]; then
+            VERSION_CODE=$(( PREVIOUS_PUBLISHED_VERSION_CODE + 1 ))
+          fi
           if [ "$VERSION_CODE" -gt 2100000000 ]; then
             echo "::error::Generated Android versionCode is too large: $VERSION_CODE"
             exit 1
