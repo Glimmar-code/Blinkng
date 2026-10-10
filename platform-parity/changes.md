@@ -493,7 +493,7 @@ Android and Windows behavior: Existing study-circle and owner-request reads keep
 Validation: Isolated PostgreSQL checks prove private circles/members stay hidden from an account that belongs to a different circle, while the owner and approved members retain access. All eight promotion migrations reapply.
 
 
-## 2026-10-10 — UI audit polish (Testlab)
+## 2026-10-10 — UI audit polish (isolated Testlab baseline)
 
 - Shared neutral brand tokens and higher-contrast muted text feed both clients; semantic verification/status colors remain distinct. Android and Windows themes pair neutral controls with contrasting content colors.
 - Android feed now follows appearance; Windows already uses its Material theme. Android Market replaces a fixed top spacer with status-bar insets; Windows retains its desktop content padding.
@@ -502,3 +502,5 @@ Validation: Isolated PostgreSQL checks prove private circles/members stay hidden
 - Shared safe profile-save messages replace raw exception payloads on both clients. Android and Windows message metadata is enlarged.
 - Added price/error/jump policy tests, Market interaction regression tests, and actual feed/profile/Market/messages screenshots including narrow-screen large-text Market. Store remains outside this screenshot harness because its route owns live economy loading; no purchase behavior was changed.
 - Promotion requires Android and Windows build gates plus visual review; local dependency resolution blocked both full builds in this environment.
+
+- Feed header, tabs, utility row and create controls now use theme surfaces/text as well as the post cards; removed fixed header glow. CI uploads actual-screen captures for visual review.

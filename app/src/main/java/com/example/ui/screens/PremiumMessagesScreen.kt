@@ -1546,8 +1546,8 @@ private fun PremiumChatDetail(
         val target = pendingMessageJump ?: return@LaunchedEffect
         val index = com.blinkng.shared.BlinkUiRecovery.messageScrollIndex(
             visibleMessages.map { it.id }, target, isLoadingOlder
-        ) ?: return@LaunchedEffect
-        listState.scrollToItem(index)
+        )
+        if (index != null) listState.scrollToItem(index)
         pendingMessageJump = null
     }
     LaunchedEffect(isNearLatest) {
