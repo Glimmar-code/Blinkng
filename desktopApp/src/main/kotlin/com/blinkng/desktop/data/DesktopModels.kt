@@ -177,6 +177,7 @@ data class DesktopConnectListing(
     val location: String?,
     val tags: List<String>,
     val createdAt: String,
+    val categorySlug: String? = null,
 )
 
 data class DesktopConnectRequestItem(
