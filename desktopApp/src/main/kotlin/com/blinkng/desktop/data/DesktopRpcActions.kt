@@ -99,6 +99,16 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
         JSONObject(execute(request))
     }
 
+    suspend fun verifyPaystackCoinCheckout(orderId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(orderId.isNotBlank()) { "Payment order is missing." }
+        requireSessionUserId()
+        val body = JSONObject().put("order_id", orderId.trim())
+        val request = requestBuilder("/functions/v1/paystack-verify")
+            .post(body.toString().toRequestBody(jsonMedia))
+            .build()
+        JSONObject(execute(request))
+    }
+
     suspend fun activateStoreItem(inventoryId: String, targetId: String? = null): JSONObject =
         rpc("activate_blink_item", JSONObject()
             .put("p_inventory_id", inventoryId)
