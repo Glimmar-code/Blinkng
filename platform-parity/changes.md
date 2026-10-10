@@ -504,3 +504,5 @@ Validation: Isolated PostgreSQL checks prove private circles/members stay hidden
 - Promotion requires Android and Windows build gates plus visual review; local dependency resolution blocked both full builds in this environment.
 
 - Feed header, tabs, utility row and create controls now use theme surfaces/text as well as the post cards; removed fixed header glow. CI uploads actual-screen captures for visual review.
+
+- Follow-up CI: Windows build/installer and secret checks passed. Android compiled and ran 123 tests; only the new dialog test failed waiting for JVM UI idleness. Kept its assertions and moved that real-window/keyboard interaction to Android instrumentation, with the runtime workflow now including isolated Testlab PRs. PNG recording is explicitly enabled in the Android test command (the previous upload contained reports but no screenshots). New checks must pass before promotion.

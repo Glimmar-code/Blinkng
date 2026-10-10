@@ -35,19 +35,4 @@ class MarketUiRegressionTest {
         compose.runOnIdle { assertEquals(1, loads) }
     }
 
-    @Test fun invalidPriceRangeBlocksApplyUntilCorrected() {
-        compose.setContent {
-            BlinkTheme {
-                MarketScreen(items = emptyList(), isSellerActive = true, onItemClick = {},
-                    onOpenPostItem = {}, onOpenBecomeSeller = {}, isDark = true)
-            }
-        }
-        compose.onNodeWithText("Filters").performScrollTo().performClick()
-        compose.onNodeWithText("Min ₦").performTextInput("200")
-        compose.onNodeWithText("Max ₦").performTextInput("100")
-        compose.onNodeWithText("Apply").assertIsNotEnabled()
-        compose.onNodeWithText("Max ₦").performTextReplacement("300")
-        compose.onNodeWithText("Apply").assertIsEnabled().performClick()
-        compose.onNodeWithText("Filters (2)").assertExists()
-    }
 }
