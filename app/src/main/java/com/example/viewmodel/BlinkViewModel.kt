@@ -1798,7 +1798,7 @@ private suspend fun restoreSupabaseSession() {
         ) return
 
         _uiState.value = when {
-            following -> before.copy(isRefreshingFollowing = true, feedErrorMessage = null)
+            following -> before.copy(isRefreshingFollowing = true, followingFeedErrorMessage = null)
             isReel -> before.copy(isRefreshingReels = true, feedErrorMessage = null)
             else -> before.copy(isRefreshingHome = true, feedErrorMessage = null)
         }
@@ -1816,7 +1816,8 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = when {
                         following -> now.copy(
                             followingPosts = reconcileRefreshedFeed(now.followingPosts, page),
-                            hasMoreFollowingPosts = page.size >= 30
+                            hasMoreFollowingPosts = page.size >= 30,
+                            followingFeedErrorMessage = null
                         )
                         isReel -> now.copy(
                             reels = reconcileRefreshedFeed(now.reels, page),
@@ -1843,9 +1844,15 @@ private suspend fun restoreSupabaseSession() {
                 throw cancelled
             } catch (error: Exception) {
                 Log.w(TAG, "Manual feed refresh failed", error)
-                _uiState.value = _uiState.value.copy(
-                    feedErrorMessage = "Couldn't refresh right now. Showing existing posts."
-                )
+                _uiState.value = if (following) {
+                    _uiState.value.copy(
+                        followingFeedErrorMessage = "Couldn't refresh Following. Showing existing posts."
+                    )
+                } else {
+                    _uiState.value.copy(
+                        feedErrorMessage = "Couldn't refresh right now. Showing existing posts."
+                    )
+                }
                 showToast("Refresh failed. Please try again.")
             } finally {
                 val latest = _uiState.value
