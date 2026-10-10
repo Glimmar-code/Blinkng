@@ -47,6 +47,17 @@ def main() -> None:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_bytes(expected)
 
+    # The same approved B master is used for both web icons; manifest sizes must match.
+    web = ROOT / "web"
+    for filename, pixels in (("blink-logo-v2.png", 192), ("blink-logo.png", 512)):
+        destination = web / filename
+        content = encoded_png(master.resize((pixels, pixels), Image.Resampling.LANCZOS))
+        if options.check:
+            if not destination.exists() or destination.read_bytes() != content:
+                out_of_sync.append(str(destination.relative_to(ROOT)))
+        else:
+            destination.write_bytes(content)
+
     for resource in ("ic_launcher_foreground.xml", "ic_splash_b.xml"):
         path = RES / "drawable" / resource
         if '@drawable/app_icon' not in path.read_text():
@@ -56,7 +67,7 @@ def main() -> None:
 
     if out_of_sync:
         raise SystemExit("Out-of-sync BLINK launcher assets:\n" + "\n".join(out_of_sync))
-    print("BLINK launcher resources synchronized with approved app_icon.png master.")
+    print("BLINK Android and web branding synchronized with approved app_icon.png master.")
 
 
 if __name__ == "__main__":

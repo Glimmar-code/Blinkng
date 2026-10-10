@@ -55,3 +55,13 @@ production credential.
 Official references:
 - https://firebase.google.com/docs/android/google-services-plugin-and-file
 - https://developers.google.com/maps/api-security-best-practices
+
+## Brand consistency
+
+All Android adaptive, splash and density-specific launcher icons and both web/PWA
+icon sizes are generated from the same approved `app/src/main/res/drawable/app_icon.png`
+(B) master. Run `python3 scripts/sync_android_launcher_assets.py` (requires Pillow)
+to regenerate assets and `python3 scripts/sync_android_launcher_assets.py --check`
+to verify. Testlab automatically regenerates and commits logo assets; CI refuses
+stale images. The website service worker uses a fresh cache version so returning
+visitors receive the B mark rather than the old purple-eye logo.
