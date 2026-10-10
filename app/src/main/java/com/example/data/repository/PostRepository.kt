@@ -22,15 +22,12 @@ class PostRepository(
     private val likeMutationMutexes = mutableMapOf<String, Mutex>()
 
     suspend fun fetchFeed(isReel: Boolean? = null): List<FeedPost> = withContext(Dispatchers.IO) {
-        try {
-            when (isReel) {
-                true -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_reels")
-                false -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_posts")
-                null -> supabaseService.fetchFeedPage(limit = 60, feedType = "ranked_all")
-            }
-        } catch (e: Exception) {
-            Log.e("PostRepository", "fetchFeed error: ${e.message}")
-            emptyList()
+        // Propagate backend failures to the ViewModel. Returning emptyList() here
+        // previously made a failed fetch appear to be a genuinely empty Home feed.
+        when (isReel) {
+            true -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_reels")
+            false -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_posts")
+            null -> supabaseService.fetchFeedPage(limit = 60, feedType = "ranked_all")
         }
     }
 
@@ -39,12 +36,7 @@ class PostRepository(
     }
 
     suspend fun fetchFollowingFeed(limit: Int = 30): List<FeedPost> = withContext(Dispatchers.IO) {
-        try {
-            supabaseService.fetchFeedPage(limit = limit, feedType = "following")
-        } catch (e: Exception) {
-            Log.e("PostRepository", "fetchFollowingFeed error: ${e.message}")
-            emptyList()
-        }
+        supabaseService.fetchFeedPage(limit = limit, feedType = "following")
     }
 
     suspend fun fetchFollowingFeedPage(

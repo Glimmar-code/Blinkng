@@ -1872,6 +1872,47 @@ fun getCurrentUserId(): String? {
 
 
     /**
+     * Fast profile timeline: don't block the owner's actual posts behind liked/saved
+     * collection hydration. The latter can take several requests and may time out.
+     */
+    suspend fun fetchProfilePostsOnly(profileId: String): List<FeedPost> = withContext(Dispatchers.IO) {
+        require(isValidUuid(profileId)) { "Profile is required." }
+        if (getCurrentUserId().isNullOrBlank()) throw IllegalStateException("Not authenticated.")
+        val profile = fetchProfileById(profileId)
+            ?: throw IllegalStateException("Could not load post author.")
+        val posts = mutableListOf<FeedPost>()
+        var offset = 0
+        while (true) {
+            val path = "/rest/v1/feed_posts?user_id=eq.${encodeValue(profileId)}" +
+                "&is_active=eq.true&select=*&order=is_pinned.desc,created_at.desc,id.desc&limit=100&offset=$offset"
+            val rows = executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Could not load profile posts."))
+                }
+                JSONArray(raw.ifBlank { "[]" })
+            }
+            for (i in 0 until rows.length()) {
+                val row = rows.getJSONObject(i)
+                val mapped = JSONObject(row.toString()).apply {
+                    put("author", profile.fullName.ifBlank { profile.username })
+                    put("author_name", profile.fullName.ifBlank { profile.username })
+                    put("full_name", profile.fullName.ifBlank { profile.username })
+                    put("author_avatar", profile.avatarUrl)
+                    put("username", profile.username)
+                    put("author_username", profile.username)
+                    put("is_verified", profile.verificationBadge != VerificationBadge.NONE)
+                    put("verification_badge", profile.verificationBadge.name)
+                }
+                posts += parseFeedPost(mapped)
+            }
+            if (rows.length() < 100) break
+            offset += rows.length()
+        }
+        posts
+    }
+
+    /**
      * Read profile content independently of the ranked feed. Private relations always
      * use the authenticated account, and pagination has no feed-window cutoff.
      */
@@ -1939,7 +1980,10 @@ fun getCurrentUserId(): String? {
         }
 
     suspend fun fetchFeedPosts(): List<FeedPost> =
-        fetchFeedPage(limit = 40, feedType = "all")
+        // The ranked feed RPC is accessible and already enforces discovery rules.
+        // The retired unranked get_feed_page RPC currently fails on private-schema
+        // permissions, so it must not be used for generic feed retrieval.
+        fetchFeedPage(limit = 40, feedType = "ranked_all")
 
     suspend fun fetchFeedPostById(postId: String): FeedPost? = withContext(Dispatchers.IO) {
         val cleanId = postId.trim()
@@ -2114,25 +2158,22 @@ fun getCurrentUserId(): String? {
             }
         }
 
+        // The legacy get_public_profiles_by_ids RPC is not deployed everywhere.
+        // Request only public author fields from the authenticated profiles table:
+        // a missing enrichment RPC must never turn a populated feed into "no posts".
         val profiles = mutableMapOf<String, JSONObject>()
         if (userIds.isNotEmpty()) {
-            val body = JSONObject().put("p_ids", JSONArray(userIds.toList()))
-            executeRequest(
-                newRequestBuilder(
-                    "/rest/v1/rpc/get_public_profiles_by_ids",
-                    authenticated = true
-                )
-                    .addHeader("Content-Type", "application/json")
-                    .post(body.toString().toRequestBody(jsonMediaType))
-                    .build()
-            ).use { response ->
+            val profilePath = "/rest/v1/profiles?select=id,username,full_name,avatar_url,is_verified,verification_badge" +
+                "&id=in.(${userIds.joinToString(",")})"
+            executeRequest(newRequestBuilder(profilePath, true).get().build()).use { response ->
                 val raw = response.body?.string().orEmpty()
-                if (response.isSuccessful && raw.isNotBlank() && raw != "[]") {
-                    val array = JSONArray(raw)
-                    for (i in 0 until array.length()) {
-                        val profile = array.getJSONObject(i)
-                        profiles[profile.optString("id")] = profile
-                    }
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(parseSupabaseError(raw, "Could not load post authors."))
+                }
+                val array = JSONArray(raw.ifBlank { "[]" })
+                for (i in 0 until array.length()) {
+                    val profile = array.getJSONObject(i)
+                    profiles[profile.optString("id")] = profile
                 }
             }
         }
@@ -2537,7 +2578,18 @@ fun getCurrentUserId(): String? {
                     }
                 }
             }
-            fetchFeedPosts().firstOrNull { it.id == postId } ?: parseFeedPost(created)
+            // A 201 + returned post row is a successful publish. Never re-fetch
+            // the entire feed here: an unrelated feed/RPC timeout was incorrectly
+            // reported as "The server did not save the post" after a real insert.
+            val publishedRow = JSONObject(created.toString()).apply {
+                put("author", author)
+                put("author_name", author)
+                put("full_name", author)
+                put("username", author)
+                put("author_username", author)
+                put("author_avatar", authorAvatar)
+            }
+            parseFeedPost(publishedRow)
         } catch (e: Exception) { Log.e(TAG, "POST_CREATE exception", e); null }
     }
 suspend fun uploadPostMedia(

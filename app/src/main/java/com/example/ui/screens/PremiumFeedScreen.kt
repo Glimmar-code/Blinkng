@@ -289,6 +289,7 @@ fun PremiumFeedScreen(
     isLoading: Boolean = false,
     isRefreshing: Boolean = false,
     errorMessage: String? = null,
+    followingErrorMessage: String? = null,
     onRefresh: () -> Unit = {},
     onRetry: () -> Unit = {},
     onViewedPost: (String) -> Unit = {},
@@ -379,7 +380,7 @@ fun PremiumFeedScreen(
             isLoading = isLoading,
             isRefreshing = isRefreshing,
             isServerConnected = isServerConnected,
-            errorMessage = errorMessage,
+            errorMessage = if (feedLane == 1) followingErrorMessage else errorMessage,
             hasMorePosts = if (feedLane == 1) hasMoreFollowingPosts else hasMorePosts,
             hasMoreReels = hasMoreReels,
             isLoadingMorePosts = if (feedLane == 1) isLoadingMoreFollowingPosts else isLoadingMorePosts,
@@ -1303,6 +1304,14 @@ private fun PremiumHomeFeed(
                             isLoading && stableRankedPosts.isEmpty() -> {
                                 items(4, key = { "skeleton:$it" }) {
                                     PremiumFeedSkeleton()
+                                }
+                            }
+
+                            // A failed first load is not an empty feed. Keep the
+                            // user on a recoverable state instead of inviting a new post.
+                            !errorMessage.isNullOrBlank() && stableRankedPosts.isEmpty() && isOnline -> {
+                                item(key = "first_load_error") {
+                                    PremiumFeedRefreshNotice(errorMessage, onRetry)
                                 }
                             }
 
