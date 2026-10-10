@@ -1,3 +1,10 @@
+## 2026-10-10 — Server-gated Blink Coin checkout shelf (Testlab)
+
+- Shared: `BlinkCoinCheckoutPolicy` validates fixed-price server-issued coin packs, blocks checkout when the authenticated backend reports cash checkout disabled, and permits only Paystack's expected HTTPS hosted checkout URL. No wallet balance or entitlements are modified in client code.
+- Android and Windows: show the same optional coin pack prices from `get_blink_economy_status`, with clear paid-checkout disabled states. A deliberate confirmation starts authenticated `paystack-initialize`, then the provider-hosted checkout; returning users can explicitly ask `paystack-verify` to reconcile that purchase before refreshing balance.
+- Backend: existing server verification/webhook contract retained. No production database writes, migrations, secret keys in clients, automatic purchases, or counterfeit balance changes. Current Blink production database has `cash_checkout_enabled=false`, so cash purchase buttons remain disabled until payment keys/provider review and staged tests are complete.
+- Android safety/Windows parity: tests cover invalid checkout URLs, corrupt pack prices, and disabled purchase gate; cash purchase availability must remain false on RPC failures.
+
 ## 2026-10-10 — Private feed permissions and active post counters (Testlab)
 
 - Root cause: signed-in users have no USAGE on the private PostgreSQL schema, while public.get_feed_page depended on its private owner-check routine. Preserve locked-down private schema; make only the scoped, authenticated-only feed RPC SECURITY DEFINER with an explicit auth.uid() guard and existing filtering.
