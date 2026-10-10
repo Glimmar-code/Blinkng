@@ -1,3 +1,12 @@
+## 2026-10-10 — Bug reports, Admin DMs and verified Blink Coin rewards (Testlab)
+
+- Android: signed-in users open a report sheet from Account & Support or by shaking the phone while BLINK is foregrounded; optional JPEG screenshots are kept private. Users can disable shake detection and see their report review history.
+- Windows equivalent: Settings provides the authenticated text report form and history; the admin view provides report review and explicit coin reward confirmation. Desktop computers have no standardized phone accelerometer, so shake-to-open and the Android photo-picker are intentionally Android-specific.
+- Shared backend: `submit_blink_bug_report` stores a report, rate-limits spam, and attempts to send it as a private conversation to the configured BLINK owner. Reports survive DM delivery failures. Administrative replies are also sent as private DMs when possible.
+- Rewards: admins can approve or reject reports; only the authenticated, server-protected admin RPC can award up to 500 coins to a verified report via the established canonical wallet system; row locking prevents duplicate awards. Normal admin limits remain enforced.
+- Safety: screenshot bucket is private with report-owner/admin-only reads, submitters have no write access to report status or rewards; production deployment is gated on staging migration and Android/Desktop build plus role/coin verification.
+- PARITY-EXCEPTION: android-shake-report-accelerometer — Windows offers manual bug reporting in Settings and admin review, while only Android devices expose a phone shake sensor.
+
 ## 2026-10-10 — Server-gated Blink Coin checkout shelf (Testlab)
 
 - Server-catalog correctness: Android now intersects its decorative built-in catalog with active SKUs/prices returned by `get_blink_store_state`; missing items cannot be sold. Windows now hides collections/identity looks with no live backend item. This avoids showing nonexistent purchasable items during incomplete server catalog migrations.\n- Shared: `BlinkCoinCheckoutPolicy` validates fixed-price server-issued coin packs, blocks checkout when the authenticated backend reports cash checkout disabled, and permits only Paystack's expected HTTPS hosted checkout URL. No wallet balance or entitlements are modified in client code.

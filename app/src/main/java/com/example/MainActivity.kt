@@ -64,6 +64,51 @@ class MainActivity : ComponentActivity() {
     private var rewardedAdShowPending = false
     private var itemsOpenSignal by mutableIntStateOf(0)
     private var boostOpenSignal by mutableIntStateOf(0)
+    private var showBugReportSheet by mutableStateOf(false)
+    private var shakeSensorListener: android.hardware.SensorEventListener? = null
+    private var lastShakeTriggerAt: Long = 0L
+    private var lastShakeImpulseAt: Long = 0L
+    private var shakeImpulses: Int = 0
+
+    private fun startBugShakeListener() {
+        if (shakeSensorListener != null) return
+        val manager = getSystemService(android.content.Context.SENSOR_SERVICE) as? android.hardware.SensorManager ?: return
+        val sensor = manager.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER) ?: return
+        val listener = object : android.hardware.SensorEventListener {
+            override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) = Unit
+            override fun onSensorChanged(event: android.hardware.SensorEvent) {
+                if (viewModel.uiState.value.destination != AppDestination.MAIN ||
+                    !getSharedPreferences(com.example.ui.components.BlinkBugPrefs.FILE, MODE_PRIVATE)
+                        .getBoolean(com.example.ui.components.BlinkBugPrefs.SHAKE_ENABLED, true) ||
+                    showBugReportSheet) return
+                val g = android.hardware.SensorManager.GRAVITY_EARTH
+                val x = event.values[0] / g
+                val y = event.values[1] / g
+                val z = event.values[2] / g
+                val strength = kotlin.math.sqrt(x * x + y * y + z * z)
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (strength < 2.6f || now - lastShakeImpulseAt < 170L ||
+                    now - lastShakeTriggerAt < 5000L) return
+                shakeImpulses = if (now - lastShakeImpulseAt <= 1200L) shakeImpulses + 1 else 1
+                lastShakeImpulseAt = now
+                if (shakeImpulses >= 2) {
+                    shakeImpulses = 0
+                    lastShakeTriggerAt = now
+                    showBugReportSheet = true
+                }
+            }
+        }
+        if (manager.registerListener(listener, sensor, android.hardware.SensorManager.SENSOR_DELAY_UI)) {
+            shakeSensorListener = listener
+        }
+    }
+
+    private fun stopBugShakeListener() {
+        val listener = shakeSensorListener ?: return
+        (getSystemService(android.content.Context.SENSOR_SERVICE) as? android.hardware.SensorManager)
+            ?.unregisterListener(listener)
+        shakeSensorListener = null
+    }
 
     private val inAppUpdateLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -321,6 +366,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         playInAppUpdateCoordinator.onResume()
+        startBugShakeListener()
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
             viewModel.refreshIfStale()
             viewModel.verifyPendingPaystackCheckout()
@@ -331,7 +377,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onPause() {
+        stopBugShakeListener()
+        super.onPause()
+    }
+
     override fun onDestroy() {
+        stopBugShakeListener()
         playInAppUpdateCoordinator.close()
         super.onDestroy()
     }
@@ -540,7 +592,8 @@ class MainActivity : ComponentActivity() {
                                         itemsOpenSignal = itemsOpenSignal,
                                         boostOpenSignal = boostOpenSignal,
                                         isAdPrivacyOptionsRequired = adPrivacyOptionsRequired,
-                                        onAdPrivacyOptions = ::showAdPrivacyOptions
+                                        onAdPrivacyOptions = ::showAdPrivacyOptions,
+                                        onReportBug = { showBugReportSheet = true }
                                     )
                                 }
                             }
@@ -555,6 +608,9 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                }
+                if (showBugReportSheet && uiState.destination == AppDestination.MAIN) {
+                    BlinkBugReportSheet(onDismiss = { showBugReportSheet = false })
                 }
             }
         }
@@ -576,7 +632,8 @@ fun MainAppContent(
     itemsOpenSignal: Int,
     boostOpenSignal: Int,
     isAdPrivacyOptionsRequired: Boolean,
-    onAdPrivacyOptions: () -> Unit
+    onAdPrivacyOptions: () -> Unit,
+    onReportBug: () -> Unit
 ) {
     // Auto-hide bottom bar on scroll down and reappear on scroll up
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
@@ -1702,7 +1759,8 @@ fun MainAppContent(
                 onShowToast = { viewModel.showToast(it) },
                 showAdPrivacyOptions = isAdPrivacyOptionsRequired,
                 onAdPrivacyOptions = onAdPrivacyOptions,
-                onSimulateNotification = { viewModel.simulateBackgroundNotification(context) }
+                onSimulateNotification = { viewModel.simulateBackgroundNotification(context) },
+                onReportBug = onReportBug
             )
         }
 

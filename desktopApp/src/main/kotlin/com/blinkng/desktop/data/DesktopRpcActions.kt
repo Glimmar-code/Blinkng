@@ -56,6 +56,37 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
             .put("p_quantity", quantity.coerceAtLeast(1))
             .put("p_boost_multiplier", boostMultiplier ?: JSONObject.NULL))
 
+    // Reporting and rewards are controlled by the same RLS/RPC policies as Android.
+    suspend fun submitBugReport(description: String): JSONObject =
+        rpc("submit_blink_bug_report", JSONObject()
+            .put("p_description", description.trim())
+            .put("p_surface", "windows-desktop")
+            .put("p_app_version", "desktop")
+            .put("p_screenshot", false))
+
+    suspend fun myBugReports(): JSONArray =
+        when (val rows = rpcAny("get_my_blink_bug_reports", JSONObject())) {
+            is JSONArray -> rows
+            else -> JSONArray()
+        }
+
+    suspend fun adminBugReports(): JSONArray {
+        requireAdmin()
+        return when (val rows = rpcAny("admin_list_blink_bug_reports", JSONObject())) {
+            is JSONArray -> rows
+            else -> JSONArray()
+        }
+    }
+
+    suspend fun reviewBugReport(id: String, status: String, rewardCoins: Int, note: String): JSONObject {
+        requireAdmin()
+        return rpc("admin_review_blink_bug_report", JSONObject()
+            .put("p_report_id", id)
+            .put("p_status", status)
+            .put("p_reward_coins", rewardCoins)
+            .put("p_note", note.take(600)))
+    }
+
     suspend fun getStoreState(): JSONObject = rpc("get_blink_store_state", JSONObject())
 
     suspend fun getEconomyStatus(): JSONObject = rpc("get_blink_economy_status", JSONObject())

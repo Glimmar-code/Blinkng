@@ -2549,6 +2549,7 @@ fun SettingsScreen(state: DesktopAppState) {
     val scope = rememberCoroutineScope()
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { ScreenHeader("Settings", "Account, privacy and desktop preferences") }
+        item { DesktopBugReportPanel(state) }
         item { SettingToggle("Private account", local.privateAccount) { local = local.copy(privateAccount = it); saved = false } }
         item { SettingToggle("Show online status", local.showOnlineStatus) { local = local.copy(showOnlineStatus = it); saved = false } }
         item { SettingToggle("Read receipts", local.readReceipts) { local = local.copy(readReceipts = it); saved = false } }

@@ -1063,6 +1063,8 @@ fun AdminProScreen(state: DesktopAppState) {
             return@LazyColumn
         }
 
+        item { DesktopBugReportPanel(state, admin = true) }
+
         item {
             Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 2.dp) {
                 Row(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
