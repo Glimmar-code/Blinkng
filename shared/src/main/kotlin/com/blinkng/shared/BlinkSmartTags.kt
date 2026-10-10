@@ -17,10 +17,13 @@ object BlinkSmartTags {
     }
 
     fun fromText(text: String): List<String> =
-        inline.findAll(text).mapNotNull { normalize(it.groupValues[1]) }.distinct().take(MAX_TAGS).toList()
+        inline.findAll(text).mapNotNull { normalize(it.groupValues[1]) }.distinct().toList()
+
+    fun allTags(text: String, selected: List<String>): List<String> =
+        (selected.mapNotNull(::normalize) + fromText(text)).distinct()
 
     fun merge(text: String, selected: List<String>): List<String> =
-        (selected.mapNotNull(::normalize) + fromText(text)).distinct().take(MAX_TAGS)
+        allTags(text, selected).take(MAX_TAGS)
 
     fun add(selected: List<String>, raw: String): List<String> {
         val tag = normalize(raw) ?: return selected
