@@ -163,7 +163,8 @@ data class BlinkUiState(
     val myLikedPosts: List<FeedPost> = emptyList(),
     val mySavedPosts: List<FeedPost> = emptyList(),
     val profileSurfaceLoadingIds: Set<String> = emptySet(),
-    val profileSurfaceLoadedIds: Set<String> = emptySet()
+    val profileSurfaceLoadedIds: Set<String> = emptySet(),
+    val profileSurfaceFailedIds: Set<String> = emptySet()
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
@@ -1532,7 +1533,7 @@ private suspend fun restoreSupabaseSession() {
                 val hadFeed = before.posts.isNotEmpty() || before.reels.isNotEmpty()
 
                 _uiState.value = before.copy(
-                    isFeedLoading = !hadFeed && !showRefreshIndicator,
+                    isFeedLoading = !hadFeed,
                     isRefreshingContent = showRefreshIndicator,
                     isSyncingContent = true,
                     isConversationsLoading = before.conversations.isEmpty(),
@@ -1585,7 +1586,9 @@ private suspend fun restoreSupabaseSession() {
                         isLiveSupabaseConnected = feedSucceeded,
                         activityPulsePolicy = activityPulsePolicy,
                         isFeedLoading = false,
-                        feedErrorMessage = if (!feedSucceeded) {
+                        feedErrorMessage = if (postsResult.isFailure && normalPosts.isEmpty()) {
+                            "Posts couldn't load right now. Pull to retry."
+                        } else if (!feedSucceeded) {
                             "Couldn't refresh live Supabase data. Check your connection and try again."
                         } else null
                     )
@@ -2524,7 +2527,10 @@ private suspend fun restoreSupabaseSession() {
         if (key.isBlank() || !_uiState.value.isOnline) return
         val current = _uiState.value
         if (key in current.profileSurfaceLoadingIds || (!force && key in current.profileSurfaceLoadedIds)) return
-        _uiState.value = current.copy(profileSurfaceLoadingIds = current.profileSurfaceLoadingIds + key)
+        _uiState.value = current.copy(
+            profileSurfaceLoadingIds = current.profileSurfaceLoadingIds + key,
+            profileSurfaceFailedIds = current.profileSurfaceFailedIds - key
+        )
         viewModelScope.launch {
             try {
                 val resolved = if (profile.id.isNotBlank()) profile
@@ -2538,11 +2544,15 @@ private suspend fun restoreSupabaseSession() {
                     profilePostsByUserId = latest.profilePostsByUserId + mapOf(key to content.posts, resolved.id to content.posts),
                     myLikedPosts = if (isOwner) content.likedPosts else latest.myLikedPosts,
                     mySavedPosts = if (isOwner) content.savedPosts else latest.mySavedPosts,
-                    profileSurfaceLoadedIds = latest.profileSurfaceLoadedIds + key + resolved.id
+                    profileSurfaceLoadedIds = latest.profileSurfaceLoadedIds + key + resolved.id,
+                    profileSurfaceFailedIds = latest.profileSurfaceFailedIds - key - resolved.id
                 )
             } catch (error: Exception) {
                 Log.w(TAG, "PROFILE_SURFACE_LOAD failed", error)
-                showToast("Could not load profile content. Pull to refresh to retry.")
+                _uiState.value = _uiState.value.copy(
+                    profileSurfaceFailedIds = _uiState.value.profileSurfaceFailedIds + key
+                )
+                showToast("Could not load profile content. Tap Retry to try again.")
             } finally {
                 val latest = _uiState.value
                 _uiState.value = latest.copy(profileSurfaceLoadingIds = latest.profileSurfaceLoadingIds - key)
@@ -2997,6 +3007,13 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = current.copy(
                         posts = if (resultPost.isReel || !resultPost.videoUrl.isNullOrBlank()) current.posts else listOf(resultPost) + current.posts,
                         reels = if (resultPost.isReel || !resultPost.videoUrl.isNullOrBlank()) listOf(resultPost) + current.reels else current.reels,
+                        profilePostsByUserId = current.profilePostsByUserId.toMutableMap().apply {
+                            listOf(profile.id, profile.username.trim().lowercase()).filter { it.isNotBlank() }
+                                .forEach { ownerKey ->
+                                    put(ownerKey, (listOf(resultPost) + get(ownerKey).orEmpty()).distinctBy { it.id })
+                                }
+                        },
+                        feedErrorMessage = null,
                         isCreatePostOpen = false,
                         isCreatingPost = false
                     )
