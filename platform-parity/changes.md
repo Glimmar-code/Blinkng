@@ -1,3 +1,15 @@
+## 2026-10-10 — BLINK install/branding repair and Maps removal (Testlab)
+
+PARITY-EXCEPTION: android-launcher-icons-and-maps-removal-20261010
+
+- Android: the approved official B artwork is now the adaptive, legacy/round launcher, package-install and splash mark. Previously the foreground and density icons still used the old purple-eye PNG even after `app_icon.png` was changed. All density-specific icons are built deterministically from the approved source and checked in CI.
+- Android: the Google Maps tile/marker view is removed from the Items Live Location screen, together with its obsolete Maps SDK, manifest metadata, and `MAPS_API_KEY` production prerequisite. Sharing remains opt-in, visible and stoppable; location permission and coordinate reporting are requested only by the existing explicit sharing workflow. A compact location-sharing status and recipient list replace the map.
+- Windows equivalent: Windows already uses the exact same approved B source in `desktopApp/src/main/resources/blink-logo.png`. Windows has no Android adaptive/round launcher, Android splash window or Google Maps Compose dependency; the Windows client has no equivalent map surface to remove. No Windows UI or backend feature is being withheld or changed, and its existing icon remains correct.
+- Web/PWA: previously cached purple-eye logos are replaced with 192px and 512px B-derived PNGs, updated PWA manifest icon sizes and a rotated service-worker cache to avoid stale web branding.
+- Upgrade reliability: the release signing key is compared to the last published production certificate and versionCode cannot decrease; a signed release-smoke APK must install under Android 15's package manager. The disposable CI signing key is never used for public downloads.
+- Firebase configuration and the existing permanent signing keystore remain mandatory to publish a real signed production APK. No fake production credentials, silent uninstall, data-destructive reset or Supabase changes.
+- Promotion: Testlab PR must pass Android quality, release-install, runtime, web, Windows/parity, security and integration gates before merging.
+
 ## 2026-10-09 — Secure Android production Firebase secret setup (Testlab)
 
 - Release CI only: allow the existing base64 Firebase config secret or a protected multiline `GOOGLE_SERVICES_JSON` repository secret, simplifying setup on mobile without embedding credentials in source.
