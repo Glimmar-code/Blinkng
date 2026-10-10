@@ -207,6 +207,7 @@ fun ConnectHubPremiumPanel(
     val matchRepository = remember { ConnectHubRepository() }
     val categoryCatalogRepository = remember { ConnectCategoryCatalogRepository() }
     var directoryCategories by remember { mutableStateOf(ConnectCategoryCatalogRepository.defaultCategories()) }
+    var selectedDirectoryCategory by remember { mutableStateOf<ConnectDirectoryCategory?>(null) }
 
     LaunchedEffect(Unit) {
         directoryCategories = categoryCatalogRepository.fetchCategories()
@@ -498,7 +499,8 @@ fun ConnectHubPremiumPanel(
                         badgeCounts = badgeCounts,
                         onOpenCategory = { targetIndex ->
                             openCategoryIndex = targetIndex
-                        }
+                        },
+                        onOpenDirectory = { selectedDirectoryCategory = it }
                     )
 
                     Spacer(Modifier.height(12.dp))
@@ -648,11 +650,11 @@ fun ConnectHubPremiumPanel(
                                         body = listing.description,
                                         avatarUrl = owner?.avatarUrl.orEmpty(),
                                         online = owner?.onlineNow == true,
-                                        primaryLabel = "Apply",
-                                        onPrimary = { actions.applyRoommate(listing.id) },
+                                        primaryLabel = if (listing.userId == current?.id) "Your listing" else "Apply",
+                                        onPrimary = if (listing.userId == current?.id) null else { { actions.applyRoommate(listing.id) } },
                                         isFollowing = owner != null && owner.id in followingIds,
-                                        onFollow = owner?.let { o -> { toggleFollow(o.id) } },
-                                        onMessage = owner?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
+                                        onFollow = owner?.takeIf { it.id != current?.id }?.let { o -> { toggleFollow(o.id) } },
+                                        onMessage = owner?.takeIf { it.id != current?.id }?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
                                         onOpen = owner?.let { o -> { onProfileClick(o.username) } }
                                     )
                                 }
@@ -703,11 +705,11 @@ fun ConnectHubPremiumPanel(
                                         body = listing.description,
                                         avatarUrl = owner?.avatarUrl.orEmpty(),
                                         online = owner?.onlineNow == true,
-                                        primaryLabel = "Request mentor",
-                                        onPrimary = { actions.requestMentor(listing.id) },
+                                        primaryLabel = if (listing.userId == current?.id) "Your listing" else "Request mentor",
+                                        onPrimary = if (listing.userId == current?.id) null else { { actions.requestMentor(listing.id) } },
                                         isFollowing = owner != null && owner.id in followingIds,
-                                        onFollow = owner?.let { o -> { toggleFollow(o.id) } },
-                                        onMessage = owner?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
+                                        onFollow = owner?.takeIf { it.id != current?.id }?.let { o -> { toggleFollow(o.id) } },
+                                        onMessage = owner?.takeIf { it.id != current?.id }?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
                                         onOpen = owner?.let { o -> { onProfileClick(o.username) } }
                                     )
                                 }
@@ -758,11 +760,11 @@ fun ConnectHubPremiumPanel(
                                             .filter { it.isNotBlank() }.joinToString(" • "),
                                         avatarUrl = owner?.avatarUrl.orEmpty(),
                                         online = owner?.onlineNow == true,
-                                        primaryLabel = "Study together",
-                                        onPrimary = { actions.requestReadingMate(listing.id) },
+                                        primaryLabel = if (listing.userId == current?.id) "Your listing" else "Study together",
+                                        onPrimary = if (listing.userId == current?.id) null else { { actions.requestReadingMate(listing.id) } },
                                         isFollowing = owner != null && owner.id in followingIds,
-                                        onFollow = owner?.let { o -> { toggleFollow(o.id) } },
-                                        onMessage = owner?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
+                                        onFollow = owner?.takeIf { it.id != current?.id }?.let { o -> { toggleFollow(o.id) } },
+                                        onMessage = owner?.takeIf { it.id != current?.id }?.let { o -> { onMessageUser(o.username, o.fullName, o.avatarUrl) } },
                                         onOpen = owner?.let { o -> { onProfileClick(o.username) } }
                                     )
                                 }
@@ -852,7 +854,7 @@ fun ConnectHubPremiumPanel(
                                         avatarUrl = student?.avatarUrl.orEmpty(),
                                         online = student?.onlineNow == true,
                                         primaryLabel = if (currentIsVerifiedAgent) "Apply to help" else null,
-                                        onPrimary = if (currentIsVerifiedAgent) {
+                                        onPrimary = if (currentIsVerifiedAgent && request.studentId != current?.id) {
                                             {
                                                 actions.applyToHousingRequest(
                                                     request.id,
@@ -926,6 +928,17 @@ fun ConnectHubPremiumPanel(
                 }
             }
         }
+    }
+
+    selectedDirectoryCategory?.let { directory ->
+        ConnectDirectoryDetailDialog(
+            category = directory,
+            currentUserId = current?.id.orEmpty(),
+            profiles = profiles,
+            onDismiss = { selectedDirectoryCategory = null },
+            onProfileClick = onProfileClick,
+            onMessageUser = onMessageUser
+        )
     }
 
     if (showUnifiedInbox) {
@@ -2047,7 +2060,8 @@ private fun CategoryTabBar(
     categories: List<ConnectCategory>,
     directoryCategories: List<ConnectDirectoryCategory>,
     badgeCounts: List<Int>,
-    onOpenCategory: (Int) -> Unit
+    onOpenCategory: (Int) -> Unit,
+    onOpenDirectory: (ConnectDirectoryCategory) -> Unit
 ) {
     val visibleDirectory = remember(directoryCategories) {
         directoryCategories.sortedBy { it.displayOrder }.take(20)
@@ -2087,7 +2101,11 @@ private fun CategoryTabBar(
                 val targetCategory = directoryTargetCategory(item)
                 val targetIndex = categories.indexOf(targetCategory).coerceAtLeast(0)
                 val selected = selectedSlug == item.slug
-                val pendingCount = badgeCounts.getOrElse(targetIndex) { 0 }
+                val nativeCategory = item.slug in setOf(
+                    "roommates", "mentors", "reading_mates", "housing_agents",
+                    "accommodation_requests", "game_challenges"
+                )
+                val pendingCount = if (nativeCategory) badgeCounts.getOrElse(targetIndex) { 0 } else 0
 
                 val background by animateColorAsState(
                     targetValue = if (selected) {
@@ -2113,7 +2131,13 @@ private fun CategoryTabBar(
                         .fillMaxWidth()
                         .clickable {
                             selectedSlug = item.slug
-                            onOpenCategory(targetIndex)
+                            // Core flows retain their existing screens. Every other directory row
+                            // owns an independent, persisted category instead of reusing Mentors.
+                            if (nativeCategory) {
+                                onOpenCategory(targetIndex)
+                            } else {
+                                onOpenDirectory(item)
+                            }
                         },
                     shape = RoundedCornerShape(18.dp),
                     color = background,
@@ -2196,7 +2220,7 @@ private fun CategoryTabBar(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .78f)
                         ) {
                             Text(
-                                text = targetCategory.shortLabel,
+                                text = if (nativeCategory) targetCategory.shortLabel else "Explore",
                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 9.5.sp,
@@ -2614,7 +2638,10 @@ private fun HubListingCard(
                 )
             }
 
-            if (onPrimary != null && primaryLabel != null || onMessage != null) {
+            if (onPrimary == null && primaryLabel == "Your listing") {
+                Text("Your listing", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+            }
+            if ((onPrimary != null && primaryLabel != null) || onMessage != null) {
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (onMessage != null) {

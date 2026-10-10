@@ -1126,23 +1126,57 @@ class DesktopSupabaseClient(
 
     suspend fun fetchConnectListings(): List<DesktopConnectListing> = withContext(Dispatchers.IO) {
         val rows = getArray(
-            "/rest/v1/connect_listings?is_active=eq.true&select=id,user_id,listing_type,title,description,university,department,academic_level,location,tags,created_at&order=created_at.desc&limit=100",
+            "/rest/v1/connect_listings?is_active=eq.true&select=id,user_id,listing_type,title,description,university,department,academic_level,location,tags,created_at,category_slug&order=created_at.desc&limit=100",
         )
         (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseConnectListing) }
     }
 
-    suspend fun createConnectListing(type: String, title: String, description: String): DesktopConnectListing = withContext(Dispatchers.IO) {
+    suspend fun createConnectListing(type: String, title: String, description: String, categorySlug: String? = null): DesktopConnectListing = withContext(Dispatchers.IO) {
         require(title.trim().isNotBlank()) { "Title is required." }
         val profile = fetchProfile()
         val body = JSONObject()
-            .put("listing_type", type.ifBlank { "community" })
+            .put("listing_type", type.ifBlank { "campus_guide" })
             .put("title", title.trim())
             .put("description", description.trim())
+            .put("category_slug", categorySlug ?: JSONObject.NULL)
             .put("university", profile.university ?: JSONObject.NULL)
             .put("department", profile.department ?: JSONObject.NULL)
         val created = postArray("/rest/v1/connect_listings", body, prefer = "return=representation")
             .optJSONObject(0) ?: throw IllegalStateException("Connect listing was not returned.")
         parseConnectListing(created)
+    }
+
+    suspend fun applyConnectListing(listingId: String, message: String) = withContext(Dispatchers.IO) {
+        postArray(
+            "/rest/v1/connect_applications",
+            JSONObject().put("listing_id", listingId).put("message", message.take(500)),
+            prefer = "return=minimal",
+        )
+        Unit
+    }
+
+    suspend fun fetchConnectApplications(listingIds: List<String>): List<DesktopConnectApplication> = withContext(Dispatchers.IO) {
+        if (listingIds.isEmpty()) return@withContext emptyList()
+        val rows = getArray(
+            "/rest/v1/connect_applications?select=id,listing_id,applicant_id,message,status" +
+                "&listing_id=in.(${listingIds.joinToString(",")})&order=created_at.desc&limit=80",
+        )
+        (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.map { row ->
+            DesktopConnectApplication(
+                id = row.optString("id"),
+                listingId = row.optString("listing_id"),
+                applicantId = row.optString("applicant_id"),
+                message = row.optString("message"),
+                status = row.optString("status"),
+            )
+        }
+    }
+
+    suspend fun respondConnectApplication(applicationId: String, accept: Boolean) = withContext(Dispatchers.IO) {
+        patch(
+            "/rest/v1/connect_applications?id=eq.${encode(applicationId)}",
+            JSONObject().put("status", if (accept) "accepted" else "declined"),
+        )
     }
 
     suspend fun fetchConnectInbox(): DesktopConnectInbox = withContext(Dispatchers.IO) {
@@ -1541,6 +1575,7 @@ class DesktopSupabaseClient(
         location = row.optNullableString("location"),
         tags = row.optStringList("tags"),
         createdAt = row.optString("created_at"),
+        categorySlug = row.optNullableString("category_slug"),
     )
 
     private fun parseTimestampMillis(rawTimestamp: String?): Long {
