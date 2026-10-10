@@ -1,6 +1,7 @@
 package com.example
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -111,6 +112,8 @@ import com.example.util.startActivitySafely
 import com.blinkng.shared.BlinkStoreProductGroup
 import com.blinkng.shared.BlinkStoreProductGroups
 import com.blinkng.shared.BlinkStoreJourneys
+import com.blinkng.shared.BlinkCoinCheckoutOffer
+import com.blinkng.shared.BlinkCoinCheckoutPolicy
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -154,6 +157,10 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
     var purchaseItem by remember { mutableStateOf<BlinkStoreItem?>(null) }
     var activateRow by remember { mutableStateOf<JSONObject?>(null) }
     var targets by remember { mutableStateOf(JSONObject()) }
+    var economy by remember { mutableStateOf(JSONObject()) }
+    var selectedCoinPack by remember { mutableStateOf<BlinkCoinCheckoutOffer?>(null) }
+    var pendingCoinOrder by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     suspend fun refresh() {
         loading = true
@@ -180,12 +187,24 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
         }
     }
 
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(Unit) {
+        refresh()
+        service.economyStatus()
+            .onSuccess { economy = it }
+            .onFailure { message = "Coin checkout status is temporarily unavailable; purchases remain disabled." }
+    }
 
     val balance = liveWalletBalance ?: snapshot.optLong("balance", 0L)
     val inventory = snapshot.optJSONArray("inventory").objects()
     val equippedIds = snapshot.optJSONArray("equipped").objects().map { it.optString("catalog_id") }.toSet()
     val vipActive = snapshot.optJSONObject("vip")?.optBoolean("active", false) ?: false
+    // Offers are sourced from the authenticated economy RPC; never charge using client defaults.
+    val coinOffers = economy.optJSONArray("coin_packs").objects().mapNotNull { row ->
+        BlinkCoinCheckoutPolicy.validOffer(
+            row.optString("id"), row.optInt("price_ngn"), row.optInt("coins")
+        )
+    }
+    val coinCheckoutEnabled = economy.optBoolean("cash_checkout_enabled", false)
 
     Scaffold(
         topBar = {
@@ -266,6 +285,27 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
                             inventory = inventory,
                             equippedIds = equippedIds,
                             vipActive = vipActive,
+                            coinOffers = coinOffers,
+                            coinCheckoutEnabled = coinCheckoutEnabled,
+                            onCoinPack = { selectedCoinPack = it },
+                            onRefreshCoins = { scope.launch { refresh() } },
+                            onCheckPayment = pendingCoinOrder?.let { orderId ->
+                                {
+                                    scope.launch {
+                                        working = true
+                                        service.verifyPaystackCashOrder(orderId)
+                                            .onSuccess {
+                                                message = "Payment verified and coins credited by the server."
+                                                pendingCoinOrder = null
+                                                refresh()
+                                            }
+                                            .onFailure {
+                                                message = it.message ?: "Payment is not confirmed yet. No coins were charged locally."
+                                            }
+                                        working = false
+                                    }
+                                }
+                            },
                             onOpenGroup = { selectedGroup = it },
                         )
                         BlinkStoreTab.VAULT -> VaultTab(
@@ -329,6 +369,47 @@ internal fun BlinkStoreRoute(onClose: () -> Unit) {
                 }
             }
         }
+    }
+
+    selectedCoinPack?.let { offer ->
+        AlertDialog(
+            onDismissRequest = { selectedCoinPack = null },
+            title = { Text("Buy Blink Coins", fontWeight = FontWeight.Black) },
+            text = {
+                Text("Purchase ${offer.coins} coins for ₦${offer.priceNgn} through secure provider-hosted checkout. Coins are credited only after server payment verification. This is optional.")
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { selectedCoinPack = null }) { Text("Cancel") }
+            },
+            confirmButton = {
+                Button(
+                    enabled = !working && BlinkCoinCheckoutPolicy.canCheckout(coinCheckoutEnabled, offer),
+                    onClick = {
+                        selectedCoinPack = null
+                        scope.launch {
+                            working = true
+                            service.initializePaystackCoinCheckout(offer.id)
+                                .onSuccess { result ->
+                                    val url = result.optString("authorization_url")
+                                    val orderId = result.optString("order_id")
+                                    if (BlinkCoinCheckoutPolicy.trustedHostedCheckoutUrl(url) && orderId.isNotBlank()) {
+                                        pendingCoinOrder = orderId
+                                        context.startActivitySafely(
+                                            Intent(Intent.ACTION_VIEW, Uri.parse(url)),
+                                            "Unable to open secure coin checkout."
+                                        )
+                                        message = "After payment, return to Blink and tap Check payment. No coins are credited until verified."
+                                    } else {
+                                        message = "Checkout returned an invalid destination. No browser was opened."
+                                    }
+                                }
+                                .onFailure { message = it.message ?: "Unable to open coin checkout." }
+                            working = false
+                        }
+                    },
+                ) { Text("Continue securely") }
+            },
+        )
     }
 
     selectedGroup?.let { group ->
@@ -419,6 +500,11 @@ private fun StoreTab(
     inventory: List<JSONObject>,
     equippedIds: Set<String>,
     vipActive: Boolean,
+    coinOffers: List<BlinkCoinCheckoutOffer>,
+    coinCheckoutEnabled: Boolean,
+    onCoinPack: (BlinkCoinCheckoutOffer) -> Unit,
+    onRefreshCoins: () -> Unit,
+    onCheckPayment: (() -> Unit)?,
     onOpenGroup: (BlinkStoreProductGroup) -> Unit,
 ) {
     var category by remember { mutableStateOf("For You") }
@@ -452,6 +538,15 @@ private fun StoreTab(
     ) {
         item {
             PremiumStoreHero(vipActive = vipActive, itemCount = BlinkStoreProductGroups.all.size)
+        }
+        item {
+            BlinkCoinPackShelf(
+                offers = coinOffers,
+                checkoutEnabled = coinCheckoutEnabled,
+                onBuy = onCoinPack,
+                onRefresh = onRefreshCoins,
+                onCheckPayment = onCheckPayment,
+            )
         }
         item {
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -583,6 +678,56 @@ private fun StoreTab(
             }
         }
         item { Spacer(Modifier.height(18.dp)) }
+    }
+}
+
+@Composable
+private fun BlinkCoinPackShelf(
+    offers: List<BlinkCoinCheckoutOffer>,
+    checkoutEnabled: Boolean,
+    onBuy: (BlinkCoinCheckoutOffer) -> Unit,
+    onRefresh: () -> Unit,
+    onCheckPayment: (() -> Unit)?,
+) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Blink Coins", fontWeight = FontWeight.Black, fontSize = 17.sp, modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = onRefresh) { Text("Refresh balance") }
+        }
+        Text(
+            if (checkoutEnabled) "Fixed-price packs • optional purchases • server-verified delivery."
+            else "Coin packs are shown for reference. Secure checkout is not enabled yet.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 11.sp,
+        )
+        if (offers.isNotEmpty()) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                items(offers, key = { it.id }) { pack ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    ) {
+                        Column(Modifier.width(154.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("${pack.coins} coins", fontWeight = FontWeight.Bold)
+                            Text("₦${pack.priceNgn}", fontSize = 13.sp)
+                            if (pack.bonusCoins > 0) Text("${pack.bonusCoins} extra coins included", fontSize = 10.sp)
+                            Button(
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = BlinkCoinCheckoutPolicy.canCheckout(checkoutEnabled, pack),
+                                onClick = { onBuy(pack) },
+                            ) { Text(if (checkoutEnabled) "Buy" else "Unavailable") }
+                        }
+                    }
+                }
+            }
+        }
+        onCheckPayment?.let { check ->
+            OutlinedButton(onClick = check) { Text("Check payment") }
+        }
     }
 }
 
