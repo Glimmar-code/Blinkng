@@ -59,6 +59,9 @@ jobs:
           python3 -m pip install --disable-pip-version-check Pillow==11.3.0
           python3 scripts/sync_android_launcher_assets.py --check
 
+      - name: Verify X-style circular launcher and full BLINK artwork
+        run: python3 scripts/test_launcher_circle.py
+
       - name: Test secure Firebase release config restoration
         shell: bash
         run: bash .github/scripts/test_restore_google_services.sh
