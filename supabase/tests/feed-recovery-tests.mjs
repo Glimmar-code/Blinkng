@@ -64,5 +64,36 @@ export async function feedRecoveryTests(db) {
   assert.equal(await scalar(`select count(*)::int from pg_trigger where tgrelid='public.feed_posts'::regclass and tgname='trg_blink_active_post_count'`),1);
   assert.equal(await scalar(`select posts_count from public.profiles where id='${A}'`), before);
   console.log('PASS counter: insert/update/owner change/delete and repeated migration preserve active post counts');
+
+  // Fallback after a ranked-RPC timeout must be restricted by the same
+  // moderation/audience/expiry checks as ranked discovery.
+  const privacyFix = fs.readFileSync(new URL('../migrations/20261011065000_guard_paginated_fallback_visibility.sql', import.meta.url), 'utf8');
+  await db.exec(privacyFix);
+  const publicPost = '00000000-0000-4000-8000-000000000131';
+  const flaggedPost = '00000000-0000-4000-8000-000000000132';
+  const expiredPost = '00000000-0000-4000-8000-000000000133';
+  const privatePost = '00000000-0000-4000-8000-000000000134';
+  const followersPost = '00000000-0000-4000-8000-000000000135';
+  await reset();
+  await db.exec(`insert into public.feed_posts
+    (id,user_id,text,is_reel,is_active,is_flagged,audience,created_at,creator_post_number,expires_at)
+    values
+    ('${publicPost}','${A}','An older public post',false,true,false,'Everyone',now()-interval '20 days',9121,null),
+    ('${flaggedPost}','${A}','Flagged content',false,true,true,'Everyone',now(),9122,null),
+    ('${expiredPost}','${A}','Expired content',false,true,false,'Everyone',now(),9123,now()-interval '1 day'),
+    ('${privatePost}','${A}','Private content',false,true,false,'Private',now(),9124,null),
+    ('${followersPost}','${A}','Follower content',false,true,false,'Followers',now(),9125,null)`);
+  await signIn(B);
+  const visibleIds = (await db.query("select id from public.get_feed_page(60,null,null,'posts',null)")).rows.map(r => r.id);
+  assert.ok(visibleIds.includes(publicPost), 'older public posts remain available for fallback');
+  assert.ok(visibleIds.includes(followersPost), 'legitimate followers may see follower-only posts');
+  for (const blockedId of [flaggedPost, expiredPost, privatePost]) {
+    assert.ok(!visibleIds.includes(blockedId), 'fallback must not reveal flagged, expired or private content');
+  }
+  await signIn(A);
+  const ownIds = (await db.query("select id from public.get_feed_page(60,null,null,'posts',null)")).rows.map(r => r.id);
+  assert.ok(ownIds.includes(privatePost), 'authors retain access to own private content');
+  assert.ok(!ownIds.includes(flaggedPost), 'moderation still applies to authors');
+  console.log('PASS fallback: legacy pagination enforces audience, expiry and moderation');
   await reset();
 }
