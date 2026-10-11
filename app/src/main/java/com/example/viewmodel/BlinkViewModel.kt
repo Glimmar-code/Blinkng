@@ -135,8 +135,12 @@ data class BlinkUiState(
     val isMessagingRealtimeConnected: Boolean = false,
     val isFeedLoading: Boolean = true,
     val isRefreshingContent: Boolean = false,
+    val isRefreshingHome: Boolean = false,
+    val isRefreshingFollowing: Boolean = false,
+    val isRefreshingReels: Boolean = false,
     val isSyncingContent: Boolean = false,
     val feedErrorMessage: String? = null,
+    val followingFeedErrorMessage: String? = null,
     val isCreatingPost: Boolean = false,
     val pendingMessageCount: Int = 0,
     val blinkCoinBalance: Long = 0L,
@@ -163,7 +167,8 @@ data class BlinkUiState(
     val myLikedPosts: List<FeedPost> = emptyList(),
     val mySavedPosts: List<FeedPost> = emptyList(),
     val profileSurfaceLoadingIds: Set<String> = emptySet(),
-    val profileSurfaceLoadedIds: Set<String> = emptySet()
+    val profileSurfaceLoadedIds: Set<String> = emptySet(),
+    val profileSurfaceFailedIds: Set<String> = emptySet()
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
@@ -1532,11 +1537,12 @@ private suspend fun restoreSupabaseSession() {
                 val hadFeed = before.posts.isNotEmpty() || before.reels.isNotEmpty()
 
                 _uiState.value = before.copy(
-                    isFeedLoading = !hadFeed && !showRefreshIndicator,
+                    isFeedLoading = !hadFeed,
                     isRefreshingContent = showRefreshIndicator,
                     isSyncingContent = true,
                     isConversationsLoading = before.conversations.isEmpty(),
-                    feedErrorMessage = null
+                    feedErrorMessage = null,
+                    followingFeedErrorMessage = null
                 )
 
                 try {
@@ -1585,8 +1591,13 @@ private suspend fun restoreSupabaseSession() {
                         isLiveSupabaseConnected = feedSucceeded,
                         activityPulsePolicy = activityPulsePolicy,
                         isFeedLoading = false,
-                        feedErrorMessage = if (!feedSucceeded) {
+                        feedErrorMessage = if (postsResult.isFailure && normalPosts.isEmpty()) {
+                            "Posts couldn't load right now. Pull to retry."
+                        } else if (!feedSucceeded) {
                             "Couldn't refresh live Supabase data. Check your connection and try again."
+                        } else null,
+                        followingFeedErrorMessage = if (followingResult.isFailure && fetchedFollowing.isEmpty()) {
+                            "Following posts couldn't load right now. Pull to retry."
                         } else null
                     )
 
@@ -1771,6 +1782,89 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /**
+     * Refresh one visible lane without refetching Market, conversations, or leaderboards.
+     * Existing rows stay on screen and in the offline cache if the request fails.
+     */
+    fun refreshFeedLane(isReel: Boolean = false, following: Boolean = false) {
+        val before = _uiState.value
+        if (!before.isOnline) {
+            showToast("You're offline. Showing saved content.")
+            return
+        }
+        if ((following && before.isRefreshingFollowing) ||
+            (!following && isReel && before.isRefreshingReels) ||
+            (!following && !isReel && before.isRefreshingHome)
+        ) return
+
+        _uiState.value = when {
+            following -> before.copy(isRefreshingFollowing = true, followingFeedErrorMessage = null)
+            isReel -> before.copy(isRefreshingReels = true, feedErrorMessage = null)
+            else -> before.copy(isRefreshingHome = true, feedErrorMessage = null)
+        }
+
+        viewModelScope.launch {
+            try {
+                // Lifecycle/background synchronization cannot overwrite this user's refresh.
+                syncMutex.withLock {
+                    val page = when {
+                        following -> postRepository.fetchFollowingFeedPage(limit = 30)
+                        isReel -> postRepository.fetchFeedPage(isReel = true, limit = 30)
+                        else -> postRepository.fetchFeedPage(isReel = false, limit = 30)
+                    }
+                    val now = _uiState.value
+                    _uiState.value = when {
+                        following -> now.copy(
+                            followingPosts = reconcileRefreshedFeed(now.followingPosts, page),
+                            hasMoreFollowingPosts = page.size >= 30,
+                            followingFeedErrorMessage = null
+                        )
+                        isReel -> now.copy(
+                            reels = reconcileRefreshedFeed(now.reels, page),
+                            hasMoreReels = page.size >= 30
+                        )
+                        else -> now.copy(
+                            posts = reconcileRefreshedFeed(now.posts, page),
+                            hasMorePosts = page.size >= 30
+                        )
+                    }
+                    lastSuccessfulSyncAt = SystemClock.elapsedRealtime()
+                    if (!following) {
+                        val updated = _uiState.value
+                        cacheWriteMutex.withLock {
+                            runCatching {
+                                offlineContentStore.replaceFeed(
+                                    updated.posts, updated.reels, updated.myProfile.username
+                                )
+                            }.onFailure { Log.w(TAG, "Manual refresh cache write failed", it) }
+                        }
+                    }
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Manual feed refresh failed", error)
+                _uiState.value = if (following) {
+                    _uiState.value.copy(
+                        followingFeedErrorMessage = "Couldn't refresh Following. Showing existing posts."
+                    )
+                } else {
+                    _uiState.value.copy(
+                        feedErrorMessage = "Couldn't refresh right now. Showing existing posts."
+                    )
+                }
+                showToast("Refresh failed. Please try again.")
+            } finally {
+                val latest = _uiState.value
+                _uiState.value = when {
+                    following -> latest.copy(isRefreshingFollowing = false)
+                    isReel -> latest.copy(isRefreshingReels = false)
+                    else -> latest.copy(isRefreshingHome = false)
+                }
+            }
+        }
+    }
+
     fun refreshContent() = fetchSupabaseData(showRefreshIndicator = true)
 
     fun refreshProgressState() {
@@ -1855,8 +1949,8 @@ private suspend fun restoreSupabaseSession() {
     fun loadMoreFeed(isReel: Boolean) {
         val state = _uiState.value
         if (!state.isOnline) return
-        if (isReel && (state.isLoadingMoreReels || !state.hasMoreReels)) return
-        if (!isReel && (state.isLoadingMorePosts || !state.hasMorePosts)) return
+        if (isReel && (state.isLoadingMoreReels || state.isRefreshingReels || !state.hasMoreReels)) return
+        if (!isReel && (state.isLoadingMorePosts || state.isRefreshingHome || !state.hasMorePosts)) return
 
         val current = if (isReel) state.reels else state.posts
         val last = current.lastOrNull() ?: return
@@ -1907,7 +2001,7 @@ private suspend fun restoreSupabaseSession() {
 
     fun loadMoreFollowingFeed() {
         val state = _uiState.value
-        if (!state.isOnline || state.isLoadingMoreFollowingPosts || !state.hasMoreFollowingPosts) return
+        if (!state.isOnline || state.isLoadingMoreFollowingPosts || state.isRefreshingFollowing || !state.hasMoreFollowingPosts) return
         val last = state.followingPosts.lastOrNull() ?: return
         if (last.createdAt.isBlank()) return
 
@@ -2524,25 +2618,47 @@ private suspend fun restoreSupabaseSession() {
         if (key.isBlank() || !_uiState.value.isOnline) return
         val current = _uiState.value
         if (key in current.profileSurfaceLoadingIds || (!force && key in current.profileSurfaceLoadedIds)) return
-        _uiState.value = current.copy(profileSurfaceLoadingIds = current.profileSurfaceLoadingIds + key)
+        _uiState.value = current.copy(
+            profileSurfaceLoadingIds = current.profileSurfaceLoadingIds + key,
+            profileSurfaceFailedIds = current.profileSurfaceFailedIds - key
+        )
         viewModelScope.launch {
             try {
                 val resolved = if (profile.id.isNotBlank()) profile
                     else profileRepository.fetchByUsername(profile.username) ?: profile
                 if (resolved.id.isBlank()) return@launch
-                val content = supabaseService.fetchProfileSurfaceContent(resolved.id)
+                // Show actual profile posts as soon as one short request completes.
+                // The liked/saved collections are optional secondary requests and
+                // must not hold the entire Posts/Reels timeline hostage.
+                val posts = supabaseService.fetchProfilePostsOnly(resolved.id)
                 if (supabaseService.getCurrentUserId() != ownerId) return@launch
                 val latest = _uiState.value
                 val isOwner = resolved.id == ownerId
                 _uiState.value = latest.copy(
-                    profilePostsByUserId = latest.profilePostsByUserId + mapOf(key to content.posts, resolved.id to content.posts),
-                    myLikedPosts = if (isOwner) content.likedPosts else latest.myLikedPosts,
-                    mySavedPosts = if (isOwner) content.savedPosts else latest.mySavedPosts,
-                    profileSurfaceLoadedIds = latest.profileSurfaceLoadedIds + key + resolved.id
+                    profilePostsByUserId = latest.profilePostsByUserId + mapOf(key to posts, resolved.id to posts),
+                    profileSurfaceLoadedIds = latest.profileSurfaceLoadedIds + key + resolved.id,
+                    profileSurfaceFailedIds = latest.profileSurfaceFailedIds - key - resolved.id
                 )
+                if (isOwner) {
+                    runCatching { supabaseService.fetchProfileSurfaceContent(resolved.id) }
+                        .onSuccess { content ->
+                            if (supabaseService.getCurrentUserId() != ownerId) return@onSuccess
+                            val current = _uiState.value
+                            _uiState.value = current.copy(
+                                profilePostsByUserId = current.profilePostsByUserId +
+                                    mapOf(key to content.posts, resolved.id to content.posts),
+                                myLikedPosts = content.likedPosts,
+                                mySavedPosts = content.savedPosts
+                            )
+                        }
+                        .onFailure { Log.w(TAG, "Optional profile collections sync failed", it) }
+                }
             } catch (error: Exception) {
                 Log.w(TAG, "PROFILE_SURFACE_LOAD failed", error)
-                showToast("Could not load profile content. Pull to refresh to retry.")
+                _uiState.value = _uiState.value.copy(
+                    profileSurfaceFailedIds = _uiState.value.profileSurfaceFailedIds + key
+                )
+                showToast("Could not load profile content. Tap Retry to try again.")
             } finally {
                 val latest = _uiState.value
                 _uiState.value = latest.copy(profileSurfaceLoadingIds = latest.profileSurfaceLoadingIds - key)
@@ -2997,6 +3113,13 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = current.copy(
                         posts = if (resultPost.isReel || !resultPost.videoUrl.isNullOrBlank()) current.posts else listOf(resultPost) + current.posts,
                         reels = if (resultPost.isReel || !resultPost.videoUrl.isNullOrBlank()) listOf(resultPost) + current.reels else current.reels,
+                        profilePostsByUserId = current.profilePostsByUserId.toMutableMap().apply {
+                            listOf(profile.id, profile.username.trim().lowercase()).filter { it.isNotBlank() }
+                                .forEach { ownerKey ->
+                                    put(ownerKey, (listOf(resultPost) + get(ownerKey).orEmpty()).distinctBy { it.id })
+                                }
+                        },
+                        feedErrorMessage = null,
                         isCreatePostOpen = false,
                         isCreatingPost = false
                     )

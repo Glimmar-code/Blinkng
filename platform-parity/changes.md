@@ -1,3 +1,52 @@
+## 2026-10-11 — Verify APK delivery before publishing
+
+- Android packaging exception: APK archive integrity and signed-build checksum are checked before upload and again after downloading the draft release from GitHub. Missing checksums, mismatched build identity, corrupt archives and altered metadata prevent promotion to latest.
+- Public release assets are never overwritten, protecting interrupted downloads from mixing different bytes. A checksum file accompanies each future release.
+- Windows: no runtime, UI or backend changes; APK delivery is Android-only. Existing Windows release behavior is preserved.
+- Limits: this verifies GitHub delivery, not every browser/network/storage path to a user's device. Signature verification remains in the signed production build; this gate enforces byte equality to that artifact. Failed drafts stay private for diagnosis.
+
+## 2026-10-10 — Server-gated Blink Coin checkout shelf (Testlab)
+
+- Server-catalog correctness: Android now intersects its decorative built-in catalog with active SKUs/prices returned by `get_blink_store_state`; missing items cannot be sold. Windows now hides collections/identity looks with no live backend item. This avoids showing nonexistent purchasable items during incomplete server catalog migrations.\n- Shared: `BlinkCoinCheckoutPolicy` validates fixed-price server-issued coin packs, blocks checkout when the authenticated backend reports cash checkout disabled, and permits only Paystack's expected HTTPS hosted checkout URL. No wallet balance or entitlements are modified in client code.
+- Android and Windows: show the same optional coin pack prices from `get_blink_economy_status`, with clear paid-checkout disabled states. A deliberate confirmation starts authenticated `paystack-initialize`, then the provider-hosted checkout; returning users can explicitly ask `paystack-verify` to reconcile that purchase before refreshing balance.
+- Android distribution guard: Play-installed builds never link to Paystack for digital coins; Play Billing or an expressly permitted enrolled alternative is required before in-app purchase can be enabled there. Website/sideload builds remain independently gated by the backend setting.\n- Backend: existing server verification/webhook contract retained. No production database writes, migrations, secret keys in clients, automatic purchases, or counterfeit balance changes. Current Blink production database has `cash_checkout_enabled=false`, so cash purchase buttons remain disabled until payment keys/provider review and staged tests are complete.
+- Android safety/Windows parity: tests cover invalid checkout URLs, corrupt pack prices, and disabled purchase gate; cash purchase availability must remain false on RPC failures.
+
+## 2026-10-10 — Private feed permissions and active post counters (Testlab)
+
+- Root cause: signed-in users have no USAGE on the private PostgreSQL schema, while public.get_feed_page depended on its private owner-check routine. Preserve locked-down private schema; make only the scoped, authenticated-only feed RPC SECURITY DEFINER with an explicit auth.uid() guard and existing filtering.
+- Profiles posts_count was zero even for authors with active posts because the old sync function had no trigger. Reattach a narrow insert/delete/active-status/author trigger; perform one idempotent backfill based exclusively on active posts/reels.
+- The author's 16 inactive, textless 2026-09-01 rows are preserved as inactive. This migration never deletes, reactivates, or hides any feed row; it updates only the profile counters and permissions on the specific feed RPC.
+- Android + Windows: the corrected shared backend returns following/Home feed rows and consistent counters to both clients; Android profile Posts counts the actual hydrated active non-reels.
+- Production protection: verify migration in disposable PostgreSQL via supabase/tests/feed-recovery-tests.mjs; promote with Supabase preview when available, then verify role permissions and actual profiles counters before releasing.
+- Rollback: remove the new active-post counter trigger and restore the original invoker permissions of get_feed_page; retain prior rows and recompute counts from active posts if necessary.
+
+## 2026-10-10 — Preview-first Store journeys and BLINK Identity looks (Testlab)
+
+- Shared: `BlinkStoreJourneys` introduces eight honest, goal-based discovery routes backed exclusively by existing Store groups and three curated identity looks. School-specific, dated seasonal and game SKUs stay explicitly planned; those are not available for purchase.
+- Android: adds a horizontal goal filter and browseable Identity lookbook above the same 25/70 grouped catalog. All selection leads to the existing preview, confirmation, purchase and Collection flow.
+- Windows: mirrors the same shared journeys/lookbook and desktop-appropriate horizontal layouts; identical group and catalog IDs, no fake data or new purchase endpoints.
+- No server migrations, new purchases, checkout activation, wallet/ranking/verification changes or misleading discount claims. This PR stages discovery only; detailed remaining rollout requirements live in `docs/coin-economy-expansion-v1.md`.
+- Validate the shared mapping tests, Android compilation/lint/UI, Windows parity, and manual previews before any production promotion.
+
+## 2026-10-10 — Feed, publishing, profile, and long-swipe reliability (Testlab)
+
+- Android: Home uses loading placeholders until a real post-fetch completes and distinguishes failed fetches from confirmed empty results. Existing Room cache remains visible while refreshing. Feed author enrichment reads only explicitly selected public profile fields and no longer relies on the absent `get_public_profiles_by_ids` RPC.
+- Android/Windows shared backend semantics: a confirmed `201 Created` with a returned post is a published post; a later feed-refresh failure must not reclassify it as an unsuccessful publish. Android now stops re-fetching the whole feed inside the post-create call. Windows already returns the inserted row directly rather than waiting for a global feed refresh.
+- Android: profile Posts/Reels hydrate independently before optional liked/saved collections and show retry or placeholders while loading. Windows profile content remains a separate request; neither platform shows mock posts.
+- Android: Home utility surfaces (Rank, Game, Store, Boost, Drops, Items) preserve their downward-swipe gesture, but the gesture cannot dismiss the full sheet until the pointer travels 58% of the window height. Inner scroll remains independent. Explicit close/back actions remain immediate.
+- PARITY-EXCEPTION: android-compose-bottom-sheet-long-swipe — Material 3 modal-sheet swipe physics is Android-only; Windows uses desktop-native window/panel navigation with explicit close affordances.
+- Backend: no live schema, RLS, function, or data mutations were made. Missing/unhealthy PostgREST RPCs and inaccurate stored post counters require separate preview/staging validation before any production migration.
+- Validation: GitHub Android unit tests/build/lint and desktop build must be green before production merge.
+
+## 2026-10-10 — Home and Reels manual refresh (Testlab only)
+
+- Android: Home For You, Home Following, Reels For You, and Reels Following now have isolated refresh requests. Manual refresh queries existing Supabase feed RPCs only, never reloads Market, messages or leaderboards. Per-lane progress coalesces repeated taps; requests are serialized against background syncs, cached rows survive failures, and fresh pages retain deduplicated paginated content.
+- Android UX: Home has a pinned accessible refresh action beside Filter; both Home and Reels have 96dp intentional pull thresholds. Reels accepts pull gestures only at page zero, does not intercept normal vertical paging, and has an explicit refresh action. Existing BLINK purple loading indicator and first-load skeletons are retained.
+- Windows parity: Home refresh and Reels refresh use the same backend feed contract, preserve the visible list on network errors, and prevent duplicate refresh button requests. Desktop uses its native button-based gesture alternative.
+- No changes to Supabase schema/RLS/RPC, ranking, qualified views, ads, rewards, authentication, or post publishing.
+- Validation: branch `Testlab-smart-home-reels-refresh-20261010` is unpromoted. Require Android compile/unit checks, Windows build, and on-device verification of pull gestures, paged feeds, offline cache, deep-linked Reels and both Following lanes before promoting to `main`.
+
 ## 2026-10-10 — Official BLINK launcher and install reliability
 
 PARITY-EXCEPTION: android-adaptive-launcher-and-package-installer
@@ -506,3 +555,5 @@ Validation: Isolated PostgreSQL checks prove private circles/members stay hidden
 - Feed header, tabs, utility row and create controls now use theme surfaces/text as well as the post cards; removed fixed header glow. CI uploads actual-screen captures for visual review.
 
 - Follow-up CI: Windows build/installer and secret checks passed. Android compiled and ran 123 tests; only the new dialog test failed waiting for JVM UI idleness. Kept its assertions and moved that real-window/keyboard interaction to Android instrumentation, with the runtime workflow now including isolated Testlab PRs. PNG recording is explicitly enabled in the Android test command (the previous upload contained reports but no screenshots). New checks must pass before promotion.
+
+- Visual QA follow-up: Android feed skeletons now use theme background and highlight colors in light and dark appearances. Windows uses its existing theme-colored loading indicator rather than Android skeleton cards. Previous Android, emulator, Windows and secret gates passed; latest-main integration is revalidated before promotion.

@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import com.blinkng.shared.BlinkSearchPhase3
+import com.blinkng.shared.BlinkSmartTags
 import com.example.data.models.DiscoveryCapabilities
 import com.example.data.models.DiscoveryCursor
 import com.example.data.models.DiscoveryResult
@@ -35,6 +36,28 @@ class SearchDiscoveryRepository {
         .writeTimeout(25, TimeUnit.SECONDS)
         .build()
 
+    /** Returns real backend trends; no fabricated tags while migrations are pending. */
+    suspend fun trendingTags(university: String? = null, limit: Int = 40): List<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val body = JSONObject()
+                    .put("p_limit", limit.coerceIn(1, 50))
+                    .put("p_university", university?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
+                val rows = JSONArray(rpc("blink_trending_tags", body))
+                (0 until rows.length()).mapNotNull { i ->
+                    BlinkSmartTags.normalize(rows.optJSONObject(i)?.optString("tag").orEmpty())
+                }.distinct()
+            }.getOrDefault(emptyList())
+        }
+
+    /** One recorded search per user/tag/hour; an unavailable backend cannot break Search. */
+    suspend fun recordTagSearch(rawQuery: String) = withContext(Dispatchers.IO) {
+        if (!rawQuery.trim().startsWith("#")) return@withContext
+        val tag = BlinkSmartTags.normalize(rawQuery) ?: return@withContext
+        runCatching { rpc("blink_record_tag_search", JSONObject().put("p_tag", tag)) }
+        Unit
+    }
+
     suspend fun fetchCapabilities(): Result<DiscoveryCapabilities> = withContext(Dispatchers.IO) {
         runCatching {
             val raw = rpc(BlinkSearchPhase3.CAPABILITIES_RPC, JSONObject())
@@ -67,7 +90,12 @@ class SearchDiscoveryRepository {
     suspend fun search(request: DiscoverySearchRequest): Result<DiscoverySearchPage> = withContext(Dispatchers.IO) {
         runCatching {
             val body = JSONObject().apply {
-                put("p_query", request.query.trim())
+                put(
+                    "p_query",
+                    if (request.query.trim().startsWith("#"))
+                        BlinkSmartTags.normalize(request.query) ?: request.query.trim()
+                    else request.query.trim()
+                )
                 put("p_types", JSONArray(request.types.map { it.backendValue }))
                 put("p_limit", request.limit.coerceIn(1, 60))
                 put("p_following_only", request.followingOnly)
@@ -81,6 +109,7 @@ class SearchDiscoveryRepository {
                 putNullable("p_cursor_id", cursor?.id)
                 putNullable("p_as_of", cursor?.asOf)
             }
+            recordTagSearch(request.query)
             val rows = JSONArray(rpc(BlinkSearchPhase3.DISCOVERY_RPC, body))
             pageFromRows(rows, request.limit)
         }

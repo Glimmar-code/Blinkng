@@ -85,6 +85,30 @@ class DesktopRpcActions(private val client: DesktopSupabaseClient) {
     suspend fun createCoinPurchaseOrder(packId: String): JSONObject =
         rpc("create_blink_coin_purchase_order", JSONObject().put("p_pack_id", packId.trim()))
 
+    /**
+     * Only starts provider-hosted checkout for server-configured fixed-price packs.
+     * The provider webhook/server verification, never this client, fulfills coins.
+     */
+    suspend fun initializePaystackCoinCheckout(packId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(packId.matches(Regex("coins_[0-9]+"))) { "Choose a valid coin pack." }
+        requireSessionUserId()
+        val body = JSONObject().put("kind", "COIN_PACK").put("pack_id", packId)
+        val request = requestBuilder("/functions/v1/paystack-initialize")
+            .post(body.toString().toRequestBody(jsonMedia))
+            .build()
+        JSONObject(execute(request))
+    }
+
+    suspend fun verifyPaystackCoinCheckout(orderId: String): JSONObject = withContext(Dispatchers.IO) {
+        require(orderId.isNotBlank()) { "Payment order is missing." }
+        requireSessionUserId()
+        val body = JSONObject().put("order_id", orderId.trim())
+        val request = requestBuilder("/functions/v1/paystack-verify")
+            .post(body.toString().toRequestBody(jsonMedia))
+            .build()
+        JSONObject(execute(request))
+    }
+
     suspend fun activateStoreItem(inventoryId: String, targetId: String? = null): JSONObject =
         rpc("activate_blink_item", JSONObject()
             .put("p_inventory_id", inventoryId)

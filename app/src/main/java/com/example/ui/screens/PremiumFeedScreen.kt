@@ -43,7 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -281,8 +281,13 @@ fun PremiumFeedScreen(
     onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit = { _, _, _, _, _ -> },
     isLoading: Boolean = false,
     isRefreshing: Boolean = false,
+    isRefreshingFollowing: Boolean = isRefreshing,
+    isRefreshingReels: Boolean = isRefreshing,
     errorMessage: String? = null,
+    followingErrorMessage: String? = null,
     onRefresh: () -> Unit = {},
+    onRefreshFollowing: () -> Unit = onRefresh,
+    onRefreshReels: () -> Unit = onRefresh,
     onRetry: () -> Unit = {},
     onViewedPost: (String) -> Unit = {},
     onVotePoll: (postId: String, optionId: String) -> Unit = { _, _ -> },
@@ -371,9 +376,9 @@ fun PremiumFeedScreen(
             laneIndex = feedLane,
             followedAuthorKeys = followedAuthorKeys,
             isLoading = isLoading,
-            isRefreshing = isRefreshing,
+            isRefreshing = if (feedLane == 1) isRefreshingFollowing else isRefreshing,
             isServerConnected = isServerConnected,
-            errorMessage = errorMessage,
+            errorMessage = if (feedLane == 1) followingErrorMessage else errorMessage,
             hasMorePosts = if (feedLane == 1) hasMoreFollowingPosts else hasMorePosts,
             hasMoreReels = hasMoreReels,
             isLoadingMorePosts = if (feedLane == 1) isLoadingMoreFollowingPosts else isLoadingMorePosts,
@@ -399,8 +404,8 @@ fun PremiumFeedScreen(
             onStoreClick = onStoreClick,
             onBoostClick = onBoostClick,
             onDropsClick = onDropsClick,
-            onRefresh = onRefresh,
-            onRetry = onRetry,
+            onRefresh = if (feedLane == 1) onRefreshFollowing else onRefresh,
+            onRetry = if (feedLane == 1) onRefreshFollowing else onRetry,
             onViewedPost = onViewedPost,
             onVotePoll = onVotePoll,
             onLoadMorePosts = if (feedLane == 1) onLoadMoreFollowingPosts else onLoadMorePosts,
@@ -442,9 +447,11 @@ fun PremiumFeedScreen(
             onToggleTheme = onToggleTheme,
             isServerConnected = isServerConnected,
             isLoading = isLoading,
-            isRefreshing = isRefreshing,
+            isRefreshing = isRefreshingReels,
+            isRefreshingFollowing = isRefreshingFollowing,
             errorMessage = errorMessage,
-            onRefresh = onRefresh,
+            onRefresh = onRefreshReels,
+            onRefreshFollowing = onRefreshFollowing,
             onRetry = onRetry,
             onViewedPost = onViewedPost,
             onVotePoll = onVotePoll,
@@ -1235,7 +1242,9 @@ private fun PremiumHomeFeed(
                         selectedIndex = laneIndex,
                         onForYouClick = { onLaneChanged(0) },
                         onFollowingClick = { onLaneChanged(1) },
-                        onFilterClick = { filterMenuVisible = true }
+                        onFilterClick = { filterMenuVisible = true },
+                        onRefreshClick = { if (!isRefreshing) latestRefresh() },
+                        isRefreshing = isRefreshing
                     )
                     Box(modifier = Modifier.align(Alignment.TopEnd)) {
                         DropdownMenu(
@@ -1260,27 +1269,26 @@ private fun PremiumHomeFeed(
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.72f))
 
-                PullToRefreshBox(
-                    isRefreshing = isRefreshing,
-                    onRefresh = {
-                        headerOffsetPx.value = 0f
-                        headerScrollDirection[0] = 0
-                        pendingDirectionDistancePx[0] = 0f
-                        lastFlingVelocityY[0] = 0f
-                        fabExpanded = true
-                        onBottomBarVisibilityChange(true)
-                        latestRefresh()
-                    },
-                    state = pullState,
-                    modifier = Modifier.weight(1f),
-                    indicator = {
-                        PremiumPullRefreshIndicator(
-                            state = pullState,
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .pullToRefresh(
                             isRefreshing = isRefreshing,
-                            darkSurface = true,
-                            modifier = Modifier.align(Alignment.TopCenter)
+                            onRefresh = {
+                                if (!isRefreshing) {
+                                    headerOffsetPx.value = 0f
+                                    headerScrollDirection[0] = 0
+                                    pendingDirectionDistancePx[0] = 0f
+                                    lastFlingVelocityY[0] = 0f
+                                    fabExpanded = true
+                                    onBottomBarVisibilityChange(true)
+                                    latestRefresh()
+                                }
+                            },
+                            state = pullState,
+                            enabled = !isRefreshing,
+                            threshold = 96.dp
                         )
-                    }
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
@@ -1298,6 +1306,14 @@ private fun PremiumHomeFeed(
                             isLoading && stableRankedPosts.isEmpty() -> {
                                 items(4, key = { "skeleton:$it" }) {
                                     PremiumFeedSkeleton()
+                                }
+                            }
+
+                            // A failed first load is not an empty feed. Keep the
+                            // user on a recoverable state instead of inviting a new post.
+                            !errorMessage.isNullOrBlank() && stableRankedPosts.isEmpty() && isOnline -> {
+                                item(key = "first_load_error") {
+                                    PremiumFeedRefreshNotice(errorMessage, onRetry)
                                 }
                             }
 
@@ -1501,6 +1517,12 @@ private fun PremiumHomeFeed(
                             )
                         }
                     }
+                    PremiumPullRefreshIndicator(
+                        state = pullState,
+                        isRefreshing = isRefreshing,
+                        darkSurface = true,
+                        modifier = Modifier.align(Alignment.TopCenter)
+                    )
                 }
 
                 AnimatedVisibility(
@@ -1798,11 +1820,11 @@ private fun PremiumFilterItem(
 @Composable
 private fun PremiumFeedSkeleton() {
     val base = MaterialTheme.colorScheme.surfaceVariant
-    val highlight = Color.White.copy(alpha = 0.08f)
+    val highlight = MaterialTheme.colorScheme.surface
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(0.dp),
-        color = Color.Black
+        color = MaterialTheme.colorScheme.background
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

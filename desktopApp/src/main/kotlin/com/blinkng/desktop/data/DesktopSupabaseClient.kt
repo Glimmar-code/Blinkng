@@ -1,5 +1,6 @@
 package com.blinkng.desktop.data
 
+import com.blinkng.shared.BlinkSmartTags
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkBackendDefaults
@@ -619,13 +620,35 @@ class DesktopSupabaseClient(
         true
     }
 
+    suspend fun trendingTags(university: String? = null, limit: Int = 40): List<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val body = JSONObject()
+                    .put("p_limit", limit.coerceIn(1, 50))
+                    .put("p_university", university?.takeIf(String::isNotBlank) ?: JSONObject.NULL)
+                val rows = postArray("/rest/v1/rpc/blink_trending_tags", body, prefer = "return=representation")
+                (0 until rows.length()).mapNotNull { i ->
+                    BlinkSmartTags.normalize(rows.optJSONObject(i)?.optString("tag").orEmpty())
+                }.distinct()
+            }.getOrDefault(emptyList())
+        }
+
+    private fun recordTagSearch(query: String) {
+        val tag = if (query.startsWith("#")) BlinkSmartTags.normalize(query) else null
+        if (tag != null) runCatching {
+            postArray("/rest/v1/rpc/blink_record_tag_search", JSONObject().put("p_tag", tag), prefer = "return=minimal")
+        }
+    }
+
     suspend fun fetchFeed(reelsOnly: Boolean = false, search: String? = null): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
         val filter = buildString {
             append("/rest/v1/feed_posts?select=id,user_id,text,caption,image_url,video_url,images,hashtags,like_count,comment_count,share_count,repost_count,view_count,is_reel,is_pinned,created_at")
             append("&is_active=eq.true")
             if (reelsOnly) append("&is_reel=eq.true")
             search?.trim()?.takeIf { it.isNotBlank() }?.let { q ->
-                append("&or=${encode("(text.ilike.*$q*,caption.ilike.*$q*)")}")
+                val tag = if (q.startsWith("#")) BlinkSmartTags.normalize(q) else null
+                if (tag != null) append("&tags=cs.${encode("{$tag}")}")
+                else append("&or=${encode("(text.ilike.*$q*,caption.ilike.*$q*)")}")
             }
             append("&order=created_at.desc&limit=60")
         }
@@ -652,6 +675,7 @@ class DesktopSupabaseClient(
         text: String,
         isReel: Boolean = false,
         videoUrl: String? = null,
+        tags: List<String> = emptyList(),
         audience: String = "Everyone",
         category: String = "Campus Life",
         location: String? = null,
@@ -663,6 +687,8 @@ class DesktopSupabaseClient(
     ): DesktopFeedPost = withContext(Dispatchers.IO) {
         val active = requireSession()
         val clean = text.trim()
+        val effectiveTags = BlinkSmartTags.allTags(clean, tags)
+        require(effectiveTags.size in 1..BlinkSmartTags.MAX_TAGS) { "Include 1–5 relevant hashtags." }
         require(clean.isNotBlank() || !videoUrl.isNullOrBlank()) { "Write something or attach media." }
 
         val requestId = runCatching { UUID.fromString(clientRequestId.trim()).toString() }
@@ -687,6 +713,8 @@ class DesktopSupabaseClient(
             .put("is_reel", isReel)
             .put("type", if (isReel) "video" else "text")
             .put("creator_post_number", nextNumber)
+            .put("tags", JSONArray(effectiveTags))
+            .put("hashtags", JSONArray(effectiveTags))
             .put("audience", audience)
             .put("category", category)
             .put("allow_comments", allowComments)
@@ -698,7 +726,11 @@ class DesktopSupabaseClient(
 
         val created = postArray("/rest/v1/feed_posts", body, prefer = "return=representation")
             .optJSONObject(0) ?: throw IllegalStateException("Post was created but no row was returned.")
-        parseFeedPost(created, fetchProfile(active.userId), false)
+        // A follow-up author refresh is optional. Once the server returns the
+        // inserted row, a temporary profile timeout must not turn this into a
+        // false "post failed" message on Windows either.
+        val author = runCatching { fetchProfile(active.userId) }.getOrNull()
+        parseFeedPost(created, author, false)
     }
 
     suspend fun toggleLike(postId: String): Boolean = withContext(Dispatchers.IO) {
@@ -803,6 +835,7 @@ class DesktopSupabaseClient(
 
     suspend fun search(query: String): DesktopSearchResults = withContext(Dispatchers.IO) {
         val clean = query.trim()
+        recordTagSearch(clean)
         if (clean.isBlank()) return@withContext DesktopSearchResults(emptyList(), emptyList())
 
         val response = postObject(
@@ -1093,23 +1126,57 @@ class DesktopSupabaseClient(
 
     suspend fun fetchConnectListings(): List<DesktopConnectListing> = withContext(Dispatchers.IO) {
         val rows = getArray(
-            "/rest/v1/connect_listings?is_active=eq.true&select=id,user_id,listing_type,title,description,university,department,academic_level,location,tags,created_at&order=created_at.desc&limit=100",
+            "/rest/v1/connect_listings?is_active=eq.true&select=id,user_id,listing_type,title,description,university,department,academic_level,location,tags,created_at,category_slug&order=created_at.desc&limit=100",
         )
         (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseConnectListing) }
     }
 
-    suspend fun createConnectListing(type: String, title: String, description: String): DesktopConnectListing = withContext(Dispatchers.IO) {
+    suspend fun createConnectListing(type: String, title: String, description: String, categorySlug: String? = null): DesktopConnectListing = withContext(Dispatchers.IO) {
         require(title.trim().isNotBlank()) { "Title is required." }
         val profile = fetchProfile()
         val body = JSONObject()
-            .put("listing_type", type.ifBlank { "community" })
+            .put("listing_type", type.ifBlank { "campus_guide" })
             .put("title", title.trim())
             .put("description", description.trim())
+            .put("category_slug", categorySlug ?: JSONObject.NULL)
             .put("university", profile.university ?: JSONObject.NULL)
             .put("department", profile.department ?: JSONObject.NULL)
         val created = postArray("/rest/v1/connect_listings", body, prefer = "return=representation")
             .optJSONObject(0) ?: throw IllegalStateException("Connect listing was not returned.")
         parseConnectListing(created)
+    }
+
+    suspend fun applyConnectListing(listingId: String, message: String) = withContext(Dispatchers.IO) {
+        postArray(
+            "/rest/v1/connect_applications",
+            JSONObject().put("listing_id", listingId).put("message", message.take(500)),
+            prefer = "return=minimal",
+        )
+        Unit
+    }
+
+    suspend fun fetchConnectApplications(listingIds: List<String>): List<DesktopConnectApplication> = withContext(Dispatchers.IO) {
+        if (listingIds.isEmpty()) return@withContext emptyList()
+        val rows = getArray(
+            "/rest/v1/connect_applications?select=id,listing_id,applicant_id,message,status" +
+                "&listing_id=in.(${listingIds.joinToString(",")})&order=created_at.desc&limit=80",
+        )
+        (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.map { row ->
+            DesktopConnectApplication(
+                id = row.optString("id"),
+                listingId = row.optString("listing_id"),
+                applicantId = row.optString("applicant_id"),
+                message = row.optString("message"),
+                status = row.optString("status"),
+            )
+        }
+    }
+
+    suspend fun respondConnectApplication(applicationId: String, accept: Boolean) = withContext(Dispatchers.IO) {
+        patch(
+            "/rest/v1/connect_applications?id=eq.${encode(applicationId)}",
+            JSONObject().put("status", if (accept) "accepted" else "declined"),
+        )
     }
 
     suspend fun fetchConnectInbox(): DesktopConnectInbox = withContext(Dispatchers.IO) {
@@ -1508,6 +1575,7 @@ class DesktopSupabaseClient(
         location = row.optNullableString("location"),
         tags = row.optStringList("tags"),
         createdAt = row.optString("created_at"),
+        categorySlug = row.optNullableString("category_slug"),
     )
 
     private fun parseTimestampMillis(rawTimestamp: String?): Long {

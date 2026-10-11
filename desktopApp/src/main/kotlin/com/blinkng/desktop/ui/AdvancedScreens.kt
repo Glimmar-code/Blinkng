@@ -61,6 +61,11 @@ import com.blinkng.desktop.data.DesktopRpcActions
 import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.shared.BlinkStoreProductGroup
 import com.blinkng.shared.BlinkStoreProductGroups
+import com.blinkng.shared.BlinkStoreJourneys
+import com.blinkng.shared.BlinkCoinCheckoutOffer
+import com.blinkng.shared.BlinkCoinCheckoutPolicy
+import java.awt.Desktop
+import java.net.URI
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -72,6 +77,9 @@ fun StoreProScreen(state: DesktopAppState) {
     var inventory by remember { mutableStateOf<List<DesktopInventoryItem>>(emptyList()) }
     var balance by remember { mutableStateOf(0L) }
     var serverState by remember { mutableStateOf<JSONObject?>(null) }
+    var economyStatus by remember { mutableStateOf(JSONObject()) }
+    var coinPackToConfirm by remember { mutableStateOf<BlinkCoinCheckoutOffer?>(null) }
+    var pendingCoinOrder by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     var working by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -81,6 +89,7 @@ fun StoreProScreen(state: DesktopAppState) {
     var previewItem by remember { mutableStateOf<DesktopStoreItem?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("For You") }
+    var selectedJourney by remember { mutableStateOf<String?>(null) }
     var targetState by remember { mutableStateOf(JSONObject()) }
     var heroShown by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -92,6 +101,8 @@ fun StoreProScreen(state: DesktopAppState) {
         inventory = store.second
         balance = runCatching { state.client.fetchCoinBalance() }.getOrDefault(0L)
         serverState = runCatching { actions.getStoreState() }.getOrNull()
+        // Disable cash checkout on errors; no client-priced fallback.
+        economyStatus = runCatching { actions.getEconomyStatus() }.getOrDefault(JSONObject())
         loading = false
     }
 
@@ -125,6 +136,42 @@ fun StoreProScreen(state: DesktopAppState) {
         }
     }
 
+    val coinOffers = economyStatus.optJSONArray("coin_packs")?.let { data ->
+        (0 until data.length()).mapNotNull { index ->
+            data.optJSONObject(index)?.let { row ->
+                BlinkCoinCheckoutPolicy.validOffer(
+                    row.optString("id"), row.optInt("price_ngn"), row.optInt("coins")
+                )
+            }
+        }
+    }.orEmpty()
+    val coinCheckoutEnabled = economyStatus.optBoolean("cash_checkout_enabled", false)
+
+    fun initializeCheckout(offer: BlinkCoinCheckoutOffer) {
+        coinPackToConfirm = null
+        if (!BlinkCoinCheckoutPolicy.canCheckout(coinCheckoutEnabled, offer)) return
+        scope.launch {
+            working = true
+            runCatching {
+                val response = actions.initializePaystackCoinCheckout(offer.id)
+                val url = response.optString("authorization_url")
+                val orderId = response.optString("order_id")
+                require(BlinkCoinCheckoutPolicy.trustedHostedCheckoutUrl(url) && orderId.isNotBlank()) {
+                    "Checkout returned an invalid destination."
+                }
+                require(Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                    "This device cannot launch secure checkout."
+                }
+                Desktop.getDesktop().browse(URI(url))
+                pendingCoinOrder = orderId
+            }.onSuccess {
+                message = "After payment, return and select Check payment. Only confirmed payments credit coins."
+                error = null
+            }.onFailure { error = it.message ?: "Coin checkout failed." }
+            working = false
+        }
+    }
+
     LaunchedEffect(Unit) {
         reload()
         heroShown = true
@@ -146,9 +193,12 @@ fun StoreProScreen(state: DesktopAppState) {
         .filter(String::isNotBlank)
         .toSet()
     val vipActive = serverState?.optJSONObject("vip")?.optBoolean("active", false) ?: false
-    val filteredGroups = remember(catalog, searchQuery, selectedCategory) {
+    val filteredGroups = remember(catalog, searchQuery, selectedCategory, selectedJourney) {
+        val journeyGroupIds = BlinkStoreJourneys.availableGroups(selectedJourney).map { it.id }.toSet()
         val query = searchQuery.trim()
-        BlinkStoreProductGroups.groupsForCategory(selectedCategory).filter { group ->
+        BlinkStoreProductGroups.groupsForCategory(selectedCategory)
+            .filter { it.id in journeyGroupIds && it.itemIds.any { id -> id in catalogById } }
+            .filter { group ->
             query.isBlank() ||
                 group.title.contains(query, true) ||
                 group.description.contains(query, true) ||
@@ -244,6 +294,129 @@ fun StoreProScreen(state: DesktopAppState) {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("Explore by goal", fontWeight = FontWeight.Black, fontSize = 20.sp)
+                Text(
+                    "Only existing Store products are listed. Explore and preview without pressure to buy.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item {
+                        FilterChip(
+                            selected = selectedJourney == null,
+                            onClick = { selectedJourney = null; selectedCategory = "For You" },
+                            label = { Text("All collections") },
+                        )
+                    }
+                    items(BlinkStoreJourneys.live, key = { it.id }) { journey ->
+                        FilterChip(
+                            selected = selectedJourney == journey.id,
+                            onClick = {
+                                selectedJourney = if (selectedJourney == journey.id) null else journey.id
+                                selectedCategory = "For You"
+                            },
+                            label = { Text(journey.title) },
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("Build your BLINK Identity", fontWeight = FontWeight.Black, fontSize = 20.sp)
+                Text(
+                    "Mix and match individually priced pieces. Each purchase remains optional.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(
+                        BlinkStoreJourneys.looks.filter { look ->
+                            look.groupIds.any { id -> BlinkStoreProductGroups.byId(id)?.itemIds?.any { it in catalogById } == true }
+                        },
+                        key = { it.id },
+                    ) { look ->
+                        Surface(
+                            modifier = Modifier.width(245.dp).clickable {
+                                look.groupIds.mapNotNull(BlinkStoreProductGroups::byId)
+                                    .firstOrNull { group -> group.itemIds.any { it in catalogById } }
+                                    ?.let { selectedGroup = it }
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(look.title, fontWeight = FontWeight.Bold)
+                                Text(
+                                    look.description,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    minLines = 3,
+                                )
+                                Text("Explore pieces →", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Blink Coins", fontWeight = FontWeight.Black, fontSize = 20.sp, modifier = Modifier.weight(1f))
+                    OutlinedButton(onClick = { scope.launch { reload() } }, enabled = !working) { Text("Refresh balance") }
+                }
+                Text(
+                    if (coinCheckoutEnabled) "Optional fixed-price packs. Only the backend can confirm and credit payments."
+                    else "Coin packs are shown for reference. Secure checkout is not enabled yet.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(coinOffers, key = { it.id }) { offer ->
+                        Surface(
+                            modifier = Modifier.width(170.dp),
+                            shape = RoundedCornerShape(18.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        ) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("${offer.coins} coins", fontWeight = FontWeight.Bold)
+                                Text("₦${offer.priceNgn}", fontSize = 14.sp)
+                                if (offer.bonusCoins > 0) Text("${offer.bonusCoins} extra coins included", fontSize = 11.sp)
+                                Button(
+                                    onClick = { coinPackToConfirm = offer },
+                                    enabled = !working && BlinkCoinCheckoutPolicy.canCheckout(coinCheckoutEnabled, offer),
+                                ) { Text(if (coinCheckoutEnabled) "Buy" else "Unavailable") }
+                            }
+                        }
+                    }
+                }
+                pendingCoinOrder?.let { id ->
+                    OutlinedButton(
+                        enabled = !working,
+                        onClick = {
+                            scope.launch {
+                                working = true
+                                runCatching { actions.verifyPaystackCoinCheckout(id) }
+                                    .onSuccess {
+                                        pendingCoinOrder = null
+                                        message = "Payment verified and coins credited by the server."
+                                        error = null
+                                        reload()
+                                    }
+                                    .onFailure { error = it.message ?: "Payment is not verified yet." }
+                                working = false
+                            }
+                        },
+                    ) { Text("Check payment") }
                 }
             }
         }
@@ -382,6 +555,14 @@ fun StoreProScreen(state: DesktopAppState) {
         }
     }
 
+    coinPackToConfirm?.let { offer ->
+        DesktopCoinPackConfirmation(
+            offer = offer,
+            onClose = { coinPackToConfirm = null },
+            onConfirm = { initializeCheckout(offer) },
+        )
+    }
+
     selectedGroup?.let { group ->
         DesktopStoreGroupDialog(
             group = group,
@@ -443,6 +624,25 @@ fun StoreProScreen(state: DesktopAppState) {
             buyEnabled = !working && !ownedPermanent && !vipLocked && balance >= displayPrice,
         )
     }
+}
+
+@Composable
+private fun DesktopCoinPackConfirmation(
+    offer: BlinkCoinCheckoutOffer,
+    onClose: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Buy Blink Coins", fontWeight = FontWeight.Black) },
+        text = {
+            Text(
+                "Purchase ${offer.coins} coins for ₦${offer.priceNgn} through secure provider-hosted checkout. Coins are credited only after server payment verification. This purchase is optional."
+            )
+        },
+        confirmButton = { Button(onClick = onConfirm) { Text("Continue securely") } },
+        dismissButton = { OutlinedButton(onClick = onClose) { Text("Cancel") } },
+    )
 }
 
 @Composable
