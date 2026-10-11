@@ -43,10 +43,12 @@ class PostRepository(
             // A blocked/slow ranking RPC must not strand Home on its old cached
             // handful of posts. Preserve feed-type and cursor for pagination.
             Log.w("PostRepository", "Ranked $feedType feed timed out; using chronological fallback", error)
-            // The retired get_feed_page RPC can fail with private-schema permissions.
-            // Use the existing authenticated feed_posts RLS policy instead; do not
-            // grant broader access or treat an error as an empty page.
-            supabaseService.fetchFeedPage(limit, beforeCreatedAt, beforeId, "rls_fallback_$feedType")
+            // A smaller ranked page is still filtered by the server's privacy,
+            // blocking, moderation and discovery rules. Never fall back to raw
+            // feed_posts: its table RLS does not enforce all discovery exclusions.
+            supabaseService.fetchFeedPage(
+                limit.coerceAtMost(8), beforeCreatedAt, beforeId, "ranked_$feedType"
+            )
         }
     }
 
