@@ -1,3 +1,10 @@
+## 2026-10-11 — Verify APK delivery before publishing
+
+- Android packaging exception: APK archive integrity and signed-build checksum are checked before upload and again after downloading the draft release from GitHub. Missing checksums, mismatched build identity, corrupt archives and altered metadata prevent promotion to latest.
+- Public release assets are never overwritten, protecting interrupted downloads from mixing different bytes. A checksum file accompanies each future release.
+- Windows: no runtime, UI or backend changes; APK delivery is Android-only. Existing Windows release behavior is preserved.
+- Limits: this verifies GitHub delivery, not every browser/network/storage path to a user's device. Signature verification remains in the signed production build; this gate enforces byte equality to that artifact. Failed drafts stay private for diagnosis.
+
 # Blinkng Android ↔ Windows parity ledger
 
 Every pull request that changes a user-facing Android feature must update Windows in the same pull request, either through shared code or an explicit desktop implementation.

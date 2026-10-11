@@ -1,0 +1,29 @@
+name: APK delivery integrity
+
+on:
+  push:
+    branches: [main, Testlab, 'Testlab-*']
+    paths:
+      - '.github/scripts/*verified_apk.py'
+      - '.github/workflows/publish-latest-apk.yml'
+      - '.github/workflows/apk-delivery-check.yml'
+  pull_request:
+    paths:
+      - '.github/scripts/*verified_apk.py'
+      - '.github/workflows/publish-latest-apk.yml'
+      - '.github/workflows/apk-delivery-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Reject damaged APKs and prevent premature publication
+        run: python3 .github/scripts/test_publish_verified_apk.py
