@@ -333,16 +333,9 @@ fun PremiumFeedScreen(
     val resumeUserKey = remember(currentUsername) {
         currentUsername.trim().removePrefix("@").lowercase().ifBlank { "anonymous" }
     }
-    var feedLane by rememberSaveable(resumeUserKey) {
-        mutableIntStateOf(
-            resumePrefs.safeInt("home_lane:$resumeUserKey", 0).coerceIn(0, 1)
-        )
-    }
-    LaunchedEffect(feedLane, resumeUserKey) {
-        resumePrefs.edit()
-            .putInt("home_lane:$resumeUserKey", feedLane.coerceIn(0, 1))
-            .apply()
-    }
+    // A new app process always lands on For You; rememberSaveable still retains
+    // Following during activity recreation and normal in-app navigation.
+    var feedLane by rememberSaveable(resumeUserKey) { mutableIntStateOf(0) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     var launchReelId by rememberSaveable(resumeUserKey) { mutableStateOf<String?>(null) }
     var launchReelPositionMs by rememberSaveable(resumeUserKey) { mutableStateOf(0L) }
