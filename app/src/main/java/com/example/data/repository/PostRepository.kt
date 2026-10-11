@@ -15,19 +15,46 @@ internal fun isIgnorableLikeCountRefreshFailure(error: Throwable): Boolean =
     error is IllegalStateException &&
         error.message?.contains("Like count refresh failed", ignoreCase = true) == true
 
+// Retry a failed ranked discovery RPC through the simpler chronological feed.
+// PostgreSQL error 57014 is a server statement timeout, not an empty feed and
+// not an authentication failure. Do not conceal unrelated errors.
+internal fun isRecoverableRankedFeedTimeout(error: Throwable): Boolean =
+    generateSequence(error) { it.cause }
+        .any { cause ->
+            val message = cause.message.orEmpty()
+            message.contains("statement timeout", ignoreCase = true) ||
+                message.contains("57014")
+        }
+
 class PostRepository(
     private val supabaseService: SupabaseService = SupabaseService()
 ) {
     private val likeMutationMutexGuard = Mutex()
     private val likeMutationMutexes = mutableMapOf<String, Mutex>()
 
+    private suspend fun fetchRankedFeedWithTimeoutFallback(
+        limit: Int,
+        feedType: String,
+        beforeCreatedAt: String? = null,
+        beforeId: String? = null
+    ): List<FeedPost> {
+        return try {
+            supabaseService.fetchFeedPage(limit, beforeCreatedAt, beforeId, "ranked_$feedType")
+        } catch (error: Exception) {
+            if (!isRecoverableRankedFeedTimeout(error)) throw error
+            // A blocked/slow ranking RPC must not strand Home on its old cached
+            // handful of posts. Preserve feed-type and cursor for pagination.
+            Log.w("PostRepository", "Ranked $feedType feed timed out; using chronological fallback", error)
+            supabaseService.fetchFeedPage(limit, beforeCreatedAt, beforeId, feedType)
+        }
+    }
+
     suspend fun fetchFeed(isReel: Boolean? = null): List<FeedPost> = withContext(Dispatchers.IO) {
-        // Propagate backend failures to the ViewModel. Returning emptyList() here
-        // previously made a failed fetch appear to be a genuinely empty Home feed.
+        // Propagate failures if BOTH ranking and fallback fail: never fake an empty feed.
         when (isReel) {
-            true -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_reels")
-            false -> supabaseService.fetchFeedPage(limit = 30, feedType = "ranked_posts")
-            null -> supabaseService.fetchFeedPage(limit = 60, feedType = "ranked_all")
+            true -> fetchRankedFeedWithTimeoutFallback(30, "reels")
+            false -> fetchRankedFeedWithTimeoutFallback(30, "posts")
+            null -> fetchRankedFeedWithTimeoutFallback(60, "all")
         }
     }
 
@@ -58,11 +85,11 @@ class PostRepository(
         beforeId: String? = null,
         limit: Int = 30
     ): List<FeedPost> = withContext(Dispatchers.IO) {
-        supabaseService.fetchFeedPage(
+        fetchRankedFeedWithTimeoutFallback(
             limit = limit,
             beforeCreatedAt = beforeCreatedAt,
             beforeId = beforeId,
-            feedType = if (isReel) "ranked_reels" else "ranked_posts"
+            feedType = if (isReel) "reels" else "posts"
         )
     }
 
