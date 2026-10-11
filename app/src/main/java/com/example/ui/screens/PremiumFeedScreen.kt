@@ -865,13 +865,14 @@ private fun PremiumHomeFeed(
                     deltaYPx = effectiveDeltaY,
                     headerHeightPx = headerHeight
                 )
-                val consumedY = nextOffset - previousOffset
-                if (consumedY != 0f) {
+                if (nextOffset != previousOffset) {
                     headerOffsetPx.value = nextOffset
                     fabExpanded = direction > 0
-                    onBottomBarVisibilityChange(true)
                 }
-                return androidx.compose.ui.geometry.Offset(0f, consumedY)
+                // The header follows the gesture visually, but must never steal drag
+                // distance from LazyColumn: that created a sticky/laggy first swipe.
+                // The bottom bar is already made visible at screen entry/refresh.
+                return androidx.compose.ui.geometry.Offset.Zero
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
@@ -1129,7 +1130,7 @@ private fun PremiumHomeFeed(
                         imageLoader.enqueue(
                             ImageRequest.Builder(context)
                                 .data(mediaUrl)
-                                .size(720, 720)
+                                .size(512, 512)
                                 .crossfade(false)
                                 .build()
                         )
@@ -1397,7 +1398,8 @@ private fun PremiumHomeFeed(
                                                                     post.authorUsername.trim().removePrefix("@").lowercase() == currentUserKey
                                                             ),
                                                     onDelete = { onDeletePost(post.id) },
-                                                    xFeedStyle = true
+                                                    xFeedStyle = true,
+                                                    isFeedScrolling = listState.isScrollInProgress
                                                 )
                                             }
                                         }
@@ -1424,7 +1426,8 @@ private fun PremiumHomeFeed(
                                                 onProfileClick = onProfileClick,
                                                 isAuthor = false,
                                                 trackExposure = false,
-                                                xFeedStyle = true
+                                                xFeedStyle = true,
+                                                isFeedScrolling = listState.isScrollInProgress
                                             )
                                         }
 
