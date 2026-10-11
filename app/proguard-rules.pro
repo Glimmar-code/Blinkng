@@ -8,6 +8,10 @@
 -keep class com.example.data.models.** { *; }
 -keep class com.example.data.local.** { *; }
 
+# WebRTC native JNI resolves Java classes and members by their original names.
+# R8 minification must never obfuscate these release-only call entry points.
+-keep class org.webrtc.** { *; }
+
 # Room generated implementations are discovered from the abstract database type.
 -keep class * extends androidx.room.RoomDatabase { *; }
 
