@@ -138,6 +138,8 @@ data class BlinkUiState(
     val isRefreshingHome: Boolean = false,
     val isRefreshingFollowing: Boolean = false,
     val isRefreshingReels: Boolean = false,
+    val postsRefreshRevision: Int = 0,
+    val followingRefreshRevision: Int = 0,
     val isSyncingContent: Boolean = false,
     val feedErrorMessage: String? = null,
     val followingFeedErrorMessage: String? = null,
@@ -1854,6 +1856,7 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = when {
                         following -> now.copy(
                             followingPosts = refreshed.items,
+                            followingRefreshRevision = now.followingRefreshRevision + 1,
                             hasMoreFollowingPosts = page.size >= pageSize,
                             followingFeedErrorMessage = null
                         )
@@ -1863,6 +1866,7 @@ private suspend fun restoreSupabaseSession() {
                         )
                         else -> now.copy(
                             posts = refreshed.items,
+                            postsRefreshRevision = now.postsRefreshRevision + 1,
                             hasMorePosts = page.size >= pageSize
                         )
                     }
