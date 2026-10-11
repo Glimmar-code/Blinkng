@@ -7,8 +7,6 @@ import com.example.data.models.PostPoll
 import com.example.data.models.Story
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 internal fun isIgnorableLikeCountRefreshFailure(error: Throwable): Boolean =
@@ -29,8 +27,8 @@ internal fun isRecoverableRankedFeedTimeout(error: Throwable): Boolean =
 class PostRepository(
     private val supabaseService: SupabaseService = SupabaseService()
 ) {
-    private val likeMutationMutexGuard = Mutex()
-    private val likeMutationMutexes = mutableMapOf<String, Mutex>()
+    // Only retain per-post locks while operations are active or queued.
+    private val likeMutationLocks = PerKeyMutationLocks()
 
     private suspend fun fetchRankedFeedWithTimeoutFallback(
         limit: Int,
@@ -45,7 +43,10 @@ class PostRepository(
             // A blocked/slow ranking RPC must not strand Home on its old cached
             // handful of posts. Preserve feed-type and cursor for pagination.
             Log.w("PostRepository", "Ranked $feedType feed timed out; using chronological fallback", error)
-            supabaseService.fetchFeedPage(limit, beforeCreatedAt, beforeId, feedType)
+            // The retired get_feed_page RPC can fail with private-schema permissions.
+            // Use the existing authenticated feed_posts RLS policy instead; do not
+            // grant broader access or treat an error as an empty page.
+            supabaseService.fetchFeedPage(limit, beforeCreatedAt, beforeId, "rls_fallback_$feedType")
         }
     }
 
@@ -220,11 +221,7 @@ class PostRepository(
         liked: Boolean,
         newLikeCount: Int
     ): Boolean = withContext(Dispatchers.IO) {
-        val postMutex = likeMutationMutexGuard.withLock {
-            likeMutationMutexes.getOrPut(postId) { Mutex() }
-        }
-
-        postMutex.withLock {
+        likeMutationLocks.withKey(postId) {
             try {
                 supabaseService.togglePostLike(
                     postId = postId,
