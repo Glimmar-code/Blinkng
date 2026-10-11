@@ -338,16 +338,26 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    private fun persistResumePointSafely() {
+        // Corrupt/legacy local preferences should not kill the Activity during exit.
+        try {
+            viewModel.persistResumePoint()
+        } catch (error: RuntimeException) {
+            android.util.Log.e("MainActivity", "Unable to save resume position", error)
+            runCatching { FirebaseCrashlytics.getInstance().recordException(error) }
+        }
+    }
+
     override fun onStop() {
         // Save the exact navigation surface before Android backgrounds or kills the task.
-        viewModel.persistResumePoint()
+        persistResumePointSafely()
         stopPresenceHeartbeat(markOffline = true)
         super.onStop()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         // Also cover Android-initiated recreation, not only normal backgrounding.
-        viewModel.persistResumePoint()
+        persistResumePointSafely()
         super.onSaveInstanceState(outState)
     }
 
