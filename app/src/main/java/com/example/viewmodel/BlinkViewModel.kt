@@ -245,6 +245,10 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
     private var syncJob: Job? = null
     private var lastSuccessfulSyncAt = 0L
+    // Ignore pagination results started before a user-initiated lane refresh.
+    private var postPageEpoch = 0
+    private var reelPageEpoch = 0
+    private var followingPageEpoch = 0
     private var discoverSearchJob: Job? = null
     private var addAccountMode = AccountSessionStore.consumeAddAccountRequest(appContext)
     private var recoveryPreviousSession: SupabaseService.SessionSnapshot? = null
@@ -275,7 +279,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         observeCachedContent()
         viewModelScope.launch {
             restoreCachedAppSnapshot()
-            restoreResumableRouteFromCurrentState()
+            // A new process starts on Home / For You. Backgrounding keeps this ViewModel
+            // and its current page alive; draft text is restored independently above.
+            // Do not resurrect stale sheets, chats or pages after the task was dismissed.
             if (hasLocalSession && !_uiState.value.isOnline) {
                 _uiState.value = _uiState.value.copy(
                     destination = AppDestination.MAIN,
@@ -771,12 +777,12 @@ private suspend fun restoreSupabaseSession() {
     private fun saveSession(profile: UserProfile) = saveLocalProfile(profile)
 
     private fun restoreUiPreferences() {
-        val tabName = prefs.safeString(KEY_SELECTED_TAB, MainTab.HOME.name).orEmpty()
-        val selected = MainTab.entries.firstOrNull { it.name == tabName } ?: MainTab.HOME
+        // A cold process start is different from briefly backgrounding the app.
+        // Keep the account and theme, but always reopen at Home / For You.
         _uiState.value = _uiState.value.copy(
             isDarkMode = prefs.safeBoolean(KEY_DARK_MODE, true),
-            selectedTab = selected,
-            feedSubTab = prefs.safeInt(KEY_FEED_SUB_TAB, 0).coerceIn(0, 3)
+            selectedTab = MainTab.HOME,
+            feedSubTab = 0
         )
     }
 
@@ -1797,35 +1803,67 @@ private suspend fun restoreSupabaseSession() {
             (!following && !isReel && before.isRefreshingHome)
         ) return
 
+        // A pull-to-refresh supersedes a pending pagination result. Reset the visible
+        // loading-more state now so stale requests cannot splice old rows into a new page.
+        when {
+            following -> followingPageEpoch++
+            isReel -> reelPageEpoch++
+            else -> postPageEpoch++
+        }
         _uiState.value = when {
-            following -> before.copy(isRefreshingFollowing = true, followingFeedErrorMessage = null)
-            isReel -> before.copy(isRefreshingReels = true, feedErrorMessage = null)
-            else -> before.copy(isRefreshingHome = true, feedErrorMessage = null)
+            following -> before.copy(
+                isRefreshingFollowing = true,
+                isLoadingMoreFollowingPosts = false,
+                followingFeedErrorMessage = null
+            )
+            isReel -> before.copy(
+                isRefreshingReels = true,
+                isLoadingMoreReels = false,
+                feedErrorMessage = null
+            )
+            else -> before.copy(
+                isRefreshingHome = true,
+                isLoadingMorePosts = false,
+                feedErrorMessage = null
+            )
         }
 
         viewModelScope.launch {
             try {
-                // Lifecycle/background synchronization cannot overwrite this user's refresh.
+                // Ranked discovery pages have a server-maintained cursor; restarting it on
+                // explicit refresh should not race a load-more or background sync.
                 syncMutex.withLock {
+                    val pageSize = if (following) 30 else 60
                     val page = when {
-                        following -> postRepository.fetchFollowingFeedPage(limit = 30)
-                        isReel -> postRepository.fetchFeedPage(isReel = true, limit = 30)
-                        else -> postRepository.fetchFeedPage(isReel = false, limit = 30)
+                        following -> postRepository.fetchFollowingFeedPage(limit = pageSize)
+                        isReel -> postRepository.fetchFeedPage(isReel = true, limit = pageSize)
+                        else -> postRepository.fetchFeedPage(isReel = false, limit = pageSize)
                     }
                     val now = _uiState.value
+                    val previous = when {
+                        following -> now.followingPosts
+                        isReel -> now.reels
+                        else -> now.posts
+                    }
+                    val refreshed = planSmartRefresh(
+                        previous = previous,
+                        fetched = page,
+                        idOf = { it.id },
+                        prioritizeNew = !following
+                    )
                     _uiState.value = when {
                         following -> now.copy(
-                            followingPosts = reconcileRefreshedFeed(now.followingPosts, page),
-                            hasMoreFollowingPosts = page.size >= 30,
+                            followingPosts = refreshed.items,
+                            hasMoreFollowingPosts = page.size >= pageSize,
                             followingFeedErrorMessage = null
                         )
                         isReel -> now.copy(
-                            reels = reconcileRefreshedFeed(now.reels, page),
-                            hasMoreReels = page.size >= 30
+                            reels = refreshed.items,
+                            hasMoreReels = page.size >= pageSize
                         )
                         else -> now.copy(
-                            posts = reconcileRefreshedFeed(now.posts, page),
-                            hasMorePosts = page.size >= 30
+                            posts = refreshed.items,
+                            hasMorePosts = page.size >= pageSize
                         )
                     }
                     lastSuccessfulSyncAt = SystemClock.elapsedRealtime()
@@ -1838,6 +1876,15 @@ private suspend fun restoreSupabaseSession() {
                                 )
                             }.onFailure { Log.w(TAG, "Manual refresh cache write failed", it) }
                         }
+                    }
+                    if (refreshed.newlyDiscoveredCount == 0) {
+                        showToast(
+                            when {
+                                following -> "No new posts from people you follow."
+                                isReel -> "No new reels right now."
+                                else -> "No new posts right now."
+                            }
+                        )
                     }
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
