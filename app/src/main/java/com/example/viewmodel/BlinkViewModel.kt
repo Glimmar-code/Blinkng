@@ -2005,10 +2005,10 @@ private suspend fun restoreSupabaseSession() {
 
         val current = if (isReel) state.reels else state.posts
         val last = current.lastOrNull() ?: return
-        // Ranked feeds use an offset/as-of cursor inside SupabaseService, not the
-        // content timestamp. The stable post ID prevents a missing timestamp from
-        // accidentally restarting the first discovery page.
-        if (last.id.isBlank()) return
+        // Ranked discovery uses its own offset, but a timeout falls back to
+        // chronological paging. Both ID and timestamp must be valid so the
+        // fallback cannot silently repeat page one forever.
+        if (last.id.isBlank() || last.createdAt.isBlank()) return
         val requestEpoch = if (isReel) reelPageEpoch else postPageEpoch
 
         _uiState.value = if (isReel) {
@@ -2034,12 +2034,15 @@ private suspend fun restoreSupabaseSession() {
                     if (isReel) {
                         _uiState.value = latest.copy(
                             reels = (latest.reels + page).distinctBy { it.id },
-                            hasMoreReels = page.size >= 30
+                            // Server-side ranking/fallback must advance the visible cursor.
+                            hasMoreReels = page.size >= 30 &&
+                                page.any { item -> latest.reels.none { it.id == item.id } }
                         )
                     } else {
                         _uiState.value = latest.copy(
                             posts = (latest.posts + page).distinctBy { it.id },
-                            hasMorePosts = page.size >= 30
+                            hasMorePosts = page.size >= 30 &&
+                                page.any { item -> latest.posts.none { it.id == item.id } }
                         )
                     }
                     persistCurrentFeed()
