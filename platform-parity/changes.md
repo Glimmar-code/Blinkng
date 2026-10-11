@@ -1,3 +1,9 @@
+## 2026-10-11 — Smooth scroll-linked feed header fade and settling
+
+- Android: Feed upper chrome fades proportionally while sliding out, with a 230ms eased (non-spring) settle; small swipes no longer snap the whole header away. Removed a feed-top observer that could immediately re-open the header while the header itself was consuming a gesture. For You/Following tabs stay pinned. No feed ranking, loading, or Supabase change.
+- Windows: desktop retains persistent top-level navigation appropriate to pointer/keyboard use; phone-sized scroll-linked collapsing chrome is not present in the Windows Home UI, so the desktop animation is unchanged. This is a platform-layout exception, not a feature or backend divergence.
+- Validation: Android JVM motion-regression tests cover partial settle thresholds, opacity endpoints and clamping; Android quality gate must pass before production integration.
+
 ## 2026-10-11 — For You feed completeness, older content and pagination (Testlab)
 
 - Shared ranked backend: remove the hard seven-day eligibility cutoff while retaining the existing time-decay score. When creator diversity cannot select another post, the final fallback chooses the best remaining eligible candidate rather than ending the feed early. Block, mute, private audience, hidden content, expiry, authentication, qualified views, promotions and ranked scoring remain unchanged.
