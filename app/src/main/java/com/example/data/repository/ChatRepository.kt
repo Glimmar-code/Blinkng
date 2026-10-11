@@ -96,13 +96,16 @@ class ChatRepository(
                 .put("p_notification_preview", settings.notificationPreview)
         )
 
-    suspend fun fetchConversations(): List<ChatConversation> = withContext(Dispatchers.IO) {
+    suspend fun fetchConversations(
+        onFirstPage: suspend (List<ChatConversation>) -> Unit = {}
+    ): List<ChatConversation> = withContext(Dispatchers.IO) {
         // Conversation summaries are account data, not cache data. Walk the full server
         // history so clearing local storage or returning years later can rebuild the list.
         val merged = LinkedHashMap<String, ChatConversation>()
         var beforeAt: String? = null
         var beforeId: String? = null
         var pageNumber = 0
+        var firstPage: List<ChatConversation>? = null
 
         while (pageNumber < MAX_CONVERSATION_PAGES) {
             val page = fetchConversationPage(beforeAt, beforeId)
@@ -110,6 +113,12 @@ class ChatRepository(
                 if (conversation.id.isNotBlank()) merged[conversation.id] = conversation
             }
             pageNumber += 1
+            if (pageNumber == 1) {
+                // Display the first 100 conversations without waiting for years
+                // of history to finish paging. Account-scoped cache remains intact.
+                firstPage = applyConversationState(merged.values.toList())
+                onFirstPage(firstPage!!)
+            }
 
             val nextAt = page.nextBeforeAt
             val nextId = page.nextBeforeId
@@ -119,7 +128,8 @@ class ChatRepository(
             beforeId = nextId
         }
 
-        applyConversationState(merged.values.toList())
+        if (pageNumber == 1) firstPage.orEmpty()
+        else applyConversationState(merged.values.toList())
     }
 
     private suspend fun fetchConversationPage(beforeAt: String?, beforeId: String?): ConversationPage {
