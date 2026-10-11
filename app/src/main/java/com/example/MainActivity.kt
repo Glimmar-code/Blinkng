@@ -747,6 +747,8 @@ fun MainAppContent(
                         isLoading = uiState.isFeedLoading,
                         isRefreshing = uiState.isRefreshingHome || uiState.isRefreshingContent,
                         isRefreshingFollowing = uiState.isRefreshingFollowing || uiState.isRefreshingContent,
+                        postsRefreshRevision = uiState.postsRefreshRevision,
+                        followingRefreshRevision = uiState.followingRefreshRevision,
                         isRefreshingReels = uiState.isRefreshingReels || uiState.isRefreshingContent,
                         errorMessage = uiState.feedErrorMessage,
                         followingErrorMessage = uiState.followingFeedErrorMessage,
