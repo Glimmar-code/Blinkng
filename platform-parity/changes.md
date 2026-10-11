@@ -1,7 +1,7 @@
 ## 2026-10-11 — Smooth scroll-linked feed header fade and settling
 
 - Android: Feed upper chrome fades proportionally while sliding out, with a 230ms eased (non-spring) settle; small swipes no longer snap the whole header away. Removed a feed-top observer that could immediately re-open the header while the header itself was consuming a gesture. For You/Following tabs stay pinned. No feed ranking, loading, or Supabase change.
-- Windows: desktop retains persistent top-level navigation appropriate to pointer/keyboard use; phone-sized scroll-linked collapsing chrome is not present in the Windows Home UI, so the desktop animation is unchanged. This is a platform-layout exception, not a feature or backend divergence.
+- PARITY-EXCEPTION: feed-scroll-linked-upper-header-fade — Android's small-screen touch feed chrome collapses as the user drags; Windows uses persistent top-level Home navigation with keyboard/mouse access and has no phone-sized collapsing header to animate. Windows navigation behavior remains appropriate to its desktop layout. No backend or feature divergence.
 - Validation: Android JVM motion-regression tests cover partial settle thresholds, opacity endpoints and clamping; Android quality gate must pass before production integration.
 
 ## 2026-10-11 — For You feed completeness, older content and pagination (Testlab)
