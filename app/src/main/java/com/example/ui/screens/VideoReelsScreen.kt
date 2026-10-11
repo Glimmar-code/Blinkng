@@ -237,8 +237,10 @@ internal fun selectReelsForTab(
     selectedTab: String
 ): List<FeedPost> = if (selectedTab == "Following") followingReels else reels
 
+// Keep only the active decoder and the next video warm. Recreating the previous
+// decoder on every swipe can triple hardware surface/memory pressure.
 internal fun shouldPreloadReelPage(index: Int, currentPage: Int): Boolean =
-    abs(index - currentPage) <= 1
+    index == currentPage || index == currentPage + 1
 
 private fun buildReelPagerItems(
     reels: List<FeedPost>,
@@ -548,13 +550,18 @@ private fun ReelsContent(
                 is ReelPagerItem.Boosted -> {
                     val placement = item.placement
                     val reel = placement.post ?: return@VerticalPager
-                    LaunchedEffect(index == pager.currentPage, placement.campaignId) {
-                        if (index == pager.currentPage) {
-                            boostGrowthService.recordBoostDelivery(
-                                placement.campaignId,
-                                "IMPRESSION",
-                                "REELS"
-                            )
+                    LaunchedEffect(index == pager.currentPage, pager.isScrollInProgress, placement.campaignId) {
+                        if (index == pager.currentPage && !pager.isScrollInProgress) {
+                            // Ignore fly-through pages: a boosted video should only
+                            // count after being visibly settled for half a second.
+                            delay(500)
+                            if (index == pager.currentPage && !pager.isScrollInProgress) {
+                                boostGrowthService.recordBoostDelivery(
+                                    placement.campaignId,
+                                    "IMPRESSION",
+                                    "REELS"
+                                )
+                            }
                         }
                     }
                     ReelPage(
