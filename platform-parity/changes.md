@@ -2,7 +2,7 @@
 
 PARITY-EXCEPTION: android-native-ads-player-and-rpc-recovery-20261011
 
-- Feed recovery (Android): after a server statement timeout, retrieve active, public post or reel rows through the same authenticated PostgREST feed_posts RLS policies; never call the legacy get_feed_page private-schema RPC, bypass author/privacy filters, or mistake failed recovery for an empty timeline. Existing ranked feed remains primary.
+- Feed recovery (Android): after a server statement timeout, retry the existing authenticated ranked discovery RPC in smaller batches while retaining its block/mute/privacy filters and stable server cursor; never use the legacy get_feed_page private-schema RPC or read raw feed_posts, whose RLS does not enforce all discovery exclusions. Failed recovery remains an error, not an empty timeline.
 - Native monetization (Android): promoted feed posts only record a delivery after they meet the on-screen post visibility threshold. Promoted Reels require a settled visible page before the impression; no rewards, coins, view weights or ad billing settings change. Native Reels ad requests time out and failed slots are removed, retaining organic reels.
 - Reels (Android): limit expensive prewarmed ExoPlayer decoders to the current and next page, releasing obsolete players when pages leave composition.
 - Messages (Android): deliver the first authenticated inbox page to the UI while the full older history is still loading. Keep local conversation message state, preserve account scoping and do not discard older server histories.
