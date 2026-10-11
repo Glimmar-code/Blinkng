@@ -95,5 +95,80 @@ export async function feedRecoveryTests(db) {
   assert.ok(ownIds.includes(privatePost), 'authors retain access to own private content');
   assert.ok(!ownIds.includes(flaggedPost), 'moderation still applies to authors');
   console.log('PASS fallback: legacy pagination enforces audience, expiry and moderation');
+
+  // Exercise the migration's guarded SQL rewriting inside disposable PostgreSQL.
+  // The production scorer needs PostGIS and the full live schema, so this
+  // compact scoring fixture tests the exact seven-day exclusion being changed.
+  await reset();
+  await db.exec(`create or replace function private_ranking.get_discovery_feed(
+    p_limit integer default 40, p_offset integer default 0,
+    p_as_of timestamptz default now(), p_gravity numeric default 1.5,
+    p_w1 numeric default 2.0, p_w2 numeric default 1.0,
+    p_w3 numeric default 250.0, p_w4 numeric default 4.0)
+    returns table(item jsonb,feed_score numeric,ranking_components jsonb,
+      feed_position integer,as_of timestamptz,next_offset integer)
+    language plpgsql security definer set search_path to ''
+    as $ranked$
+    begin
+      return query select to_jsonb(fp), 1::numeric,'{}'::jsonb,1,p_as_of,1
+        from public.feed_posts fp
+        where fp.is_active=true
+          and fp.created_at > p_as_of - interval '7 days'
+        order by fp.created_at desc limit p_limit;
+    end;
+    $ranked$;`);
+  const getRanked = async () => (await db.query(
+    "select item->>'id' as id from private_ranking.get_discovery_feed(60,0,now(),1.5,2,1,250,4)"
+  )).rows.map(row => row.id);
+  assert.ok(!(await getRanked()).includes(publicPost), 'seven-day scorer excludes 20-day post');
+  const historyFix = fs.readFileSync(new URL('../migrations/20261011064000_expand_discovery_feed_history.sql', import.meta.url), 'utf8');
+  await db.exec(historyFix);
+  assert.ok((await getRanked()).includes(publicPost), '90-day scorer now includes existing older posts');
+  console.log('PASS ranked history: guarded migration restores older eligible posts');
+
+  // A compact version of the live view-count function checks migration syntax,
+  // row-lock order and counter correctness. Production has additional caps
+  // and rewards, retained byte-for-byte by the source rewriting migration.
+  await db.exec(`create or replace function public.record_content_view(p_post_id uuid,p_event_id uuid)
+    returns jsonb language plpgsql security definer set search_path to ''
+    as $view$
+    declare
+      v_viewer_id uuid := auth.uid();
+      v_view_count integer := 0;
+      v_is_reel boolean := false;
+      v_view_weight integer := 1;
+    begin
+    select coalesce(fp.view_count, 0), coalesce(fp.is_reel, false)
+      into v_view_count, v_is_reel
+      from public.feed_posts fp
+     where fp.id = p_post_id
+       and (fp.is_active = true or fp.user_id = v_viewer_id)
+     for update;
+    update public.feed_posts
+       set view_count = coalesce(view_count, 0) + v_view_weight,
+           updated_at = now()
+     where id = p_post_id
+    returning view_count into v_view_count;
+    begin
+        perform public.award_repost_distribution_points(p_post_id, v_viewer_id, 'view');
+    exception when others then
+        null;
+    end;
+    return jsonb_build_object('view_count',v_view_count);
+    end;
+    $view$;`);
+  const lockFix = fs.readFileSync(new URL('../migrations/20261011064500_release_feed_view_row_lock_early.sql', import.meta.url), 'utf8');
+  await db.exec(lockFix);
+  const viewSource = await scalar("select pg_get_functiondef('public.record_content_view(uuid,uuid)'::regprocedure)");
+  assert.ok(viewSource.includes('for key share;'), 'nonexclusive key lock protects post integrity');
+  assert.ok(viewSource.indexOf('returning view_count into v_view_count;') >
+    viewSource.indexOf("perform public.award_repost_distribution_points("),
+    'exclusive counter update happens after expensive reward bookkeeping');
+  await signIn(B);
+  const countBefore = await scalar(`select view_count from public.feed_posts where id='${publicPost}'`);
+  const counted = await scalar(`select (public.record_content_view('${publicPost}',gen_random_uuid())->>'view_count')::int`);
+  assert.equal(counted, countBefore + 1);
+  assert.equal(await scalar(`select view_count from public.feed_posts where id='${publicPost}'`), counted);
+  console.log('PASS view counter: guarded lock migration preserves atomic weighted increment');
   await reset();
 }
