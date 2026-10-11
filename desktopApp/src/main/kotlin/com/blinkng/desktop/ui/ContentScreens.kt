@@ -249,6 +249,29 @@ fun HomeScreen(
                         placeholder = { Text("What's happening on campus?") },
                     )
                     Text("🔥 Trending hashtags • 1–3 recommended, maximum 5", style = MaterialTheme.typography.labelMedium)
+                    val topicalTagSuggestions = remember(composer, trendingTags, selectedTags) {
+                        BlinkSmartTags.suggest(
+                            text = composer,
+                            trending = trendingTags,
+                            selected = selectedTags,
+                            limit = 3
+                        )
+                    }
+                    if (topicalTagSuggestions.isNotEmpty()) {
+                        Text("✨ Suggested for your post", style = MaterialTheme.typography.labelMedium)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            items(topicalTagSuggestions, key = { "suggested:$it" }) { tag ->
+                                AssistChip(
+                                    onClick = {
+                                        if (BlinkSmartTags.allTags(composer, selectedTags).size < BlinkSmartTags.MAX_TAGS)
+                                            selectedTags = BlinkSmartTags.add(selectedTags, tag)
+                                        else error = "Maximum 5 hashtags per post."
+                                    },
+                                    label = { Text("#$tag +") }
+                                )
+                            }
+                        }
+                    }
                     if (trendingTags.isNotEmpty()) {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                             items(trendingTags.take(if (showMoreTags) 40 else 7)) { tag ->
