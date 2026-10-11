@@ -1,8 +1,9 @@
-const CACHE='blink-web-v13-latest-apk-approved-logo';
+const CACHE='blink-web-v14-apk-check-integrity';
 const SHELL=[
   './',
   './index.html',
   './404.html',
+  './apk-check.html',
   './styles.css',
   './parity.css',
   './config.js',
