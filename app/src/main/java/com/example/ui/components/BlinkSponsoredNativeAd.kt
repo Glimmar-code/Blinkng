@@ -22,6 +22,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,12 +54,14 @@ enum class BlinkNativeAdPlacement {
 fun BlinkSponsoredNativeAd(
     adUnitId: String,
     placement: BlinkNativeAdPlacement,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onUnavailable: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val canRequestAds by BlinkAdsRuntime.canRequestAds.collectAsState()
     var nativeAd by remember(adUnitId) { mutableStateOf<NativeAd?>(null) }
     var loadFailed by remember(adUnitId) { mutableStateOf(false) }
+    val latestOnUnavailable by rememberUpdatedState(onUnavailable)
 
     DisposableEffect(adUnitId, canRequestAds) {
         if (!canRequestAds) {
@@ -68,9 +71,15 @@ fun BlinkSponsoredNativeAd(
             return@DisposableEffect onDispose {}
         }
 
+        // AdLoader has no cancel method: ignore callbacks from a recycled/disposed slot.
+        var disposed = false
         val placementName = if (placement == BlinkNativeAdPlacement.FEED) "feed" else "reels"
         val adLoader = AdLoader.Builder(context, adUnitId)
             .forNativeAd { loaded ->
+                if (disposed) {
+                    loaded.destroy()
+                    return@forNativeAd
+                }
                 nativeAd?.destroy()
                 nativeAd = loaded
                 loadFailed = false
@@ -90,8 +99,10 @@ fun BlinkSponsoredNativeAd(
                     }
 
                     override fun onAdFailedToLoad(error: LoadAdError) {
+                        if (disposed) return
                         loadFailed = true
                         BlinkAdAnalytics.failed(context, placementName, "native", error.code)
+                        if (placement == BlinkNativeAdPlacement.REEL) latestOnUnavailable()
                     }
                 }
             )
@@ -100,6 +111,7 @@ fun BlinkSponsoredNativeAd(
         adLoader.loadAd(AdRequest.Builder().build())
 
         onDispose {
+            disposed = true
             nativeAd?.destroy()
             nativeAd = null
         }
