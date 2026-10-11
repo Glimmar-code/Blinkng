@@ -696,10 +696,31 @@ fun MainAppContent(
     }
 
     val exitGate = remember { DoubleBackExitGate() }
+    val hasOpenSubroute = uiState.deepLinkedPost != null ||
+        uiState.activePostOptionsPost != null ||
+        uiState.isMenuOpen ||
+        uiState.isEditProfileOpen ||
+        uiState.isBecomeSellerOpen ||
+        uiState.isPostItemOpen ||
+        uiState.isActivityOpen ||
+        uiState.activeConversationPartner != null ||
+        uiState.viewingProfile != null ||
+        uiState.viewingProduct != null ||
+        uiState.isGetVerifiedOpen ||
+        uiState.isCreatePostOpen ||
+        uiState.isCreateStoryOpen ||
+        uiState.activeViewingStory != null ||
+        uiState.showSellerCongratulationsDialog ||
+        feedUtilitySheet != null
     LaunchedEffect(uiState.selectedTab, uiState.feedSubTab) {
         isBottomBarVisibleByScroll = true
-        // Navigating between screens invalidates an earlier exit confirmation.
+        // Navigating between tabs invalidates an earlier exit confirmation.
         exitGate.reset()
+    }
+    LaunchedEffect(hasOpenSubroute) {
+        // Going into a conversation, profile, modal or full-screen utility resets
+        // the two-tap window. A later Back cannot unexpectedly close the app.
+        if (hasOpenSubroute) exitGate.reset()
     }
 
     // Handle Back within the app before allowing the system to close the Activity.
