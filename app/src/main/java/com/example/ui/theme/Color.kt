@@ -26,7 +26,7 @@ val FeedDeepPurple = Color(BlinkDesignTokens.Brand.PrimaryDeep)
 val FeedBlue = Color(BlinkDesignTokens.Brand.Blue)
 val FeedGradientStart = FeedPurpleBright
 val FeedGradientMiddle = FeedPurple
-val FeedGradientEnd = FeedBlue
+val FeedGradientEnd = FeedDeepPurple
 
 // Existing names stay available so older screens keep compiling while they are
 // migrated to semantic MaterialTheme/Blink tokens screen-by-screen.

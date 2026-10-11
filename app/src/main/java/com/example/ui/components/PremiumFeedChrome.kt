@@ -81,13 +81,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.ui.theme.FeedBackground
 import com.example.ui.theme.FeedBlue
-import com.example.ui.theme.FeedBorder
-import com.example.ui.theme.FeedElevatedSurface
 import com.example.ui.theme.FeedPurple
-import com.example.ui.theme.FeedTextPrimary
-import com.example.ui.theme.FeedTextSecondary
 import com.example.ui.theme.feedAccentBrush
 
 @Composable
@@ -105,23 +100,7 @@ fun FeedTopBar(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .background(FeedBackground)
-            .drawBehind {
-                drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(FeedPurple.copy(alpha = 0.16f), Color.Transparent),
-                        center = Offset(size.width * 0.22f, 0f),
-                        radius = size.width * 0.72f
-                    )
-                )
-                drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(FeedBlue.copy(alpha = 0.11f), Color.Transparent),
-                        center = Offset(size.width * 0.84f, 0f),
-                        radius = size.width * 0.58f
-                    )
-                )
-            }
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
     ) {
         val horizontalPadding = if (maxWidth >= 600.dp) 20.dp else 14.dp
@@ -168,7 +147,7 @@ private fun FeedBrandBlock(
         Text(
             text = "Home",
             style = MaterialTheme.typography.headlineSmall,
-            color = FeedTextPrimary,
+            color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             modifier = Modifier.weight(1f)
         )
@@ -185,7 +164,7 @@ private fun FeedProfileAvatar(
             .size(48.dp)
             .background(feedAccentBrush(), CircleShape)
             .padding(2.dp)
-            .background(FeedBackground, CircleShape)
+            .background(MaterialTheme.colorScheme.background, CircleShape)
             .padding(2.dp)
             .clickable(role = Role.Button, onClick = onProfileClick)
             .semantics { contentDescription = "Open profile" }
@@ -200,7 +179,7 @@ private fun FeedProfileAvatar(
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(40.dp)
-                .background(FeedElevatedSurface, CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
                 .graphicsLayer { clip = true; shape = CircleShape }
         )
     }
@@ -246,7 +225,7 @@ private fun FeedHeaderActions(
                         .offset(x = 2.dp, y = (-2).dp)
                         .size(if (visibleUnreadCount < 10) 18.dp else 22.dp)
                         .background(feedAccentBrush(), CircleShape)
-                        .border(1.dp, FeedBackground, CircleShape),
+                        .border(1.dp, MaterialTheme.colorScheme.background, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -302,7 +281,7 @@ private fun FeedRadialHeaderAction(
         Icon(
             imageVector = imageVector,
             contentDescription = null,
-            tint = FeedTextPrimary,
+            tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(25.dp)
         )
     }
@@ -320,7 +299,7 @@ fun FeedUtilityRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(FeedBackground)
+            .background(MaterialTheme.colorScheme.background)
             .height(48.dp)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -382,13 +361,13 @@ private fun FeedUtilityAction(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = FeedTextPrimary,
+            tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(20.dp)
         )
         Spacer(Modifier.height(2.dp))
         Text(
             text = label,
-            color = FeedTextSecondary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Medium,
             maxLines = 1
@@ -407,7 +386,7 @@ fun FeedTabs(
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(
-        modifier = modifier.fillMaxWidth().background(FeedBackground).height(48.dp)
+        modifier = modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).height(48.dp)
     ) {
         val availableWidth = maxWidth
         val filterWidth = if (availableWidth < 360.dp) 42.dp else 48.dp
@@ -462,7 +441,7 @@ fun FeedTabs(
                 Icon(
                     imageVector = Icons.Default.Tune,
                     contentDescription = null,
-                    tint = FeedTextSecondary,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(21.dp)
                 )
             }
@@ -488,7 +467,7 @@ private fun FeedTabLabel(
     onClick: () -> Unit
 ) {
     val color by animateColorAsState(
-        targetValue = if (selected) FeedTextPrimary else FeedTextSecondary,
+        targetValue = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
         animationSpec = tween(180),
         label = "feedTabLabelColor"
     )
@@ -583,7 +562,7 @@ fun CreatePostFab(
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = null,
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(21.dp)
                         )
                     },
@@ -652,7 +631,7 @@ private fun FeedCreateAction(
     Row(
         modifier = modifier
             .shadow(7.dp, shape, clip = false)
-            .background(FeedElevatedSurface, shape)
+            .background(MaterialTheme.colorScheme.surfaceVariant, shape)
             .border(1.dp, FeedPurple.copy(alpha = 0.52f), shape)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics {
@@ -667,7 +646,7 @@ private fun FeedCreateAction(
         Spacer(Modifier.width(9.dp))
         Text(
             text = label,
-            color = FeedTextPrimary,
+            color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1
