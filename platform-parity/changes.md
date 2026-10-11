@@ -1,3 +1,10 @@
+## 2026-10-11 — Verify APK delivery before publishing
+
+- Android packaging exception: APK archive integrity and signed-build checksum are checked before upload and again after downloading the draft release from GitHub. Missing checksums, mismatched build identity, corrupt archives and altered metadata prevent promotion to latest.
+- Public release assets are never overwritten, protecting interrupted downloads from mixing different bytes. A checksum file accompanies each future release.
+- Windows: no runtime, UI or backend changes; APK delivery is Android-only. Existing Windows release behavior is preserved.
+- Limits: this verifies GitHub delivery, not every browser/network/storage path to a user's device. Signature verification remains in the signed production build; this gate enforces byte equality to that artifact. Failed drafts stay private for diagnosis.
+
 ## 2026-10-10 — Server-gated Blink Coin checkout shelf (Testlab)
 
 - Server-catalog correctness: Android now intersects its decorative built-in catalog with active SKUs/prices returned by `get_blink_store_state`; missing items cannot be sold. Windows now hides collections/identity looks with no live backend item. This avoids showing nonexistent purchasable items during incomplete server catalog migrations.\n- Shared: `BlinkCoinCheckoutPolicy` validates fixed-price server-issued coin packs, blocks checkout when the authenticated backend reports cash checkout disabled, and permits only Paystack's expected HTTPS hosted checkout URL. No wallet balance or entitlements are modified in client code.
