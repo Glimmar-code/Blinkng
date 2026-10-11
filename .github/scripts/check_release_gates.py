@@ -50,7 +50,7 @@ def inspect(repo, commit, fetch=github_json):
         run for run in response.get("workflow_runs", [])
         if run.get("head_sha") == commit
         and run.get("head_branch") == "main"
-        and run.get("event") == "push"
+        and run.get("event") in ("push", "workflow_dispatch")
     ]
     pending = []
     for workflow in MANDATORY_WORKFLOWS:
