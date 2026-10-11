@@ -81,9 +81,10 @@ internal fun feedPrefetchLookahead(
 ): Int {
     if (elapsedMs <= 0L) return 3
     val itemsPerSecond = abs(itemDelta).toFloat() * 1_000f / elapsedMs.toFloat()
+    // Avoid competing with on-screen image decoding during fast flings.
     return when {
-        itemsPerSecond >= 8f -> 7
-        itemsPerSecond >= 4f -> 5
+        itemsPerSecond >= 8f -> 1
+        itemsPerSecond >= 4f -> 2
         else -> 3
     }
 }

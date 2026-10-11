@@ -869,13 +869,13 @@ private fun PremiumHomeFeed(
                     deltaYPx = effectiveDeltaY,
                     headerHeightPx = headerHeight
                 )
-                val consumedY = nextOffset - previousOffset
-                if (consumedY != 0f) {
+                if (nextOffset != previousOffset) {
                     headerOffsetPx.value = nextOffset
                     fabExpanded = direction > 0
-                    onBottomBarVisibilityChange(true)
                 }
-                return androidx.compose.ui.geometry.Offset(0f, consumedY)
+                // Header follows the gesture, but must not consume LazyColumn's
+                // vertical drag. Existing eased fade and settling are preserved.
+                return androidx.compose.ui.geometry.Offset.Zero
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
@@ -1090,22 +1090,25 @@ private fun PremiumHomeFeed(
     }
 
     LaunchedEffect(listState, homeRows) {
-        snapshotFlow { listState.layoutInfo }
-            .collectLatest { layout ->
-                val ids = layout.visibleItemsInfo.mapNotNull { item ->
-                    val key = item.key as? String ?: return@mapNotNull null
-                    if (!key.startsWith("post:")) return@mapNotNull null
-                    if (
-                        qualifiesForPostImpression(
-                            itemOffset = item.offset,
-                            itemSize = item.size,
-                            viewportStart = layout.viewportStartOffset,
-                            viewportEnd = layout.viewportEndOffset
-                        )
-                    ) key.removePrefix("post:") else null
-                }.toSet()
-                impressionTracker.update(ids).forEach(latestViewed)
-            }
+        // Emit only when the qualifying visible post set changes, instead of
+        // waking impression listeners for every tiny layout-offset change.
+        snapshotFlow {
+            val layout = listState.layoutInfo
+            layout.visibleItemsInfo.mapNotNull { item ->
+                val key = item.key as? String ?: return@mapNotNull null
+                if (!key.startsWith("post:")) return@mapNotNull null
+                if (
+                    qualifiesForPostImpression(
+                        itemOffset = item.offset,
+                        itemSize = item.size,
+                        viewportStart = layout.viewportStartOffset,
+                        viewportEnd = layout.viewportEndOffset
+                    )
+                ) key.removePrefix("post:") else null
+            }.toSet()
+        }.collectLatest { ids ->
+            impressionTracker.update(ids).forEach(latestViewed)
+        }
     }
 
     // Prefetch depth grows only when scrolling quickly. Keep the retained URL set bounded.
@@ -1141,7 +1144,7 @@ private fun PremiumHomeFeed(
                         imageLoader.enqueue(
                             ImageRequest.Builder(context)
                                 .data(mediaUrl)
-                                .size(720, 720)
+                                .size(512, 512)
                                 .crossfade(false)
                                 .build()
                         )
@@ -1409,7 +1412,8 @@ private fun PremiumHomeFeed(
                                                                     post.authorUsername.trim().removePrefix("@").lowercase() == currentUserKey
                                                             ),
                                                     onDelete = { onDeletePost(post.id) },
-                                                    xFeedStyle = true
+                                                    xFeedStyle = true,
+                                                    isFeedScrolling = listState.isScrollInProgress
                                                 )
                                             }
                                         }
@@ -1436,7 +1440,8 @@ private fun PremiumHomeFeed(
                                                 onProfileClick = onProfileClick,
                                                 isAuthor = false,
                                                 trackExposure = false,
-                                                xFeedStyle = true
+                                                xFeedStyle = true,
+                                                isFeedScrolling = listState.isScrollInProgress
                                             )
                                         }
 
