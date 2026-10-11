@@ -542,6 +542,7 @@ Android and Windows behavior: Existing study-circle and owner-request reads keep
 Validation: Isolated PostgreSQL checks prove private circles/members stay hidden from an account that belongs to a different circle, while the owner and approved members retain access. All eight promotion migrations reapply.
 
 ---
+PARITY-EXCEPTION: android-mobile-lifecycle-exit-native-jni-20261011
 PARITY-CHANGE: android-accidental-exit-release-crash-guard-20261011
 Date: 2026-10-11
 Android behavior: Back closes subroutes and returns non-home tabs to Home before allowing a double-Back exit on the main tab. Exact resume point is saved on Activity state recreation as well as backgrounding. Foreground Reels pause when the Activity stops, offscreen video players defer decoder initialization until active, and image cache memory shrinks on actual pressure while retaining warmth for ordinary backgrounding. Last visible tab and trim severity are included as non-personal Crashlytics diagnostic keys. Release shrinker preserves native WebRTC JNI symbols and the minified APK smoke workflow checks those symbols.
