@@ -56,9 +56,9 @@ class VideoReelsBehaviorTest {
     }
 
     @Test
-    fun preloadWindow_keepsOnlyCurrentAndAdjacentPagesWarm() {
+    fun preloadWindow_keepsOnlyCurrentAndNextPagesWarm() {
         assertTrue(shouldPreloadReelPage(index = 5, currentPage = 5))
-        assertTrue(shouldPreloadReelPage(index = 4, currentPage = 5))
+        assertFalse(shouldPreloadReelPage(index = 4, currentPage = 5))
         assertTrue(shouldPreloadReelPage(index = 6, currentPage = 5))
         assertFalse(shouldPreloadReelPage(index = 3, currentPage = 5))
         assertFalse(shouldPreloadReelPage(index = 7, currentPage = 5))

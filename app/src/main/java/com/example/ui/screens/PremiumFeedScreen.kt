@@ -605,6 +605,7 @@ private fun PremiumHomeFeed(
     val latestRefresh by rememberUpdatedState(onRefresh)
     val refreshingNow by rememberUpdatedState(isRefreshing)
     val impressionTracker = remember { PostImpressionTracker() }
+    val deliveredBoostImpressions = remember(laneResumeKey) { mutableSetOf<String>() }
     val performanceMonitor = remember(context, laneResumeKey) {
         FeedScrollPerformanceMonitor(context.applicationContext)
     }
@@ -1111,6 +1112,32 @@ private fun PremiumHomeFeed(
         }
     }
 
+    // A precomposed card is not necessarily visible. Count a promoted delivery
+    // only when its actual on-screen extent meets the post exposure threshold.
+    LaunchedEffect(listState, homeRows) {
+        val campaignsByKey = homeRows.filterIsInstance<PremiumHomeRow.BoostedPostRow>()
+            .associate { premiumHomeRowKey(it) to it.placement.campaignId }
+        snapshotFlow {
+            val layout = listState.layoutInfo
+            layout.visibleItemsInfo.mapNotNull { item ->
+                val campaign = campaignsByKey[item.key as? String] ?: return@mapNotNull null
+                if (qualifiesForPostImpression(item.offset, item.size, layout.viewportStartOffset, layout.viewportEndOffset)) {
+                    campaign
+                } else null
+            }.toSet()
+        }.collectLatest { visibleCampaigns ->
+            visibleCampaigns.forEach { campaignId ->
+                if (deliveredBoostImpressions.add(campaignId)) {
+                    uiScope.launch {
+                        runCatching {
+                            boostGrowthService.recordBoostDelivery(campaignId, "IMPRESSION", "HOME")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Prefetch depth grows only when scrolling quickly. Keep the retained URL set bounded.
     LaunchedEffect(listState, homeRows, laneResumeKey) {
         var previousLastVisible = -1
@@ -1421,13 +1448,6 @@ private fun PremiumHomeFeed(
                                         is PremiumHomeRow.BoostedPostRow -> {
                                             val placement = row.placement
                                             val post = placement.post
-                                            LaunchedEffect(placement.campaignId) {
-                                                boostGrowthService.recordBoostDelivery(
-                                                    placement.campaignId,
-                                                    "IMPRESSION",
-                                                    "HOME"
-                                                )
-                                            }
                                             PostCard(
                                                 post = post,
                                                 isDark = true,

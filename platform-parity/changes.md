@@ -1,3 +1,16 @@
+## 2026-10-11 — Feed, promotions, reels, inbox and profile reliability (Testlab)
+
+PARITY-EXCEPTION: android-native-ads-player-and-rpc-recovery-20261011
+
+- Feed recovery (Android): after a server statement timeout, retry the existing authenticated ranked discovery RPC in smaller batches while retaining its block/mute/privacy filters and stable server cursor; never use the legacy get_feed_page private-schema RPC or read raw feed_posts, whose RLS does not enforce all discovery exclusions. Failed recovery remains an error, not an empty timeline.
+- Native monetization (Android): promoted feed posts only record a delivery after they meet the on-screen post visibility threshold. Promoted Reels require a settled visible page before the impression; no rewards, coins, view weights or ad billing settings change. Native Reels ad requests time out and failed slots are removed, retaining organic reels.
+- Reels (Android): limit expensive prewarmed ExoPlayer decoders to the current and next page, releasing obsolete players when pages leave composition.
+- Messages (Android): deliver the first authenticated inbox page to the UI while the full older history is still loading. Keep local conversation message state, preserve account scoping and do not discard older server histories.
+- Profile (Android): reuse the fast initial profile timeline while loading optional liked/saved relations; preserve accurate relation flags.
+- Post likes (Android): reference-count per-post mutation locks so queued likes serialize but completed keys do not accumulate for the whole process.
+- Windows: this update does not change desktop playback, scroll, advertisement, or Supabase protocols. Android's Compose/ExoPlayer/OkHttp lifecycles do not exist in the Windows UI; existing desktop feed, profile and messaging behavior is preserved. No backend schema/RLS changes.
+- Validation: run Kotlin JVM tests, Android lint/debug build, Android emulator/runtime smoke and signed release smoke, Windows build/parity, security and domain checks before any main promotion.
+
 ## 2026-10-11 — Native Sponsored delivery visibility (Testlab)
 
 PARITY-EXCEPTION: android-admob-native-scroll-delivery-20261011

@@ -7,15 +7,13 @@ import com.example.data.models.PostPoll
 import com.example.data.models.Story
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 internal fun isIgnorableLikeCountRefreshFailure(error: Throwable): Boolean =
     error is IllegalStateException &&
         error.message?.contains("Like count refresh failed", ignoreCase = true) == true
 
-// Retry a failed ranked discovery RPC through the simpler chronological feed.
+// Retry ranked discovery timeouts with smaller ranked batches; preserve all server filtering.
 // PostgreSQL error 57014 is a server statement timeout, not an empty feed and
 // not an authentication failure. Do not conceal unrelated errors.
 internal fun isRecoverableRankedFeedTimeout(error: Throwable): Boolean =
@@ -29,8 +27,8 @@ internal fun isRecoverableRankedFeedTimeout(error: Throwable): Boolean =
 class PostRepository(
     private val supabaseService: SupabaseService = SupabaseService()
 ) {
-    private val likeMutationMutexGuard = Mutex()
-    private val likeMutationMutexes = mutableMapOf<String, Mutex>()
+    // Only retain per-post locks while operations are active or queued.
+    private val likeMutationLocks = PerKeyMutationLocks()
 
     private suspend fun fetchRankedFeedWithTimeoutFallback(
         limit: Int,
@@ -44,8 +42,29 @@ class PostRepository(
             if (!isRecoverableRankedFeedTimeout(error)) throw error
             // A blocked/slow ranking RPC must not strand Home on its old cached
             // handful of posts. Preserve feed-type and cursor for pagination.
-            Log.w("PostRepository", "Ranked $feedType feed timed out; using chronological fallback", error)
-            supabaseService.fetchFeedPage(limit, beforeCreatedAt, beforeId, feedType)
+            Log.w("PostRepository", "Ranked $feedType feed timed out; retrying smaller ranked pages", error)
+            // A smaller ranked page retains the server's privacy, blocks, mutes,
+            // and discovery filters. Gather a full window when possible so the
+            // normal 30-item hasMore pagination check never stops after just 8.
+            val recovered = ArrayList<FeedPost>(limit)
+            val seen = HashSet<String>()
+            var cursorAt = beforeCreatedAt
+            var cursorId = beforeId
+            while (recovered.size < limit) {
+                val requestSize = minOf(8, limit - recovered.size)
+                val page = supabaseService.fetchFeedPage(
+                    requestSize, cursorAt, cursorId, "ranked_$feedType"
+                )
+                val fresh = page.filter { seen.add(it.id) }
+                if (fresh.isEmpty()) break
+                recovered.addAll(fresh)
+                // Ranked Supabase paging stores an offset + snapshot internally.
+                // Nonblank cursor args prevent resetting that snapshot to page 1.
+                cursorAt = fresh.last().createdAt.ifBlank { "1970-01-01T00:00:00Z" }
+                cursorId = fresh.last().id
+                if (page.size < requestSize) break
+            }
+            recovered
         }
     }
 
@@ -220,11 +239,7 @@ class PostRepository(
         liked: Boolean,
         newLikeCount: Int
     ): Boolean = withContext(Dispatchers.IO) {
-        val postMutex = likeMutationMutexGuard.withLock {
-            likeMutationMutexes.getOrPut(postId) { Mutex() }
-        }
-
-        postMutex.withLock {
+        likeMutationLocks.withKey(postId) {
             try {
                 supabaseService.togglePostLike(
                     postId = postId,
