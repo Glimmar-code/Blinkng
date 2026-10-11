@@ -114,8 +114,9 @@ class BlinkApplication : Application(), ImageLoaderFactory {
         ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizePercent(0.25)
-                    .strongReferencesEnabled(true)
+                    // Leave headroom for ExoPlayer decoders and large feed images on low-RAM phones.
+                    .maxSizePercent(0.18)
+                    .strongReferencesEnabled(false)
                     .build()
             }
             .diskCache {
@@ -131,10 +132,25 @@ class BlinkApplication : Application(), ImageLoaderFactory {
             .allowHardware(true)
             .build()
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // UI_HIDDEN alone must not destroy the warm feed image cache.
+        // Under actual memory pressure, let Android reclaim decoded bitmaps.
+        val memoryPressure = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW &&
+            level != android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN
+        if (memoryPressure) {
+            runCatching { coil.Coil.imageLoader(this).memoryCache?.clear() }
+            runCatching {
+                FirebaseCrashlytics.getInstance().setCustomKey("last_memory_trim_level", level)
+            }
+        }
+    }
+
     override fun onLowMemory() {
         super.onLowMemory()
-        // Preserve decoded images during ordinary app backgrounding so returning to
-        // the feed does not force a burst of disk decodes. Clear only on real pressure.
-        coil.Coil.imageLoader(this).memoryCache?.clear()
+        runCatching { coil.Coil.imageLoader(this).memoryCache?.clear() }
+        runCatching {
+            FirebaseCrashlytics.getInstance().setCustomKey("last_memory_trim_level", 100)
+        }
     }
 }

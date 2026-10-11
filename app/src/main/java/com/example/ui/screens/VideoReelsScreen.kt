@@ -53,6 +53,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import com.example.data.local.BlinkMediaCache
 import com.example.data.models.ChallengeGameType
@@ -1727,6 +1730,17 @@ private fun ReelVideo(
     onSessionEnd: (ReelPlaybackSession) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var lifecycleStarted by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, _ ->
+            lifecycleStarted = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var error by remember(url) { mutableStateOf<String?>(null) }
     var watchedMs by remember(url) { mutableLongStateOf(0L) }
     var knownDurationMs by remember(url) { mutableLongStateOf(0L) }
@@ -1778,7 +1792,7 @@ private fun ReelVideo(
                     }
                 })
                 setMediaItem(MediaItem.fromUri(url))
-                prepare()
+                // Defer prepare/decoder allocation until this reel is actually foreground.
             }
     }
 
@@ -1802,9 +1816,11 @@ private fun ReelVideo(
         sessionWasActive = false
     }
 
-    LaunchedEffect(isActive, player, initialPositionMs) {
-        player.playWhenReady = isActive
-        if (isActive) {
+    LaunchedEffect(isActive, lifecycleStarted, player, initialPositionMs) {
+        val shouldPlay = isActive && lifecycleStarted
+        player.playWhenReady = shouldPlay
+        if (shouldPlay) {
+            if (player.playbackState == Player.STATE_IDLE) player.prepare()
             sessionWasActive = true
             if (initialPositionMs > 0L) {
                 player.seekTo(initialPositionMs)
@@ -1830,8 +1846,8 @@ private fun ReelVideo(
         currentOnSeekConsumed()
     }
 
-    LaunchedEffect(error, isActive, player) {
-        if (error != null && isActive && autoRetryCount < 2) {
+    LaunchedEffect(error, isActive, lifecycleStarted, player) {
+        if (error != null && isActive && lifecycleStarted && autoRetryCount < 2) {
             delay(600L * (autoRetryCount + 1))
             autoRetryCount += 1
             error = null
@@ -1840,9 +1856,9 @@ private fun ReelVideo(
         }
     }
 
-    LaunchedEffect(player, isActive) {
+    LaunchedEffect(player, isActive, lifecycleStarted) {
         var lastTickMs = android.os.SystemClock.elapsedRealtime()
-        while (isActive) {
+        while (isActive && lifecycleStarted) {
             val nowMs = android.os.SystemClock.elapsedRealtime()
             if (player.isPlaying) {
                 watchedMs += (nowMs - lastTickMs).coerceIn(0L, 1_000L)
@@ -1885,11 +1901,14 @@ private fun ReelVideo(
                 PlayerView(ctx).apply {
                     useController = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    keepScreenOn = true
+                    keepScreenOn = false
                     this.player = player
                 }
             },
-            update = { it.player = player },
+            update = {
+                it.player = player
+                it.keepScreenOn = isActive && lifecycleStarted
+            },
             modifier = Modifier.fillMaxSize()
         )
         if (error != null) {

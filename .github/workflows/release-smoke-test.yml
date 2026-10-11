@@ -41,6 +41,11 @@ on:
 permissions:
   contents: read
 
+# Do not queue multiple expensive minified release builds for outdated commits.
+concurrency:
+  group: android-release-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release-smoke:
     runs-on: ubuntu-latest
@@ -153,6 +158,19 @@ jobs:
           echo "$BADGING" | grep -F "versionName='ci-smoke'" >/dev/null
 
           echo "Release smoke APK/AAB package, version and signatures verified."
+
+      # A minified release build is essential: debug builds cannot catch JNI stripping.
+      - name: Verify native WebRTC JNI classes survive release shrinking
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fx -- '-keep class org.webrtc.** { *; }' app/proguard-rules.pro
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          test -n "$APK"
+          unzip -p "$APK" 'classes*.dex' | strings > "$RUNNER_TEMP/release-dex-strings.txt"
+          grep -F 'Lorg/webrtc/PeerConnectionFactory;' "$RUNNER_TEMP/release-dex-strings.txt"
+          grep -F 'Lorg/webrtc/JniCommon;' "$RUNNER_TEMP/release-dex-strings.txt"
+          echo "Release APK retains WebRTC JNI Java entry points."
 
       # Verify the actual release APK can be installed by Android 15's package manager,
       # not merely read by aapt or apksigner. CI's disposable key is never published.

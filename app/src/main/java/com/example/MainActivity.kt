@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
@@ -44,6 +45,7 @@ import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.example.update.PlayInAppUpdateCoordinator
 import com.example.util.startActivitySafely
 import com.example.viewmodel.AppDestination
@@ -336,11 +338,27 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    private fun persistResumePointSafely() {
+        // Corrupt/legacy local preferences should not kill the Activity during exit.
+        try {
+            viewModel.persistResumePoint()
+        } catch (error: RuntimeException) {
+            android.util.Log.e("MainActivity", "Unable to save resume position", error)
+            runCatching { FirebaseCrashlytics.getInstance().recordException(error) }
+        }
+    }
+
     override fun onStop() {
         // Save the exact navigation surface before Android backgrounds or kills the task.
-        viewModel.persistResumePoint()
+        persistResumePointSafely()
         stopPresenceHeartbeat(markOffline = true)
         super.onStop()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        // Also cover Android-initiated recreation, not only normal backgrounding.
+        persistResumePointSafely()
+        super.onSaveInstanceState(outState)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -369,6 +387,39 @@ class MainActivity : ComponentActivity() {
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
+            val welcomeExitGate = remember { DoubleBackExitGate() }
+            LaunchedEffect(uiState.destination) { welcomeExitGate.reset() }
+            BackHandler(
+                enabled = uiState.destination != AppDestination.MAIN &&
+                    uiState.destination != AppDestination.SPLASH
+            ) {
+                when (uiState.destination) {
+                    AppDestination.SIGN_IN, AppDestination.SIGN_UP ->
+                        viewModel.setDestination(AppDestination.ONBOARDING)
+                    AppDestination.RESET_PASSWORD -> viewModel.cancelPasswordRecovery()
+                    AppDestination.PROFILE_SETUP ->
+                        viewModel.showToast("Finish setting up your profile to continue")
+                    AppDestination.ONBOARDING -> {
+                        if (welcomeExitGate.shouldExit(SystemClock.elapsedRealtime())) {
+                            finish()
+                        } else {
+                            viewModel.showToast("Press back again to exit BLINK")
+                        }
+                    }
+                    else -> Unit
+                }
+            }
+
+            // Crash reports should identify the last visible route without recording personal data.
+            LaunchedEffect(uiState.destination, uiState.selectedTab, uiState.feedSubTab) {
+                runCatching {
+                    FirebaseCrashlytics.getInstance().apply {
+                        setCustomKey("last_ui_destination", uiState.destination.toString())
+                        setCustomKey("last_ui_tab", uiState.selectedTab.toString())
+                        setCustomKey("last_ui_subtab", uiState.feedSubTab)
+                    }
+                }
+            }
 
             LaunchedEffect(uiState.destination) {
                 if (uiState.destination == AppDestination.MAIN) {
@@ -644,29 +695,36 @@ fun MainAppContent(
         )
     }
 
-    LaunchedEffect(uiState.selectedTab) {
+    val exitGate = remember { DoubleBackExitGate() }
+    val hasOpenSubroute = uiState.deepLinkedPost != null ||
+        uiState.activePostOptionsPost != null ||
+        uiState.isMenuOpen ||
+        uiState.isEditProfileOpen ||
+        uiState.isBecomeSellerOpen ||
+        uiState.isPostItemOpen ||
+        uiState.isActivityOpen ||
+        uiState.activeConversationPartner != null ||
+        uiState.viewingProfile != null ||
+        uiState.viewingProduct != null ||
+        uiState.isGetVerifiedOpen ||
+        uiState.isCreatePostOpen ||
+        uiState.isCreateStoryOpen ||
+        uiState.activeViewingStory != null ||
+        uiState.showSellerCongratulationsDialog ||
+        feedUtilitySheet != null
+    LaunchedEffect(uiState.selectedTab, uiState.feedSubTab) {
         isBottomBarVisibleByScroll = true
+        // Navigating between tabs invalidates an earlier exit confirmation.
+        exitGate.reset()
+    }
+    LaunchedEffect(hasOpenSubroute) {
+        // Going into a conversation, profile, modal or full-screen utility resets
+        // the two-tap window. A later Back cannot unexpectedly close the app.
+        if (hasOpenSubroute) exitGate.reset()
     }
 
-    // Handle back button presses for sub-views
-    BackHandler(
-        enabled = uiState.viewingProduct != null ||
-                uiState.viewingProfile != null ||
-                uiState.isPostItemOpen ||
-                uiState.isBecomeSellerOpen ||
-                uiState.isEditProfileOpen ||
-                uiState.isMenuOpen ||
-                uiState.activeConversationPartner != null ||
-                uiState.activePostOptionsPost != null ||
-                uiState.isActivityOpen ||
-                uiState.isGetVerifiedOpen ||
-                uiState.isCreatePostOpen ||
-                uiState.isCreateStoryOpen ||
-                uiState.activeViewingStory != null ||
-                uiState.showSellerCongratulationsDialog ||
-                uiState.deepLinkedPost != null ||
-                (uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1)
-    ) {
+    // Handle Back within the app before allowing the system to close the Activity.
+    BackHandler(enabled = true) {
         when {
             uiState.deepLinkedPost != null -> viewModel.closeDeepLinkedPost()
             uiState.activePostOptionsPost != null -> viewModel.openPostOptions(null)
@@ -683,9 +741,22 @@ fun MainAppContent(
             uiState.isCreateStoryOpen -> viewModel.openCreateStory(false)
             uiState.activeViewingStory != null -> viewModel.closeStory()
             uiState.showSellerCongratulationsDialog -> viewModel.dismissSellerCongratulations()
-            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1 -> {
+            feedUtilitySheet != null -> feedUtilitySheet = null
+            uiState.selectedTab != MainTab.HOME -> {
+                isBottomBarVisibleByScroll = true
+                viewModel.setTab(MainTab.HOME)
+                viewModel.setFeedSubTab(0)
+            }
+            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab != 0 -> {
                 isBottomBarVisibleByScroll = true
                 viewModel.setFeedSubTab(0)
+            }
+            else -> {
+                if (exitGate.shouldExit(SystemClock.elapsedRealtime())) {
+                    (context as? Activity)?.finish()
+                } else {
+                    viewModel.showToast("Press back again to exit BLINK")
+                }
             }
         }
     }
