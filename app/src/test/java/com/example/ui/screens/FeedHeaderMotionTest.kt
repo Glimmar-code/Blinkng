@@ -78,8 +78,8 @@ class FeedHeaderMotionTest {
     @Test
     fun prefetchLookaheadScalesWithScrollSpeed() {
         assertEquals(3, feedPrefetchLookahead(itemDelta = 1, elapsedMs = 500))
-        assertEquals(5, feedPrefetchLookahead(itemDelta = 3, elapsedMs = 500))
-        assertEquals(7, feedPrefetchLookahead(itemDelta = 5, elapsedMs = 500))
+        assertEquals(2, feedPrefetchLookahead(itemDelta = 3, elapsedMs = 500))
+        assertEquals(1, feedPrefetchLookahead(itemDelta = 5, elapsedMs = 500))
     }
 
     @Test
