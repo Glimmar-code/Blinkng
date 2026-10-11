@@ -2001,7 +2001,11 @@ private suspend fun restoreSupabaseSession() {
 
         val current = if (isReel) state.reels else state.posts
         val last = current.lastOrNull() ?: return
-        if (last.createdAt.isBlank()) return
+        // Ranked feeds use an offset/as-of cursor inside SupabaseService, not the
+        // content timestamp. The stable post ID prevents a missing timestamp from
+        // accidentally restarting the first discovery page.
+        if (last.id.isBlank()) return
+        val requestEpoch = if (isReel) reelPageEpoch else postPageEpoch
 
         _uiState.value = if (isReel) {
             state.copy(isLoadingMoreReels = true)
@@ -2010,37 +2014,44 @@ private suspend fun restoreSupabaseSession() {
         }
 
         viewModelScope.launch {
-            runCatching {
-                postRepository.fetchFeedPage(
-                    isReel = isReel,
-                    beforeCreatedAt = last.createdAt,
-                    beforeId = last.id,
-                    limit = 30
-                )
-            }.onSuccess { page ->
-                val latest = _uiState.value
-                if (isReel) {
-                    val merged = (latest.reels + page).distinctBy { it.id }
-                    _uiState.value = latest.copy(
-                        reels = merged,
-                        isLoadingMoreReels = false,
-                        hasMoreReels = page.size >= 30
-                    )
-                } else {
-                    val merged = (latest.posts + page).distinctBy { it.id }
-                    _uiState.value = latest.copy(
-                        posts = merged,
-                        isLoadingMorePosts = false,
-                        hasMorePosts = page.size >= 30
+            try {
+                // Serialize ranked cursor mutations with manual refresh and reconnect sync.
+                val page = syncMutex.withLock {
+                    if (requestEpoch != (if (isReel) reelPageEpoch else postPageEpoch)) null
+                    else postRepository.fetchFeedPage(
+                        isReel = isReel,
+                        beforeCreatedAt = last.createdAt.takeIf { it.isNotBlank() },
+                        beforeId = last.id,
+                        limit = 30
                     )
                 }
-                persistCurrentFeed()
-            }.onFailure {
-                Log.w(TAG, "Load more feed failed", it)
-                _uiState.value = if (isReel) {
-                    _uiState.value.copy(isLoadingMoreReels = false)
-                } else {
-                    _uiState.value.copy(isLoadingMorePosts = false)
+                if (page != null && requestEpoch == (if (isReel) reelPageEpoch else postPageEpoch)) {
+                    val latest = _uiState.value
+                    if (isReel) {
+                        _uiState.value = latest.copy(
+                            reels = (latest.reels + page).distinctBy { it.id },
+                            hasMoreReels = page.size >= 30
+                        )
+                    } else {
+                        _uiState.value = latest.copy(
+                            posts = (latest.posts + page).distinctBy { it.id },
+                            hasMorePosts = page.size >= 30
+                        )
+                    }
+                    persistCurrentFeed()
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Load more feed failed", error)
+            } finally {
+                if (requestEpoch == (if (isReel) reelPageEpoch else postPageEpoch)) {
+                    val latest = _uiState.value
+                    _uiState.value = if (isReel) {
+                        latest.copy(isLoadingMoreReels = false)
+                    } else {
+                        latest.copy(isLoadingMorePosts = false)
+                    }
                 }
             }
         }
@@ -2051,25 +2062,34 @@ private suspend fun restoreSupabaseSession() {
         if (!state.isOnline || state.isLoadingMoreFollowingPosts || state.isRefreshingFollowing || !state.hasMoreFollowingPosts) return
         val last = state.followingPosts.lastOrNull() ?: return
         if (last.createdAt.isBlank()) return
+        val requestEpoch = followingPageEpoch
 
         _uiState.value = state.copy(isLoadingMoreFollowingPosts = true)
         viewModelScope.launch {
-            runCatching {
-                postRepository.fetchFollowingFeedPage(
-                    beforeCreatedAt = last.createdAt,
-                    beforeId = last.id,
-                    limit = 30
-                )
-            }.onSuccess { page ->
-                val latest = _uiState.value
-                _uiState.value = latest.copy(
-                    followingPosts = (latest.followingPosts + page).distinctBy { it.id },
-                    isLoadingMoreFollowingPosts = false,
-                    hasMoreFollowingPosts = page.size >= 30
-                )
-            }.onFailure {
-                Log.w(TAG, "Load more following feed failed", it)
-                _uiState.value = _uiState.value.copy(isLoadingMoreFollowingPosts = false)
+            try {
+                val page = syncMutex.withLock {
+                    if (requestEpoch != followingPageEpoch) null
+                    else postRepository.fetchFollowingFeedPage(
+                        beforeCreatedAt = last.createdAt,
+                        beforeId = last.id,
+                        limit = 30
+                    )
+                }
+                if (page != null && requestEpoch == followingPageEpoch) {
+                    val latest = _uiState.value
+                    _uiState.value = latest.copy(
+                        followingPosts = (latest.followingPosts + page).distinctBy { it.id },
+                        hasMoreFollowingPosts = page.size >= 30
+                    )
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Load more following feed failed", error)
+            } finally {
+                if (requestEpoch == followingPageEpoch) {
+                    _uiState.value = _uiState.value.copy(isLoadingMoreFollowingPosts = false)
+                }
             }
         }
     }
