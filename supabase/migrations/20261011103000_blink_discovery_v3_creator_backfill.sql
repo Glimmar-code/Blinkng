@@ -31,6 +31,8 @@ DECLARE
     if not found then exit; end if;$fix$;
     v_window_old text := 'interval ''7 days''';
     v_window_new text := 'interval ''90 days''';
+    v_null_guard_old text := 'v_last_creator_2=v_last_creator_1';
+    v_null_guard_new text := 'v_last_creator_2 is not distinct from v_last_creator_1';
 BEGIN
     SELECT pg_get_functiondef(v_function) INTO v_source;
     IF v_source IS NULL THEN RAISE EXCEPTION 'Discovery function missing'; END IF;
@@ -50,6 +52,15 @@ BEGIN
             RAISE EXCEPTION 'Unexpected discovery history window: manual review required';
         END IF;
         v_source := replace(v_source, v_window_old, v_window_new);
+    END IF;
+
+    -- PostgreSQL NOT(NULL) is NULL, not TRUE. The original guard also
+    -- accidentally rejects a second item from the same creator whenever
+    -- v_last_creator_2 is null. Make this comparison total (null-safe).
+    IF strpos(v_source, v_null_guard_old) > 0 THEN
+        v_source := replace(v_source, v_null_guard_old, v_null_guard_new);
+    ELSIF strpos(v_source, v_null_guard_new) = 0 THEN
+        RAISE EXCEPTION 'Creator diversity guard format changed; manual review required';
     END IF;
 
     -- Use the existing, reviewed function body. The only modification is its
