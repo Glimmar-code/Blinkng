@@ -585,6 +585,11 @@ private fun PremiumHomeFeed(
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
     val laneResumeKey = "$resumeUserKey:$laneIndex"
+    // The first visit in a fresh process opens at the top with the full feed.
+    // Returning from another in-app screen may recover the saved scroll/filter.
+    val restoreWithinProcess = remember(laneResumeKey) {
+        FeedLaneProcessVisit.shouldRestore(laneResumeKey)
+    }
     val listState = rememberLazyListState()
     var restoredLaneResumeKey by remember { mutableStateOf<String?>(null) }
     var restoringScroll by remember { mutableStateOf(false) }
@@ -603,7 +608,7 @@ private fun PremiumHomeFeed(
     }
     var filter by remember(laneResumeKey) {
         mutableStateOf(
-            runCatching {
+            if (!restoreWithinProcess) PremiumFeedFilter.ALL else runCatching {
                 PremiumFeedFilter.valueOf(
                     resumePrefs.safeString(
                         "home_filter:$laneResumeKey",
@@ -945,12 +950,20 @@ private fun PremiumHomeFeed(
 
     LaunchedEffect(laneResumeKey, homeRowKeys) {
         if (restoredLaneResumeKey != laneResumeKey) {
-            val savedIndex = resumePrefs.safeInt("home_scroll_index:$laneResumeKey", 0).coerceAtLeast(0)
-            val savedOffset = resumePrefs.safeInt("home_scroll_offset:$laneResumeKey", 0).coerceAtLeast(0)
-            val savedKey = resumePrefs.safeString("home_scroll_key:$laneResumeKey", null)
-            val savedHeaderFraction = runCatching {
-                resumePrefs.getFloat("home_header_fraction:$laneResumeKey", 0f)
-            }.getOrDefault(0f).coerceIn(0f, 1f)
+            val savedIndex = if (restoreWithinProcess) {
+                resumePrefs.safeInt("home_scroll_index:$laneResumeKey", 0).coerceAtLeast(0)
+            } else 0
+            val savedOffset = if (restoreWithinProcess) {
+                resumePrefs.safeInt("home_scroll_offset:$laneResumeKey", 0).coerceAtLeast(0)
+            } else 0
+            val savedKey = if (restoreWithinProcess) {
+                resumePrefs.safeString("home_scroll_key:$laneResumeKey", null)
+            } else null
+            val savedHeaderFraction = if (restoreWithinProcess) {
+                runCatching {
+                    resumePrefs.getFloat("home_header_fraction:$laneResumeKey", 0f)
+                }.getOrDefault(0f).coerceIn(0f, 1f)
+            } else 0f
 
             val canRestoreNow =
                 homeRowKeys.isNotEmpty() ||
@@ -1948,4 +1961,10 @@ private fun PremiumEmptyFeed(
             }
         }
     }
+}
+
+/** Keep UI position while navigating within a process, but not after task removal. */
+private object FeedLaneProcessVisit {
+    private val visited = mutableSetOf<String>()
+    fun shouldRestore(key: String): Boolean = !visited.add(key)
 }
