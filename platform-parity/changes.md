@@ -1,3 +1,11 @@
+## 2026-10-11 — Native Sponsored delivery visibility (Testlab)
+
+PARITY-EXCEPTION: android-admob-native-scroll-delivery-20261011
+
+- Android: retain the existing approved **one Sponsored placement after 8 organic Feed posts / 7 organic Reels**, now including the exact-length boundary rather than requiring an additional post or reel. When UMP consent does not permit requests, Reels does not insert an empty sponsored page. When AdMob returns no fill/failure, remove the empty Reels ad page instead of trapping the viewer on a black page; ignore late load callbacks after slot disposal. Never fabricate an ad or impression; preserve SDK AdChoices and attribution.
+- Windows equivalent: Google Mobile Ads NativeAdView is an Android-only SDK and desktop did not have a contracted ad SDK/provider. Windows retains its existing content/ranking UX, without fake sponsored content or hidden tracking. A separate desktop ad provider would require its own consent and parity review.
+- No changes to rewarded ads, verified/coin economy, qualified views, search ranking, Supabase migrations, or real ad-unit IDs. Debug still uses Google's test unit IDs. Release impressions are subject to real AdMob fill, policy and consent.
+
 ## 2026-10-11 — Smooth feed scrolling and low-work post images (Testlab)
 
 PARITY-EXCEPTION: android-compose-feed-scroll-performance-20261011

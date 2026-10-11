@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import com.example.R
 import com.example.BuildConfig
+import com.example.ads.BlinkAdsRuntime
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -220,6 +221,10 @@ private enum class ReelsUiState { Loading, Empty, Content }
 
 private const val REELS_SPONSORED_INTERVAL = 7
 
+/** Ads follow completed organic items; an exact seven-reel page is still eligible. */
+internal fun shouldInsertSponsoredAfter(organicPosition: Int, interval: Int): Boolean =
+    organicPosition > 0 && interval > 0 && organicPosition % interval == 0
+
 private sealed interface ReelPagerItem {
     data class ReelItem(val reel: FeedPost, val sourceIndex: Int) : ReelPagerItem
     data class Boosted(val placement: BlinkPromotedDiscoveryPlacement, val slot: Int) : ReelPagerItem
@@ -238,6 +243,8 @@ internal fun shouldPreloadReelPage(index: Int, currentPage: Int): Boolean =
 private fun buildReelPagerItems(
     reels: List<FeedPost>,
     promotedReels: List<BlinkPromotedDiscoveryPlacement>,
+    includeSponsored: Boolean,
+    unavailableSlots: Set<Int>,
 ): List<ReelPagerItem> {
     if (reels.isEmpty()) return emptyList()
 
@@ -262,11 +269,11 @@ private fun buildReelPagerItems(
                 slot = promotedSlot,
             )
             promotedSlot += 1
-        } else if (
-            organicPosition % REELS_SPONSORED_INTERVAL == 0 &&
-            index < reels.lastIndex
-        ) {
-            result += ReelPagerItem.Sponsored(slot = sponsoredSlot++)
+        } else if (includeSponsored && shouldInsertSponsoredAfter(organicPosition, REELS_SPONSORED_INTERVAL)) {
+            val slot = sponsoredSlot++
+            if (slot !in unavailableSlots) {
+                result += ReelPagerItem.Sponsored(slot = slot)
+            }
         }
     }
     return result
@@ -325,6 +332,11 @@ private fun ReelsContent(
         mutableStateOf<List<BlinkPromotedDiscoveryPlacement>>(emptyList())
     }
     var selectedTab by rememberSaveable(resumeUserKey) { mutableStateOf("For You") }
+    val canRequestAds by BlinkAdsRuntime.canRequestAds.collectAsState()
+    // A no-fill response must not strand a viewer on an empty full-screen ad page.
+    var unavailableSponsoredSlots by remember(resumeUserKey, selectedTab) {
+        mutableStateOf(emptySet<Int>())
+    }
     LaunchedEffect(selectedTab) { onFollowingSelectionChanged(selectedTab == "Following") }
     var reelsMuted by rememberSaveable(resumeUserKey) {
         mutableStateOf(resumePrefs.getBoolean("reels_muted:$resumeUserKey", false))
@@ -345,10 +357,12 @@ private fun ReelsContent(
             .onFailure { promotedReels = emptyList() }
     }
 
-    val pagerItems = remember(activeReels, promotedReels, selectedTab) {
+    val pagerItems = remember(activeReels, promotedReels, selectedTab, canRequestAds, unavailableSponsoredSlots) {
         buildReelPagerItems(
             reels = activeReels,
-            promotedReels = if (selectedTab == "For You") promotedReels else emptyList()
+            promotedReels = if (selectedTab == "For You") promotedReels else emptyList(),
+            includeSponsored = canRequestAds,
+            unavailableSlots = unavailableSponsoredSlots
         )
     }
     val initialPage = remember(pagerItems, activeReels, resumeUserKey, initialReelId, selectedTab) {
@@ -591,6 +605,9 @@ private fun ReelsContent(
                         BlinkSponsoredNativeAd(
                             adUnitId = BuildConfig.ADMOB_REELS_NATIVE_AD_UNIT_ID,
                             placement = BlinkNativeAdPlacement.REEL,
+                            onUnavailable = {
+                                unavailableSponsoredSlots = unavailableSponsoredSlots + item.slot
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
