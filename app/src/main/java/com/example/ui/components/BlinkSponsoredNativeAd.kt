@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,6 +65,21 @@ fun BlinkSponsoredNativeAd(
     var loadFailed by remember(adUnitId) { mutableStateOf(false) }
     val latestOnUnavailable by rememberUpdatedState(onUnavailable)
 
+    // A slow or never-returning ad request must not strand viewers on a black
+    // full-screen page. The pager removes timed-out placements, not organic reels.
+    LaunchedEffect(adUnitId, canRequestAds, placement, nativeAd, loadFailed) {
+        if (placement == BlinkNativeAdPlacement.REEL && canRequestAds &&
+            nativeAd == null && !loadFailed
+        ) {
+            if (adUnitId.isBlank()) {
+                latestOnUnavailable()
+            } else {
+                delay(6_000L)
+                if (nativeAd == null && !loadFailed) latestOnUnavailable()
+            }
+        }
+    }
+
     DisposableEffect(adUnitId, canRequestAds) {
         if (!canRequestAds) {
             nativeAd?.destroy()
@@ -74,6 +91,11 @@ fun BlinkSponsoredNativeAd(
         // AdLoader has no cancel method: ignore callbacks from a recycled/disposed slot.
         var disposed = false
         val placementName = if (placement == BlinkNativeAdPlacement.FEED) "feed" else "reels"
+        if (adUnitId.isBlank()) {
+            loadFailed = true
+            if (placement == BlinkNativeAdPlacement.REEL) latestOnUnavailable()
+            return@DisposableEffect onDispose { disposed = true }
+        }
         val adLoader = AdLoader.Builder(context, adUnitId)
             .forNativeAd { loaded ->
                 if (disposed) {
