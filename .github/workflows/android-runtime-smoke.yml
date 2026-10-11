@@ -6,28 +6,10 @@ on:
       - main
       - Testlab
       - 'Testlab-*'
-    paths:
-      - 'app/src/**'
-      - 'shared/src/**'
-      - 'app/build.gradle.kts'
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
-      - 'gradle.properties'
-      - 'gradle/**'
-      - '.github/workflows/android-runtime-smoke.yml'
   pull_request:
     branches:
       - main
       - Testlab
-    paths:
-      - 'app/src/**'
-      - 'shared/src/**'
-      - 'app/build.gradle.kts'
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
-      - 'gradle.properties'
-      - 'gradle/**'
-      - '.github/workflows/android-runtime-smoke.yml'
   workflow_dispatch:
 
 permissions:

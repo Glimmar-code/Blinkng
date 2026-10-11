@@ -56,6 +56,55 @@ def gh(repository, *args, check=True):
                           check=check, capture_output=True, text=True)
 
 
+
+def verify_runtime_evidence(source, info):
+    reports = list(source.rglob("api-*.json"))
+    if len(reports) != 2:
+        raise ValueError("Missing exact production APK validation evidence for Android 24 and 35")
+    apis = set()
+    for path in reports:
+        report = json.loads(path.read_text())
+        if report.get("apkSha256") != info["apkSha256"] or report.get("versionCode") != info["versionCode"]:
+            raise ValueError("Runtime evidence belongs to a different APK")
+        api = str(report.get("androidApi"))
+        if api in apis or api not in {"24", "35"}:
+            raise ValueError("Unexpected or duplicate Android validation API")
+        apis.add(api)
+        for check in ("freshInstall", "upgrade", "signedOutNavigation", "backgroundResume", "offlineRestart"):
+            if report.get(check) is not True:
+                raise ValueError("Production runtime validation did not pass: " + check)
+
+
+def verify_newer_release(repository, info):
+    # Fail closed on network/auth errors, missing metadata, equal versions and
+    # signing changes. Never let a delayed/re-run older job become latest.
+    latest = gh(repository, "view", "--json", "tagName").stdout
+    tag = json.loads(latest)["tagName"]
+    with tempfile.TemporaryDirectory() as folder:
+        gh(repository, "download", tag, "--dir", folder, "--pattern", "release-info.txt")
+        previous = {}
+        for line in (Path(folder) / "release-info.txt").read_text().splitlines():
+            key, separator, value = line.partition("=")
+            if not separator or key in previous:
+                raise ValueError("Previous release metadata is invalid")
+            previous[key] = value
+    code = previous.get("versionCode", "")
+    if not re.fullmatch(r"[1-9][0-9]{0,9}", code):
+        raise ValueError("Previous production version is missing or invalid")
+    if int(info["versionCode"]) <= int(code):
+        raise ValueError("Refusing to replace latest with an older or equal version")
+    if previous.get("signingCertificateSha256") != info["signingCertificateSha256"]:
+        raise ValueError("Production signing certificate changed")
+    previous_commit = previous.get("commit", "")
+    if not re.fullmatch(r"[0-9a-f]{40}", previous_commit):
+        raise ValueError("Previous release source revision is invalid")
+    comparison = json.loads(subprocess.check_output([
+        "gh", "api", f"repos/{repository}/compare/{previous_commit}...{info['commit']}"
+    ], text=True))
+    if comparison.get("status") not in ("ahead", "identical"):
+        raise ValueError("Candidate source is older than or diverges from latest production")
+
+
 def publish(source, repository, commit):
     apks = list(source.rglob("*.apk"))
     infos = list(source.rglob("release-info.txt"))
@@ -64,6 +113,8 @@ def publish(source, repository, commit):
     info = metadata(infos[0], commit)
     expected = info.get("apkSha256", "")
     verify_apk(apks[0], expected)
+    verify_runtime_evidence(source, info)
+    verify_newer_release(repository, info)
     tag = "v" + info["versionName"]
     existing = gh(repository, "view", tag, "--json", "isDraft,targetCommitish", check=False)
     if existing.returncode == 0:
@@ -98,6 +149,9 @@ def publish(source, repository, commit):
         for original in (saved_info, checksum):
             if (downloaded / original.name).read_bytes() != original.read_bytes():
                 raise ValueError("Uploaded release metadata changed; draft remains unpublished")
+        # Check again immediately before promotion; another publisher may have
+        # advanced latest while this draft was uploading.
+        verify_newer_release(repository, info)
         # A failed download or validation leaves the previous latest release intact.
         gh(repository, "edit", tag, "--draft=false", "--latest")
         print(f"Published verified release {tag}: {expected}")
