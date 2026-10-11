@@ -149,6 +149,9 @@ fun HomeScreen(
     var composerMoreSettings by remember { mutableStateOf(false) }
     var composerRequestId by remember { mutableStateOf(UUID.randomUUID().toString()) }
     var loading by remember { mutableStateOf(true) }
+    var loadingMorePosts by remember { mutableStateOf(false) }
+    var hasMorePosts by remember { mutableStateOf(true) }
+    var consumedPostRows by remember { mutableStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
     var commentsFor by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -166,13 +169,49 @@ fun HomeScreen(
         if (loading && posts.isNotEmpty()) return
         loading = true
         try {
-            posts = state.client.fetchFeed().distinctBy { it.id }
+            val page = state.client.fetchFeed()
+            posts = page.distinctBy { it.id }
+            consumedPostRows = page.size
+            hasMorePosts = page.size >= 60
             error = null
         } catch (cause: Exception) {
             // Keep the previous page and its scroll position on network failures.
             error = cause.message ?: "Could not refresh Home."
         } finally {
             loading = false
+        }
+    }
+
+    suspend fun loadMorePosts() {
+        if (loading || loadingMorePosts || !hasMorePosts || posts.isEmpty()) return
+        loadingMorePosts = true
+        try {
+            val page = state.client.fetchFeed(offset = consumedPostRows)
+            consumedPostRows += page.size
+            val knownIds = posts.asSequence().map { it.id }.toHashSet()
+            val newRows = page.filter { it.id !in knownIds }.distinctBy { it.id }
+            posts = posts + newRows
+            hasMorePosts = page.size >= 60 && newRows.isNotEmpty()
+            error = null
+        } catch (cause: Exception) {
+            // Keep content/cursor intact, so an explicit retry can continue.
+            error = cause.message ?: "Could not load more Home posts."
+        } finally {
+            loadingMorePosts = false
+        }
+    }
+
+    LaunchedEffect(listState, posts.size, hasMorePosts, loading, loadingMorePosts) {
+        if (hasMorePosts && posts.isNotEmpty() && !loading && !loadingMorePosts) {
+            snapshotFlow {
+                val layout = listState.layoutInfo
+                val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
+                lastVisible >= layout.totalItemsCount - 5
+            }.collect { nearEnd ->
+                // Use the remembered scope: launching directly from this
+                // LaunchedEffect is cancelled when loadingMorePosts changes.
+                if (nearEnd) scope.launch { loadMorePosts() }
+            }
         }
     }
 
@@ -569,6 +608,16 @@ fun HomeScreen(
                 xFeedStyle = true,
             )
             if (commentsFor == post.id) CommentsPanel(state, post.id)
+        }
+        if (loadingMorePosts) item(key = "home_more_loading") {
+            LoadingRow()
+        }
+        if (hasMorePosts && !loadingMorePosts && !loading && posts.isNotEmpty()) {
+            item(key = "home_more_retry") {
+                TextButton(onClick = { scope.launch { loadMorePosts() } }) {
+                    Text("Load more posts")
+                }
+            }
         }
     }
 }

@@ -1,9 +1,10 @@
-## 2026-10-11 — Android JNI crash and ranked-feed recovery (Testlab)
+## 2026-10-11 — For You feed completeness, older content and pagination (Testlab)
 
-- PARITY-EXCEPTION: android-webrtc-jni-and-ranked-timeout — Android's R8 release shrinker renamed WebRTC JNI classes and caused a native abort during voice/video calls on Android 15. Keep `org.webrtc.**` class/member names and verify real release DEX. Windows does not use Android's R8, JNI_OnLoad or Android WebRTC SDK.
-- Android: the ranked-feed RPC can time out under backend load. Fall back only for PostgreSQL statement timeout to the standard paginated feed, preserving posts/Reels type and pagination; auth/RLS failures still surface. Windows currently uses a separate chronological `feed_posts` fetch, so it is already independent of the Android ranked-feed RPC.
-- Shared Supabase: expand the discovery window from seven to 90 days (the live server had only four active non-reels from the last seven days but 49 active posts in the last 90 days); postpone the content view-counter update until after points/repost work to shorten exclusive `feed_posts` lock duration; guard fallback visibility with audience, moderation and expiration checks. These changes affect both clients and require database preview/rollout, not just Android build tests.
-- Validation: Android debug/release smoke, R8 DEX retention check, Windows compilation, SQL parser/static regression gates, mobile call media startup, For You pagination, Follow feed, privacy and recorded-view integrity. Do not merge or deploy until release and backend validation.
+- Shared ranked backend: remove the hard seven-day eligibility cutoff while retaining the existing time-decay score. When creator diversity cannot select another post, the final fallback chooses the best remaining eligible candidate rather than ending the feed early. Block, mute, private audience, hidden content, expiry, authentication, qualified views, promotions and ranked scoring remain unchanged.
+- Android: retain the current scroll anchor while supplementing a short cached first page with new live post IDs. In-session ranking order stays stable, duplicates are removed, and existing near-end ranked pagination, refresh, offline caching and Following feed are preserved.
+- Windows: Home now supports automatically loading older batches from its current authenticated public-post data source, with stable timestamp/ID ordering, de-duplication, error recovery and a manual Load More option. Desktop does not depend on Android's Compose/Room cache or reuse its gesture handling.
+- Validation: disposable SQL regression verifies full pages, old-post eligibility, single-creator fallback, stable order and idempotent reapplication; Android quality/runtime, Windows build/parity, Supabase safety and release smoke must pass before promotion.
+- Deployment: merging only commits the migration. The Supabase backend migration must be applied and verified separately before this fix can affect the public app. No live database records were modified by the Testlab work.
 
 ## 2026-10-11 — BLINK Smart Discovery v3 (Testlab candidate)
 
@@ -556,3 +557,10 @@ Date: 2026-10-07
 Shared/backend behavior: Circle and member SELECT policies use a scoped authenticated owner/member/public access helper, avoiding mutual RLS recursion and uncorrelated membership matches. Existing circle mutations, requests and ranking formulas remain intact.
 Android and Windows behavior: Existing study-circle and owner-request reads keep working through the same backend contract.
 Validation: Isolated PostgreSQL checks prove private circles/members stay hidden from an account that belongs to a different circle, while the owner and approved members retain access. All eight promotion migrations reapply.
+
+## 2026-10-11 — Android JNI crash and ranked-feed recovery (Testlab)
+
+- PARITY-EXCEPTION: android-webrtc-jni-and-ranked-timeout — Android's R8 release shrinker renamed WebRTC JNI classes and caused a native abort during voice/video calls on Android 15. Keep `org.webrtc.**` class/member names and verify real release DEX. Windows does not use Android's R8, JNI_OnLoad or Android WebRTC SDK.
+- Android: the ranked-feed RPC can time out under backend load. Fall back only for PostgreSQL statement timeout to the standard paginated feed, preserving posts/Reels type and pagination; auth/RLS failures still surface. Windows currently uses a separate chronological `feed_posts` fetch, so it is already independent of the Android ranked-feed RPC.
+- Shared Supabase: expand the discovery window from seven to 90 days (the live server had only four active non-reels from the last seven days but 49 active posts in the last 90 days); postpone the content view-counter update until after points/repost work to shorten exclusive `feed_posts` lock duration; guard fallback visibility with audience, moderation and expiration checks. These changes affect both clients and require database preview/rollout, not just Android build tests.
+- Validation: Android debug/release smoke, R8 DEX retention check, Windows compilation, SQL parser/static regression gates, mobile call media startup, For You pagination, Follow feed, privacy and recorded-view integrity. Do not merge or deploy until release and backend validation.
