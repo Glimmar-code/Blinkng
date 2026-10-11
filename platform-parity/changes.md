@@ -1,3 +1,11 @@
+## 2026-10-11 — Smooth feed scrolling and low-work post images (Testlab)
+
+PARITY-EXCEPTION: android-compose-feed-scroll-performance-20261011
+
+- Android: top feed chrome follows finger motion without consuming any of the underlying LazyColumn's vertical drag; avoid redundant bottom-bar state writes. Slow down background media prefetch during fast flings, remove animated loading indicators and feed-image crossfades, and defer unknown image-height changes while a list is actively scrolling. A bounded, image-free aspect-ratio cache allows recycled post cards to retain stable sizes while retaining natural image proportions.
+- Windows: Android's nested-scroll dispatch, Coil/Compose loading indicators and LazyColumn image aspect reflows have no identical Windows desktop adapter; Windows' scroll mechanics and image loading remain unchanged. No functional feed or content semantic change is required on desktop.
+- Shared/backend: ranking, views/qualified impressions, promotions, permissions, Supabase state and cache invalidation are not modified. Validate Android unit/lint/emulator scroll paths and existing Windows/parity gates before promoting to main. The first uncached image may settle to its true aspect after a fling; it should not resize during the drag itself.
+
 ## 2026-10-10 — Circular Android launcher icon with balanced inner spacing
 
 PARITY-EXCEPTION: android-circular-launcher-padding-20261010
