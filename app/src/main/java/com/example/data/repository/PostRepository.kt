@@ -13,7 +13,7 @@ internal fun isIgnorableLikeCountRefreshFailure(error: Throwable): Boolean =
     error is IllegalStateException &&
         error.message?.contains("Like count refresh failed", ignoreCase = true) == true
 
-// Retry a failed ranked discovery RPC through the simpler chronological feed.
+// Retry ranked discovery timeouts with smaller ranked batches; preserve all server filtering.
 // PostgreSQL error 57014 is a server statement timeout, not an empty feed and
 // not an authentication failure. Do not conceal unrelated errors.
 internal fun isRecoverableRankedFeedTimeout(error: Throwable): Boolean =
@@ -42,7 +42,7 @@ class PostRepository(
             if (!isRecoverableRankedFeedTimeout(error)) throw error
             // A blocked/slow ranking RPC must not strand Home on its old cached
             // handful of posts. Preserve feed-type and cursor for pagination.
-            Log.w("PostRepository", "Ranked $feedType feed timed out; using chronological fallback", error)
+            Log.w("PostRepository", "Ranked $feedType feed timed out; retrying smaller ranked pages", error)
             // A smaller ranked page retains the server's privacy, blocks, mutes,
             // and discovery filters. Gather a full window when possible so the
             // normal 30-item hasMore pagination check never stops after just 8.
