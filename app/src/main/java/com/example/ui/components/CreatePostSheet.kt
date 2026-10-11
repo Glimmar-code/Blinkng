@@ -425,6 +425,15 @@ fun CreatePostSheet(
     val cleanText = text.trim()
     val allTags = BlinkSmartTags.allTags(cleanText, selectedTags)
     val effectiveTags = allTags.take(BlinkSmartTags.MAX_TAGS)
+    val suggestedTags = remember(cleanText, trendingTags, selectedTags, profile.university) {
+        BlinkSmartTags.suggest(
+            text = cleanText,
+            trending = trendingTags,
+            selected = selectedTags,
+            university = profile.university,
+            limit = 3
+        )
+    }
     val tagsValid = allTags.size in 1..BlinkSmartTags.MAX_TAGS
     val validPollOptions = pollOptions.map(String::trim).filter(String::isNotBlank)
     val pollValid = showPoll &&
@@ -986,6 +995,24 @@ fun CreatePostSheet(
                             }
                         }
                         Text("Use 1–3 relevant tags. Maximum 5 per post.", style = MaterialTheme.typography.bodySmall)
+                        if (suggestedTags.isNotEmpty()) {
+                            Text("✨ Suggested for your post", style = MaterialTheme.typography.labelMedium)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                items(suggestedTags, key = { "suggested:$it" }) { tag ->
+                                    AssistChip(
+                                        onClick = {
+                                            if (allTags.size >= BlinkSmartTags.MAX_TAGS) {
+                                                tagWarning = "Maximum 5 hashtags per post."
+                                            } else {
+                                                selectedTags = BlinkSmartTags.add(selectedTags, tag)
+                                            }
+                                        },
+                                        label = { Text("#$tag +") },
+                                        enabled = !isSubmitting
+                                    )
+                                }
+                            }
+                        }
                         if (trendingTags.isNotEmpty()) {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                                 items(trendingTags.take(if (showMoreTrendingTags) 40 else 7), key = { it }) { tag ->
