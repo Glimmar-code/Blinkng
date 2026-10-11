@@ -1916,8 +1916,10 @@ fun getCurrentUserId(): String? {
      * Read profile content independently of the ranked feed. Private relations always
      * use the authenticated account, and pagination has no feed-window cutoff.
      */
-    suspend fun fetchProfileSurfaceContent(profileId: String): ProfileSurfaceContent =
-        withContext(Dispatchers.IO) {
+    suspend fun fetchProfileSurfaceContent(
+        profileId: String,
+        postsOverride: List<FeedPost>? = null
+    ): ProfileSurfaceContent = withContext(Dispatchers.IO) {
             require(isValidUuid(profileId)) { "Profile is required." }
             val ownerId = getCurrentUserId() ?: throw IllegalStateException("Not authenticated.")
             suspend fun allRows(path: String): List<JSONObject> {
@@ -1974,7 +1976,11 @@ fun getCurrentUserId(): String? {
                 val byId = mapRows(rows).associateBy { it.id }
                 return ids.mapNotNull { byId[it] }
             }
-            val posts = mapRows(allRows("/rest/v1/feed_posts?user_id=eq.${encodeValue(profileId)}&is_active=eq.true&select=*&order=is_pinned.desc,created_at.desc,id.desc"))
+            // Reuse the posts already displayed by the fast profile request.
+            // Only fetch the optional liked/saved relations in this second pass.
+            val posts = postsOverride?.map { post ->
+                post.copy(isLiked = post.id in likedSet, isBookmarked = post.id in savedSet)
+            } ?: mapRows(allRows("/rest/v1/feed_posts?user_id=eq.${encodeValue(profileId)}&is_active=eq.true&select=*&order=is_pinned.desc,created_at.desc,id.desc"))
             if (profileId != ownerId) return@withContext ProfileSurfaceContent(posts)
             ProfileSurfaceContent(posts, relationContent(likedIds), relationContent(savedIds))
         }
