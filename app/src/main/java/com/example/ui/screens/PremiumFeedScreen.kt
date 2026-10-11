@@ -292,6 +292,8 @@ fun PremiumFeedScreen(
     isRefreshing: Boolean = false,
     isRefreshingFollowing: Boolean = isRefreshing,
     isRefreshingReels: Boolean = isRefreshing,
+    postsRefreshRevision: Int = 0,
+    followingRefreshRevision: Int = 0,
     errorMessage: String? = null,
     followingErrorMessage: String? = null,
     onRefresh: () -> Unit = {},
@@ -378,6 +380,7 @@ fun PremiumFeedScreen(
             followedAuthorKeys = followedAuthorKeys,
             isLoading = isLoading,
             isRefreshing = if (feedLane == 1) isRefreshingFollowing else isRefreshing,
+            refreshRevision = if (feedLane == 1) followingRefreshRevision else postsRefreshRevision,
             isServerConnected = isServerConnected,
             errorMessage = if (feedLane == 1) followingErrorMessage else errorMessage,
             hasMorePosts = if (feedLane == 1) hasMoreFollowingPosts else hasMorePosts,
@@ -540,6 +543,7 @@ private fun PremiumHomeFeed(
     followedAuthorKeys: Set<String>,
     isLoading: Boolean,
     isRefreshing: Boolean,
+    refreshRevision: Int,
     isServerConnected: Boolean,
     errorMessage: String?,
     hasMorePosts: Boolean,
@@ -654,12 +658,13 @@ private fun PremiumHomeFeed(
     var stableRankedPosts by remember(laneResumeKey) { mutableStateOf(posts) }
     var stableRankedReels by remember(laneResumeKey) { mutableStateOf(reels) }
     var postRefreshWasRunning by remember(laneResumeKey) { mutableStateOf(isRefreshing) }
+    var seenRefreshRevision by remember(laneResumeKey) { mutableIntStateOf(refreshRevision) }
     var reelRefreshWasRunning by remember(laneResumeKey) { mutableStateOf(isRefreshing) }
     var postPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMorePosts) }
     var reelPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMoreReels) }
 
-    LaunchedEffect(posts, isRefreshing, isLoadingMorePosts, laneResumeKey) {
-        val explicitRefreshCompleted = postRefreshWasRunning && !isRefreshing
+    LaunchedEffect(posts, isRefreshing, isLoadingMorePosts, laneResumeKey, refreshRevision) {
+        val explicitRefreshCompleted = refreshRevision != seenRefreshRevision || (postRefreshWasRunning && !isRefreshing)
 
         stableRankedPosts = if (explicitRefreshCompleted) {
             posts.distinctBy { it.id }
@@ -675,6 +680,7 @@ private fun PremiumHomeFeed(
         }
 
         postRefreshWasRunning = isRefreshing
+        seenRefreshRevision = refreshRevision
         postPaginationWasRunning = isLoadingMorePosts
     }
 
