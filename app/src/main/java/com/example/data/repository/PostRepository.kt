@@ -43,12 +43,28 @@ class PostRepository(
             // A blocked/slow ranking RPC must not strand Home on its old cached
             // handful of posts. Preserve feed-type and cursor for pagination.
             Log.w("PostRepository", "Ranked $feedType feed timed out; using chronological fallback", error)
-            // A smaller ranked page is still filtered by the server's privacy,
-            // blocking, moderation and discovery rules. Never fall back to raw
-            // feed_posts: its table RLS does not enforce all discovery exclusions.
-            supabaseService.fetchFeedPage(
-                limit.coerceAtMost(8), beforeCreatedAt, beforeId, "ranked_$feedType"
-            )
+            // A smaller ranked page retains the server's privacy, blocks, mutes,
+            // and discovery filters. Gather a full window when possible so the
+            // normal 30-item hasMore pagination check never stops after just 8.
+            val recovered = ArrayList<FeedPost>(limit)
+            val seen = HashSet<String>()
+            var cursorAt = beforeCreatedAt
+            var cursorId = beforeId
+            while (recovered.size < limit) {
+                val requestSize = minOf(8, limit - recovered.size)
+                val page = supabaseService.fetchFeedPage(
+                    requestSize, cursorAt, cursorId, "ranked_$feedType"
+                )
+                val fresh = page.filter { seen.add(it.id) }
+                if (fresh.isEmpty()) break
+                recovered.addAll(fresh)
+                // Ranked Supabase paging stores an offset + snapshot internally.
+                // Nonblank cursor args prevent resetting that snapshot to page 1.
+                cursorAt = fresh.last().createdAt.ifBlank { "1970-01-01T00:00:00Z" }
+                cursorId = fresh.last().id
+                if (page.size < requestSize) break
+            }
+            recovered
         }
     }
 
