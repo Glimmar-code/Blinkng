@@ -1969,8 +1969,3 @@ private fun PremiumEmptyFeed(
     }
 }
 
-/** Keep UI position while navigating within a process, but not after task removal. */
-private object FeedLaneProcessVisit {
-    private val visited = mutableSetOf<String>()
-    fun shouldRestore(key: String): Boolean = !visited.add(key)
-}
