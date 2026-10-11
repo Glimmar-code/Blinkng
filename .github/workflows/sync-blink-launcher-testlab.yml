@@ -8,6 +8,8 @@ on:
       - 'scripts/sync_android_launcher_assets.py'
       - 'app/src/main/res/drawable/app_icon.png'
       - 'app/src/main/res/drawable/ic_launcher_foreground.xml'
+      - 'app/src/main/res/drawable/ic_launcher_background.xml'
+      - 'app/src/main/res/drawable/app_icon_circle.png'
       - 'app/src/main/res/mipmap-*/ic_launcher*.png'
       - 'web/blink-logo.png'
       - 'web/blink-logo-v2.png'
@@ -37,7 +39,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src/main/res/mipmap-*/ic_launcher*.png web/blink-logo.png web/blink-logo-v2.png
+          git add app/src/main/res/drawable/app_icon_circle.png app/src/main/res/mipmap-*/ic_launcher*.png web/blink-logo.png web/blink-logo-v2.png
           if ! git diff --cached --quiet; then
             git commit -m 'Sync all density launcher icons with approved BLINK master'
             git push origin "HEAD:${GITHUB_REF_NAME}"

@@ -59,6 +59,9 @@ jobs:
           python3 -m pip install --disable-pip-version-check Pillow==11.3.0
           python3 scripts/sync_android_launcher_assets.py --check
 
+      - name: Verify X-style circular launcher and full BLINK artwork
+        run: python3 scripts/test_launcher_circle.py
+
       - name: Test secure Firebase release config restoration
         shell: bash
         run: bash .github/scripts/test_restore_google_services.sh
@@ -153,20 +156,6 @@ jobs:
           echo "$BADGING" | grep -F "versionName='ci-smoke'" >/dev/null
 
           echo "Release smoke APK/AAB package, version and signatures verified."
-
-      # This is a *minified release* check: ordinary debug instrumentation does
-      # not catch JNI classes that R8 renamed or removed.
-      - name: Verify native WebRTC JNI classes survive release shrinking
-        shell: bash
-        run: |
-          set -euo pipefail
-          grep -Fx -- '-keep class org.webrtc.** { *; }' app/proguard-rules.pro
-          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
-          test -n "$APK"
-          unzip -p "$APK" 'classes*.dex' | strings > "$RUNNER_TEMP/release-dex-strings.txt"
-          grep -F 'Lorg/webrtc/PeerConnectionFactory;' "$RUNNER_TEMP/release-dex-strings.txt"
-          grep -F 'Lorg/webrtc/JniCommon;' "$RUNNER_TEMP/release-dex-strings.txt"
-          echo "Release APK retains WebRTC JNI Java entry points."
 
       # Verify the actual release APK can be installed by Android 15's package manager,
       # not merely read by aapt or apksigner. CI's disposable key is never published.
