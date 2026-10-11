@@ -171,4 +171,8 @@ export async function feedRecoveryTests(db) {
   assert.equal(await scalar(`select view_count from public.feed_posts where id='${publicPost}'`), counted);
   console.log('PASS view counter: guarded lock migration preserves atomic weighted increment');
   await reset();
+  // This suite uses a controlled discovery scorer with a different row type
+  // from the creator-exhaustion fixture that runs next. Release the fixture
+  // instead of leaking its signature into the following integration test.
+  await db.exec('drop function if exists private_ranking.get_discovery_feed(integer,integer,timestamp with time zone,numeric,numeric,numeric,numeric,numeric)');
 }
