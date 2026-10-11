@@ -288,6 +288,27 @@ jobs:
           apkSha256=$APK_SHA256
           EOF
 
+      # The disposable CI install test cannot catch production-signing or
+      # production-Firebase-only install/startup failures.
+      - name: Enable KVM for production Android 15 install test
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install actual signed production APK on Android 15
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash .github/scripts/install_production_release_apk.sh
+
       - name: Upload signed release files
         uses: actions/upload-artifact@v4
         with:
