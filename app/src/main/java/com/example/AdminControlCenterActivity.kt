@@ -24,6 +24,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.models.NigerianUniversities
 import com.example.data.supabase.*
+import com.example.ui.components.BlinkAdminBugInbox
 import com.example.ui.components.BlinkMark
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
@@ -116,6 +117,7 @@ private fun AdminDashboardV3(
     var status by remember { mutableStateOf<String?>(null) }
     var showHistory by remember { mutableStateOf(false) }
     var showGlobalSearch by remember { mutableStateOf(false) }
+    var showBugReports by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
 
     BackHandler(onBack = onExit)
@@ -147,6 +149,9 @@ private fun AdminDashboardV3(
                     }
                 },
                 actions = {
+                    TextButton(onClick = { showBugReports = true }) {
+                        Text("Bugs", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
                     TextButton(onClick = { showGlobalSearch = true }) {
                         Text("Search", fontSize = 10.sp)
                     }
@@ -214,6 +219,10 @@ private fun AdminDashboardV3(
                 }
             }
         }
+    }
+
+    if (showBugReports) {
+        BlinkAdminBugInbox(onDismiss = { showBugReports = false })
     }
 
     if (showHistory) {
