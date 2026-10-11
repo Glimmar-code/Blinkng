@@ -233,17 +233,19 @@ private fun mergeStablePremiumFeed(
     latest: List<FeedPost>,
     appendNew: Boolean
 ): List<FeedPost> {
-    if (current.isEmpty()) return latest
-    if (latest.isEmpty()) return current
+    val currentUnique = current.distinctBy { it.id }
+    val latestUnique = latest.distinctBy { it.id }
+    if (currentUnique.isEmpty()) return latestUnique
+    if (latestUnique.isEmpty()) return currentUnique
 
-    val latestById = latest.associateBy { it.id }
-    val updatedInPlace = current.map { existing ->
+    val latestById = latestUnique.associateBy { it.id }
+    val updatedInPlace = currentUnique.map { existing ->
         latestById[existing.id] ?: existing
     }
     if (!appendNew) return updatedInPlace
 
-    val existingIds = current.asSequence().map { it.id }.toHashSet()
-    return updatedInPlace + latest.filter { it.id !in existingIds }
+    val existingIds = currentUnique.asSequence().map { it.id }.toHashSet()
+    return updatedInPlace + latestUnique.filter { it.id !in existingIds }
 }
 
 /**
@@ -654,13 +656,19 @@ private fun PremiumHomeFeed(
     var stableRankedPosts by remember(laneResumeKey) { mutableStateOf(posts) }
     var stableRankedReels by remember(laneResumeKey) { mutableStateOf(reels) }
     var postRefreshWasRunning by remember(laneResumeKey) { mutableStateOf(isRefreshing) }
+    // Cached first pages can be shorter than the live ranked page. Attach the
+    // first successful server page *after* cached rows, never ahead of the
+    // reader's current position; otherwise four cached posts can get stuck.
+    var didAttachFirstLivePage by remember(laneResumeKey) { mutableStateOf(false) }
     var reelRefreshWasRunning by remember(laneResumeKey) { mutableStateOf(isRefreshing) }
     var postPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMorePosts) }
     var reelPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMoreReels) }
 
-    LaunchedEffect(posts, isRefreshing, isLoadingMorePosts, laneResumeKey) {
+    LaunchedEffect(posts, isRefreshing, isLoadingMorePosts, isServerConnected, laneResumeKey) {
         val explicitRefreshCompleted = postRefreshWasRunning && !isRefreshing
         val paginationCompleted = postPaginationWasRunning && !isLoadingMorePosts
+        val firstLivePageReady = isServerConnected &&
+            !didAttachFirstLivePage && !isRefreshing && !isLoadingMorePosts
 
         stableRankedPosts = if (explicitRefreshCompleted) {
             posts
@@ -668,10 +676,11 @@ private fun PremiumHomeFeed(
             mergeStablePremiumFeed(
                 current = stableRankedPosts,
                 latest = posts,
-                appendNew = paginationCompleted
+                appendNew = paginationCompleted || firstLivePageReady
             )
         }
 
+        if (firstLivePageReady) didAttachFirstLivePage = true
         postRefreshWasRunning = isRefreshing
         postPaginationWasRunning = isLoadingMorePosts
     }
