@@ -397,6 +397,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Removing BLINK from Android Recents can leave the process alive. A new
+        // task must still start at the top of For You; configuration recreation
+        // (savedInstanceState != null) keeps the current in-task position.
+        if (savedInstanceState == null) FeedLaneProcessVisit.resetForNewTask()
         rewardedAdManager = BlinkRewardedAdManager(
             activity = this,
             adUnitId = BuildConfig.ADMOB_REWARDED_AD_UNIT_ID
@@ -804,6 +808,8 @@ fun MainAppContent(
                         isLoading = uiState.isFeedLoading,
                         isRefreshing = uiState.isRefreshingHome || uiState.isRefreshingContent,
                         isRefreshingFollowing = uiState.isRefreshingFollowing || uiState.isRefreshingContent,
+                        postsRefreshRevision = uiState.postsRefreshRevision,
+                        followingRefreshRevision = uiState.followingRefreshRevision,
                         isRefreshingReels = uiState.isRefreshingReels || uiState.isRefreshingContent,
                         errorMessage = uiState.feedErrorMessage,
                         followingErrorMessage = uiState.followingFeedErrorMessage,

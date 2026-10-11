@@ -138,6 +138,8 @@ data class BlinkUiState(
     val isRefreshingHome: Boolean = false,
     val isRefreshingFollowing: Boolean = false,
     val isRefreshingReels: Boolean = false,
+    val postsRefreshRevision: Int = 0,
+    val followingRefreshRevision: Int = 0,
     val isSyncingContent: Boolean = false,
     val feedErrorMessage: String? = null,
     val followingFeedErrorMessage: String? = null,
@@ -245,6 +247,10 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
     private var syncJob: Job? = null
     private var lastSuccessfulSyncAt = 0L
+    // Ignore pagination results started before a user-initiated lane refresh.
+    private var postPageEpoch = 0
+    private var reelPageEpoch = 0
+    private var followingPageEpoch = 0
     private var discoverSearchJob: Job? = null
     private var addAccountMode = AccountSessionStore.consumeAddAccountRequest(appContext)
     private var recoveryPreviousSession: SupabaseService.SessionSnapshot? = null
@@ -275,7 +281,9 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         observeCachedContent()
         viewModelScope.launch {
             restoreCachedAppSnapshot()
-            restoreResumableRouteFromCurrentState()
+            // A new process starts on Home / For You. Backgrounding keeps this ViewModel
+            // and its current page alive; draft text is restored independently above.
+            // Do not resurrect stale sheets, chats or pages after the task was dismissed.
             if (hasLocalSession && !_uiState.value.isOnline) {
                 _uiState.value = _uiState.value.copy(
                     destination = AppDestination.MAIN,
@@ -771,12 +779,12 @@ private suspend fun restoreSupabaseSession() {
     private fun saveSession(profile: UserProfile) = saveLocalProfile(profile)
 
     private fun restoreUiPreferences() {
-        val tabName = prefs.safeString(KEY_SELECTED_TAB, MainTab.HOME.name).orEmpty()
-        val selected = MainTab.entries.firstOrNull { it.name == tabName } ?: MainTab.HOME
+        // A cold process start is different from briefly backgrounding the app.
+        // Keep the account and theme, but always reopen at Home / For You.
         _uiState.value = _uiState.value.copy(
             isDarkMode = prefs.safeBoolean(KEY_DARK_MODE, true),
-            selectedTab = selected,
-            feedSubTab = prefs.safeInt(KEY_FEED_SUB_TAB, 0).coerceIn(0, 3)
+            selectedTab = MainTab.HOME,
+            feedSubTab = 0
         )
     }
 
@@ -1797,35 +1805,69 @@ private suspend fun restoreSupabaseSession() {
             (!following && !isReel && before.isRefreshingHome)
         ) return
 
+        // A pull-to-refresh supersedes a pending pagination result. Reset the visible
+        // loading-more state now so stale requests cannot splice old rows into a new page.
+        when {
+            following -> followingPageEpoch++
+            isReel -> reelPageEpoch++
+            else -> postPageEpoch++
+        }
         _uiState.value = when {
-            following -> before.copy(isRefreshingFollowing = true, followingFeedErrorMessage = null)
-            isReel -> before.copy(isRefreshingReels = true, feedErrorMessage = null)
-            else -> before.copy(isRefreshingHome = true, feedErrorMessage = null)
+            following -> before.copy(
+                isRefreshingFollowing = true,
+                isLoadingMoreFollowingPosts = false,
+                followingFeedErrorMessage = null
+            )
+            isReel -> before.copy(
+                isRefreshingReels = true,
+                isLoadingMoreReels = false,
+                feedErrorMessage = null
+            )
+            else -> before.copy(
+                isRefreshingHome = true,
+                isLoadingMorePosts = false,
+                feedErrorMessage = null
+            )
         }
 
         viewModelScope.launch {
             try {
-                // Lifecycle/background synchronization cannot overwrite this user's refresh.
+                // Ranked discovery pages have a server-maintained cursor; restarting it on
+                // explicit refresh should not race a load-more or background sync.
                 syncMutex.withLock {
+                    val pageSize = if (following) 30 else 60
                     val page = when {
-                        following -> postRepository.fetchFollowingFeedPage(limit = 30)
-                        isReel -> postRepository.fetchFeedPage(isReel = true, limit = 30)
-                        else -> postRepository.fetchFeedPage(isReel = false, limit = 30)
+                        following -> postRepository.fetchFollowingFeedPage(limit = pageSize)
+                        isReel -> postRepository.fetchFeedPage(isReel = true, limit = pageSize)
+                        else -> postRepository.fetchFeedPage(isReel = false, limit = pageSize)
                     }
                     val now = _uiState.value
+                    val previous = when {
+                        following -> now.followingPosts
+                        isReel -> now.reels
+                        else -> now.posts
+                    }
+                    val refreshed = planSmartRefresh(
+                        previous = previous,
+                        fetched = page,
+                        idOf = { it.id },
+                        prioritizeNew = !following
+                    )
                     _uiState.value = when {
                         following -> now.copy(
-                            followingPosts = reconcileRefreshedFeed(now.followingPosts, page),
-                            hasMoreFollowingPosts = page.size >= 30,
+                            followingPosts = refreshed.items,
+                            followingRefreshRevision = now.followingRefreshRevision + 1,
+                            hasMoreFollowingPosts = page.size >= pageSize,
                             followingFeedErrorMessage = null
                         )
                         isReel -> now.copy(
-                            reels = reconcileRefreshedFeed(now.reels, page),
-                            hasMoreReels = page.size >= 30
+                            reels = refreshed.items,
+                            hasMoreReels = page.size >= pageSize
                         )
                         else -> now.copy(
-                            posts = reconcileRefreshedFeed(now.posts, page),
-                            hasMorePosts = page.size >= 30
+                            posts = refreshed.items,
+                            postsRefreshRevision = now.postsRefreshRevision + 1,
+                            hasMorePosts = page.size >= pageSize
                         )
                     }
                     lastSuccessfulSyncAt = SystemClock.elapsedRealtime()
@@ -1838,6 +1880,15 @@ private suspend fun restoreSupabaseSession() {
                                 )
                             }.onFailure { Log.w(TAG, "Manual refresh cache write failed", it) }
                         }
+                    }
+                    if (refreshed.newlyDiscoveredCount == 0) {
+                        showToast(
+                            when {
+                                following -> "No new posts from people you follow."
+                                isReel -> "No new reels right now."
+                                else -> "No new posts right now."
+                            }
+                        )
                     }
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -1954,7 +2005,11 @@ private suspend fun restoreSupabaseSession() {
 
         val current = if (isReel) state.reels else state.posts
         val last = current.lastOrNull() ?: return
-        if (last.createdAt.isBlank()) return
+        // Ranked discovery uses its own offset, but a timeout falls back to
+        // chronological paging. Both ID and timestamp must be valid so the
+        // fallback cannot silently repeat page one forever.
+        if (last.id.isBlank() || last.createdAt.isBlank()) return
+        val requestEpoch = if (isReel) reelPageEpoch else postPageEpoch
 
         _uiState.value = if (isReel) {
             state.copy(isLoadingMoreReels = true)
@@ -1963,37 +2018,47 @@ private suspend fun restoreSupabaseSession() {
         }
 
         viewModelScope.launch {
-            runCatching {
-                postRepository.fetchFeedPage(
-                    isReel = isReel,
-                    beforeCreatedAt = last.createdAt,
-                    beforeId = last.id,
-                    limit = 30
-                )
-            }.onSuccess { page ->
-                val latest = _uiState.value
-                if (isReel) {
-                    val merged = (latest.reels + page).distinctBy { it.id }
-                    _uiState.value = latest.copy(
-                        reels = merged,
-                        isLoadingMoreReels = false,
-                        hasMoreReels = page.size >= 30
-                    )
-                } else {
-                    val merged = (latest.posts + page).distinctBy { it.id }
-                    _uiState.value = latest.copy(
-                        posts = merged,
-                        isLoadingMorePosts = false,
-                        hasMorePosts = page.size >= 30
+            try {
+                // Serialize ranked cursor mutations with manual refresh and reconnect sync.
+                val page = syncMutex.withLock {
+                    if (requestEpoch != (if (isReel) reelPageEpoch else postPageEpoch)) null
+                    else postRepository.fetchFeedPage(
+                        isReel = isReel,
+                        beforeCreatedAt = last.createdAt.takeIf { it.isNotBlank() },
+                        beforeId = last.id,
+                        limit = 30
                     )
                 }
-                persistCurrentFeed()
-            }.onFailure {
-                Log.w(TAG, "Load more feed failed", it)
-                _uiState.value = if (isReel) {
-                    _uiState.value.copy(isLoadingMoreReels = false)
-                } else {
-                    _uiState.value.copy(isLoadingMorePosts = false)
+                if (page != null && requestEpoch == (if (isReel) reelPageEpoch else postPageEpoch)) {
+                    val latest = _uiState.value
+                    if (isReel) {
+                        _uiState.value = latest.copy(
+                            reels = (latest.reels + page).distinctBy { it.id },
+                            // Server-side ranking/fallback must advance the visible cursor.
+                            hasMoreReels = page.size >= 30 &&
+                                page.any { item -> latest.reels.none { it.id == item.id } }
+                        )
+                    } else {
+                        _uiState.value = latest.copy(
+                            posts = (latest.posts + page).distinctBy { it.id },
+                            hasMorePosts = page.size >= 30 &&
+                                page.any { item -> latest.posts.none { it.id == item.id } }
+                        )
+                    }
+                    persistCurrentFeed()
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Load more feed failed", error)
+            } finally {
+                if (requestEpoch == (if (isReel) reelPageEpoch else postPageEpoch)) {
+                    val latest = _uiState.value
+                    _uiState.value = if (isReel) {
+                        latest.copy(isLoadingMoreReels = false)
+                    } else {
+                        latest.copy(isLoadingMorePosts = false)
+                    }
                 }
             }
         }
@@ -2004,25 +2069,34 @@ private suspend fun restoreSupabaseSession() {
         if (!state.isOnline || state.isLoadingMoreFollowingPosts || state.isRefreshingFollowing || !state.hasMoreFollowingPosts) return
         val last = state.followingPosts.lastOrNull() ?: return
         if (last.createdAt.isBlank()) return
+        val requestEpoch = followingPageEpoch
 
         _uiState.value = state.copy(isLoadingMoreFollowingPosts = true)
         viewModelScope.launch {
-            runCatching {
-                postRepository.fetchFollowingFeedPage(
-                    beforeCreatedAt = last.createdAt,
-                    beforeId = last.id,
-                    limit = 30
-                )
-            }.onSuccess { page ->
-                val latest = _uiState.value
-                _uiState.value = latest.copy(
-                    followingPosts = (latest.followingPosts + page).distinctBy { it.id },
-                    isLoadingMoreFollowingPosts = false,
-                    hasMoreFollowingPosts = page.size >= 30
-                )
-            }.onFailure {
-                Log.w(TAG, "Load more following feed failed", it)
-                _uiState.value = _uiState.value.copy(isLoadingMoreFollowingPosts = false)
+            try {
+                val page = syncMutex.withLock {
+                    if (requestEpoch != followingPageEpoch) null
+                    else postRepository.fetchFollowingFeedPage(
+                        beforeCreatedAt = last.createdAt,
+                        beforeId = last.id,
+                        limit = 30
+                    )
+                }
+                if (page != null && requestEpoch == followingPageEpoch) {
+                    val latest = _uiState.value
+                    _uiState.value = latest.copy(
+                        followingPosts = (latest.followingPosts + page).distinctBy { it.id },
+                        hasMoreFollowingPosts = page.size >= 30
+                    )
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.w(TAG, "Load more following feed failed", error)
+            } finally {
+                if (requestEpoch == followingPageEpoch) {
+                    _uiState.value = _uiState.value.copy(isLoadingMoreFollowingPosts = false)
+                }
             }
         }
     }

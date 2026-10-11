@@ -53,7 +53,7 @@ using (
 );
 -- Reuse the existing admin capability check for private screenshot reads.
 -- A failed check returns false rather than breaking a user's own storage read.
-create or replace function private.blink_bug_admin_screenshot_access(p_path text)
+create or replace function public.blink_bug_admin_screenshot_access(p_path text)
 returns boolean language plpgsql stable security definer set search_path='' as $$
 begin
  perform private.require_blink_admin();
@@ -63,12 +63,16 @@ begin
  );
 exception when others then return false;
 end $$;
+-- Storage RLS must call a public helper: authenticated has no USAGE on private.
+-- Only authenticated may invoke it; the underlying admin role is checked server-side.
+revoke all on function public.blink_bug_admin_screenshot_access(text) from public, anon;
+grant execute on function public.blink_bug_admin_screenshot_access(text) to authenticated;
 drop policy if exists blink_bug_screenshots_admin_read on storage.objects;
 create policy blink_bug_screenshots_admin_read on storage.objects
 for select to authenticated
 using (
  bucket_id='blink-bug-reports'
- and private.blink_bug_admin_screenshot_access(name)
+ and public.blink_bug_admin_screenshot_access(name)
 );
 -- Only accept valid authenticated reports; the DM is secondary to durable storage.
 create or replace function public.submit_blink_bug_report(
