@@ -293,6 +293,8 @@ fun PremiumFeedScreen(
     isRefreshing: Boolean = false,
     isRefreshingFollowing: Boolean = isRefreshing,
     isRefreshingReels: Boolean = isRefreshing,
+    postsRefreshRevision: Int = 0,
+    followingRefreshRevision: Int = 0,
     errorMessage: String? = null,
     followingErrorMessage: String? = null,
     onRefresh: () -> Unit = {},
@@ -334,16 +336,9 @@ fun PremiumFeedScreen(
     val resumeUserKey = remember(currentUsername) {
         currentUsername.trim().removePrefix("@").lowercase().ifBlank { "anonymous" }
     }
-    var feedLane by rememberSaveable(resumeUserKey) {
-        mutableIntStateOf(
-            resumePrefs.safeInt("home_lane:$resumeUserKey", 0).coerceIn(0, 1)
-        )
-    }
-    LaunchedEffect(feedLane, resumeUserKey) {
-        resumePrefs.edit()
-            .putInt("home_lane:$resumeUserKey", feedLane.coerceIn(0, 1))
-            .apply()
-    }
+    // A new app process always lands on For You; rememberSaveable still retains
+    // Following during activity recreation and normal in-app navigation.
+    var feedLane by rememberSaveable(resumeUserKey) { mutableIntStateOf(0) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     var launchReelId by rememberSaveable(resumeUserKey) { mutableStateOf<String?>(null) }
     var launchReelPositionMs by rememberSaveable(resumeUserKey) { mutableStateOf(0L) }
@@ -386,6 +381,7 @@ fun PremiumFeedScreen(
             followedAuthorKeys = followedAuthorKeys,
             isLoading = isLoading,
             isRefreshing = if (feedLane == 1) isRefreshingFollowing else isRefreshing,
+            refreshRevision = if (feedLane == 1) followingRefreshRevision else postsRefreshRevision,
             isServerConnected = isServerConnected,
             errorMessage = if (feedLane == 1) followingErrorMessage else errorMessage,
             hasMorePosts = if (feedLane == 1) hasMoreFollowingPosts else hasMorePosts,
@@ -548,6 +544,7 @@ private fun PremiumHomeFeed(
     followedAuthorKeys: Set<String>,
     isLoading: Boolean,
     isRefreshing: Boolean,
+    refreshRevision: Int,
     isServerConnected: Boolean,
     errorMessage: String?,
     hasMorePosts: Boolean,
@@ -593,6 +590,11 @@ private fun PremiumHomeFeed(
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
     val laneResumeKey = "$resumeUserKey:$laneIndex"
+    // The first visit in a fresh process opens at the top with the full feed.
+    // Returning from another in-app screen may recover the saved scroll/filter.
+    val restoreWithinProcess = remember(laneResumeKey) {
+        FeedLaneProcessVisit.shouldRestore(laneResumeKey)
+    }
     val listState = rememberLazyListState()
     var restoredLaneResumeKey by remember { mutableStateOf<String?>(null) }
     var restoringScroll by remember { mutableStateOf(false) }
@@ -611,7 +613,7 @@ private fun PremiumHomeFeed(
     }
     var filter by remember(laneResumeKey) {
         mutableStateOf(
-            runCatching {
+            if (!restoreWithinProcess) PremiumFeedFilter.ALL else runCatching {
                 PremiumFeedFilter.valueOf(
                     resumePrefs.safeString(
                         "home_filter:$laneResumeKey",
@@ -656,12 +658,13 @@ private fun PremiumHomeFeed(
     var stableRankedPosts by remember(laneResumeKey) { mutableStateOf(posts) }
     var stableRankedReels by remember(laneResumeKey) { mutableStateOf(reels) }
     var postRefreshWasRunning by remember(laneResumeKey) { mutableStateOf(isRefreshing) }
+    var seenRefreshRevision by remember(laneResumeKey) { mutableIntStateOf(refreshRevision) }
     var reelRefreshWasRunning by remember(laneResumeKey) { mutableStateOf(isRefreshing) }
     var postPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMorePosts) }
     var reelPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMoreReels) }
 
-    LaunchedEffect(posts, isRefreshing, isLoadingMorePosts, laneResumeKey) {
-        val explicitRefreshCompleted = postRefreshWasRunning && !isRefreshing
+    LaunchedEffect(posts, isRefreshing, isLoadingMorePosts, laneResumeKey, refreshRevision) {
+        val explicitRefreshCompleted = refreshRevision != seenRefreshRevision || (postRefreshWasRunning && !isRefreshing)
 
         stableRankedPosts = if (explicitRefreshCompleted) {
             posts.distinctBy { it.id }
@@ -677,6 +680,7 @@ private fun PremiumHomeFeed(
         }
 
         postRefreshWasRunning = isRefreshing
+        seenRefreshRevision = refreshRevision
         postPaginationWasRunning = isLoadingMorePosts
     }
 
@@ -959,12 +963,20 @@ private fun PremiumHomeFeed(
 
     LaunchedEffect(laneResumeKey, homeRowKeys) {
         if (restoredLaneResumeKey != laneResumeKey) {
-            val savedIndex = resumePrefs.safeInt("home_scroll_index:$laneResumeKey", 0).coerceAtLeast(0)
-            val savedOffset = resumePrefs.safeInt("home_scroll_offset:$laneResumeKey", 0).coerceAtLeast(0)
-            val savedKey = resumePrefs.safeString("home_scroll_key:$laneResumeKey", null)
-            val savedHeaderFraction = runCatching {
-                resumePrefs.getFloat("home_header_fraction:$laneResumeKey", 0f)
-            }.getOrDefault(0f).coerceIn(0f, 1f)
+            val savedIndex = if (restoreWithinProcess) {
+                resumePrefs.safeInt("home_scroll_index:$laneResumeKey", 0).coerceAtLeast(0)
+            } else 0
+            val savedOffset = if (restoreWithinProcess) {
+                resumePrefs.safeInt("home_scroll_offset:$laneResumeKey", 0).coerceAtLeast(0)
+            } else 0
+            val savedKey = if (restoreWithinProcess) {
+                resumePrefs.safeString("home_scroll_key:$laneResumeKey", null)
+            } else null
+            val savedHeaderFraction = if (restoreWithinProcess) {
+                runCatching {
+                    resumePrefs.getFloat("home_header_fraction:$laneResumeKey", 0f)
+                }.getOrDefault(0f).coerceIn(0f, 1f)
+            } else 0f
 
             val canRestoreNow =
                 homeRowKeys.isNotEmpty() ||
@@ -1959,3 +1971,4 @@ private fun PremiumEmptyFeed(
         }
     }
 }
+
