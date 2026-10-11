@@ -208,7 +208,9 @@ fun HomeScreen(
                 val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
                 lastVisible >= layout.totalItemsCount - 5
             }.collect { nearEnd ->
-                if (nearEnd) loadMorePosts()
+                // Use the remembered scope: launching directly from this
+                // LaunchedEffect is cancelled when loadingMorePosts changes.
+                if (nearEnd) scope.launch { loadMorePosts() }
             }
         }
     }
