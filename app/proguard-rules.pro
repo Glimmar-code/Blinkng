@@ -8,6 +8,13 @@
 -keep class com.example.data.models.** { *; }
 -keep class com.example.data.local.** { *; }
 
+# WebRTC's libjingle_peerconnection_so.so resolves Java classes and methods by
+# their exact JNI names during PeerConnectionFactory.initialize(). R8 renamed
+# these in the release build, causing a fatal GetStaticMethodID(java_class=null)
+# abort on Android 15 when a voice/video call starts. Keep both classes and
+# members (including WebRTC audio helpers and nested classes) for JNI safety.
+-keep class org.webrtc.** { *; }
+
 # Room generated implementations are discovered from the abstract database type.
 -keep class * extends androidx.room.RoomDatabase { *; }
 
