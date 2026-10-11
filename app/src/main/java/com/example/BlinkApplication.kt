@@ -139,7 +139,7 @@ class BlinkApplication : Application(), ImageLoaderFactory {
         val memoryPressure = level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW &&
             level != android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN
         if (memoryPressure) {
-            coil.Coil.imageLoader(this).memoryCache?.clear()
+            runCatching { coil.Coil.imageLoader(this).memoryCache?.clear() }
             runCatching {
                 FirebaseCrashlytics.getInstance().setCustomKey("last_memory_trim_level", level)
             }
@@ -148,7 +148,7 @@ class BlinkApplication : Application(), ImageLoaderFactory {
 
     override fun onLowMemory() {
         super.onLowMemory()
-        coil.Coil.imageLoader(this).memoryCache?.clear()
+        runCatching { coil.Coil.imageLoader(this).memoryCache?.clear() }
         runCatching {
             FirebaseCrashlytics.getInstance().setCustomKey("last_memory_trim_level", 100)
         }
