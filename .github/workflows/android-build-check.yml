@@ -21,6 +21,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Test fail-closed Testlab auto-promotion policy
+        run: node --test .github/scripts/testlab_auto_promotion.test.cjs
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin

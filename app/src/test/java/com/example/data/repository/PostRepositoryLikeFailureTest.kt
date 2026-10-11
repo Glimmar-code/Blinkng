@@ -23,4 +23,19 @@ class PostRepositoryLikeFailureTest {
     fun unrelatedFailureIsNotIgnorable() {
         assertFalse(isIgnorableLikeCountRefreshFailure(RuntimeException("offline")))
     }
+    @Test
+    fun rankedFeedStatementTimeoutCanFallback() {
+        assertTrue(isRecoverableRankedFeedTimeout(
+            IllegalStateException("canceling statement due to statement timeout")
+        ))
+        assertTrue(isRecoverableRankedFeedTimeout(
+            IllegalStateException("Query failed", IllegalStateException("SQLSTATE 57014"))
+        ))
+    }
+
+    @Test
+    fun rankedFeedFallbackDoesNotMaskOtherErrors() {
+        assertFalse(isRecoverableRankedFeedTimeout(IllegalStateException("Permission denied")))
+        assertFalse(isRecoverableRankedFeedTimeout(IllegalStateException("Session expired")))
+    }
 }

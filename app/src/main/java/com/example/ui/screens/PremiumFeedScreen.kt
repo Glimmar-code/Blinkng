@@ -43,7 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -224,26 +224,28 @@ private fun buildPremiumHomeRows(
  * Keeps the ranked feed order stable for the current browsing session.
  *
  * The server ranking algorithm still decides the ranked payload. Background/realtime
- * updates may refresh the data of rows already on-screen/in-session, but they must not
- * insert or reorder unseen rows while the user is scrolling. Only pagination appends new
- * ranked rows; an explicit refresh is allowed to replace the whole ranked snapshot.
+ * updates refresh the data of rows already in-session. Newly arrived rows are
+ * appended after currently visible posts, never inserted ahead of the reader.
+ * An explicit refresh can replace the entire ranked snapshot.
  */
 private fun mergeStablePremiumFeed(
     current: List<FeedPost>,
     latest: List<FeedPost>,
     appendNew: Boolean
 ): List<FeedPost> {
-    if (current.isEmpty()) return latest
-    if (latest.isEmpty()) return current
+    val currentUnique = current.distinctBy { it.id }
+    val latestUnique = latest.distinctBy { it.id }
+    if (currentUnique.isEmpty()) return latestUnique
+    if (latestUnique.isEmpty()) return currentUnique
 
-    val latestById = latest.associateBy { it.id }
-    val updatedInPlace = current.map { existing ->
+    val latestById = latestUnique.associateBy { it.id }
+    val updatedInPlace = currentUnique.map { existing ->
         latestById[existing.id] ?: existing
     }
     if (!appendNew) return updatedInPlace
 
-    val existingIds = current.asSequence().map { it.id }.toHashSet()
-    return updatedInPlace + latest.filter { it.id !in existingIds }
+    val existingIds = currentUnique.asSequence().map { it.id }.toHashSet()
+    return updatedInPlace + latestUnique.filter { it.id !in existingIds }
 }
 
 /**
@@ -288,8 +290,13 @@ fun PremiumFeedScreen(
     onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit = { _, _, _, _, _ -> },
     isLoading: Boolean = false,
     isRefreshing: Boolean = false,
+    isRefreshingFollowing: Boolean = isRefreshing,
+    isRefreshingReels: Boolean = isRefreshing,
     errorMessage: String? = null,
+    followingErrorMessage: String? = null,
     onRefresh: () -> Unit = {},
+    onRefreshFollowing: () -> Unit = onRefresh,
+    onRefreshReels: () -> Unit = onRefresh,
     onRetry: () -> Unit = {},
     onViewedPost: (String) -> Unit = {},
     onVotePoll: (postId: String, optionId: String) -> Unit = { _, _ -> },
@@ -377,9 +384,9 @@ fun PremiumFeedScreen(
             laneIndex = feedLane,
             followedAuthorKeys = followedAuthorKeys,
             isLoading = isLoading,
-            isRefreshing = isRefreshing,
+            isRefreshing = if (feedLane == 1) isRefreshingFollowing else isRefreshing,
             isServerConnected = isServerConnected,
-            errorMessage = errorMessage,
+            errorMessage = if (feedLane == 1) followingErrorMessage else errorMessage,
             hasMorePosts = if (feedLane == 1) hasMoreFollowingPosts else hasMorePosts,
             hasMoreReels = hasMoreReels,
             isLoadingMorePosts = if (feedLane == 1) isLoadingMoreFollowingPosts else isLoadingMorePosts,
@@ -405,8 +412,8 @@ fun PremiumFeedScreen(
             onStoreClick = onStoreClick,
             onBoostClick = onBoostClick,
             onDropsClick = onDropsClick,
-            onRefresh = onRefresh,
-            onRetry = onRetry,
+            onRefresh = if (feedLane == 1) onRefreshFollowing else onRefresh,
+            onRetry = if (feedLane == 1) onRefreshFollowing else onRetry,
             onViewedPost = onViewedPost,
             onVotePoll = onVotePoll,
             onLoadMorePosts = if (feedLane == 1) onLoadMoreFollowingPosts else onLoadMorePosts,
@@ -448,9 +455,11 @@ fun PremiumFeedScreen(
             onToggleTheme = onToggleTheme,
             isServerConnected = isServerConnected,
             isLoading = isLoading,
-            isRefreshing = isRefreshing,
+            isRefreshing = isRefreshingReels,
+            isRefreshingFollowing = isRefreshingFollowing,
             errorMessage = errorMessage,
-            onRefresh = onRefresh,
+            onRefresh = onRefreshReels,
+            onRefreshFollowing = onRefreshFollowing,
             onRetry = onRetry,
             onViewedPost = onViewedPost,
             onVotePoll = onVotePoll,
@@ -653,15 +662,17 @@ private fun PremiumHomeFeed(
 
     LaunchedEffect(posts, isRefreshing, isLoadingMorePosts, laneResumeKey) {
         val explicitRefreshCompleted = postRefreshWasRunning && !isRefreshing
-        val paginationCompleted = postPaginationWasRunning && !isLoadingMorePosts
 
         stableRankedPosts = if (explicitRefreshCompleted) {
-            posts
+            posts.distinctBy { it.id }
         } else {
+            // The first online page can arrive AFTER the cache is rendered.
+            // Append genuinely new IDs at the end (never above the user), even
+            // when there was no preceding loadingMore transition.
             mergeStablePremiumFeed(
                 current = stableRankedPosts,
                 latest = posts,
-                appendNew = paginationCompleted
+                appendNew = true
             )
         }
 
@@ -1240,7 +1251,9 @@ private fun PremiumHomeFeed(
                         selectedIndex = laneIndex,
                         onForYouClick = { onLaneChanged(0) },
                         onFollowingClick = { onLaneChanged(1) },
-                        onFilterClick = { filterMenuVisible = true }
+                        onFilterClick = { filterMenuVisible = true },
+                        onRefreshClick = { if (!isRefreshing) latestRefresh() },
+                        isRefreshing = isRefreshing
                     )
                     Box(modifier = Modifier.align(Alignment.TopEnd)) {
                         DropdownMenu(
@@ -1265,27 +1278,26 @@ private fun PremiumHomeFeed(
                 }
                 HorizontalDivider(color = FeedBorder.copy(alpha = 0.72f))
 
-                PullToRefreshBox(
-                    isRefreshing = isRefreshing,
-                    onRefresh = {
-                        headerOffsetPx.value = 0f
-                        headerScrollDirection[0] = 0
-                        pendingDirectionDistancePx[0] = 0f
-                        lastFlingVelocityY[0] = 0f
-                        fabExpanded = true
-                        onBottomBarVisibilityChange(true)
-                        latestRefresh()
-                    },
-                    state = pullState,
-                    modifier = Modifier.weight(1f),
-                    indicator = {
-                        PremiumPullRefreshIndicator(
-                            state = pullState,
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .pullToRefresh(
                             isRefreshing = isRefreshing,
-                            darkSurface = true,
-                            modifier = Modifier.align(Alignment.TopCenter)
+                            onRefresh = {
+                                if (!isRefreshing) {
+                                    headerOffsetPx.value = 0f
+                                    headerScrollDirection[0] = 0
+                                    pendingDirectionDistancePx[0] = 0f
+                                    lastFlingVelocityY[0] = 0f
+                                    fabExpanded = true
+                                    onBottomBarVisibilityChange(true)
+                                    latestRefresh()
+                                }
+                            },
+                            state = pullState,
+                            enabled = !isRefreshing,
+                            threshold = 96.dp
                         )
-                    }
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
@@ -1303,6 +1315,14 @@ private fun PremiumHomeFeed(
                             isLoading && stableRankedPosts.isEmpty() -> {
                                 items(4, key = { "skeleton:$it" }) {
                                     PremiumFeedSkeleton()
+                                }
+                            }
+
+                            // A failed first load is not an empty feed. Keep the
+                            // user on a recoverable state instead of inviting a new post.
+                            !errorMessage.isNullOrBlank() && stableRankedPosts.isEmpty() && isOnline -> {
+                                item(key = "first_load_error") {
+                                    PremiumFeedRefreshNotice(errorMessage, onRetry)
                                 }
                             }
 
@@ -1506,6 +1526,12 @@ private fun PremiumHomeFeed(
                             )
                         }
                     }
+                    PremiumPullRefreshIndicator(
+                        state = pullState,
+                        isRefreshing = isRefreshing,
+                        darkSurface = true,
+                        modifier = Modifier.align(Alignment.TopCenter)
+                    )
                 }
 
                 AnimatedVisibility(

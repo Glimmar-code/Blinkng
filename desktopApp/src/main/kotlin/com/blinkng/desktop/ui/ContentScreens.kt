@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -45,6 +46,8 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -81,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopComment
+import com.blinkng.desktop.data.DesktopConnectApplication
 import com.blinkng.desktop.data.DesktopConnectInbox
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
@@ -94,6 +98,7 @@ import com.blinkng.desktop.data.DesktopSearchResults
 import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
+import com.blinkng.shared.BlinkSmartTags
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkPulseSessionStore
@@ -130,6 +135,10 @@ fun HomeScreen(
 ) {
     var posts by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var composer by remember { mutableStateOf("") }
+    var selectedTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var tagInput by remember { mutableStateOf("") }
+    var trendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showMoreTags by remember { mutableStateOf(false) }
     var composerAudience by remember { mutableStateOf("Everyone") }
     var composerCategory by remember { mutableStateOf("Campus Life") }
     var composerLocation by remember { mutableStateOf("") }
@@ -140,6 +149,9 @@ fun HomeScreen(
     var composerMoreSettings by remember { mutableStateOf(false) }
     var composerRequestId by remember { mutableStateOf(UUID.randomUUID().toString()) }
     var loading by remember { mutableStateOf(true) }
+    var loadingMorePosts by remember { mutableStateOf(false) }
+    var hasMorePosts by remember { mutableStateOf(true) }
+    var consumedPostRows by remember { mutableStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
     var commentsFor by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -154,14 +166,61 @@ fun HomeScreen(
     }
 
     suspend fun reload() {
+        if (loading && posts.isNotEmpty()) return
         loading = true
-        runCatching { state.client.fetchFeed() }
-            .onSuccess { posts = it; error = null }
-            .onFailure { error = it.message }
-        loading = false
+        try {
+            val page = state.client.fetchFeed()
+            posts = page.distinctBy { it.id }
+            consumedPostRows = page.size
+            hasMorePosts = page.size >= 60
+            error = null
+        } catch (cause: Exception) {
+            // Keep the previous page and its scroll position on network failures.
+            error = cause.message ?: "Could not refresh Home."
+        } finally {
+            loading = false
+        }
     }
 
-    LaunchedEffect(Unit) { reload() }
+    suspend fun loadMorePosts() {
+        if (loading || loadingMorePosts || !hasMorePosts || posts.isEmpty()) return
+        loadingMorePosts = true
+        try {
+            val page = state.client.fetchFeed(offset = consumedPostRows)
+            consumedPostRows += page.size
+            val knownIds = posts.asSequence().map { it.id }.toHashSet()
+            val newRows = page.filter { it.id !in knownIds }.distinctBy { it.id }
+            posts = posts + newRows
+            hasMorePosts = page.size >= 60 && newRows.isNotEmpty()
+            error = null
+        } catch (cause: Exception) {
+            // Keep content/cursor intact, so an explicit retry can continue.
+            error = cause.message ?: "Could not load more Home posts."
+        } finally {
+            loadingMorePosts = false
+        }
+    }
+
+    LaunchedEffect(listState, posts.size, hasMorePosts, loading, loadingMorePosts) {
+        if (hasMorePosts && posts.isNotEmpty() && !loading && !loadingMorePosts) {
+            snapshotFlow {
+                val layout = listState.layoutInfo
+                val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
+                lastVisible >= layout.totalItemsCount - 5
+            }.collect { nearEnd ->
+                // Use the remembered scope: launching directly from this
+                // LaunchedEffect is cancelled when loadingMorePosts changes.
+                if (nearEnd) scope.launch { loadMorePosts() }
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        reload()
+        trendingTags = state.client.trendingTags(
+            runCatching { state.client.fetchProfile().university }.getOrNull(), 40
+        )
+    }
 
     fun normalizedComposerLink(): String? {
         val raw = composerLink.trim()
@@ -228,6 +287,79 @@ fun HomeScreen(
                         label = { Text("Create a post") },
                         placeholder = { Text("What's happening on campus?") },
                     )
+                    Text("🔥 Trending hashtags • 1–3 recommended, maximum 5", style = MaterialTheme.typography.labelMedium)
+                    val topicalTagSuggestions = remember(composer, trendingTags, selectedTags) {
+                        BlinkSmartTags.suggest(
+                            text = composer,
+                            trending = trendingTags,
+                            selected = selectedTags,
+                            limit = 3
+                        )
+                    }
+                    if (topicalTagSuggestions.isNotEmpty()) {
+                        Text("✨ Suggested for your post", style = MaterialTheme.typography.labelMedium)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            items(topicalTagSuggestions, key = { "suggested:$it" }) { tag ->
+                                AssistChip(
+                                    onClick = {
+                                        if (BlinkSmartTags.allTags(composer, selectedTags).size < BlinkSmartTags.MAX_TAGS)
+                                            selectedTags = BlinkSmartTags.add(selectedTags, tag)
+                                        else error = "Maximum 5 hashtags per post."
+                                    },
+                                    label = { Text("#$tag +") }
+                                )
+                            }
+                        }
+                    }
+                    if (trendingTags.isNotEmpty()) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            items(trendingTags.take(if (showMoreTags) 40 else 7)) { tag ->
+                                FilterChip(
+                                    selected = tag in BlinkSmartTags.allTags(composer, selectedTags),
+                                    onClick = {
+                                        if (BlinkSmartTags.allTags(composer, selectedTags).size < 5)
+                                            selectedTags = BlinkSmartTags.add(selectedTags, tag)
+                                    },
+                                    label = { Text("#$tag") }
+                                )
+                            }
+                        }
+                        if (trendingTags.size > 7) TextButton(onClick = { showMoreTags = !showMoreTags }) {
+                            Text(if (showMoreTags) "Show less" else "See more trending tags")
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = tagInput,
+                            onValueChange = { tagInput = it.take(33) },
+                            label = { Text("Add hashtag") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                        Button(onClick = {
+                            val tag = BlinkSmartTags.normalize(tagInput)
+                            when {
+                                tag == null -> error = "Use 2–32 letters, numbers or underscores."
+                                tag !in BlinkSmartTags.allTags(composer, selectedTags) &&
+                                    BlinkSmartTags.allTags(composer, selectedTags).size >= BlinkSmartTags.MAX_TAGS ->
+                                    error = "Maximum 5 hashtags per post."
+                                else -> { selectedTags = BlinkSmartTags.add(selectedTags, tag); tagInput = ""; error = null }
+                            }
+                        }) { Text("Add") }
+                    }
+                    if (BlinkSmartTags.merge(composer, selectedTags).isNotEmpty()) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(BlinkSmartTags.merge(composer, selectedTags)) { tag ->
+                                AssistChip(
+                                    onClick = {
+                                        if (tag in selectedTags) selectedTags = selectedTags - tag
+                                        else error = "Remove #$tag from the post text to delete it."
+                                    },
+                                    label = { Text("#$tag ×") }
+                                )
+                            }
+                        }
+                    }
                     Text(
                         "Audience",
                         style = MaterialTheme.typography.labelMedium,
@@ -321,9 +453,15 @@ fun HomeScreen(
                         Button(
                             onClick = {
                                 scope.launch {
+                                    val tags = BlinkSmartTags.allTags(composer, selectedTags)
+                                    if (tags.size !in 1..BlinkSmartTags.MAX_TAGS) {
+                                        error = "Include 1–5 relevant hashtags before posting."
+                                        return@launch
+                                    }
                                     runCatching {
                                         state.client.createPost(
                                             text = composer,
+                                            tags = tags,
                                             audience = composerAudience,
                                             category = composerCategory,
                                             location = composerLocation.trim().takeIf(String::isNotBlank),
@@ -336,6 +474,7 @@ fun HomeScreen(
                                     }
                                         .onSuccess {
                                             composer = ""
+                                            selectedTags = emptyList()
                                             composerLocation = ""
                                             composerLink = ""
                                             composerAllowComments = true
@@ -354,27 +493,23 @@ fun HomeScreen(
                             Text("Post")
                         }
                         OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    reload()
-                                    if (listState.firstVisibleItemIndex <= 10) {
-                                        listState.animateScrollToItem(0)
-                                    } else {
-                                        listState.scrollToItem(0)
-                                    }
-                                }
-                            }
+                            onClick = { scope.launch { reload() } },
+                            enabled = !loading
                         ) {
-                            Icon(Icons.Rounded.Refresh, contentDescription = null)
+                            if (loading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Rounded.Refresh, contentDescription = null)
+                            }
                             Spacer(Modifier.width(6.dp))
-                            Text("Refresh")
+                            Text(if (loading) "Refreshing" else "Refresh")
                         }
                     }
                 }
             }
         }
         error?.let { item { InlineError(it) } }
-        if (loading) item { LoadingRow() }
+        if (loading && posts.isEmpty()) item { LoadingRow() }
         if (!loading && posts.isEmpty()) item { EmptyState("No posts are available yet.") }
         items(posts, key = { it.id }) { post ->
             PostCard(
@@ -474,6 +609,16 @@ fun HomeScreen(
             )
             if (commentsFor == post.id) CommentsPanel(state, post.id)
         }
+        if (loadingMorePosts) item(key = "home_more_loading") {
+            LoadingRow()
+        }
+        if (hasMorePosts && !loadingMorePosts && !loading && posts.isNotEmpty()) {
+            item(key = "home_more_retry") {
+                TextButton(onClick = { scope.launch { loadMorePosts() } }) {
+                    Text("Load more posts")
+                }
+            }
+        }
     }
 }
 
@@ -548,17 +693,41 @@ private fun CommentsPanel(state: DesktopAppState, postId: String) {
 fun ReelsScreen(state: DesktopAppState) {
     var reels by remember { mutableStateOf<List<DesktopFeedPost>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) {
-        reels = runCatching { state.client.fetchFeed(reelsOnly = true) }.getOrDefault(emptyList())
-        loading = false
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    suspend fun reloadReels() {
+        if (loading && reels.isNotEmpty()) return
+        loading = true
+        try {
+            reels = state.client.fetchFeed(reelsOnly = true).distinctBy { it.id }
+            error = null
+        } catch (cause: Exception) {
+            error = cause.message ?: "Could not refresh Reels."
+        } finally {
+            loading = false
+        }
     }
+
+    LaunchedEffect(Unit) { reloadReels() }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { ScreenHeader("Reels", "Short videos from the same Blinkng feed") }
-        if (loading) item { LoadingRow() }
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                ScreenHeader("Reels", "Short videos from the same Blinkng feed")
+                OutlinedButton(onClick = { scope.launch { reloadReels() } }, enabled = !loading) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (loading) "Refreshing" else "Refresh")
+                }
+            }
+        }
+        error?.let { item { InlineError(it) } }
+        if (loading && reels.isEmpty()) item { LoadingRow() }
         if (!loading && reels.isEmpty()) item { EmptyState("No reels are available yet.") }
         items(reels, key = { it.id }) { reel ->
             Surface(shape = RoundedCornerShape(22.dp), tonalElevation = 2.dp) {
@@ -596,6 +765,8 @@ fun ReelsScreen(state: DesktopAppState) {
 fun SearchScreen(state: DesktopAppState) {
     var query by remember { mutableStateOf(state.globalSearch) }
     var results by remember { mutableStateOf(DesktopSearchResults(emptyList(), emptyList())) }
+    var trendingTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showMoreTrending by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var selectedProfile by remember { mutableStateOf<DesktopProfile?>(null) }
     val scope = rememberCoroutineScope()
@@ -612,6 +783,11 @@ fun SearchScreen(state: DesktopAppState) {
         loading = false
     }
 
+    LaunchedEffect(Unit) {
+        trendingTags = state.client.trendingTags(
+            runCatching { state.client.fetchProfile().university }.getOrNull(), 40
+        )
+    }
     LaunchedEffect(state.globalSearch) {
         if (state.globalSearch.isNotBlank()) {
             query = state.globalSearch
@@ -624,7 +800,25 @@ fun SearchScreen(state: DesktopAppState) {
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        item { ScreenHeader("Search", "Find people and posts") }
+        item { ScreenHeader("Search", "Find people, posts and hashtags") }
+        if (trendingTags.isNotEmpty()) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("🔥 Trending now", fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        items(trendingTags.take(if (showMoreTrending) 40 else 7)) { tag ->
+                            AssistChip(
+                                onClick = { query = "#$tag"; scope.launch { searchNow() } },
+                                label = { Text("#$tag") }
+                            )
+                        }
+                    }
+                    if (trendingTags.size > 7) TextButton(onClick = { showMoreTrending = !showMoreTrending }) {
+                        Text(if (showMoreTrending) "Show less" else "See more")
+                    }
+                }
+            }
+        }
         item {
             OutlinedTextField(
                 value = query,
@@ -879,6 +1073,11 @@ fun ConnectScreen(state: DesktopAppState) {
     var students by remember { mutableStateOf<List<DesktopProfile>>(emptyList()) }
     var followingIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var inbox by remember { mutableStateOf(DesktopConnectInbox()) }
+    var directoryApplications by remember { mutableStateOf<List<DesktopConnectApplication>>(emptyList()) }
+    var requestTarget by remember { mutableStateOf<DesktopConnectListing?>(null) }
+    var requestMessage by remember { mutableStateOf("") }
+    var connectError by remember { mutableStateOf<String?>(null) }
+    var selectedDirectorySlug by remember { mutableStateOf("all") }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
     var selectedPane by remember { mutableStateOf(0) }
@@ -890,7 +1089,6 @@ fun ConnectScreen(state: DesktopAppState) {
     var studentFilter by remember { mutableStateOf("all") }
     var studentSort by remember { mutableStateOf("recommended") }
 
-    var type by remember { mutableStateOf("community") }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var pulsePolicy by remember { mutableStateOf(BlinkActivityPulseDefaults.policy) }
@@ -898,6 +1096,19 @@ fun ConnectScreen(state: DesktopAppState) {
     var pulseImpressionRecorded by remember { mutableStateOf(false) }
     var selectedStudentProfile by remember { mutableStateOf<DesktopProfile?>(null) }
     val scope = rememberCoroutineScope()
+
+    val directoryOptions = remember { listOf(
+        "all" to "All", "roommates" to "Roommates", "mentors" to "Mentors",
+        "reading_mates" to "Reading Mates", "housing_agents" to "Housing Agents",
+        "accommodation_requests" to "Housing Requests", "study_partners" to "Study Partners",
+        "project_teammates" to "Project Teammates", "skill_exchange" to "Skill Exchange",
+        "career_guidance" to "Career Guidance", "internship_network" to "Internships",
+        "research_partners" to "Research Partners", "founders_builders" to "Founders & Builders",
+        "freelance_collaborators" to "Freelancers", "campus_communities" to "Communities",
+        "event_partners" to "Event Partners", "accountability_partners" to "Accountability",
+        "alumni_network" to "Alumni & Seniors", "course_tutors" to "Course Tutors",
+        "relocation_support" to "Relocation Support", "game_challenges" to "Game Challenges"
+    ) }
 
     fun connectGroup(listing: DesktopConnectListing): String {
         val text = buildString {
@@ -926,6 +1137,9 @@ fun ConnectScreen(state: DesktopAppState) {
         val policyResult = runCatching { state.client.fetchActivityPulsePolicy() }
 
         listings = listingsResult.getOrDefault(listings)
+        directoryApplications = runCatching {
+            state.client.fetchConnectApplications(listings.filter { it.userId == state.profile?.id }.map { it.id })
+        }.getOrDefault(directoryApplications)
         students = studentsResult.getOrDefault(students).filterNot { it.id == state.profile?.id }
         followingIds = followingResult.getOrDefault(followingIds)
         inbox = inboxResult.getOrDefault(inbox)
@@ -939,7 +1153,7 @@ fun ConnectScreen(state: DesktopAppState) {
     val myCampus = state.profile?.university.orEmpty()
     val myDepartment = state.profile?.department.orEmpty()
 
-    val visibleListings = remember(listings, listingQuery, listingGroup) {
+    val visibleListings = remember(listings, listingQuery, listingGroup, selectedDirectorySlug) {
         val query = listingQuery.trim()
         listings.filter { listing ->
             val groupMatches = listingGroup == "All" || connectGroup(listing) == listingGroup
@@ -952,7 +1166,8 @@ fun ConnectScreen(state: DesktopAppState) {
                 listing.location.orEmpty().contains(query, ignoreCase = true) ||
                 listing.tags.any { it.contains(query, ignoreCase = true) }
 
-            groupMatches && queryMatches
+            val categoryMatches = selectedDirectorySlug == "all" || listing.categorySlug == selectedDirectorySlug
+            groupMatches && categoryMatches && queryMatches
         }
     }
 
@@ -1019,7 +1234,7 @@ fun ConnectScreen(state: DesktopAppState) {
     }
 
     val policy = remember(pulsePolicy) { pulsePolicy.normalized() }
-    val realOnlineCount = remember(students) { 1 + students.count { it.isOnline } }
+    val realOnlineCount = remember(students) { students.count { it.isOnline } }
     val reduceMotion = state.settings?.reduceMotion == true
     val communityActivity = rememberDesktopManagedPulse(
         key = "desktop-connect:" + state.profile?.username.orEmpty().lowercase(),
@@ -1039,7 +1254,7 @@ fun ConnectScreen(state: DesktopAppState) {
     val realCampusOnline = remember(students, myCampus) {
         students.count {
             it.isOnline && myCampus.isNotBlank() && it.university.orEmpty().equals(myCampus, ignoreCase = true)
-        } + if (myCampus.isNotBlank()) 1 else 0
+        }
     }
     val campusLabel = remember(realCampusOnline, policy) {
         campusActivityLabel(realCampusOnline, policy)
@@ -1252,6 +1467,23 @@ fun ConnectScreen(state: DesktopAppState) {
                             }
                         }
 
+                        Text("Find by category", fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            directoryOptions.forEach { (slug, label) ->
+                                FilterChip(
+                                    selected = selectedDirectorySlug == slug,
+                                    onClick = {
+                                        selectedDirectorySlug = slug
+                                        listingGroup = "All"
+                                    },
+                                    label = { Text(label) }
+                                )
+                            }
+                        }
+
                         OutlinedTextField(
                             value = listingQuery,
                             onValueChange = { listingQuery = it },
@@ -1286,7 +1518,7 @@ fun ConnectScreen(state: DesktopAppState) {
                                 modifier = Modifier.fillMaxWidth().padding(24.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                Text("No Connect listings match these filters.", fontWeight = FontWeight.Bold)
+                                Text("No Connect listings in this category yet. Create one to get started.", fontWeight = FontWeight.Bold)
                                 Text(
                                     "Clear the search or switch category to see more.",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1339,12 +1571,21 @@ fun ConnectScreen(state: DesktopAppState) {
                                         fontSize = 12.sp,
                                     )
                                 }
+                                if (listing.userId == state.profile?.id) {
+                                    Text("Your listing", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                } else if (listing.categorySlug != null) {
+                                    Button(onClick = {
+                                        requestTarget = listing
+                                        requestMessage = "Hi, I'm interested in ${listing.title}."
+                                    }) { Text("Request to connect") }
+                                }
                             }
                         }
                     }
                 }
             } else if (selectedPane == 1) {
                 item {
+                    Text("Active now · $realOnlineCount", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     OutlinedTextField(
                         value = studentQuery,
                         onValueChange = { studentQuery = it },
@@ -1463,8 +1704,9 @@ fun ConnectScreen(state: DesktopAppState) {
                 val currentId = state.profile?.id.orEmpty()
                 val requestItems = inbox.requests.sortedByDescending { it.createdAt }
                 val challengeItems = inbox.challenges.sortedByDescending { it.createdAt }
+                val pendingDirectoryApplications = directoryApplications.filter { it.status == "pending" }
 
-                if (requestItems.isEmpty() && challengeItems.isEmpty()) {
+                if (requestItems.isEmpty() && challengeItems.isEmpty() && pendingDirectoryApplications.isEmpty()) {
                     item {
                         Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
                             Column(Modifier.fillMaxWidth().padding(24.dp)) {
@@ -1531,6 +1773,37 @@ fun ConnectScreen(state: DesktopAppState) {
                                         },
                                     ) { Text("Decline") }
                                 }
+                            }
+                        }
+                    }
+
+                    items(pendingDirectoryApplications, key = { "directory-app-${it.id}" }) { application ->
+                        val applicant = students.firstOrNull { it.id == application.applicantId }
+                        Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("New Connect category request", fontWeight = FontWeight.Bold)
+                                    Text(applicant?.fullName ?: "Student", fontSize = 11.sp)
+                                    Text(application.message, fontSize = 11.sp)
+                                }
+                                Button(onClick = {
+                                    scope.launch {
+                                        runCatching { state.client.respondConnectApplication(application.id, true) }
+                                            .onFailure { connectError = it.message }
+                                        reload()
+                                    }
+                                }) { Text("Accept") }
+                                OutlinedButton(onClick = {
+                                    scope.launch {
+                                        runCatching { state.client.respondConnectApplication(application.id, false) }
+                                            .onFailure { connectError = it.message }
+                                        reload()
+                                    }
+                                }) { Text("Decline") }
                             }
                         }
                     }
@@ -1602,6 +1875,43 @@ fun ConnectScreen(state: DesktopAppState) {
             )
         }
 
+        if (requestTarget != null) {
+            val target = requestTarget!!
+            AlertDialog(
+                onDismissRequest = { requestTarget = null },
+                title = { Text("Request to connect") },
+                text = {
+                    Column {
+                        Text("Request ${target.title}")
+                        OutlinedTextField(
+                            value = requestMessage,
+                            onValueChange = { requestMessage = it.take(500) },
+                            label = { Text("Message") },
+                        )
+                        if (connectError != null) {
+                            Text(connectError.orEmpty(), color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        scope.launch {
+                            connectError = null
+                            runCatching { state.client.applyConnectListing(target.id, requestMessage) }
+                                .onSuccess {
+                                    requestTarget = null
+                                    reload()
+                                }
+                                .onFailure { connectError = it.message ?: "Unable to send request." }
+                        }
+                    }) { Text("Send") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { requestTarget = null }) { Text("Cancel") }
+                },
+            )
+        }
+
         if (showCreate) {
             Box(
                 modifier = Modifier
@@ -1641,14 +1951,26 @@ fun ConnectScreen(state: DesktopAppState) {
                         }
                     }
                     HorizontalDivider()
-                    OutlinedTextField(type, { type = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Type") }, singleLine = true)
+                    Text("Directory: " + directoryOptions.firstOrNull { it.first == selectedDirectorySlug }?.second.orEmpty())
                     OutlinedTextField(title, { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Title") })
                     OutlinedTextField(description, { description = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Description") }, minLines = 4)
+                    if (connectError != null) Text(connectError.orEmpty(), color = MaterialTheme.colorScheme.error)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
                             onClick = {
                                 scope.launch {
-                                    runCatching { state.client.createConnectListing(type, title, description) }
+                                    connectError = null
+                                    val slug = selectedDirectorySlug.takeUnless { it == "all" } ?: "campus_communities"
+                                    val listingType = when (slug) {
+                                        "study_partners", "research_partners", "accountability_partners" -> "study_mate"
+                                        "project_teammates", "founders_builders", "freelance_collaborators", "event_partners" -> "project_partner"
+                                        "skill_exchange" -> "skill_swap"
+                                        "relocation_support" -> "housing_need"
+                                        "campus_communities" -> "campus_guide"
+                                        else -> "mentor_available"
+                                    }
+                                    runCatching { state.client.createConnectListing(listingType, title, description, slug) }
+                                        .onFailure { connectError = it.message ?: "Could not create listing." }
                                         .onSuccess {
                                             title = ""
                                             description = ""

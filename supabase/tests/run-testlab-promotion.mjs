@@ -45,6 +45,9 @@ try {
   await behaviorTests(db);
   await (await import('./ranked-profile-tests.mjs')).rankedProfileTests(db);
   await (await import('./legacy-hardening-tests.mjs')).legacyHardeningTests(db);
+  await (await import('./feed-recovery-tests.mjs')).feedRecoveryTests(db);
+  await (await import('./discovery-exhaustion-tests.mjs')).discoveryExhaustionTests(db);
+  await (await import('./tag-search-interest-tests.mjs')).tagSearchInterestTests(db);
   for (const name of migrations) {
     await db.exec(fs.readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
     console.log('PASS reapply:', name);

@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import com.blinkng.shared.BlinkDesignTokens
 
@@ -217,8 +218,8 @@ fun ConnectSection(
 
     val policy = remember(activityPulsePolicy) { activityPulsePolicy.normalized() }
     val activeNowCount = remember(liveProfiles) { liveProfiles.count { it.onlineNow } }
-    // The current viewer is actively using Connect, so the pulse always has at least one real active unit.
-    val realOnlineCount = remember(liveProfiles) { 1 + liveProfiles.count { it.onlineNow } }
+    // Count only users with confirmed online presence; never fabricate a baseline user.
+    val realOnlineCount = activeNowCount
     val reduceMotion = rememberReducedMotionEnabled()
     val windowActive = rememberWindowActive()
     val communityPulse = rememberManagedPulse(
@@ -238,12 +239,17 @@ fun ConnectSection(
         previousRealOnline = realOnlineCount
     }
 
+    val displayedOnlineCount by animateIntAsState(
+        targetValue = activeNowCount,
+        animationSpec = tween(durationMillis = 720),
+        label = "connectLiveActiveCount"
+    )
     val campusName = current?.university.orEmpty().takeUnless { it.equals("null", true) }.orEmpty()
     val realCampusOnline = remember(liveProfiles, campusName) {
         val others = liveProfiles.count {
             it.onlineNow && campusName.isNotBlank() && it.university.equals(campusName, ignoreCase = true)
         }
-        others + if (campusName.isNotBlank()) 1 else 0
+        others
     }
     val campusLabel = remember(realCampusOnline, policy) {
         campusActivityLabel(realCampusOnline, policy)
@@ -461,7 +467,7 @@ fun ConnectSection(
                                     color = BlinkOnlineGreen.copy(alpha = .13f)
                                 ) {
                                     Text(
-                                        "$activeNowCount active",
+                                        "Active now · ${if (reduceMotion) activeNowCount else displayedOnlineCount}",
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                         color = BlinkOnlineGreen,
                                         fontSize = 10.5.sp,

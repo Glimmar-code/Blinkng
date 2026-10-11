@@ -46,10 +46,12 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -400,6 +402,8 @@ fun FeedTabs(
     onForYouClick: () -> Unit,
     onFollowingClick: () -> Unit,
     onFilterClick: () -> Unit,
+    onRefreshClick: () -> Unit = {},
+    isRefreshing: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     BoxWithConstraints(
@@ -407,7 +411,7 @@ fun FeedTabs(
     ) {
         val availableWidth = maxWidth
         val filterWidth = if (availableWidth < 360.dp) 42.dp else 48.dp
-        val tabWidth = ((availableWidth - filterWidth) / 2).coerceAtLeast(96.dp)
+        val tabWidth = ((availableWidth - filterWidth * 2) / 2).coerceAtLeast(90.dp)
         val indicatorWidth = (tabWidth - 28.dp).coerceAtLeast(34.dp)
         val labelSelection = selectedIndex.coerceIn(0, 1)
         val indicatorOffset by animateDpAsState(
@@ -422,6 +426,30 @@ fun FeedTabs(
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             FeedTabLabel("For You", selectedIndex == 0, Modifier.width(tabWidth), onForYouClick)
             FeedTabLabel("Following", selectedIndex == 1, Modifier.width(tabWidth), onFollowingClick)
+            Box(
+                modifier = Modifier
+                    .width(filterWidth)
+                    .height(48.dp)
+                    .clickable(enabled = !isRefreshing, role = Role.Button, onClick = onRefreshClick)
+                    .semantics { contentDescription = "Refresh feed" }
+                    .testTag("feed_refresh_action"),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isRefreshing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = FeedPurple,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        tint = FeedTextSecondary,
+                        modifier = Modifier.size(21.dp)
+                    )
+                }
+            }
             Box(
                 modifier = Modifier
                     .width(filterWidth)

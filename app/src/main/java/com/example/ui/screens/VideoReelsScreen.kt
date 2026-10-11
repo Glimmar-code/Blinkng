@@ -20,7 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -122,7 +122,9 @@ fun VideoReelsScreen(
     onDirectMessage: (partner: String, partnerName: String?, partnerAvatar: String?) -> Unit = { _, _, _ -> },
     isLoading: Boolean = false,
     isRefreshing: Boolean = false,
+    isRefreshingFollowing: Boolean = isRefreshing,
     onRefresh: () -> Unit = {},
+    onRefreshFollowing: () -> Unit = onRefresh,
     hasMore: Boolean = false,
     isLoadingMore: Boolean = false,
     onLoadMore: () -> Unit = {},
@@ -137,20 +139,25 @@ fun VideoReelsScreen(
     initialReelPositionMs: Long = 0L
 ) {
     val pullToRefreshState = rememberPullToRefreshState()
+    var firstPageVisible by remember(currentUsername) { mutableStateOf(true) }
+    var followingSelected by remember(currentUsername) { mutableStateOf(false) }
+    val activeRefreshing = if (followingSelected) isRefreshingFollowing else isRefreshing
+    val refreshSelected = {
+        if (followingSelected) onRefreshFollowing() else onRefresh()
+    }
 
-    PullToRefreshBox(
-        isRefreshing = isRefreshing,
-        onRefresh = onRefresh,
-        state = pullToRefreshState,
-        modifier = Modifier.fillMaxSize().background(Color.Black),
-        indicator = {
-            PremiumPullRefreshIndicator(
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pullToRefresh(
+                isRefreshing = activeRefreshing,
+                onRefresh = refreshSelected,
                 state = pullToRefreshState,
-                isRefreshing = isRefreshing,
-                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
-                darkSurface = true
+                // Pager swipes must not refresh or interrupt a playing reel.
+                enabled = firstPageVisible && !isInteractionOverlayOpen && !activeRefreshing,
+                threshold = 96.dp
             )
-        }
     ) {
         val hasAnyReels = reels.isNotEmpty() || followingReels.isNotEmpty()
         val uiState = when {
@@ -166,7 +173,7 @@ fun VideoReelsScreen(
         ) { state ->
             when (state) {
                 ReelsUiState.Loading -> ReelsLoadingSkeleton()
-                ReelsUiState.Empty -> EmptyReelsState(onBackToPosts)
+                ReelsUiState.Empty -> EmptyReelsState(onBackToPosts, refreshSelected, activeRefreshing)
                 ReelsUiState.Content -> ReelsContent(
                     reels = reels,
                     followingReels = followingReels,
@@ -191,11 +198,21 @@ fun VideoReelsScreen(
                     isLoadingMoreFollowing = isLoadingMoreFollowing,
                     onLoadMoreFollowing = onLoadMoreFollowing,
                     isInteractionOverlayOpen = isInteractionOverlayOpen,
+                    isRefreshing = activeRefreshing,
+                    onRefreshSelected = refreshSelected,
+                    onFirstPageChanged = { firstPageVisible = it },
+                    onFollowingSelectionChanged = { followingSelected = it },
                     initialReelId = initialReelId,
                     initialReelPositionMs = initialReelPositionMs
                 )
             }
         }
+        PremiumPullRefreshIndicator(
+            state = pullToRefreshState,
+            isRefreshing = activeRefreshing,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
+            darkSurface = true
+        )
     }
 }
 
@@ -288,10 +305,15 @@ private fun ReelsContent(
     isLoadingMoreFollowing: Boolean,
     onLoadMoreFollowing: () -> Unit,
     isInteractionOverlayOpen: Boolean,
+    isRefreshing: Boolean,
+    onRefreshSelected: () -> Unit,
+    onFirstPageChanged: (Boolean) -> Unit,
+    onFollowingSelectionChanged: (Boolean) -> Unit,
     initialReelId: String?,
     initialReelPositionMs: Long
 ) {
     val context = LocalContext.current
+    val refreshScope = rememberCoroutineScope()
     val resumePrefs = remember(context) {
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
@@ -303,6 +325,7 @@ private fun ReelsContent(
         mutableStateOf<List<BlinkPromotedDiscoveryPlacement>>(emptyList())
     }
     var selectedTab by rememberSaveable(resumeUserKey) { mutableStateOf("For You") }
+    LaunchedEffect(selectedTab) { onFollowingSelectionChanged(selectedTab == "Following") }
     var reelsMuted by rememberSaveable(resumeUserKey) {
         mutableStateOf(resumePrefs.getBoolean("reels_muted:$resumeUserKey", false))
     }
@@ -346,12 +369,18 @@ private fun ReelsContent(
         initialPage = initialPage,
         pageCount = { pagerItems.size }
     )
+    LaunchedEffect(pager.currentPage, selectedTab, pagerItems.size) {
+        onFirstPageChanged(pager.currentPage == 0)
+    }
 
-    LaunchedEffect(initialReelId, pagerItems) {
-        val targetPage = reelPageIndex(pagerItems, initialReelId) ?: return@LaunchedEffect
-        if (pager.currentPage != targetPage) {
-            pager.scrollToPage(targetPage)
-        }
+    // A deep-link is fulfilled once; a later refresh or pagination must not jump the
+    // user back to the originally linked video.
+    var unconsumedLaunchId by remember(initialReelId) { mutableStateOf(initialReelId) }
+    LaunchedEffect(unconsumedLaunchId, pagerItems) {
+        val launchId = unconsumedLaunchId ?: return@LaunchedEffect
+        val targetPage = reelPageIndex(pagerItems, launchId) ?: return@LaunchedEffect
+        if (pager.currentPage != targetPage) pager.scrollToPage(targetPage)
+        unconsumedLaunchId = null
     }
 
     var pendingLaunchReelId by remember(initialReelId) { mutableStateOf(initialReelId) }
@@ -589,6 +618,35 @@ private fun ReelsContent(
             Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
         }
 
+        IconButton(
+            onClick = {
+                if (!isRefreshing && !isInteractionOverlayOpen) {
+                    // Explicit refresh is deliberate: go to the first Reel before replacing
+                    // ranked recommendations so current playback isn't interrupted mid-swipe.
+                    refreshScope.launch {
+                        if (pager.currentPage != 0) pager.scrollToPage(0)
+                        onRefreshSelected()
+                    }
+                }
+            },
+            enabled = !isRefreshing && !isInteractionOverlayOpen,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(4.dp)
+                .semantics { contentDescription = "Refresh reels" }
+        ) {
+            if (isRefreshing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = Color.White
+                )
+            } else {
+                Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White)
+            }
+        }
+
         AnimatedVisibility(
             visible = isLoadingMore,
             enter = fadeIn() + slideInVertically { it },
@@ -711,7 +769,11 @@ private fun ReelsLoadingSkeleton() {
 }
 
 @Composable
-private fun EmptyReelsState(onBackToPosts: () -> Unit) {
+private fun EmptyReelsState(
+    onBackToPosts: () -> Unit,
+    onRefresh: () -> Unit,
+    isRefreshing: Boolean
+) {
     val visibleState = remember { MutableTransitionState(false) }.apply { targetState = true }
     AnimatedVisibility(
         visibleState = visibleState,
@@ -738,6 +800,12 @@ private fun EmptyReelsState(onBackToPosts: () -> Unit) {
                     color = Color.White.copy(alpha = .65f),
                     fontSize = 11.sp
                 )
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(onClick = onRefresh, enabled = !isRefreshing) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White)
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (isRefreshing) "Refreshing" else "Refresh reels", color = Color.White)
+                }
                 Spacer(Modifier.height(4.dp))
                 TextButton(onClick = onBackToPosts) { Text("Back to Home") }
             }
