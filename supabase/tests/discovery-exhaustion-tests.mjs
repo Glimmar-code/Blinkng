@@ -62,7 +62,7 @@ export async function discoveryExhaustionTests(db) {
     'select count(*)::integer as n from private_ranking.get_discovery_feed(30)'
   )).rows[0].n;
 
-  assert.equal(await count(), 2, 'old diversity rule should truncate at two');
+  assert.equal(await count(), 1, 'old nullable creator guard can truncate after a single post');
   await db.exec(migration);
   assert.equal(await count(), 5, 'fallback must reveal all eligible posts');
   await db.exec(migration);
