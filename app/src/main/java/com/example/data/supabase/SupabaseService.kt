@@ -2066,39 +2066,11 @@ fun getCurrentUserId(): String? {
 
         val normalizedFeedType = feedType
             .removePrefix("ranked_")
-            .removePrefix("rls_fallback_")
             .lowercase(Locale.US)
             .takeIf { it == "posts" || it == "reels" || it == "following" || it == "all" }
             ?: "posts"
         val useRankedDiscovery = searchQuery.isNullOrBlank() && feedType.startsWith("ranked_")
-        val useRlsFallback = searchQuery.isNullOrBlank() && feedType.startsWith("rls_fallback_")
-
-        val postsRaw: JSONArray = if (useRlsFallback) {
-            // The legacy get_feed_page RPC may reference an inaccessible private
-            // schema. Fall back only to published, active posts through the user's
-            // existing authenticated PostgREST/RLS permissions. Never broaden RLS.
-            require(normalizedFeedType == "posts" || normalizedFeedType == "reels")
-            val path = buildString {
-                append("/rest/v1/feed_posts?select=*&is_active=eq.true&audience=eq.Everyone")
-                append("&is_reel=eq.${normalizedFeedType == "reels"}")
-                if (!beforeCreatedAt.isNullOrBlank()) {
-                    val cursor = encodeValue(beforeCreatedAt)
-                    if (!beforeId.isNullOrBlank() && isValidUuid(beforeId)) {
-                        append("&or=(created_at.lt.$cursor,and(created_at.eq.$cursor,id.lt.${encodeValue(beforeId)}))")
-                    } else {
-                        append("&created_at=lt.$cursor")
-                    }
-                }
-                append("&order=created_at.desc,id.desc&limit=${limit.coerceIn(1, 60)}")
-            }
-            executeRequest(newRequestBuilder(path, authenticated = true).get().build()).use { response ->
-                val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    throw IllegalStateException(parseSupabaseError(raw, "Unable to recover the feed."))
-                }
-                JSONArray(raw.ifBlank { "[]" })
-            }
-        } else if (useRankedDiscovery) {
+        val postsRaw: JSONArray = if (useRankedDiscovery) {
             val isInitialPage = beforeCreatedAt.isNullOrBlank() && beforeId.isNullOrBlank()
             val cursorKey = normalizedFeedType
             val (offset, asOf) = discoveryCursorMutex.withLock {
