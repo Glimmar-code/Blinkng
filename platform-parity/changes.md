@@ -1,3 +1,11 @@
+## 2026-10-11 — For You feed completeness, older content and pagination (Testlab)
+
+- Shared ranked backend: remove the hard seven-day eligibility cutoff while retaining the existing time-decay score. When creator diversity cannot select another post, the final fallback chooses the best remaining eligible candidate rather than ending the feed early. Block, mute, private audience, hidden content, expiry, authentication, qualified views, promotions and ranked scoring remain unchanged.
+- Android: retain the current scroll anchor while supplementing a short cached first page with new live post IDs. In-session ranking order stays stable, duplicates are removed, and existing near-end ranked pagination, refresh, offline caching and Following feed are preserved.
+- Windows: Home now supports automatically loading older batches from its current authenticated public-post data source, with stable timestamp/ID ordering, de-duplication, error recovery and a manual Load More option. Desktop does not depend on Android's Compose/Room cache or reuse its gesture handling.
+- Validation: disposable SQL regression verifies full pages, old-post eligibility, single-creator fallback, stable order and idempotent reapplication; Android quality/runtime, Windows build/parity, Supabase safety and release smoke must pass before promotion.
+- Deployment: merging only commits the migration. The Supabase backend migration must be applied and verified separately before this fix can affect the public app. No live database records were modified by the Testlab work.
+
 ## 2026-10-11 — BLINK Smart Discovery v3 (Testlab candidate)
 
 - Backend: ranked For You no longer stops after two posts from one creator when strict creator diversity runs out of alternatives. The last-resort fallback uses **only the existing, privacy-filtered candidate set**; no blocked/hidden/restricted post is reintroduced. Environments still using the original seven-day source window upgrade to 90 days; environments already on 90 days keep their current window.

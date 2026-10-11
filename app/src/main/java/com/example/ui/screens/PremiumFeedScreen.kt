@@ -224,26 +224,28 @@ private fun buildPremiumHomeRows(
  * Keeps the ranked feed order stable for the current browsing session.
  *
  * The server ranking algorithm still decides the ranked payload. Background/realtime
- * updates may refresh the data of rows already on-screen/in-session, but they must not
- * insert or reorder unseen rows while the user is scrolling. Only pagination appends new
- * ranked rows; an explicit refresh is allowed to replace the whole ranked snapshot.
+ * updates refresh the data of rows already in-session. Newly arrived rows are
+ * appended after currently visible posts, never inserted ahead of the reader.
+ * An explicit refresh can replace the entire ranked snapshot.
  */
 private fun mergeStablePremiumFeed(
     current: List<FeedPost>,
     latest: List<FeedPost>,
     appendNew: Boolean
 ): List<FeedPost> {
-    if (current.isEmpty()) return latest
-    if (latest.isEmpty()) return current
+    val currentUnique = current.distinctBy { it.id }
+    val latestUnique = latest.distinctBy { it.id }
+    if (currentUnique.isEmpty()) return latestUnique
+    if (latestUnique.isEmpty()) return currentUnique
 
-    val latestById = latest.associateBy { it.id }
-    val updatedInPlace = current.map { existing ->
+    val latestById = latestUnique.associateBy { it.id }
+    val updatedInPlace = currentUnique.map { existing ->
         latestById[existing.id] ?: existing
     }
     if (!appendNew) return updatedInPlace
 
-    val existingIds = current.asSequence().map { it.id }.toHashSet()
-    return updatedInPlace + latest.filter { it.id !in existingIds }
+    val existingIds = currentUnique.asSequence().map { it.id }.toHashSet()
+    return updatedInPlace + latestUnique.filter { it.id !in existingIds }
 }
 
 /**
@@ -660,15 +662,17 @@ private fun PremiumHomeFeed(
 
     LaunchedEffect(posts, isRefreshing, isLoadingMorePosts, laneResumeKey) {
         val explicitRefreshCompleted = postRefreshWasRunning && !isRefreshing
-        val paginationCompleted = postPaginationWasRunning && !isLoadingMorePosts
 
         stableRankedPosts = if (explicitRefreshCompleted) {
-            posts
+            posts.distinctBy { it.id }
         } else {
+            // The first online page can arrive AFTER the cache is rendered.
+            // Append genuinely new IDs at the end (never above the user), even
+            // when there was no preceding loadingMore transition.
             mergeStablePremiumFeed(
                 current = stableRankedPosts,
                 latest = posts,
-                appendNew = paginationCompleted
+                appendNew = true
             )
         }
 
