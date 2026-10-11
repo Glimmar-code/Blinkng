@@ -41,6 +41,11 @@ on:
 permissions:
   contents: read
 
+# Do not queue multiple expensive minified release builds for outdated commits.
+concurrency:
+  group: android-release-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release-smoke:
     runs-on: ubuntu-latest
