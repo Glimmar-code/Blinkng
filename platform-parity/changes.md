@@ -4,6 +4,14 @@
 - PARITY-EXCEPTION: feed-scroll-linked-upper-header-fade — Android's small-screen touch feed chrome collapses as the user drags; Windows uses persistent top-level Home navigation with keyboard/mouse access and has no phone-sized collapsing header to animate. Windows navigation behavior remains appropriate to its desktop layout. No backend or feature divergence.
 - Validation: Android JVM motion-regression tests cover partial settle thresholds, opacity endpoints and clamping; Android quality gate must pass before production integration.
 
+## 2026-10-10 — Circular Android launcher icon with balanced inner spacing
+
+PARITY-EXCEPTION: android-circular-launcher-padding-20261010
+
+- Android: the launcher draws the **existing approved B artwork** inside a real black circular silhouette, with its full mark visible rather than clipped by a rounded-square image. The adaptive foreground has a 72dp centered circular face; transparent outside corners and synchronized legacy density/round icons make the appearance consistent on MIUI/Redmi and other Android launchers. Keep the original splash and source logo untouched.
+- Windows equivalent: Windows icons and application packaging use native ICO/tray icon sizes and do not use Android adaptive foreground/background layers or the MIUI launcher mask. The desktop retains the same approved B mark; Windows UI, window/tray resources and packaging behavior are unchanged.
+- Shared/backend/web: no ranking, auth, wallets, messages, server, web/PWA or Windows changes. Android icon regeneration and per-density shape/artwork checks run during Testlab CI.
+
 ## 2026-10-11 — For You feed completeness, older content and pagination (Testlab)
 
 - Shared ranked backend: remove the hard seven-day eligibility cutoff while retaining the existing time-decay score. When creator diversity cannot select another post, the final fallback chooses the best remaining eligible candidate rather than ending the feed early. Block, mute, private audience, hidden content, expiry, authentication, qualified views, promotions and ranked scoring remain unchanged.

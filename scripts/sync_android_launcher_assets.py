@@ -20,6 +20,18 @@ def encoded_png(image: Image.Image) -> bytes:
     return output.getvalue()
 
 
+def circular_master(master: Image.Image) -> Image.Image:
+    """Preserve the approved logo while masking only its outside corners."""
+    pixels = master.width
+    scale = 4
+    alpha = Image.new("L", (pixels * scale, pixels * scale), 0)
+    ImageDraw.Draw(alpha).ellipse((0, 0, pixels * scale - 1, pixels * scale - 1), fill=255)
+    alpha = alpha.resize((pixels, pixels), Image.Resampling.LANCZOS)
+    circle = master.copy()
+    circle.putalpha(ImageChops.multiply(circle.getchannel("A"), alpha))
+    return circle
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true", help="Fail if a resource is stale.")
@@ -29,13 +41,20 @@ def main() -> None:
         raise SystemExit("The approved BLINK launcher master must be square.")
 
     out_of_sync: list[str] = []
+    # A transparent circle, rather than a black square, works on Xiaomi/MIUI
+    # and round or rounded-square Android launcher masks alike.
+    circle = circular_master(master)
+    circle_path = RES / "drawable/app_icon_circle.png"
+    circle_png = encoded_png(circle)
+    if options.check:
+        if not circle_path.exists() or circle_path.read_bytes() != circle_png:
+            out_of_sync.append(str(circle_path.relative_to(ROOT)))
+    else:
+        circle_path.write_bytes(circle_png)
+
     for density, pixels in DENSITIES.items():
-        icon = master.resize((pixels, pixels), Image.Resampling.LANCZOS)
-        round_icon = icon.copy()
-        alpha = Image.new("L", (pixels * 4, pixels * 4), 0)
-        ImageDraw.Draw(alpha).ellipse((0, 0, pixels * 4 - 1, pixels * 4 - 1), fill=255)
-        alpha = alpha.resize((pixels, pixels), Image.Resampling.LANCZOS)
-        round_icon.putalpha(ImageChops.multiply(round_icon.getchannel("A"), alpha))
+        icon = circle.resize((pixels, pixels), Image.Resampling.LANCZOS)
+        round_icon = icon
 
         for filename, variant in (("ic_launcher.png", icon), ("ic_launcher_round.png", round_icon)):
             dest = RES / f"mipmap-{density}" / filename
@@ -58,10 +77,15 @@ def main() -> None:
         else:
             destination.write_bytes(content)
 
-    for resource in ("ic_launcher_foreground.xml", "ic_splash_b.xml"):
+    for resource, expected_drawable in (
+        ("ic_launcher_foreground.xml", "@drawable/app_icon_circle"),
+        ("ic_splash_b.xml", "@drawable/app_icon"),
+    ):
         path = RES / "drawable" / resource
-        if '@drawable/app_icon' not in path.read_text():
+        if expected_drawable not in path.read_text():
             out_of_sync.append(str(path.relative_to(ROOT)))
+    if "@android:color/transparent" not in (RES / "drawable/ic_launcher_background.xml").read_text():
+        out_of_sync.append("app/src/main/res/drawable/ic_launcher_background.xml")
     if (RES / "drawable/blink_logo_foreground.png").read_bytes() != SOURCE.read_bytes():
         out_of_sync.append("app/src/main/res/drawable/blink_logo_foreground.png")
 
