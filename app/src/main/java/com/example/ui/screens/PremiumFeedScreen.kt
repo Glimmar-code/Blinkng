@@ -193,7 +193,7 @@ private fun buildPremiumHomeRows(
                 (organicPosition - 5) % 10 == 0 &&
                 index < posts.lastIndex
         val shouldInsertSponsored =
-            organicPosition % FEED_SPONSORED_INTERVAL == 0 && index < posts.lastIndex
+            shouldInsertSponsoredAfter(organicPosition, FEED_SPONSORED_INTERVAL)
 
         if (shouldInsertBoosted) {
             rows += PremiumHomeRow.BoostedPostRow(
