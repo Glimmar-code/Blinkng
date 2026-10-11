@@ -640,7 +640,12 @@ class DesktopSupabaseClient(
         }
     }
 
-    suspend fun fetchFeed(reelsOnly: Boolean = false, search: String? = null): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
+    suspend fun fetchFeed(
+        reelsOnly: Boolean = false,
+        search: String? = null,
+        offset: Int = 0,
+        limit: Int = 60,
+    ): List<DesktopFeedPost> = withContext(Dispatchers.IO) {
         val filter = buildString {
             append("/rest/v1/feed_posts?select=id,user_id,text,caption,image_url,video_url,images,hashtags,like_count,comment_count,share_count,repost_count,view_count,is_reel,is_pinned,created_at")
             append("&is_active=eq.true")
@@ -650,7 +655,10 @@ class DesktopSupabaseClient(
                 if (tag != null) append("&tags=cs.${encode("{$tag}")}")
                 else append("&or=${encode("(text.ilike.*$q*,caption.ilike.*$q*)")}")
             }
-            append("&order=created_at.desc&limit=60")
+            // Stable secondary ordering is required for paged discovery when
+            // multiple posts have the same creation timestamp.
+            append("&order=created_at.desc,id.desc")
+            append("&limit=${limit.coerceIn(1, 60)}&offset=${offset.coerceAtLeast(0)}")
         }
         val rows = getArray(filter)
         val likedIds = fetchMyLikedPostIds()
