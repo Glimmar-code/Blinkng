@@ -7,6 +7,30 @@
 - Safety: screenshot bucket is private with report-owner/admin-only reads, submitters have no write access to report status or rewards; production deployment is gated on staging migration and Android/Desktop build plus role/coin verification.
 - PARITY-EXCEPTION: android-shake-report-accelerometer — Windows offers manual bug reporting in Settings and admin review, while only Android devices expose a phone shake sensor.
 
+## 2026-10-11 — For You feed completeness, older content and pagination (Testlab)
+
+- Shared ranked backend: remove the hard seven-day eligibility cutoff while retaining the existing time-decay score. When creator diversity cannot select another post, the final fallback chooses the best remaining eligible candidate rather than ending the feed early. Block, mute, private audience, hidden content, expiry, authentication, qualified views, promotions and ranked scoring remain unchanged.
+- Android: retain the current scroll anchor while supplementing a short cached first page with new live post IDs. In-session ranking order stays stable, duplicates are removed, and existing near-end ranked pagination, refresh, offline caching and Following feed are preserved.
+- Windows: Home now supports automatically loading older batches from its current authenticated public-post data source, with stable timestamp/ID ordering, de-duplication, error recovery and a manual Load More option. Desktop does not depend on Android's Compose/Room cache or reuse its gesture handling.
+- Validation: disposable SQL regression verifies full pages, old-post eligibility, single-creator fallback, stable order and idempotent reapplication; Android quality/runtime, Windows build/parity, Supabase safety and release smoke must pass before promotion.
+- Deployment: merging only commits the migration. The Supabase backend migration must be applied and verified separately before this fix can affect the public app. No live database records were modified by the Testlab work.
+
+## 2026-10-11 — BLINK Smart Discovery v3 (Testlab candidate)
+
+- Backend: ranked For You no longer stops after two posts from one creator when strict creator diversity runs out of alternatives. The last-resort fallback uses **only the existing, privacy-filtered candidate set**; no blocked/hidden/restricted post is reintroduced. Environments still using the original seven-day source window upgrade to 90 days; environments already on 90 days keep their current window.
+- Android and Windows: use the same `BlinkSmartTags.suggest` policy to show up to three **topically relevant** trending suggestions in the post composer. Maximum five selected hashtags and existing server validation are preserved. Unrelated viral tags are not suggested solely because they are popular.
+- Android search: use the real Supabase trending-tags aggregate when available while retaining cached-feed hashtags offline; explicit hashtag searches are deduplicated by the existing privacy-preserving RPC. Desktop already loads the same trending endpoint for Search.
+- Both clients' explicit hashtag searches feed the existing private personalization model **at most once per user/tag/hour**, through the authenticated server RPC. Searches and deduplicated events remain private.
+- Backend trend calculation remains independent of view multiplier tiers. The existing server ranking, following feed and post privacy policies remain authoritative; no inflated/promised reach for simply adding hashtags.
+- Rollout: this branch is isolated from `main`. Validate Android/Windows builds, the PGlite creator-exhaustion regression and Supabase syntax/security gates first. Deploy tag/search migrations and this migration only in a staging Supabase environment before promoting to production. No production migration has been executed by this change.
+
+## 2026-10-11 — Verify APK delivery before publishing
+
+- Android packaging exception: APK archive integrity and signed-build checksum are checked before upload and again after downloading the draft release from GitHub. Missing checksums, mismatched build identity, corrupt archives and altered metadata prevent promotion to latest.
+- Public release assets are never overwritten, protecting interrupted downloads from mixing different bytes. A checksum file accompanies each future release.
+- Windows: no runtime, UI or backend changes; APK delivery is Android-only. Existing Windows release behavior is preserved.
+- Limits: this verifies GitHub delivery, not every browser/network/storage path to a user's device. Signature verification remains in the signed production build; this gate enforces byte equality to that artifact. Failed drafts stay private for diagnosis.
+
 ## 2026-10-10 — Server-gated Blink Coin checkout shelf (Testlab)
 
 - Server-catalog correctness: Android now intersects its decorative built-in catalog with active SKUs/prices returned by `get_blink_store_state`; missing items cannot be sold. Windows now hides collections/identity looks with no live backend item. This avoids showing nonexistent purchasable items during incomplete server catalog migrations.\n- Shared: `BlinkCoinCheckoutPolicy` validates fixed-price server-issued coin packs, blocks checkout when the authenticated backend reports cash checkout disabled, and permits only Paystack's expected HTTPS hosted checkout URL. No wallet balance or entitlements are modified in client code.
@@ -542,3 +566,10 @@ Date: 2026-10-07
 Shared/backend behavior: Circle and member SELECT policies use a scoped authenticated owner/member/public access helper, avoiding mutual RLS recursion and uncorrelated membership matches. Existing circle mutations, requests and ranking formulas remain intact.
 Android and Windows behavior: Existing study-circle and owner-request reads keep working through the same backend contract.
 Validation: Isolated PostgreSQL checks prove private circles/members stay hidden from an account that belongs to a different circle, while the owner and approved members retain access. All eight promotion migrations reapply.
+
+## 2026-10-11 — Android JNI crash and ranked-feed recovery (Testlab)
+
+- PARITY-EXCEPTION: android-webrtc-jni-and-ranked-timeout — Android's R8 release shrinker renamed WebRTC JNI classes and caused a native abort during voice/video calls on Android 15. Keep `org.webrtc.**` class/member names and verify real release DEX. Windows does not use Android's R8, JNI_OnLoad or Android WebRTC SDK.
+- Android: the ranked-feed RPC can time out under backend load. Fall back only for PostgreSQL statement timeout to the standard paginated feed, preserving posts/Reels type and pagination; auth/RLS failures still surface. Windows currently uses a separate chronological `feed_posts` fetch, so it is already independent of the Android ranked-feed RPC.
+- Shared Supabase: expand the discovery window from seven to 90 days (the live server had only four active non-reels from the last seven days but 49 active posts in the last 90 days); postpone the content view-counter update until after points/repost work to shorten exclusive `feed_posts` lock duration; guard fallback visibility with audience, moderation and expiration checks. These changes affect both clients and require database preview/rollout, not just Android build tests.
+- Validation: Android debug/release smoke, R8 DEX retention check, Windows compilation, SQL parser/static regression gates, mobile call media startup, For You pagination, Follow feed, privacy and recorded-view integrity. Do not merge or deploy until release and backend validation.
