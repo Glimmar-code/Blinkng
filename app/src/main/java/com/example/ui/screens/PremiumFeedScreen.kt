@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -632,10 +633,9 @@ private fun PremiumHomeFeed(
     var horizontalDrag by remember { mutableStateOf(0f) }
     val swipeThreshold = with(density) { 64.dp.toPx() }
 
-    // X-style feed chrome: move the header continuously with the user's vertical gesture
-    // instead of crossing a threshold and then fading/sliding it away. The offset is read
-    // during layout (not by the post list composition), keeping per-pixel motion isolated
-    // from feed cards, ranking and exposure tracking.
+    // The upper feed chrome slides and fades together with the actual scroll offset.
+    // Layout/layer updates avoid recomposing post cards on every scroll frame and the
+    // For You/Following tabs remain pinned below the collapsing region.
     val headerDirectionDeadZone = with(density) { 12.dp.toPx() }
     val headerHeightPx = remember(laneResumeKey) { mutableStateOf(0f) }
     val headerOffsetPx = remember(laneResumeKey) { mutableStateOf(0f) }
@@ -903,8 +903,12 @@ private fun PremiumHomeFeed(
                     currentOffset < -0.5f &&
                     currentOffset > (-headerHeight + 0.5f)
                 ) {
+                    // A collapsing header can consume the first pixels while the list is
+                    // still at index 0. Only force it open when the user is returning to
+                    // the top, never during an intentional downward scroll at the top.
                     val atFeedTop =
-                        listState.firstVisibleItemIndex == 0 &&
+                        headerScrollDirection[0] > 0 &&
+                            listState.firstVisibleItemIndex == 0 &&
                             listState.firstVisibleItemScrollOffset <= 1
                     val target = feedHeaderSettleTarget(
                         currentOffsetPx = currentOffset,
@@ -919,7 +923,10 @@ private fun PremiumHomeFeed(
                         animate(
                             initialValue = currentOffset,
                             targetValue = target,
-                            animationSpec = tween(durationMillis = 140)
+                            animationSpec = tween(
+                                durationMillis = 230,
+                                easing = FastOutSlowInEasing
+                            )
                         ) { value, _ ->
                             headerOffsetPx.value = value.coerceIn(-headerHeight, 0f)
                         }
@@ -1017,16 +1024,9 @@ private fun PremiumHomeFeed(
                 listState.firstVisibleItemScrollOffset,
                 headerOffsetPx.value
             )
-        }.collectLatest { (index, offset, headerOffset) ->
-            if (index == 0 && offset <= 1 && headerOffset != 0f) {
-                headerOffsetPx.value = 0f
-                headerScrollDirection[0] = 0
-                pendingDirectionDistancePx[0] = 0f
-                lastFlingVelocityY[0] = 0f
-                fabExpanded = true
-                onBottomBarVisibilityChange(true)
-            }
-
+        }.collectLatest { (index, offset, _) ->
+            // Do not snap the header open just because the list remains at item 0.
+            // The header itself consumes scroll distance before the list advances.
             if (!restoringScroll && restoredLaneResumeKey == laneResumeKey) {
                 delay(300)
                 val anchorItem = listState.layoutInfo.visibleItemsInfo
@@ -1742,16 +1742,19 @@ private fun ScrollLinkedFeedHeader(
         )
         val clampedOffset =
             offsetPx.value.coerceIn(-placeable.height.toFloat(), 0f)
+        val headerOpacity = feedHeaderOpacity(clampedOffset, placeable.height.toFloat())
         val visibleHeight =
             (placeable.height + clampedOffset)
                 .roundToInt()
                 .coerceIn(0, placeable.height)
 
         layout(constraints.maxWidth, visibleHeight) {
-            placeable.placeRelative(
+            placeable.placeRelativeWithLayer(
                 x = 0,
                 y = clampedOffset.roundToInt()
-            )
+            ) {
+                alpha = headerOpacity
+            }
         }
     }
 }
