@@ -1079,22 +1079,26 @@ private fun PremiumHomeFeed(
     }
 
     LaunchedEffect(listState, homeRows) {
-        snapshotFlow { listState.layoutInfo }
-            .collectLatest { layout ->
-                val ids = layout.visibleItemsInfo.mapNotNull { item ->
-                    val key = item.key as? String ?: return@mapNotNull null
-                    if (!key.startsWith("post:")) return@mapNotNull null
-                    if (
-                        qualifiesForPostImpression(
-                            itemOffset = item.offset,
-                            itemSize = item.size,
-                            viewportStart = layout.viewportStartOffset,
-                            viewportEnd = layout.viewportEndOffset
-                        )
-                    ) key.removePrefix("post:") else null
-                }.toSet()
-                impressionTracker.update(ids).forEach(latestViewed)
-            }
+        // snapshotFlow suppresses identical sets, even if the layout's pixel
+        // offsets change 60 times a second. Preserve the same qualification
+        // threshold without waking downstream listeners for every drag frame.
+        snapshotFlow {
+            val layout = listState.layoutInfo
+            layout.visibleItemsInfo.mapNotNull { item ->
+                val key = item.key as? String ?: return@mapNotNull null
+                if (!key.startsWith("post:")) return@mapNotNull null
+                if (
+                    qualifiesForPostImpression(
+                        itemOffset = item.offset,
+                        itemSize = item.size,
+                        viewportStart = layout.viewportStartOffset,
+                        viewportEnd = layout.viewportEndOffset
+                    )
+                ) key.removePrefix("post:") else null
+            }.toSet()
+        }.collectLatest { ids ->
+            impressionTracker.update(ids).forEach(latestViewed)
+        }
     }
 
     // Prefetch depth grows only when scrolling quickly. Keep the retained URL set bounded.
