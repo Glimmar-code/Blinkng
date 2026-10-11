@@ -29,14 +29,27 @@ internal fun feedHeaderSettleTarget(
     if (headerHeightPx <= 0f || atFeedTop) return 0f
 
     val clamped = currentOffsetPx.coerceIn(-headerHeightPx, 0f)
+    val collapsedFraction = -clamped / headerHeightPx
     return when {
         abs(velocityYPxPerSecond) >= FEED_HEADER_FLING_INTENT_THRESHOLD_PX_PER_SECOND ->
             if (velocityYPxPerSecond > 0f) 0f else -headerHeightPx
-        direction > 0 -> 0f
-        direction < 0 -> -headerHeightPx
-        clamped <= -(headerHeightPx * 0.5f) -> -headerHeightPx
+        // Tiny swipes must not snap the whole header away or back into view.
+        direction > 0 -> if (collapsedFraction <= 0.65f) 0f else -headerHeightPx
+        direction < 0 -> if (collapsedFraction >= 0.35f) -headerHeightPx else 0f
+        collapsedFraction >= 0.5f -> -headerHeightPx
         else -> 0f
     }
+}
+
+/**
+ * Opacity tracks the same physical header offset as the scroll-linked slide.
+ * Smoothstep avoids a harsh fade or an independent animation that lags a gesture.
+ */
+internal fun feedHeaderOpacity(offsetPx: Float, headerHeightPx: Float): Float {
+    if (headerHeightPx <= 0f) return 1f
+    val collapsedFraction = (-offsetPx / headerHeightPx).coerceIn(0f, 1f)
+    val fadeProgress = ((collapsedFraction - 0.12f) / 0.78f).coerceIn(0f, 1f)
+    return 1f - fadeProgress * fadeProgress * (3f - 2f * fadeProgress)
 }
 
 internal fun feedVisibleFraction(
@@ -68,8 +81,7 @@ internal fun feedPrefetchLookahead(
 ): Int {
     if (elapsedMs <= 0L) return 3
     val itemsPerSecond = abs(itemDelta).toFloat() * 1_000f / elapsedMs.toFloat()
-    // Fast flings already decode multiple onscreen images. Prefetch fewer assets
-    // during a fling rather than competing with visible cards for CPU and memory.
+    // Avoid competing with on-screen image decoding during fast flings.
     return when {
         itemsPerSecond >= 8f -> 1
         itemsPerSecond >= 4f -> 2

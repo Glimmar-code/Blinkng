@@ -33,12 +33,12 @@ class FeedHeaderMotionTest {
     fun settleTarget_followsIntentionalScrollDirection() {
         assertEquals(
             -100f,
-            feedHeaderSettleTarget(-20f, 100f, direction = -1, atFeedTop = false),
+            feedHeaderSettleTarget(-40f, 100f, direction = -1, atFeedTop = false),
             0.001f
         )
         assertEquals(
             0f,
-            feedHeaderSettleTarget(-80f, 100f, direction = 1, atFeedTop = false),
+            feedHeaderSettleTarget(-60f, 100f, direction = 1, atFeedTop = false),
             0.001f
         )
     }
@@ -67,6 +67,23 @@ class FeedHeaderMotionTest {
             ),
             0.001f
         )
+    }
+
+    @Test
+    fun tinyScrollDoesNotSnapHeaderAwayOrBack() {
+        assertEquals(0f, feedHeaderSettleTarget(-10f, 100f, direction = -1, atFeedTop = false), 0.001f)
+        assertEquals(-100f, feedHeaderSettleTarget(-90f, 100f, direction = 1, atFeedTop = false), 0.001f)
+    }
+
+    @Test
+    fun headerOpacityIsSmoothAndClamped() {
+        assertEquals(1f, feedHeaderOpacity(0f, 100f), 0.001f)
+        assertEquals(1f, feedHeaderOpacity(-10f, 100f), 0.001f)
+        assertTrue(feedHeaderOpacity(-40f, 100f) in 0f..1f)
+        assertTrue(feedHeaderOpacity(-40f, 100f) > feedHeaderOpacity(-60f, 100f))
+        assertEquals(0f, feedHeaderOpacity(-100f, 100f), 0.001f)
+        assertEquals(0f, feedHeaderOpacity(-500f, 100f), 0.001f)
+        assertEquals(1f, feedHeaderOpacity(-50f, 0f), 0.001f)
     }
 
     @Test
