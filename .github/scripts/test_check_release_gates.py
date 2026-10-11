@@ -65,7 +65,7 @@ class GateTests(unittest.TestCase):
                 return {"commit": {"sha": COMMIT}}
             return {"total_count": 0, "workflow_runs": []}
         with self.assertRaisesRegex(gates.GateFailure, "will NOT be published"):
-            gates.wait_until_green(REPO, COMMIT, 5, 3, fetch, lambda _: None, lambda: 0)
+            gates.wait_until_green(REPO, COMMIT, 2, 3, fetch, lambda _: None, lambda: 0)
 
     def test_last_retry_must_pass(self):
         def fetch(url):
