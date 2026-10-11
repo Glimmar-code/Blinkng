@@ -33,6 +33,9 @@ class GateTests(unittest.TestCase):
     def test_all_checks_green(self):
         self.assertEqual(gates.inspect(REPO, COMMIT, fetch=fixture()), [])
 
+    def test_post_merge_dispatched_checks_can_pass(self):
+        self.assertEqual(gates.inspect(REPO, COMMIT, fetch=fixture(event="workflow_dispatch")), [])
+
     def test_pending_does_not_pass(self):
         fetch = fixture({0: {"status": "in_progress", "conclusion": None}})
         self.assertIn("Android quality gate (in_progress)", gates.inspect(REPO, COMMIT, fetch))
