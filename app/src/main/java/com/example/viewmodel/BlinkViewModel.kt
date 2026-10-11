@@ -1696,7 +1696,7 @@ private suspend fun restoreSupabaseSession() {
                     val conversationSummaries = conversationsResult.getOrDefault(before.conversations)
                     val conversations = mergeConversationSummaries(
                         summaries = conversationSummaries,
-                        local = before.conversations
+                        local = _uiState.value.conversations
                     )
                     val chatPrivacySettings = chatPrivacyRequest.await()
                         .getOrDefault(before.chatPrivacySettings)
@@ -2730,7 +2730,7 @@ private suspend fun restoreSupabaseSession() {
                     profileSurfaceFailedIds = latest.profileSurfaceFailedIds - key - resolved.id
                 )
                 if (isOwner) {
-                    runCatching { supabaseService.fetchProfileSurfaceContent(resolved.id) }
+                    runCatching { supabaseService.fetchProfileSurfaceContent(resolved.id, postsOverride = posts) }
                         .onSuccess { content ->
                             if (supabaseService.getCurrentUserId() != ownerId) return@onSuccess
                             val current = _uiState.value
