@@ -34,7 +34,18 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Block publication until Android install/runtime and mandatory CI pass\n        env:\n          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          RELEASE_COMMIT: ${{ github.event.workflow_run.head_sha }}\n          RELEASE_REPOSITORY: ${{ github.repository }}\n        run: >-\n          python3 .github/scripts/check_release_gates.py\n          --repository "$RELEASE_REPOSITORY"\n          --commit "$RELEASE_COMMIT"\n          --timeout-seconds 2700\n\n      - name: Download signed production artifact
+      - name: Block publication until Android install/runtime and mandatory CI pass
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: >-
+          python3 .github/scripts/check_release_gates.py
+          --repository "$RELEASE_REPOSITORY"
+          --commit "$RELEASE_COMMIT"
+          --timeout-seconds 2700
+
+      - name: Download signed production artifact
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
