@@ -55,6 +55,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Poll
 import androidx.compose.material.icons.filled.Repeat
@@ -170,6 +171,7 @@ fun PostCard(
     authorOnline: Boolean? = null,
     trackExposure: Boolean = true,
     xFeedStyle: Boolean = false,
+    isFeedScrolling: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val resolvedAuthorName = authorName.trim().ifBlank { post.author.trim() }
@@ -565,6 +567,7 @@ fun PostCard(
                             imageUrl = displayImages.first(),
                             contentDescription = post.altText?.takeIf(String::isNotBlank) ?: "Post image",
                             cropToFrame = xFeedStyle,
+                            deferAspectChanges = isFeedScrolling,
                             onClick = {
                                 imagePage = 0
                                 showImageFullscreen = true
@@ -587,6 +590,7 @@ fun PostCard(
                                     contentDescription = "Post image ${index + 1} of ${displayImages.size}",
                                     modifier = Modifier.fillParentMaxWidth(),
                                     cropToFrame = xFeedStyle,
+                                    deferAspectChanges = isFeedScrolling,
                                     onClick = {
                                         imagePage = index
                                         showImageFullscreen = true
@@ -984,17 +988,27 @@ private fun NaturalAspectPostImage(
     contentDescription: String,
     modifier: Modifier = Modifier,
     cropToFrame: Boolean = false,
+    deferAspectChanges: Boolean = false,
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
-    var imageAspectRatio by remember(imageUrl) { mutableFloatStateOf(4f / 5f) }
+    // Reuse measured ratios across recycled feed cards. While the finger is
+    // moving, defer first-load ratio changes so the viewport never shifts.
+    var imageAspectRatio by remember(imageUrl) {
+        mutableFloatStateOf(PostImageAspectRatioCache.get(imageUrl) ?: 4f / 5f)
+    }
+    var pendingAspectRatio by remember(imageUrl) { mutableFloatStateOf(imageAspectRatio) }
+    LaunchedEffect(deferAspectChanges, pendingAspectRatio) {
+        if (!deferAspectChanges) imageAspectRatio = pendingAspectRatio
+    }
     var isLoading by remember(imageUrl) { mutableStateOf(true) }
     var loadFailed by remember(imageUrl) { mutableStateOf(false) }
     var retryNonce by remember(imageUrl) { mutableIntStateOf(0) }
     val request = remember(imageUrl, retryNonce, context) {
         ImageRequest.Builder(context)
             .data(imageUrl)
-            .crossfade(180)
+            // Fading multiple decoded images during a fast fling adds GPU work.
+            .crossfade(false)
             .build()
     }
 
@@ -1022,7 +1036,10 @@ private fun NaturalAspectPostImage(
                 val width = drawable.intrinsicWidth
                 val height = drawable.intrinsicHeight
                 if (width > 0 && height > 0) {
-                    imageAspectRatio = (width.toFloat() / height.toFloat()).coerceIn(0.72f, 1.91f)
+                    val ratio = (width.toFloat() / height.toFloat()).coerceIn(0.72f, 1.91f)
+                    PostImageAspectRatioCache.put(imageUrl, ratio)
+                    pendingAspectRatio = ratio
+                    if (!deferAspectChanges) imageAspectRatio = ratio
                 }
             },
             onError = {
@@ -1033,10 +1050,12 @@ private fun NaturalAspectPostImage(
         )
 
         if (isLoading) {
-            CircularProgressIndicator(
+            // Static placeholder avoids a spinner animation on every loading card.
+            Icon(
+                imageVector = Icons.Default.Image,
+                contentDescription = null,
                 modifier = Modifier.size(26.dp),
-                strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
             )
         }
 
