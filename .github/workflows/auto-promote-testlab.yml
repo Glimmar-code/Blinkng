@@ -1,0 +1,43 @@
+# Trusted default-branch controller. Never execute untrusted PR code here.
+# Promotes ONLY explicitly opted-in, completed, green Testlab PRs.
+name: Automatically promote verified Testlab
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited, labeled, unlabeled, ready_for_review]
+    branches: [main]
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: blink-verified-testlab-promotion
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: github.repository == 'Glimmar-code/Blinkng'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Deliberately check out MAIN, not the submitted PR. pull_request_target
+      # has a write token and must never execute untrusted head-branch code.
+      - name: Check out trusted promotion policy from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Promote only when all release gates are satisfied
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const promote = require('./.github/scripts/testlab_auto_promotion.cjs');
+            await promote({ github, context, core });

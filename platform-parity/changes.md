@@ -5,6 +5,15 @@
 - Shared Supabase: expand the discovery window from seven to 90 days (the live server had only four active non-reels from the last seven days but 49 active posts in the last 90 days); postpone the content view-counter update until after points/repost work to shorten exclusive `feed_posts` lock duration; guard fallback visibility with audience, moderation and expiration checks. These changes affect both clients and require database preview/rollout, not just Android build tests.
 - Validation: Android debug/release smoke, R8 DEX retention check, Windows compilation, SQL parser/static regression gates, mobile call media startup, For You pagination, Follow feed, privacy and recorded-view integrity. Do not merge or deploy until release and backend validation.
 
+## 2026-10-11 — BLINK Smart Discovery v3 (Testlab candidate)
+
+- Backend: ranked For You no longer stops after two posts from one creator when strict creator diversity runs out of alternatives. The last-resort fallback uses **only the existing, privacy-filtered candidate set**; no blocked/hidden/restricted post is reintroduced. Environments still using the original seven-day source window upgrade to 90 days; environments already on 90 days keep their current window.
+- Android and Windows: use the same `BlinkSmartTags.suggest` policy to show up to three **topically relevant** trending suggestions in the post composer. Maximum five selected hashtags and existing server validation are preserved. Unrelated viral tags are not suggested solely because they are popular.
+- Android search: use the real Supabase trending-tags aggregate when available while retaining cached-feed hashtags offline; explicit hashtag searches are deduplicated by the existing privacy-preserving RPC. Desktop already loads the same trending endpoint for Search.
+- Both clients' explicit hashtag searches feed the existing private personalization model **at most once per user/tag/hour**, through the authenticated server RPC. Searches and deduplicated events remain private.
+- Backend trend calculation remains independent of view multiplier tiers. The existing server ranking, following feed and post privacy policies remain authoritative; no inflated/promised reach for simply adding hashtags.
+- Rollout: this branch is isolated from `main`. Validate Android/Windows builds, the PGlite creator-exhaustion regression and Supabase syntax/security gates first. Deploy tag/search migrations and this migration only in a staging Supabase environment before promoting to production. No production migration has been executed by this change.
+
 ## 2026-10-11 — Verify APK delivery before publishing
 
 - Android packaging exception: APK archive integrity and signed-build checksum are checked before upload and again after downloading the draft release from GitHub. Missing checksums, mismatched build identity, corrupt archives and altered metadata prevent promotion to latest.
