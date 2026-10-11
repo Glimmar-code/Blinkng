@@ -6,6 +6,13 @@ PARITY-EXCEPTION: android-compose-feed-scroll-performance-20261011
 - Windows: Android's nested-scroll dispatch, Coil/Compose loading indicators and LazyColumn image aspect reflows have no identical Windows desktop adapter; Windows' scroll mechanics and image loading remain unchanged. No functional feed or content semantic change is required on desktop.
 - Shared/backend: ranking, views/qualified impressions, promotions, permissions, Supabase state and cache invalidation are not modified. Validate Android unit/lint/emulator scroll paths and existing Windows/parity gates before promoting to main. The first uncached image may settle to its true aspect after a fling; it should not resize during the drag itself.
 
+## 2026-10-11 — Android cold task start and explicit Smart Refresh (Testlab PR #235)
+
+- PARITY-EXCEPTION: android-task-recents-and-native-pull-refresh — Android's Recents removal can create a fresh Activity while leaving its Linux process alive; returning from normal backgrounding should instead keep the current Compose route. Reset saved Home tab, filter and scroll only on a genuinely new Activity task. Desktop has no Android task/Recents lifecycle, and uses its existing native window navigation and refresh controls.
+- Android-specific refresh presentation: For You and Reels request a new ranked backend snapshot; the mobile view controller favors unseen server-returned IDs, removes duplicates, and keeps cached content when a network request fails. Following preserves the server's chronological order. A completed refresh with no unseen IDs shows a truthful message rather than fabricated posts.
+- Windows equivalent: the existing desktop Home/Reels refresh buttons fetch current Supabase feed data, coalesce repeat requests, preserve their current list on failed requests, and support load-more without Android touch gestures or Compose UI state. Both clients retain backend authorization, audience, moderation and ranking constraints; this PR deliberately does not alter a server API or claim desktop's visual ranking rotation has changed.
+- Verification: Android unit, lint, runtime, signed-release smoke and Windows build plus parity-exception review are required before merging; no live Supabase changes are part of this PR.
+
 ## 2026-10-10 — Circular Android launcher icon with balanced inner spacing
 
 PARITY-EXCEPTION: android-circular-launcher-padding-20261010
