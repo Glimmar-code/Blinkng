@@ -114,8 +114,8 @@ export async function forYouDiscoveryTests() {
           1.5,2.0,1.0,250.0,4.0
         )`);
 
-    assert.equal((await page(3, 0)).rows.length, 2,
-      'baseline reproduction must stop on third consecutive creator');
+    assert.equal((await page(3, 0)).rows.length, 1,
+      'baseline reproduction must prematurely stop on creator-diversity NULL state');
 
     await db.exec(migration);
     const first = (await page(3, 0)).rows;
