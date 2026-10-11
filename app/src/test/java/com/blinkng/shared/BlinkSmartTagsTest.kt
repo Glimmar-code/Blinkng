@@ -38,4 +38,36 @@ class BlinkSmartTagsTest {
         assertTrue(BlinkSmartTags.fromText("Plain news with no hashtags").isEmpty())
         assertEquals(listOf("futa"), BlinkSmartTags.add(listOf("#FUTA"), "futa"))
     }
+    @Test fun recommendationsFavorRelevanceAndPreserveTrendingOrder() {
+        assertEquals(
+            listOf("futa", "football"),
+            BlinkSmartTags.suggest(
+                text = "Football discussions at FUTA today",
+                trending = listOf("unrelated", "futa", "football", "football", "tech"),
+                selected = emptyList()
+            )
+        )
+        assertEquals(
+            listOf("futa"),
+            BlinkSmartTags.suggest(
+                text = "New students arriving",
+                trending = listOf("viral", "futa", "tech"),
+                university = "FUTA"
+            )
+        )
+    }
+
+    @Test fun recommendationsDoNotDuplicateExistingOrSuggestSpam() {
+        assertEquals(
+            listOf("campus_life"),
+            BlinkSmartTags.suggest(
+                text = "Campus life update #FUTA",
+                trending = listOf("futa", "campus_life", "trending", "bad-tag"),
+                selected = listOf("futa")
+            )
+        )
+        assertTrue(BlinkSmartTags.suggest("Random text", listOf("viral", "sports")).isEmpty())
+        assertTrue(BlinkSmartTags.suggest("FUTA", listOf("futa"), limit = 0).isEmpty())
+    }
+
 }

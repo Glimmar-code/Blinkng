@@ -31,5 +31,51 @@ object BlinkSmartTags {
         return if (tag in existing || existing.size >= MAX_TAGS) existing else existing + tag
     }
 
+    /**
+     * Recommend only trending tags that match the user's draft or their explicit
+     * university text. A tag's popularity by itself does not make it relevant.
+     * Stable input order preserves the server's trend ranking for tied matches.
+     */
+    fun suggest(
+        text: String,
+        trending: List<String>,
+        selected: List<String> = emptyList(),
+        university: String? = null,
+        limit: Int = 7
+    ): List<String> {
+        if (limit <= 0) return emptyList()
+        val textTokens = Regex("[a-z0-9]+")
+            .findAll(text.lowercase(java.util.Locale.ROOT))
+            .map { it.value }
+            .toSet()
+        val campusTokens = Regex("[a-z0-9]+")
+            .findAll(university.orEmpty().lowercase(java.util.Locale.ROOT))
+            .map { it.value }
+            .toSet()
+        val existing = allTags(text, selected).toSet()
+
+        return trending.asSequence()
+            .mapNotNull(::normalize)
+            .distinct()
+            .filterNot { it in existing }
+            .mapIndexedNotNull { index, tag ->
+                val words = tag.split('_').filter { it.isNotBlank() }
+                val textMatches = words.count { it in textTokens }
+                val campusMatches = words.count { it in campusTokens }
+                // Require a complete topical match; don't suggest unrelated viral tags.
+                if (words.isEmpty() || (textMatches != words.size && campusMatches != words.size)) {
+                    null
+                } else {
+                    val score = textMatches * 3 + campusMatches
+                    Triple(tag, score, index)
+                }
+            }
+            .sortedWith(compareByDescending<Triple<String, Int, Int>> { it.second }
+                .thenBy { it.third })
+            .take(limit.coerceAtMost(MAX_TAGS))
+            .map { it.first }
+            .toList()
+    }
+
     fun display(tag: String): String = "#${normalize(tag).orEmpty()}"
 }
