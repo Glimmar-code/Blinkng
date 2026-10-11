@@ -1,3 +1,12 @@
+## 2026-10-10 — Bug reports, Admin DMs and verified Blink Coin rewards (Testlab)
+
+- Android: signed-in users open a report sheet from Account & Support or by shaking the phone while BLINK is foregrounded; optional JPEG screenshots are kept private. Users can disable shake detection and see their report review history.
+- Windows equivalent: Settings provides the authenticated text report form and history; the admin view provides report review and explicit coin reward confirmation. Desktop computers have no standardized phone accelerometer, so shake-to-open and the Android photo-picker are intentionally Android-specific.
+- Shared backend: `submit_blink_bug_report` stores a report, rate-limits spam, and attempts to send it as a private conversation to the configured BLINK owner. Reports survive DM delivery failures. Administrative replies are also sent as private DMs when possible.
+- Rewards: admins can approve or reject reports; only the authenticated, server-protected admin RPC can award up to 500 coins to a verified report via the established canonical wallet system; row locking prevents duplicate awards. Normal admin limits remain enforced.
+- Safety: screenshot bucket is private with report-owner/admin-only reads, submitters have no write access to report status or rewards; production deployment is gated on staging migration and Android/Desktop build plus role/coin verification.
+- PARITY-EXCEPTION: android-shake-report-accelerometer — Windows offers manual bug reporting in Settings and admin review, while only Android devices expose a phone shake sensor.
+
 ## 2026-10-11 — Smooth scroll-linked feed header fade and settling
 
 - Android: Feed upper chrome fades proportionally while sliding out, with a 230ms eased (non-spring) settle; small swipes no longer snap the whole header away. Removed a feed-top observer that could immediately re-open the header while the header itself was consuming a gesture. For You/Following tabs stay pinned. No feed ranking, loading, or Supabase change.
