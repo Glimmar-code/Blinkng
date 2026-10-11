@@ -55,10 +55,27 @@ function requiredChecks(files) {
 
 function releaseWorkflows(files) {
   const toRun = [];
-  if (files.some(path =>
+  const androidRelease = files.some(path =>
     /^(?:app\/|shared\/|gradle\/)/.test(path) ||
-    /^(?:build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties)$/.test(path)
-  )) toRun.push('signed-release.yml');
+    /^(?:build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties)$/.test(path) ||
+    /^\.github\/workflows\/(?:signed-release|publish-latest-apk|release-smoke-test|android-runtime-smoke|auto-promote-testlab|apk-delivery-check)\.yml$/.test(path) ||
+    /^\.github\/scripts\/(?:check_release_gates|install_production_release_apk|publish_verified_apk)\.py$/.test(path) ||
+    /^\.github\/scripts\/install_production_release_apk\.sh$/.test(path)
+  );
+  if (androidRelease) {
+    // GITHUB_TOKEN merges do not emit main push workflows. Dispatch all six
+    // required post-merge quality gates for the new production SHA, *before*
+    // dispatching signing. The APK publisher independently waits for success.
+    toRun.push(
+      'android-build-check.yml',
+      'release-smoke-test.yml',
+      'android-runtime-smoke.yml',
+      'windows-desktop-check.yml',
+      'supabase-safety-check.yml',
+      'secret-leak-guard.yml',
+      'signed-release.yml'
+    );
+  }
   if (files.some(path =>
     /^web\//.test(path) ||
     /^\.github\/workflows\/deploy-web-preview\.yml$/.test(path) ||
