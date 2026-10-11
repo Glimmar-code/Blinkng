@@ -1,3 +1,9 @@
+## 2026-10-11 — Smooth scroll-linked feed header fade and settling
+
+- Android: Feed upper chrome fades proportionally while sliding out, with a 230ms eased (non-spring) settle; small swipes no longer snap the whole header away. Removed a feed-top observer that could immediately re-open the header while the header itself was consuming a gesture. For You/Following tabs stay pinned. No feed ranking, loading, or Supabase change.
+- PARITY-EXCEPTION: feed-scroll-linked-upper-header-fade — Android's small-screen touch feed chrome collapses as the user drags; Windows uses persistent top-level Home navigation with keyboard/mouse access and has no phone-sized collapsing header to animate. Windows navigation behavior remains appropriate to its desktop layout. No backend or feature divergence.
+- Validation: Android JVM motion-regression tests cover partial settle thresholds, opacity endpoints and clamping; Android quality gate must pass before production integration.
+
 ## 2026-10-11 — Android cold task start and explicit Smart Refresh (Testlab PR #235)
 
 - PARITY-EXCEPTION: android-task-recents-and-native-pull-refresh — Android's Recents removal can create a fresh Activity while leaving its Linux process alive; returning from normal backgrounding should instead keep the current Compose route. Reset saved Home tab, filter and scroll only on a genuinely new Activity task. Desktop has no Android task/Recents lifecycle, and uses its existing native window navigation and refresh controls.
