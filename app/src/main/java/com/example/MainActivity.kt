@@ -377,6 +377,28 @@ class MainActivity : ComponentActivity() {
             val adPrivacyOptionsRequired by BlinkAdsRuntime.privacyOptionsRequired.collectAsStateWithLifecycle()
             val snackbarHostState = remember { SnackbarHostState() }
             val updateReadyToInstall by playInAppUpdateCoordinator.updateReadyToInstall.collectAsStateWithLifecycle()
+            val welcomeExitGate = remember { DoubleBackExitGate() }
+            LaunchedEffect(uiState.destination) { welcomeExitGate.reset() }
+            BackHandler(
+                enabled = uiState.destination != AppDestination.MAIN &&
+                    uiState.destination != AppDestination.SPLASH
+            ) {
+                when (uiState.destination) {
+                    AppDestination.SIGN_IN, AppDestination.SIGN_UP ->
+                        viewModel.setDestination(AppDestination.ONBOARDING)
+                    AppDestination.RESET_PASSWORD -> viewModel.cancelPasswordRecovery()
+                    AppDestination.PROFILE_SETUP ->
+                        viewModel.showToast("Finish setting up your profile to continue")
+                    AppDestination.ONBOARDING -> {
+                        if (welcomeExitGate.shouldExit(SystemClock.elapsedRealtime())) {
+                            finish()
+                        } else {
+                            viewModel.showToast("Press back again to exit BLINK")
+                        }
+                    }
+                    else -> Unit
+                }
+            }
 
             // Crash reports should identify the last visible route without recording personal data.
             LaunchedEffect(uiState.destination, uiState.selectedTab, uiState.feedSubTab) {
