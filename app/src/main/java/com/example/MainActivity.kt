@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -1032,7 +1034,17 @@ fun MainAppContent(
             ModalBottomSheet(
                 onDismissRequest = { feedUtilitySheet = null },
                 sheetState = utilitySheetState,
-                dragHandle = { BottomSheetDefaults.DragHandle() },
+                dragHandle = {
+                    Box(modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                        BottomSheetDefaults.DragHandle(modifier = Modifier.align(Alignment.Center))
+                        IconButton(
+                            onClick = { dismissUtility() },
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Close ${utility} page")
+                        }
+                    }
+                },
                 // Listen without consuming motion. Inner LazyColumns and games still
                 // scroll normally; a small pull can no longer dismiss the whole page.
                 modifier = Modifier
