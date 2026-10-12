@@ -1,3 +1,12 @@
+## 2026-10-12 — Half-screen dismissal for full-screen utilities (Testlab)
+
+PARITY-EXCEPTION: android-touch-utility-sheets-half-screen-dismiss-20261012
+
+- Android: Game, Rank/Leaderboard, Store, Boost, Drops, and Items share a full-screen Material3 utility sheet. A downward drag covering at least half the available screen closes the utility on finger release, even when a nested scroll view captures the motion. Short pulls remain in-place; cancelled gestures do not dismiss. Close buttons and direct section navigation remain available independently.
+- No changes to feed/reel ranking, game rewards, coins, backend permissions, or Supabase schema.
+- Windows equivalent: the desktop app uses windows/panels and does not expose Android's touch-only ModalBottomSheet. Existing close/back controls remain the desktop equivalent.
+- Validation before main promotion: policy JVM tests, Android debug build and real gesture smoke through Game and scrollable utilities, Windows desktop build/parity checks.
+
 ## 2026-10-11 — Feed, promotions, reels, inbox and profile reliability (Testlab)
 
 PARITY-EXCEPTION: android-native-ads-player-and-rpc-recovery-20261011
