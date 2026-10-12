@@ -1542,22 +1542,34 @@ private fun SmartMatchHero(
     onMessage: (UserProfile) -> Unit,
     onChallenge: (UserProfile) -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "matchGlow")
-    val glow by infiniteTransition.animateFloat(
-        initialValue = 0.9f,
-        targetValue = 1.14f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1400, easing = FastOutSlowInEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        ),
-        label = "glowScale"
-    )
-    val spinAngle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(animation = tween(900, easing = LinearEasing)),
-        label = "spinAngle"
-    )
+    // A permanently running infinite transition wastes frames during Connect
+    // scrolling. Only animate the hero while matchmaking is actually active.
+    val reduceMotion = rememberReducedMotionEnabled()
+    val glow: Float
+    val spinAngle: Float
+    if (isMatching && !reduceMotion) {
+        val transition = rememberInfiniteTransition(label = "activeMatchEffects")
+        val currentGlow by transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.08f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1050, easing = FastOutSlowInEasing),
+                repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+            ),
+            label = "activeMatchGlow"
+        )
+        val currentAngle by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(animation = tween(1000, easing = LinearEasing)),
+            label = "activeMatchSpin"
+        )
+        glow = currentGlow
+        spinAngle = currentAngle
+    } else {
+        glow = 1f
+        spinAngle = 0f
+    }
     val stages = remember {
         listOf(
             "Reading your preferences",
