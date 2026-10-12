@@ -28,6 +28,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateBottomPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -632,6 +636,8 @@ private fun PremiumHomeFeed(
     var restoringScroll by remember { mutableStateOf(false) }
     val pullState = rememberPullToRefreshState()
     val density = LocalDensity.current
+    // Bottom navigation includes the system gesture bar inset.
+    val bottomNavigationInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val reduceMotion = rememberBlinkReduceMotion()
     val latestViewed by rememberUpdatedState(onViewedPost)
     val latestRefresh by rememberUpdatedState(onRefresh)
@@ -1265,7 +1271,7 @@ private fun PremiumHomeFeed(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 56.dp)
+                    .padding(bottom = 56.dp + bottomNavigationInset)
             ) {
                 ScrollLinkedFeedHeader(
                     offsetPx = headerOffsetPx,
@@ -1607,7 +1613,7 @@ private fun PremiumHomeFeed(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 14.dp, bottom = 64.dp),
+                    .padding(end = 14.dp, bottom = 64.dp + bottomNavigationInset),
                 contentAlignment = Alignment.BottomEnd
             ) {
                 CreatePostFab(
