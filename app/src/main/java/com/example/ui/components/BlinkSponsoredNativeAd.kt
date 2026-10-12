@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import android.graphics.Color as AndroidColor
 import android.graphics.Typeface
+import android.util.Log
 import android.graphics.drawable.GradientDrawable
 import android.content.res.ColorStateList
 import android.view.Gravity
@@ -76,6 +77,9 @@ fun BlinkSponsoredNativeAd(
         }
         if (nativeAd == null && !loadFailed) {
             loadFailed = true
+            val placementName = if (placement == BlinkNativeAdPlacement.FEED) "feed" else "reels"
+            BlinkAdAnalytics.failed(context, placementName, "native", -1)
+            Log.w("BlinkSponsoredAds", "$placementName native request timed out")
             latestOnUnavailable()
         }
     }
@@ -109,7 +113,9 @@ fun BlinkSponsoredNativeAd(
             .withAdListener(
                 object : AdListener() {
                     override fun onAdLoaded() {
-                        BlinkAdAnalytics.loaded(context, placementName, "native")
+                        if (!disposed && !loadFailed) {
+                            BlinkAdAnalytics.loaded(context, placementName, "native")
+                        }
                     }
 
                     override fun onAdImpression() {
@@ -121,9 +127,10 @@ fun BlinkSponsoredNativeAd(
                     }
 
                     override fun onAdFailedToLoad(error: LoadAdError) {
-                        if (disposed) return
+                        if (disposed || loadFailed) return
                         loadFailed = true
                         BlinkAdAnalytics.failed(context, placementName, "native", error.code)
+                        Log.w("BlinkSponsoredAds", "$placementName native no-fill/failure: ${error.domain} ${error.code}")
                         latestOnUnavailable()
                     }
                 }
