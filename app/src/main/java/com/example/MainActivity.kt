@@ -765,6 +765,10 @@ fun MainAppContent(
         uiState.activeCommentsPostId == null &&
         uiState.activePostOptionsPost == null &&
         !uiState.isMenuOpen &&
+        !uiState.isGetVerifiedOpen &&
+        !uiState.isBecomeSellerOpen &&
+        !uiState.isConversationFullScreen &&
+        !uiState.showSellerCongratulationsDialog &&
         !uiState.isCreatePostOpen &&
         !uiState.isCreateStoryOpen &&
         !uiState.isPostItemOpen &&
@@ -1313,6 +1317,7 @@ fun MainAppContent(
                 !uiState.isBecomeSellerOpen &&
                 !uiState.isEditProfileOpen &&
                 uiState.activeConversationPartner == null &&
+                !uiState.isConversationFullScreen &&
                 !uiState.isActivityOpen &&
                 !uiState.isGetVerifiedOpen &&
                 !uiState.isCreatePostOpen &&
