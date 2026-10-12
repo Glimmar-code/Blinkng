@@ -21,6 +21,8 @@ fun GameSection(
     onConnectClick: () -> Unit,
     onGameClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onRoundActiveChange: (Boolean) -> Unit = {},
+
 ) {
     GeneralStudyGameSection(
         userAvatar = userAvatar,
@@ -33,5 +35,6 @@ fun GameSection(
         onConnectClick = onConnectClick,
         onGameClick = onGameClick,
         modifier = modifier,
+        onRoundActiveChange = onRoundActiveChange,
     )
 }

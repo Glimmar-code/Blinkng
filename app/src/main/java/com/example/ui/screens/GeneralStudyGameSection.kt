@@ -45,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -89,9 +90,11 @@ fun GeneralStudyGameSection(
     onConnectClick: () -> Unit,
     onGameClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onRoundActiveChange: (Boolean) -> Unit = {},
 ) {
     var paneName by rememberSaveable { mutableStateOf(GeneralStudyPane.CATALOG.name) }
     val pane = remember(paneName) { GeneralStudyPane.valueOf(paneName) }
+    LaunchedEffect(pane) { onRoundActiveChange(pane == GeneralStudyPane.PLAY) }
     var difficultyName by rememberSaveable { mutableStateOf(GeneralStudyDifficulty.EASY.name) }
     val difficulty = remember(difficultyName) { GeneralStudyDifficulty.valueOf(difficultyName) }
     var seed by rememberSaveable { mutableLongStateOf(0L) }

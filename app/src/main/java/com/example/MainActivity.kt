@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -22,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
@@ -751,15 +755,83 @@ fun MainAppContent(
         }
     }
 
+    // A non-consuming gesture observer lets normal vertical feed scrolling,
+    // gallery swipes, search inputs and overlays keep priority over page changes.
+    val mainPageSwipeEnabled =
+        feedUtilitySheet == null &&
+        uiState.viewingProduct == null &&
+        uiState.viewingProfile == null &&
+        uiState.activeConversationPartner == null &&
+        uiState.activeCommentsPostId == null &&
+        uiState.activePostOptionsPost == null &&
+        !uiState.isMenuOpen &&
+        !uiState.isCreatePostOpen &&
+        !uiState.isCreateStoryOpen &&
+        !uiState.isPostItemOpen &&
+        !uiState.isEditProfileOpen &&
+        !uiState.isActivityOpen &&
+        uiState.deepLinkedPost == null &&
+        uiState.activeViewingStory == null &&
+        (uiState.selectedTab != MainTab.HOME || uiState.feedSubTab != 1)
+    val reducePageMotion = com.example.performance.rememberBlinkReduceMotion()
+
     Box(modifier = Modifier.fillMaxSize()) {
-        // Main Tab Content
+        // Main Tab Content; real content remains mounted during a short transition.
         androidx.compose.animation.AnimatedContent(
             targetState = uiState.selectedTab,
+            modifier = Modifier
+                .fillMaxSize()
+                .blinkHorizontalPageSwipe(
+                    enabled = mainPageSwipeEnabled,
+                    onSwipeLeft = {
+                        when {
+                            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0 ->
+                                viewModel.setFeedSubTab(1)
+                            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 2 ->
+                                viewModel.setTab(MainTab.MARKET)
+                            uiState.selectedTab == MainTab.MARKET ->
+                                viewModel.setTab(MainTab.MESSAGES)
+                        }
+                    },
+                    onSwipeRight = {
+                        when {
+                            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 2 ->
+                                viewModel.setFeedSubTab(1)
+                            uiState.selectedTab == MainTab.MARKET -> {
+                                viewModel.setTab(MainTab.HOME)
+                                viewModel.setFeedSubTab(2)
+                            }
+                            uiState.selectedTab == MainTab.MESSAGES ->
+                                viewModel.setTab(MainTab.MARKET)
+                        }
+                    }
+                ),
             label = "TabAnimatedContent",
             transitionSpec = {
-                (androidx.compose.animation.fadeIn(animationSpec = tween(180)) +
-                    androidx.compose.animation.scaleIn(initialScale = .988f, animationSpec = tween(220))) togetherWith
-                    androidx.compose.animation.fadeOut(animationSpec = tween(110))
+                val forward = targetState.index > initialState.index
+                val direction = if (forward) 1 else -1
+                val duration = if (reducePageMotion) 0 else 225
+                (
+                    androidx.compose.animation.slideInHorizontally(
+                        initialOffsetX = { direction * it },
+                        animationSpec = tween(duration)
+                    ) +
+                    androidx.compose.animation.scaleIn(
+                        initialScale = 0.96f,
+                        animationSpec = tween(duration)
+                    ) +
+                    androidx.compose.animation.fadeIn(animationSpec = tween(duration))
+                ) togetherWith (
+                    androidx.compose.animation.slideOutHorizontally(
+                        targetOffsetX = { -direction * it / 4 },
+                        animationSpec = tween(duration)
+                    ) +
+                    androidx.compose.animation.scaleOut(
+                        targetScale = 0.96f,
+                        animationSpec = tween(duration)
+                    ) +
+                    androidx.compose.animation.fadeOut(animationSpec = tween(duration))
+                )
             }
         ) { tab ->
             when (tab) {
@@ -1001,18 +1073,29 @@ fun MainAppContent(
 
         feedUtilitySheet?.let { utility ->
             var intentionalLongSwipe by remember(utility) { mutableStateOf(false) }
+            var gameRoundActive by remember(utility) { mutableStateOf(false) }
+            var gameExitConfirmVisible by remember(utility) { mutableStateOf(false) }
             val utilitySheetState = rememberModalBottomSheetState(
                 skipPartiallyExpanded = true,
                 confirmValueChange = { target ->
-                    target != SheetValue.Hidden || intentionalLongSwipe
+                    target != SheetValue.Hidden || (intentionalLongSwipe && !gameRoundActive)
                 }
             )
             val utilityScope = rememberCoroutineScope()
             val utilityWindowHeightPx = with(LocalDensity.current) {
                 LocalConfiguration.current.screenHeightDp.dp.toPx()
             }
+            // Track the sheet's window position: local pointer coordinates alone
+            // undercount movement while Material3 animates the sheet with the finger.
+            var utilitySheetCoordinates by remember(utility) {
+                mutableStateOf<LayoutCoordinates?>(null)
+            }
 
             fun dismissUtility(afterDismiss: () -> Unit = {}) {
+                if (utility == "game" && gameRoundActive) {
+                    gameExitConfirmVisible = true
+                    return
+                }
                 utilityScope.launch {
                     // Explicit navigation and close actions are never swipe-gated.
                     intentionalLongSwipe = true
@@ -1022,27 +1105,88 @@ fun MainAppContent(
                 }
             }
 
+            if (gameExitConfirmVisible) {
+                AlertDialog(
+                    onDismissRequest = { gameExitConfirmVisible = false },
+                    title = { Text("Leave this game?") },
+                    text = { Text("Your unfinished round will be lost.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            gameRoundActive = false
+                            gameExitConfirmVisible = false
+                            dismissUtility()
+                        }) { Text("Leave game") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { gameExitConfirmVisible = false }) {
+                            Text("Keep playing")
+                        }
+                    }
+                )
+            }
+
             ModalBottomSheet(
-                onDismissRequest = { feedUtilitySheet = null },
+                onDismissRequest = {
+                    if (utility == "game" && gameRoundActive) {
+                        gameExitConfirmVisible = true
+                    } else {
+                        feedUtilitySheet = null
+                    }
+                },
                 sheetState = utilitySheetState,
-                dragHandle = { BottomSheetDefaults.DragHandle() },
+                dragHandle = {
+                    Box(modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                        BottomSheetDefaults.DragHandle(modifier = Modifier.align(Alignment.Center))
+                        IconButton(
+                            onClick = { dismissUtility() },
+                            modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Close ${utility} page")
+                        }
+                    }
+                },
                 // Listen without consuming motion. Inner LazyColumns and games still
                 // scroll normally; a small pull can no longer dismiss the whole page.
                 modifier = Modifier
                     .testTag("feedUtilitySheet")
+                    .onGloballyPositioned { utilitySheetCoordinates = it }
                     .pointerInput(utility, utilityWindowHeightPx) {
                         awaitEachGesture {
                             intentionalLongSwipe = false
                             val down = awaitFirstDown(requireUnconsumed = false)
-                            val startY = down.position.y
+                            val startY = utilitySheetCoordinates
+                                ?.takeIf { it.isAttached }
+                                ?.localToWindow(down.position)?.y ?: down.position.y
+                            var peakDownwardTravelPx = 0f
+                            var wasReleased = false
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Final)
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                peakDownwardTravelPx = maxOf(
+                                    peakDownwardTravelPx,
+                                    ((utilitySheetCoordinates
+                                        ?.takeIf { it.isAttached }
+                                        ?.localToWindow(change.position)?.y
+                                        ?: change.position.y) - startY).coerceAtLeast(0f)
+                                )
                                 intentionalLongSwipe = UtilitySheetDismissPolicy.allowsDownwardDismiss(
-                                    change.position.y - startY,
+                                    peakDownwardTravelPx,
                                     utilityWindowHeightPx
                                 )
-                                if (!change.pressed) break
+                                if (!change.pressed) {
+                                    wasReleased = true
+                                    break
+                                }
+                            }
+                            // Inner scrollables may absorb long pulls so Material3 cannot
+                            // complete the sheet gesture; explicitly close after release.
+                            if (UtilitySheetDismissPolicy.allowsCompletedDownwardDismiss(
+                                    peakDownwardTravelPx,
+                                    utilityWindowHeightPx,
+                                    wasReleased
+                                )
+                            ) {
+                                dismissUtility()
                             }
                         }
                     }
@@ -1076,6 +1220,7 @@ fun MainAppContent(
 
                         "game" -> GameSection(
                             userAvatar = uiState.myProfile.avatarUrl,
+                            onRoundActiveChange = { gameRoundActive = it },
                             leaderboardUsers = uiState.gameLeaderboardUsers,
                             connectHub = uiState.connectHub,
                             connectHubActions = connectHubActions,

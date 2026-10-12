@@ -1,6 +1,12 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -369,7 +375,32 @@ fun PremiumFeedScreen(
             .toSet()
     }
 
-    when (currentSubTab) {
+    val reducePageMotion = rememberBlinkReduceMotion()
+    AnimatedContent(
+        targetState = currentSubTab,
+        transitionSpec = {
+            val forward = targetState > initialState
+            val direction = if (forward) 1 else -1
+            val duration = if (reducePageMotion) 0 else 225
+            (
+                slideInHorizontally(
+                    initialOffsetX = { direction * it },
+                    animationSpec = tween(duration)
+                ) +
+                scaleIn(initialScale = 0.96f, animationSpec = tween(duration)) +
+                fadeIn(animationSpec = tween(duration))
+            ) togetherWith (
+                slideOutHorizontally(
+                    targetOffsetX = { -direction * it / 4 },
+                    animationSpec = tween(duration)
+                ) +
+                scaleOut(targetScale = 0.96f, animationSpec = tween(duration)) +
+                fadeOut(animationSpec = tween(duration))
+            )
+        },
+        label = "feedReelsConnectTransition",
+    ) { page ->
+    when (page) {
         0 -> PremiumHomeFeed(
             posts = if (feedLane == 1) followingPosts else posts,
             reels = reels,
@@ -529,6 +560,7 @@ fun PremiumFeedScreen(
 
         else -> onSubTabChanged(0)
     }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -631,8 +663,9 @@ private fun PremiumHomeFeed(
     }
     var filterMenuVisible by remember { mutableStateOf(false) }
     var screenVisible by remember { mutableStateOf(false) }
-    var horizontalDrag by remember { mutableStateOf(0f) }
-    val swipeThreshold = with(density) { 64.dp.toPx() }
+    // For You / Following remain available via their explicit tabs.
+    // Horizontal page navigation is owned by the parent destination observer,
+    // so image galleries can handle their own swipes.
 
     // The upper feed chrome slides and fades together with the actual scroll offset.
     // Layout/layer updates avoid recomposing post cards on every scroll frame and the
@@ -962,7 +995,7 @@ private fun PremiumHomeFeed(
 
     LaunchedEffect(Unit) { screenVisible = true }
 
-    LaunchedEffect(laneResumeKey, homeRowKeys) {
+    LaunchedEffect(laneResumeKey, homeRowKeys.isEmpty()) {
         if (restoredLaneResumeKey != laneResumeKey) {
             val savedIndex = if (restoreWithinProcess) {
                 resumePrefs.safeInt("home_scroll_index:$laneResumeKey", 0).coerceAtLeast(0)
@@ -1143,15 +1176,22 @@ private fun PremiumHomeFeed(
         var previousLastVisible = -1
         var previousSampleMs = 0L
         snapshotFlow {
-            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-        }.collectLatest { lastVisibleIndex ->
-            if (lastVisibleIndex < 0) return@collectLatest
+            Pair(
+                listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1,
+                listState.isScrollInProgress
+            )
+        }.collectLatest { (lastVisibleIndex, isScrolling) ->
+            // Never enqueue new image decodes during a fling. Visible media loads
+            // normally; a short idle prefetch reduces work on budget devices.
+            if (lastVisibleIndex < 0 || isScrolling) return@collectLatest
+            delay(120)
+            if (listState.isScrollInProgress) return@collectLatest
             val nowMs = android.os.SystemClock.elapsedRealtime()
             val elapsedMs =
                 if (previousSampleMs > 0L) (nowMs - previousSampleMs).coerceAtLeast(1L) else 0L
             val itemDelta =
                 if (previousLastVisible >= 0) lastVisibleIndex - previousLastVisible else 0
-            val lookahead = feedPrefetchLookahead(itemDelta, elapsedMs)
+            val lookahead = feedPrefetchLookahead(itemDelta, elapsedMs).coerceAtMost(2)
             previousLastVisible = lastVisibleIndex
             previousSampleMs = nowMs
 
@@ -1163,6 +1203,7 @@ private fun PremiumHomeFeed(
                 .map(String::trim)
                 .filter { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
                 .distinct()
+                .take(3)
                 .forEach { mediaUrl ->
                     if (prefetchedMediaUrls.add(mediaUrl)) {
                         while (prefetchedMediaUrls.size > 128) {
@@ -1171,7 +1212,7 @@ private fun PremiumHomeFeed(
                         imageLoader.enqueue(
                             ImageRequest.Builder(context)
                                 .data(mediaUrl)
-                                .size(512, 512)
+                                .size(384, 384)
                                 .crossfade(false)
                                 .build()
                         )
@@ -1193,6 +1234,7 @@ private fun PremiumHomeFeed(
     LaunchedEffect(listState, homeRows) {
         snapshotFlow {
             val layout = listState.layoutInfo
+            if (listState.isScrollInProgress) return@snapshotFlow null
             layout.visibleItemsInfo.firstOrNull { item ->
                 val key = item.key as? String ?: return@firstOrNull false
                 key.startsWith("reel_preview:") && feedAutoplayEligible(
@@ -1220,22 +1262,6 @@ private fun PremiumHomeFeed(
                 .fillMaxSize()
                 .background(FeedBackground)
                 .nestedScroll(scrollConnection)
-                .pointerInput(laneIndex) {
-                    detectHorizontalDragGestures(
-                        onHorizontalDrag = { change, amount ->
-                            change.consume()
-                            horizontalDrag += amount
-                        },
-                        onDragEnd = {
-                            when {
-                                horizontalDrag <= -swipeThreshold && laneIndex == 0 -> onLaneChanged(1)
-                                horizontalDrag >= swipeThreshold && laneIndex == 1 -> onLaneChanged(0)
-                            }
-                            horizontalDrag = 0f
-                        },
-                        onDragCancel = { horizontalDrag = 0f }
-                    )
-                }
         ) {
             Column(
                 modifier = Modifier
@@ -1812,23 +1838,11 @@ private fun PremiumPostEntrance(
     reduceMotion: Boolean,
     content: @Composable () -> Unit
 ) {
-    // Only the first few rows get a very small initial fade. Reduced-motion users and
-    // rows composed during normal scrolling render immediately.
-    if (index > 2 || reduceMotion) {
-        content()
-        return
-    }
-
-    var visible by remember(index) { mutableStateOf(false) }
-    LaunchedEffect(index) { visible = true }
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(90)),
-        exit = fadeOut(tween(70)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        content()
-    }
+    // A LazyColumn recycles rows as the user scrolls. Even a brief
+    // AnimatedVisibility can change row height, producing visible jumps.
+    // Keep all row content laid out immediately; interactive controls
+    // retain their independent small animations.
+    content()
 }
 
 private fun premiumPostContentType(post: FeedPost): Int {
