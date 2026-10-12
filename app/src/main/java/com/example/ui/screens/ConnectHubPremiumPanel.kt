@@ -1872,8 +1872,8 @@ private fun ConnectForYouSummary(
         ),
         ConnectQuickPick(
             title = "Housing",
-            detail = "${hub.roommates.size + hub.housingRequests.size} active needs",
-            onClick = { onOpenCategory(ConnectCategory.ROOMMATE) }
+            detail = "${hub.housingRequests.size} housing requests",
+            onClick = { onOpenCategory(ConnectCategory.HOUSING) }
         ),
         ConnectQuickPick(
             title = "Guidance",
