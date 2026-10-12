@@ -645,7 +645,8 @@ fun PostCard(
                             icon = Icons.Default.ChatBubbleOutline,
                             value = if (showCounts && post.commentsCount > 0) formatNumber(post.commentsCount) else null,
                             tint = secondaryText,
-                            description = "${post.commentsCount} comments",
+                            description = if (post.allowComments) "${post.commentsCount} comments" else "Comments disabled",
+                            enabled = post.allowComments,
                             onClick = onComment
                         )
                         if (!isAuthor) {
@@ -742,7 +743,8 @@ fun PostCard(
                             icon = Icons.Default.ChatBubbleOutline,
                             value = if (compactActions) null else "Comment",
                             tint = secondaryText,
-                            description = "Comment",
+                            description = if (post.allowComments) "Comment" else "Comments disabled",
+                            enabled = post.allowComments,
                             onClick = onComment
                         )
                         if (!isAuthor) {
@@ -906,6 +908,7 @@ private fun RowScope.PremiumPostAction(
     tint: Color,
     description: String,
     iconScale: Float = 1f,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -927,6 +930,7 @@ private fun RowScope.PremiumPostAction(
                 interactionSource = interactionSource,
                 indication = null,
                 role = Role.Button,
+                enabled = enabled,
                 onClick = onClick
             )
             .semantics {
