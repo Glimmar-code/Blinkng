@@ -96,7 +96,8 @@ fun FeedTopBar(
     onNotificationClick: () -> Unit,
     onMenuClick: () -> Unit,
     onProfileClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    reserveStatusBar: Boolean = true,
 ) {
     BoxWithConstraints(
         modifier = modifier
@@ -106,7 +107,7 @@ fun FeedTopBar(
             // The old radial purple/blue wash made this inset look like a
             // separate colored strip with empty space above Home.
             .background(FeedBackground)
-            .statusBarsPadding()
+            .then(if (reserveStatusBar) Modifier.statusBarsPadding() else Modifier)
     ) {
         val horizontalPadding = if (maxWidth >= 600.dp) 20.dp else 14.dp
         Row(
