@@ -1,3 +1,12 @@
+## 2026-10-12 — Connect reliability foundation (Testlab, Android + Windows)
+
+- **Shared:** Added `BlinkConnectHealth` with tests for truthful partial-refresh status. Missing Supabase sections are never described as genuinely empty when a request fails.
+- **Android:** The nine independent Connect data requests are fetched concurrently instead of serially, lowering worst-case refresh latency. Each failed request preserves that section's last loaded data and reports which parts did not refresh. The UI displays a retryable warning rather than silently showing zero items. Refresh is disabled while a refresh is already in progress.
+- **Windows:** The existing desktop Connect screen now reports partial failures for listings, students, following, requests, applications, and activity policy, while preserving prior content. Desktop offers the same visible Retry action.
+- **Unchanged:** Supabase schema, RLS, auth, coin deduction, matching RPCs, Game rewards, privacy permissions, and discovery ranking have not been modified.
+- **Verification required:** shared tests, Android debug compile/unit checks, Windows desktop build, UI smoke on offline/403/timeout/recovery scenarios, and reviewer confirmation. Do not promote while any gate is failing.
+- **Scope boundary:** This is one functional reliability slice of the requested 100-point Connect enhancement backlog, not a claim that all 100 features are implemented.
+
 ## 2026-10-12 — Feed audit follow-up: pagination, refresh, native ads, accessibility
 
 PARITY-EXCEPTION: android-compose-feed-pagination-native-ad-touch-20261012
