@@ -16,6 +16,7 @@ import com.example.data.models.MatchSpinResult
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -37,72 +38,107 @@ class ConnectHubRepository(
     private val jsonType = "application/json; charset=utf-8".toMediaType()
     private val baseUrl = SupabaseConfig.url.trimEnd('/')
 
+    /**
+     * Fetch each Connect vertical independently and concurrently.
+     *
+     * Previously these calls ran serially; one slow RPC could hold the entire
+     * Connect page hostage. Failed reads must not be disguised as an empty
+     * category, so the UI receives friendly section diagnostics as well.
+     */
     suspend fun fetchSnapshot(): ConnectHubSnapshot = withContext(Dispatchers.IO) {
-        // Keep Connect useful when one backend surface is temporarily unavailable.
-        // Each section is isolated so a Housing/Challenge/RPC failure cannot blank
-        // Roommates, Mentors, Reading Mates, student discovery or the rest of the hub.
-        val roommates = runCatching {
-            getArray("/rest/v1/roommate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
-                .mapObjects(::parseRoommate)
-        }.getOrDefault(emptyList())
-
-        val mentors = runCatching {
-            getArray("/rest/v1/mentor_profiles?select=*&is_active=eq.true&mode=in.(mentor,both)&order=created_at.desc&limit=30")
-                .mapObjects(::parseMentor)
-        }.getOrDefault(emptyList())
-
-        val reading = runCatching {
-            getArray("/rest/v1/reading_mate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
-                .mapObjects(::parseReadingMate)
-        }.getOrDefault(emptyList())
-
-        val agents = runCatching {
-            getArray("/rest/v1/housing_agent_profiles?select=*&is_active=eq.true&is_verified=eq.true&order=created_at.desc&limit=30")
-                .mapObjects(::parseHousingAgent)
-        }.getOrDefault(emptyList())
-
-        val housingRequests = runCatching {
-            getArray("/rest/v1/housing_requests?select=*&status=eq.open&order=created_at.desc&limit=40")
-                .mapObjects(::parseHousingRequest)
-        }.getOrDefault(emptyList())
-
-        val challenges = runCatching {
-            getArray("/rest/v1/game_challenges?select=*&order=created_at.desc&limit=30")
-                .mapObjects(::parseChallenge)
-        }.getOrDefault(emptyList())
-
-        val smartMatches = runCatching {
-            JSONArray(rpc("get_connect_matches", JSONObject().put("p_limit", 30)))
-                .mapObjects(::parseSmartMatch)
-        }.getOrDefault(emptyList())
-
-        val requests = runCatching {
-            JSONArray(rpc("get_connect_request_inbox", JSONObject().put("p_limit", 120)))
-                .mapObjects(::parseConnectRequest)
-        }.getOrDefault(emptyList())
-
-        val uid = supabaseService.getCurrentUserId().orEmpty()
-        val gameStats = if (uid.isBlank()) {
-            GameProfileStats()
-        } else {
+        val roommatesRequest = async {
             runCatching {
-                val arr = getArray(
-                    "/rest/v1/game_profiles?select=score,coins,streak,best_streak&user_id=eq.${encode(uid)}&limit=1"
-                )
-                if (arr.length() == 0) GameProfileStats() else parseGameStats(arr.getJSONObject(0))
-            }.getOrDefault(GameProfileStats())
+                getArray("/rest/v1/roommate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
+                    .mapObjects(::parseRoommate)
+            }
+        }
+        val mentorsRequest = async {
+            runCatching {
+                getArray("/rest/v1/mentor_profiles?select=*&is_active=eq.true&mode=in.(mentor,both)&order=created_at.desc&limit=30")
+                    .mapObjects(::parseMentor)
+            }
+        }
+        val readingRequest = async {
+            runCatching {
+                getArray("/rest/v1/reading_mate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
+                    .mapObjects(::parseReadingMate)
+            }
+        }
+        val agentsRequest = async {
+            runCatching {
+                getArray("/rest/v1/housing_agent_profiles?select=*&is_active=eq.true&is_verified=eq.true&order=created_at.desc&limit=30")
+                    .mapObjects(::parseHousingAgent)
+            }
+        }
+        val housingRequest = async {
+            runCatching {
+                getArray("/rest/v1/housing_requests?select=*&status=eq.open&order=created_at.desc&limit=40")
+                    .mapObjects(::parseHousingRequest)
+            }
+        }
+        val challengesRequest = async {
+            runCatching {
+                getArray("/rest/v1/game_challenges?select=*&order=created_at.desc&limit=30")
+                    .mapObjects(::parseChallenge)
+            }
+        }
+        val matchesRequest = async {
+            runCatching {
+                JSONArray(rpc("get_connect_matches", JSONObject().put("p_limit", 30)))
+                    .mapObjects(::parseSmartMatch)
+            }
+        }
+        val inboxRequest = async {
+            runCatching {
+                JSONArray(rpc("get_connect_request_inbox", JSONObject().put("p_limit", 120)))
+                    .mapObjects(::parseConnectRequest)
+            }
+        }
+        val gameStatsRequest = async {
+            runCatching {
+                val uid = supabaseService.getCurrentUserId().orEmpty()
+                if (uid.isBlank()) {
+                    GameProfileStats()
+                } else {
+                    val arr = getArray(
+                        "/rest/v1/game_profiles?select=score,coins,streak,best_streak&user_id=eq.${encode(uid)}&limit=1"
+                    )
+                    if (arr.length() == 0) GameProfileStats() else parseGameStats(arr.getJSONObject(0))
+                }
+            }
         }
 
+        val roommates = roommatesRequest.await()
+        val mentors = mentorsRequest.await()
+        val reading = readingRequest.await()
+        val agents = agentsRequest.await()
+        val housing = housingRequest.await()
+        val challenges = challengesRequest.await()
+        val matches = matchesRequest.await()
+        val inbox = inboxRequest.await()
+        val gameStats = gameStatsRequest.await()
+        val failures = buildSet {
+            if (roommates.isFailure) add("roommates")
+            if (mentors.isFailure) add("mentors")
+            if (reading.isFailure) add("reading")
+            if (agents.isFailure) add("agents")
+            if (housing.isFailure) add("housing")
+            if (challenges.isFailure) add("challenges")
+            if (matches.isFailure) add("matches")
+            if (inbox.isFailure) add("inbox")
+            if (gameStats.isFailure) add("game_stats")
+        }
         ConnectHubSnapshot(
-            roommates = roommates,
-            mentors = mentors,
-            readingMates = reading,
-            housingAgents = agents,
-            housingRequests = housingRequests,
-            gameChallenges = challenges,
-            smartMatches = smartMatches,
-            requests = requests,
-            gameStats = gameStats
+            roommates = roommates.getOrDefault(emptyList()),
+            mentors = mentors.getOrDefault(emptyList()),
+            readingMates = reading.getOrDefault(emptyList()),
+            housingAgents = agents.getOrDefault(emptyList()),
+            housingRequests = housing.getOrDefault(emptyList()),
+            gameChallenges = challenges.getOrDefault(emptyList()),
+            smartMatches = matches.getOrDefault(emptyList()),
+            requests = inbox.getOrDefault(emptyList()),
+            gameStats = gameStats.getOrDefault(GameProfileStats()),
+            failedSections = failures
         )
     }
 
