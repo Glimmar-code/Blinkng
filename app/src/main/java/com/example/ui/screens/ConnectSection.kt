@@ -1,4 +1,6 @@
 package com.example.ui.screens
+import com.blinkng.shared.ConnectDiscoveryRanking
+import com.blinkng.shared.ConnectDiscoverySignals
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateIntAsState
@@ -186,17 +188,18 @@ fun ConnectSection(
 
         when (sort) {
             LivePeopleSort.RECOMMENDED -> filtered.sortedWith(
-                compareByDescending<UserProfile> { it.onlineNow }
-                    .thenByDescending { it.id in followingIds }
-                    .thenByDescending {
-                        myDepartment.isNotBlank() &&
-                            it.department.equals(myDepartment, ignoreCase = true)
-                    }
-                    .thenByDescending {
-                        myCampus.isNotBlank() &&
-                            it.university.equals(myCampus, ignoreCase = true)
-                    }
-                    .thenBy { it.fullName.lowercase() }
+                compareByDescending<UserProfile> { candidate ->
+                    ConnectDiscoveryRanking.score(
+                        ConnectDiscoverySignals(
+                            onlineNow = candidate.onlineNow,
+                            sameCampus = myCampus.isNotBlank() &&
+                                candidate.university.equals(myCampus, ignoreCase = true),
+                            sameDepartment = myDepartment.isNotBlank() &&
+                                candidate.department.equals(myDepartment, ignoreCase = true),
+                            alreadyFollowing = candidate.id in followingIds
+                        )
+                    )
+                }.thenBy { it.fullName.ifBlank { it.username }.lowercase() }
             )
             LivePeopleSort.RECENTLY_ACTIVE -> filtered.sortedWith(
                 compareByDescending<UserProfile> { it.onlineNow }
