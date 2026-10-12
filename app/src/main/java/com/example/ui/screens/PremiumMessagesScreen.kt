@@ -311,19 +311,19 @@ fun PremiumMessagesScreen(
                                 .graphicsLayer { alpha = .74f }
                         ) {
                             PremiumMessagesHome(
-                            conversations = conversations,
-                            stories = stories,
-                            myAvatar = myAvatar,
-                            myName = myName,
-                            palette = palette,
-                            onOpenConversation = onOpenConversation,
-                            onProfileClick = onProfileClick,
-                            onStoryClick = onStoryClick,
-                            onAddStoryClick = onAddStoryClick,
-                            onOpenAppearance = { showAppearanceSheet = true },
-                            onComposeMessage = onComposeMessage,
-                            isConnected = isConnected,
-                            isLoading = isLoading
+                                conversations = conversations,
+                                stories = stories,
+                                myAvatar = myAvatar,
+                                myName = myName,
+                                palette = palette,
+                                onOpenConversation = onOpenConversation,
+                                onProfileClick = onProfileClick,
+                                onStoryClick = onStoryClick,
+                                onAddStoryClick = onAddStoryClick,
+                                onOpenAppearance = { showAppearanceSheet = true },
+                                onComposeMessage = onComposeMessage,
+                                isConnected = isConnected,
+                                isLoading = isLoading
                             )
                         }
                     }
