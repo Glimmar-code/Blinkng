@@ -681,3 +681,13 @@ Validation: Isolated PostgreSQL checks prove private circles/members stay hidden
 - Android: the ranked-feed RPC can time out under backend load. Fall back only for PostgreSQL statement timeout to the standard paginated feed, preserving posts/Reels type and pagination; auth/RLS failures still surface. Windows currently uses a separate chronological `feed_posts` fetch, so it is already independent of the Android ranked-feed RPC.
 - Shared Supabase: expand the discovery window from seven to 90 days (the live server had only four active non-reels from the last seven days but 49 active posts in the last 90 days); postpone the content view-counter update until after points/repost work to shorten exclusive `feed_posts` lock duration; guard fallback visibility with audience, moderation and expiration checks. These changes affect both clients and require database preview/rollout, not just Android build tests.
 - Validation: Android debug/release smoke, R8 DEX retention check, Windows compilation, SQL parser/static regression gates, mobile call media startup, For You pagination, Follow feed, privacy and recorded-view integrity. Do not merge or deploy until release and backend validation.
+
+---
+
+## 2026-10-12 — Connect discovery and outage resilience (Testlab)
+
+- Shared: deterministic ConnectDiscoveryPolicy ranks authenticated, visible candidates by same department, same campus, presence and following. Stable alphabetical ties, normalized unknown values, and duplicate identity protection. Reasons explain recommendations. This is not a replacement for server-side RLS, moderation, privacy or blocking.
+- Android: student recommendations use this same ranking as Windows, explain top reasons, label last-known presence while offline, keep successful Connect sections when another endpoint fails, and surface a complete Connect backend outage rather than silently emptying the page. Smart Match animations now run only while matching in an active window and respect reduced motion.
+- Windows: uses the same ranking/reasons and reports a partial or total Connect fetch failure with an explicit Retry action while keeping previously fetched records. Presence labels distinguish last-known data from a live refresh.
+- Backend: no database schema, coin, Spin price, matching RPC or permissions changes.
+- Verification required: shared policy unit tests, Android unit/build/runtime smoke, Windows desktop build and parity gates. Main promotion only after tests pass. This is the first foundation, not completion of the entire 100-item Connect upgrade backlog.
