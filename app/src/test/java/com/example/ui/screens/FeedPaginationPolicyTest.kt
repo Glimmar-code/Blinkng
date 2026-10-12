@@ -20,6 +20,14 @@ class FeedPaginationPolicyTest {
         assertTrue(shouldRequestFeedPage(old, null))
     }
 
+    @Test fun rapidRefreshDoesNotIssueDuplicateRequests() {
+        assertTrue(canRequestFeedRefresh(10_000L, 0L))
+        assertFalse(canRequestFeedRefresh(10_120L, 10_000L))
+        assertFalse(canRequestFeedRefresh(10_799L, 10_000L))
+        assertTrue(canRequestFeedRefresh(10_800L, 10_000L))
+        assertTrue(canRequestFeedRefresh(10L, 10_000L))
+    }
+
     @Test fun emptyFeedDoesNotProduceAccidentalInvalidCursor() {
         assertEquals("", feedPaginationCursor(emptyList()))
         assertEquals("", feedPaginationCursor(listOf("", "")))
