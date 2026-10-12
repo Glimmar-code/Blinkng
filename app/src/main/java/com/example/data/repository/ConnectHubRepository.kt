@@ -37,49 +37,84 @@ class ConnectHubRepository(
     private val jsonType = "application/json; charset=utf-8".toMediaType()
     private val baseUrl = SupabaseConfig.url.trimEnd('/')
 
-    suspend fun fetchSnapshot(): ConnectHubSnapshot = withContext(Dispatchers.IO) {
+    suspend fun fetchSnapshot(fallback: ConnectHubSnapshot = ConnectHubSnapshot()): ConnectHubSnapshot =
+        withContext(Dispatchers.IO) {
+        // Keep previously loaded results when one optional Connect endpoint fails.
+        // Do not misrepresent a total outage as an empty community.
+        val sectionFailures = mutableListOf<Throwable>()
         // Keep Connect useful when one backend surface is temporarily unavailable.
         // Each section is isolated so a Housing/Challenge/RPC failure cannot blank
         // Roommates, Mentors, Reading Mates, student discovery or the rest of the hub.
         val roommates = runCatching {
             getArray("/rest/v1/roommate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
                 .mapObjects(::parseRoommate)
-        }.getOrDefault(emptyList())
+        }.getOrElse { failure ->
+            sectionFailures.add(failure)
+            fallback.roommates
+        }
 
         val mentors = runCatching {
             getArray("/rest/v1/mentor_profiles?select=*&is_active=eq.true&mode=in.(mentor,both)&order=created_at.desc&limit=30")
                 .mapObjects(::parseMentor)
-        }.getOrDefault(emptyList())
+        }.getOrElse { failure ->
+            sectionFailures.add(failure)
+            fallback.mentors
+        }
 
         val reading = runCatching {
             getArray("/rest/v1/reading_mate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
                 .mapObjects(::parseReadingMate)
-        }.getOrDefault(emptyList())
+        }.getOrElse { failure ->
+            sectionFailures.add(failure)
+            fallback.readingMates
+        }
 
         val agents = runCatching {
             getArray("/rest/v1/housing_agent_profiles?select=*&is_active=eq.true&is_verified=eq.true&order=created_at.desc&limit=30")
                 .mapObjects(::parseHousingAgent)
-        }.getOrDefault(emptyList())
+        }.getOrElse { failure ->
+            sectionFailures.add(failure)
+            fallback.housingAgents
+        }
 
         val housingRequests = runCatching {
             getArray("/rest/v1/housing_requests?select=*&status=eq.open&order=created_at.desc&limit=40")
                 .mapObjects(::parseHousingRequest)
-        }.getOrDefault(emptyList())
+        }.getOrElse { failure ->
+            sectionFailures.add(failure)
+            fallback.housingRequests
+        }
 
         val challenges = runCatching {
             getArray("/rest/v1/game_challenges?select=*&order=created_at.desc&limit=30")
                 .mapObjects(::parseChallenge)
-        }.getOrDefault(emptyList())
+        }.getOrElse { failure ->
+            sectionFailures.add(failure)
+            fallback.gameChallenges
+        }
 
         val smartMatches = runCatching {
             JSONArray(rpc("get_connect_matches", JSONObject().put("p_limit", 30)))
                 .mapObjects(::parseSmartMatch)
-        }.getOrDefault(emptyList())
+        }.getOrElse { failure ->
+            sectionFailures.add(failure)
+            fallback.smartMatches
+        }
 
         val requests = runCatching {
             JSONArray(rpc("get_connect_request_inbox", JSONObject().put("p_limit", 120)))
                 .mapObjects(::parseConnectRequest)
-        }.getOrDefault(emptyList())
+        }.getOrElse { failure ->
+            sectionFailures.add(failure)
+            fallback.requests
+        }
+
+        if (sectionFailures.size == 8) {
+            throw IllegalStateException(
+                "Connect is unavailable right now. Your previously loaded results are saved. Try again.",
+                sectionFailures.first()
+            )
+        }
 
         val uid = supabaseService.getCurrentUserId().orEmpty()
         val gameStats = if (uid.isBlank()) {
