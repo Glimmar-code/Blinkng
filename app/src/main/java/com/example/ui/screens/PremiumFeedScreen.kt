@@ -962,7 +962,7 @@ private fun PremiumHomeFeed(
 
     LaunchedEffect(Unit) { screenVisible = true }
 
-    LaunchedEffect(laneResumeKey, homeRowKeys) {
+    LaunchedEffect(laneResumeKey, homeRowKeys.isEmpty()) {
         if (restoredLaneResumeKey != laneResumeKey) {
             val savedIndex = if (restoreWithinProcess) {
                 resumePrefs.safeInt("home_scroll_index:$laneResumeKey", 0).coerceAtLeast(0)
@@ -1143,15 +1143,22 @@ private fun PremiumHomeFeed(
         var previousLastVisible = -1
         var previousSampleMs = 0L
         snapshotFlow {
-            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-        }.collectLatest { lastVisibleIndex ->
-            if (lastVisibleIndex < 0) return@collectLatest
+            Pair(
+                listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1,
+                listState.isScrollInProgress
+            )
+        }.collectLatest { (lastVisibleIndex, isScrolling) ->
+            // Never enqueue new image decodes during a fling. Visible media loads
+            // normally; a short idle prefetch reduces work on budget devices.
+            if (lastVisibleIndex < 0 || isScrolling) return@collectLatest
+            delay(120)
+            if (listState.isScrollInProgress) return@collectLatest
             val nowMs = android.os.SystemClock.elapsedRealtime()
             val elapsedMs =
                 if (previousSampleMs > 0L) (nowMs - previousSampleMs).coerceAtLeast(1L) else 0L
             val itemDelta =
                 if (previousLastVisible >= 0) lastVisibleIndex - previousLastVisible else 0
-            val lookahead = feedPrefetchLookahead(itemDelta, elapsedMs)
+            val lookahead = feedPrefetchLookahead(itemDelta, elapsedMs).coerceAtMost(2)
             previousLastVisible = lastVisibleIndex
             previousSampleMs = nowMs
 
@@ -1163,6 +1170,7 @@ private fun PremiumHomeFeed(
                 .map(String::trim)
                 .filter { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
                 .distinct()
+                .take(3)
                 .forEach { mediaUrl ->
                     if (prefetchedMediaUrls.add(mediaUrl)) {
                         while (prefetchedMediaUrls.size > 128) {
@@ -1171,7 +1179,7 @@ private fun PremiumHomeFeed(
                         imageLoader.enqueue(
                             ImageRequest.Builder(context)
                                 .data(mediaUrl)
-                                .size(512, 512)
+                                .size(384, 384)
                                 .crossfade(false)
                                 .build()
                         )
@@ -1193,6 +1201,7 @@ private fun PremiumHomeFeed(
     LaunchedEffect(listState, homeRows) {
         snapshotFlow {
             val layout = listState.layoutInfo
+            if (listState.isScrollInProgress) return@snapshotFlow null
             layout.visibleItemsInfo.firstOrNull { item ->
                 val key = item.key as? String ?: return@firstOrNull false
                 key.startsWith("reel_preview:") && feedAutoplayEligible(
@@ -1812,23 +1821,11 @@ private fun PremiumPostEntrance(
     reduceMotion: Boolean,
     content: @Composable () -> Unit
 ) {
-    // Only the first few rows get a very small initial fade. Reduced-motion users and
-    // rows composed during normal scrolling render immediately.
-    if (index > 2 || reduceMotion) {
-        content()
-        return
-    }
-
-    var visible by remember(index) { mutableStateOf(false) }
-    LaunchedEffect(index) { visible = true }
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(90)),
-        exit = fadeOut(tween(70)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        content()
-    }
+    // A LazyColumn recycles rows as the user scrolls. Even a brief
+    // AnimatedVisibility can change row height, producing visible jumps.
+    // Keep all row content laid out immediately; interactive controls
+    // retain their independent small animations.
+    content()
 }
 
 private fun premiumPostContentType(post: FeedPost): Int {
