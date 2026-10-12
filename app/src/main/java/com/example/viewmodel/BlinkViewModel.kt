@@ -2118,7 +2118,9 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun refreshConnectHub() {
+        if (_uiState.value.isConnectHubLoading) return
         viewModelScope.launch {
+            if (_uiState.value.isConnectHubLoading) return@launch
             _uiState.value = _uiState.value.copy(isConnectHubLoading = true)
             runCatching { connectHubRepository.fetchSnapshot(_uiState.value.connectHub) }
                 .onSuccess { snapshot ->
