@@ -95,6 +95,7 @@ fun MessagesScreen(state: DesktopAppState) {
     var editingMessage by remember { mutableStateOf<DesktopMessage?>(null) }
     var editDraft by remember { mutableStateOf("") }
     var deleteMessage by remember { mutableStateOf<DesktopMessage?>(null) }
+    var deleteForEveryone by remember { mutableStateOf(false) }
     var reportMessage by remember { mutableStateOf<DesktopMessage?>(null) }
     var reportReason by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -587,6 +588,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                     text = { Text("Delete for me") },
                                     enabled = !controlsBusy,
                                     onClick = {
+                                        deleteForEveryone = false
                                         deleteMessage = message
                                         actionMessageId = null
                                     }
@@ -596,6 +598,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                         text = { Text("Unsend for everyone") },
                                         enabled = !controlsBusy,
                                         onClick = {
+                                            deleteForEveryone = true
                                             deleteMessage = message
                                             actionMessageId = null
                                         }
@@ -790,6 +793,98 @@ fun MessagesScreen(state: DesktopAppState) {
             }
         }
     }
+    editingMessage?.let { target ->
+        AlertDialog(
+            onDismissRequest = { if (!controlsBusy) editingMessage = null },
+            title = { Text("Edit message") },
+            text = {
+                OutlinedTextField(
+                    value = editDraft,
+                    onValueChange = { editDraft = it },
+                    label = { Text("Message") },
+                    maxLines = 7
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = !controlsBusy && editDraft.trim().isNotEmpty(),
+                    onClick = {
+                        val updatedText = editDraft
+                        changeMessageControl(target.conversationId) {
+                            state.client.editChatMessage(target.id, updatedText)
+                        }
+                        editingMessage = null
+                    }
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(enabled = !controlsBusy, onClick = { editingMessage = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    deleteMessage?.let { target ->
+        AlertDialog(
+            onDismissRequest = { if (!controlsBusy) deleteMessage = null },
+            title = { Text(if (deleteForEveryone) "Unsend message?" else "Delete message for you?") },
+            text = {
+                Text(
+                    if (deleteForEveryone) "This removes the message for all conversation participants."
+                    else "This hides the message from your own account."
+                )
+            },
+            confirmButton = {
+                Button(enabled = !controlsBusy, onClick = {
+                    val unsend = deleteForEveryone
+                    changeMessageControl(target.conversationId) {
+                        if (unsend) state.client.deleteChatMessageForEveryone(target.id)
+                        else state.client.hideChatMessageForMe(target.id)
+                    }
+                    deleteMessage = null
+                }) { Text(if (deleteForEveryone) "Unsend" else "Delete") }
+            },
+            dismissButton = {
+                TextButton(enabled = !controlsBusy, onClick = { deleteMessage = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    reportMessage?.let { target ->
+        AlertDialog(
+            onDismissRequest = { if (!controlsBusy) reportMessage = null },
+            title = { Text("Report message") },
+            text = {
+                OutlinedTextField(
+                    value = reportReason,
+                    onValueChange = { reportReason = it },
+                    label = { Text("Reason") },
+                    maxLines = 4
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = !controlsBusy && reportReason.trim().isNotEmpty(),
+                    onClick = {
+                        val reason = reportReason
+                        changeMessageControl(target.conversationId) {
+                            state.client.reportChatMessage(target.id, reason)
+                        }
+                        reportMessage = null
+                    }
+                ) { Text("Submit report") }
+            },
+            dismissButton = {
+                TextButton(enabled = !controlsBusy, onClick = { reportMessage = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     forwardMessageId?.let { messageId ->
         AlertDialog(
             onDismissRequest = { if (!controlsBusy) forwardMessageId = null },
