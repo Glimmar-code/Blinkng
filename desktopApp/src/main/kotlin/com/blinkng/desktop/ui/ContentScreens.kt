@@ -1710,9 +1710,10 @@ fun ConnectScreen(state: DesktopAppState) {
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                     Text(
-                                        if (profile.isOnline) "Online" else "Offline",
+                                        if (!liveActivityAvailable) "Presence not current"
+                                        else if (profile.isOnline) "Online" else "Offline",
                                         fontSize = 11.sp,
-                                        color = if (profile.isOnline) Color(0xFF22C55E)
+                                        color = if (liveActivityAvailable && profile.isOnline) Color(0xFF22C55E)
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                     if (studentSort == "recommended") {
