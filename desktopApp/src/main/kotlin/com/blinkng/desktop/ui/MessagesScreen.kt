@@ -150,7 +150,7 @@ fun MessagesScreen(state: DesktopAppState) {
     if (active == null) {
         val filtered = remember(conversations, query, inbox) {
             conversations.filter {
-                BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary") &&
+                BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary", it.unreadCount > 0 || it.markedUnread) &&
                     (query.isBlank() || it.title.contains(query, ignoreCase = true))
             }.sortedWith(compareByDescending<DesktopConversation> { it.isPinned }.thenByDescending { it.lastMessageAt.orEmpty() })
         }
