@@ -332,6 +332,8 @@ fun PostCard(
 
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
+                    // Keep identity and metadata predictable on every feed surface:
+                    // display name first, handle beneath it, time aligned right.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -344,7 +346,7 @@ fun PostCard(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
-                                .weight(1.2f)
+                                .weight(1f, fill = false)
                                 .clickable { onProfileClick(profileTarget) }
                         )
                         if (authorVerificationBadge != VerificationBadge.NONE) {
@@ -369,58 +371,47 @@ fun PostCard(
                             knownVip = if (post.authorIsVip) true else null,
                             modifier = Modifier.padding(start = 4.dp)
                         )
+                        if (post.timeAgo.isNotBlank()) {
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                text = post.timeAgo,
+                                color = secondaryText,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         if (resolvedAuthorUsername.isNotBlank()) {
-                            Spacer(Modifier.width(5.dp))
                             Text(
                                 text = "@$resolvedAuthorUsername",
                                 color = secondaryText,
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(0.8f)
+                                modifier = Modifier.clickable { onProfileClick(profileTarget) }
                             )
                         }
-                    }
-
-                    val meta = listOf(post.timeAgo, post.category)
-                        .filter(String::isNotBlank)
-                        .joinToString("  ·  ")
-                    if (meta.isNotBlank() || post.audience.isNotBlank()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (meta.isNotBlank()) {
-                                Text(
-                                    text = meta,
-                                    color = secondaryText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                            if (post.audience.isNotBlank()) {
-                                if (meta.isNotBlank()) Spacer(Modifier.width(6.dp))
-                                Icon(
-                                    imageVector = if (post.audience.equals("Everyone", true)) {
-                                        Icons.Default.Public
-                                    } else {
-                                        Icons.Default.Groups
-                                    },
-                                    contentDescription = "Audience: ${post.audience}",
-                                    tint = secondaryText,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(Modifier.width(3.dp))
-                                Text(
-                                    text = post.audience,
-                                    color = secondaryText,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                        // Avoid showing redundant "Everyone", "Post" and "Live" labels.
+                        // Restricted audiences stay clearly visible for privacy.
+                        if (post.audience.isNotBlank() &&
+                            !post.audience.equals("Everyone", ignoreCase = true)) {
+                            Spacer(Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.Default.Groups,
+                                contentDescription = "Audience: ${post.audience}",
+                                tint = secondaryText,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(Modifier.width(3.dp))
+                            Text(
+                                text = post.audience,
+                                color = secondaryText,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
 
@@ -617,8 +608,8 @@ fun PostCard(
             }
 
             if (xFeedStyle) {
-                // X-inspired compact metrics. Keep the existing callbacks and the
-                // delayed qualified-view count; no ranking or counters are changed.
+                // Stable, compact priority: views -> likes -> comments -> reposts
+                // -> save -> share. Counter updates never re-order the row.
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                     val showCounts = maxWidth >= 340.dp
                     Row(
@@ -628,22 +619,11 @@ fun PostCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        PremiumPostAction(
-                            icon = Icons.Default.ChatBubbleOutline,
-                            value = if (showCounts && post.commentsCount > 0) formatNumber(post.commentsCount) else null,
-                            tint = secondaryText,
-                            description = "${post.commentsCount} comments",
-                            onClick = onComment
+                        ReadOnlyMetricAction(
+                            icon = Icons.Default.Visibility,
+                            value = if (showCounts) formatNumber(displayedViewsCount) else "",
+                            description = "${displayedViewsCount} views"
                         )
-                        if (!isAuthor) {
-                            PremiumPostAction(
-                                icon = Icons.Default.Repeat,
-                                value = if (showCounts && post.sharesCount > 0) formatNumber(post.sharesCount) else null,
-                                tint = repostTint,
-                                description = if (post.isRepostedByMe) "Undo repost" else "Repost",
-                                onClick = onRepost
-                            )
-                        }
                         PremiumPostAction(
                             icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                             value = if (showCounts && !post.hideLikes && post.likes > 0) formatNumber(post.likes) else null,
@@ -662,11 +642,22 @@ fun PostCard(
                                 onLike()
                             }
                         )
-                        ReadOnlyMetricAction(
-                            icon = Icons.Default.Visibility,
-                            value = if (showCounts) formatNumber(displayedViewsCount) else "",
-                            description = "${displayedViewsCount} views"
+                        PremiumPostAction(
+                            icon = Icons.Default.ChatBubbleOutline,
+                            value = if (showCounts && post.commentsCount > 0) formatNumber(post.commentsCount) else null,
+                            tint = secondaryText,
+                            description = "${post.commentsCount} comments",
+                            onClick = onComment
                         )
+                        if (!isAuthor) {
+                            PremiumPostAction(
+                                icon = Icons.Default.Repeat,
+                                value = if (showCounts && post.sharesCount > 0) formatNumber(post.sharesCount) else null,
+                                tint = repostTint,
+                                description = if (post.isRepostedByMe) "Undo repost" else "Repost",
+                                onClick = onRepost
+                            )
+                        }
                         PremiumPostAction(
                             icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                             value = null,
