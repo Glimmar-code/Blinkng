@@ -1,3 +1,13 @@
+## 2026-10-12 — Android Feed header double-scroll and exact scroll-resume position
+
+PARITY-EXCEPTION: android-lazycolumn-collapsing-header-distance-and-offset-20261012
+
+- Android Feed: the scroll-linked Home header previously changed visible height while returning zero consumed drag distance, so a single vertical gesture could collapse the header **and** scroll the underlying LazyColumn by the full amount. Consume only the actual vertical pixels spent moving the header, and pass the remainder to the list. Once fully collapsed/open (or reversing under the dead zone), feed scroll proceeds normally. No app-shell navigation or gesture-priority changes.
+- Android Feed: fix scroll-position restoration of partially visible posts. LazyListItemInfo.offset is negative when clipped above the viewport, but scrollToItem expects a positive into-item offset. Convert to the proper non-negative offset rather than rounding the saved position back to the post's start.
+- Add unit tests for clamp, direction, available-vs-consumed delta, partial-row position restoration and integer boundaries. Follow up with Android emulator scroll/rotation and runtime smoke plus Windows build/parity.
+- Windows equivalent: the desktop app uses native Compose desktop scrolling and sidebar navigation without Android's collapsing status-bar header or LazyListState insets; preserve its independent scroll-resume and responsive window behaviour. Feed data, ranking, post views, ads, monetization, credentials and Supabase remain unchanged.
+- Physical Redmi 15C frame profiling and device-specific long-session validation remain outstanding; this code correction is not evidence every one of the earlier 50 audit risks has been eliminated.
+
 ## 2026-10-12 — Feed audit follow-up: pagination, refresh, native ads, accessibility
 
 PARITY-EXCEPTION: android-compose-feed-pagination-native-ad-touch-20261012
