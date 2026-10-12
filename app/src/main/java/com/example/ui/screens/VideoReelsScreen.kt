@@ -534,9 +534,7 @@ private fun ReelsContent(
                         onDirectMessage = onDirectMessage,
                         onOpenConnectHub = onOpenConnectHub,
                         onSwipeToHome = onBackToPosts,
-                        onSwipeToProfile = {
-                            onProfileClick(reel.authorUsername.ifBlank { reel.author }.removePrefix("@"))
-                        },
+                        onSwipeToProfile = onOpenConnectHub,
                         initialPositionMs = if (reel.id == pendingLaunchReelId) pendingLaunchPositionMs else 0L,
                         onInitialPositionConsumed = {
                             if (pendingLaunchReelId == reel.id) {
@@ -589,9 +587,7 @@ private fun ReelsContent(
                         onDirectMessage = onDirectMessage,
                         onOpenConnectHub = onOpenConnectHub,
                         onSwipeToHome = onBackToPosts,
-                        onSwipeToProfile = {
-                            onProfileClick(reel.authorUsername.ifBlank { reel.author }.removePrefix("@"))
-                        },
+                        onSwipeToProfile = onOpenConnectHub,
                         initialPositionMs = 0L,
                         onInitialPositionConsumed = {},
                         trackExposure = false,
@@ -962,7 +958,8 @@ private fun ReelPage(
                 val swipeThreshold = 84.dp.toPx()
                 detectHorizontalDragGestures(
                     onDragStart = { horizontalDrag = 0f },
-                    onHorizontalDrag = { _, dragAmount ->
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume() // prevent shell from handling this swipe twice
                         horizontalDrag += dragAmount
                     },
                     onDragEnd = {
