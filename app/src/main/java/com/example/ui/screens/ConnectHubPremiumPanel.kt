@@ -2435,22 +2435,15 @@ private fun CategoryScaffold(
     }
 }
 
+/**
+ * Lazy rows must have their full height immediately. Per-row deferred reveal
+ * animated the list's geometry on every recycle and produced scroll skipping.
+ * Preserve card press feedback without delayed row entry.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 private fun StaggeredItem(index: Int, content: @Composable () -> Unit) {
-    var shown by remember(index) { mutableStateOf(false) }
-    androidx.compose.runtime.LaunchedEffect(index) {
-        delay(35L * index.coerceAtMost(8))
-        shown = true
-    }
-    AnimatedVisibility(
-        visible = shown,
-        enter = fadeIn(tween(260)) + slideInVertically(
-            initialOffsetY = { it / 6 },
-            animationSpec = tween(300, easing = FastOutSlowInEasing)
-        )
-    ) {
-        content()
-    }
+    content()
 }
 
 @Composable
