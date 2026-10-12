@@ -114,6 +114,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
+import com.blinkng.shared.BlinkConnectHealth
 import com.example.data.models.ConnectRequestItem
 import com.example.data.models.GameChallenge
 import com.example.data.models.MatchSpinPreferences
@@ -359,6 +360,29 @@ fun ConnectHubPremiumPanel(
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
     ) {
+        BlinkConnectHealth.warning(hub.failedSections)?.let { warning ->
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.errorContainer,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        warning,
+                        modifier = Modifier.weight(1f),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    TextButton(onClick = actions.refresh, enabled = !isLoading) {
+                        Text("Retry")
+                    }
+                }
+            }
+        }
+
         SmartMatchHero(
             candidates = candidates,
             current = current,
@@ -504,7 +528,7 @@ fun ConnectHubPremiumPanel(
                     )
 
                     Spacer(Modifier.height(12.dp))
-                    TextButton(onClick = actions.refresh, modifier = Modifier.align(Alignment.End)) {
+                    TextButton(onClick = actions.refresh, enabled = !isLoading, modifier = Modifier.align(Alignment.End)) {
                         Text("Refresh Connect Hub")
                     }
                     Spacer(Modifier.height(18.dp))
