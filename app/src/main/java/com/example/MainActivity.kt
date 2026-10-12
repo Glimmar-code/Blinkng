@@ -1073,10 +1073,12 @@ fun MainAppContent(
 
         feedUtilitySheet?.let { utility ->
             var intentionalLongSwipe by remember(utility) { mutableStateOf(false) }
+            var gameRoundActive by remember(utility) { mutableStateOf(false) }
+            var gameExitConfirmVisible by remember(utility) { mutableStateOf(false) }
             val utilitySheetState = rememberModalBottomSheetState(
                 skipPartiallyExpanded = true,
                 confirmValueChange = { target ->
-                    target != SheetValue.Hidden || intentionalLongSwipe
+                    target != SheetValue.Hidden || (intentionalLongSwipe && !gameRoundActive)
                 }
             )
             val utilityScope = rememberCoroutineScope()
@@ -1090,6 +1092,10 @@ fun MainAppContent(
             }
 
             fun dismissUtility(afterDismiss: () -> Unit = {}) {
+                if (utility == "game" && gameRoundActive) {
+                    gameExitConfirmVisible = true
+                    return
+                }
                 utilityScope.launch {
                     // Explicit navigation and close actions are never swipe-gated.
                     intentionalLongSwipe = true
@@ -1099,8 +1105,34 @@ fun MainAppContent(
                 }
             }
 
+            if (gameExitConfirmVisible) {
+                AlertDialog(
+                    onDismissRequest = { gameExitConfirmVisible = false },
+                    title = { Text("Leave this game?") },
+                    text = { Text("Your unfinished round will be lost.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            gameRoundActive = false
+                            gameExitConfirmVisible = false
+                            dismissUtility()
+                        }) { Text("Leave game") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { gameExitConfirmVisible = false }) {
+                            Text("Keep playing")
+                        }
+                    }
+                )
+            }
+
             ModalBottomSheet(
-                onDismissRequest = { feedUtilitySheet = null },
+                onDismissRequest = {
+                    if (utility == "game" && gameRoundActive) {
+                        gameExitConfirmVisible = true
+                    } else {
+                        feedUtilitySheet = null
+                    }
+                },
                 sheetState = utilitySheetState,
                 dragHandle = {
                     Box(modifier = Modifier.fillMaxWidth().height(48.dp)) {
@@ -1188,6 +1220,7 @@ fun MainAppContent(
 
                         "game" -> GameSection(
                             userAvatar = uiState.myProfile.avatarUrl,
+                            onRoundActiveChange = { gameRoundActive = it },
                             leaderboardUsers = uiState.gameLeaderboardUsers,
                             connectHub = uiState.connectHub,
                             connectHubActions = connectHubActions,
