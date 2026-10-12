@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
@@ -1011,6 +1013,11 @@ fun MainAppContent(
             val utilityWindowHeightPx = with(LocalDensity.current) {
                 LocalConfiguration.current.screenHeightDp.dp.toPx()
             }
+            // Track the sheet's window position: local pointer coordinates alone
+            // undercount movement while Material3 animates the sheet with the finger.
+            var utilitySheetCoordinates by remember(utility) {
+                mutableStateOf<LayoutCoordinates?>(null)
+            }
 
             fun dismissUtility(afterDismiss: () -> Unit = {}) {
                 utilityScope.launch {
@@ -1030,11 +1037,14 @@ fun MainAppContent(
                 // scroll normally; a small pull can no longer dismiss the whole page.
                 modifier = Modifier
                     .testTag("feedUtilitySheet")
+                    .onGloballyPositioned { utilitySheetCoordinates = it }
                     .pointerInput(utility, utilityWindowHeightPx) {
                         awaitEachGesture {
                             intentionalLongSwipe = false
                             val down = awaitFirstDown(requireUnconsumed = false)
-                            val startY = down.position.y
+                            val startY = utilitySheetCoordinates
+                                ?.takeIf { it.isAttached }
+                                ?.localToWindow(down.position)?.y ?: down.position.y
                             var peakDownwardTravelPx = 0f
                             var wasReleased = false
                             while (true) {
@@ -1042,7 +1052,10 @@ fun MainAppContent(
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                 peakDownwardTravelPx = maxOf(
                                     peakDownwardTravelPx,
-                                    (change.position.y - startY).coerceAtLeast(0f)
+                                    ((utilitySheetCoordinates
+                                        ?.takeIf { it.isAttached }
+                                        ?.localToWindow(change.position)?.y
+                                        ?: change.position.y) - startY).coerceAtLeast(0f)
                                 )
                                 intentionalLongSwipe = UtilitySheetDismissPolicy.allowsDownwardDismiss(
                                     peakDownwardTravelPx,
