@@ -700,9 +700,24 @@ private fun PremiumHomeFeed(
     var reelRefreshWasRunning by remember(laneResumeKey) { mutableStateOf(isRefreshing) }
     var postPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMorePosts) }
     var reelPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMoreReels) }
+    // Realtime rows are merged into the existing list to keep scroll stable.
+    // Track new IDs *before* that merge so the New Posts affordance still works.
+    var pendingNewPostIds by remember(laneResumeKey) { mutableStateOf<Set<String>>(emptySet()) }
 
     LaunchedEffect(posts, isRefreshing, isLoadingMorePosts, laneResumeKey, refreshRevision) {
         val explicitRefreshCompleted = refreshRevision != seenRefreshRevision || (postRefreshWasRunning && !isRefreshing)
+
+        if (explicitRefreshCompleted) {
+            pendingNewPostIds = emptySet()
+        } else if (!isRefreshing && !isLoadingMorePosts && !postPaginationWasRunning) {
+            val knownIds = stableRankedPosts.asSequence().map { it.id }.toHashSet()
+            val frontIds = posts.asSequence()
+                .filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
+                .map { it.id }
+                .toList()
+            val arrivals = newlyPrependedFeedIds(knownIds, frontIds)
+            if (arrivals.isNotEmpty()) pendingNewPostIds = pendingNewPostIds + arrivals
+        }
 
         stableRankedPosts = if (explicitRefreshCompleted) {
             posts.distinctBy { it.id }
@@ -812,29 +827,15 @@ private fun PremiumHomeFeed(
     val currentUserKey = remember(currentUsername) {
         currentUsername.trim().removePrefix("@").lowercase()
     }
-    val pendingNewPostCount = remember(
-        posts,
-        stableRankedPosts,
-        filter,
-        laneIndex,
-        followedAuthorKeys,
-        isLoadingMorePosts
-    ) {
-        if (stableRankedPosts.isEmpty() || isLoadingMorePosts) {
-            0
-        } else {
-            val stableIds = stableRankedPosts.asSequence().map { it.id }.toHashSet()
-            posts.asSequence()
-                .filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
-                .filter { post ->
-                    when (filter) {
-                        PremiumFeedFilter.ALL -> true
-                        PremiumFeedFilter.PHOTOS ->
-                            post.images.any { it.isNotBlank() && !it.equals("null", true) }
-                        PremiumFeedFilter.POLLS -> post.poll != null
-                    }
+    val pendingNewPostCount = remember(pendingNewPostIds, posts, filter) {
+        posts.count { post ->
+            post.id in pendingNewPostIds &&
+                !post.isReel && post.videoUrl.isNullOrBlank() &&
+                when (filter) {
+                    PremiumFeedFilter.ALL -> true
+                    PremiumFeedFilter.PHOTOS -> post.images.any { it.isNotBlank() && !it.equals("null", true) }
+                    PremiumFeedFilter.POLLS -> post.poll != null
                 }
-                .count { it.id !in stableIds }
         }
     }
     var activeInlineReelKey by remember(laneResumeKey) { mutableStateOf<String?>(null) }
@@ -1576,6 +1577,7 @@ private fun PremiumHomeFeed(
                                     uiScope.launch {
                                         // Reveal only the ranking already supplied by the existing
                                         // feed pipeline, and only after explicit user intent.
+                                        pendingNewPostIds = emptySet()
                                         stableRankedPosts = posts
                                         stableRankedReels = reels
                                         if (listState.firstVisibleItemIndex <= 10) {
