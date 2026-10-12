@@ -863,9 +863,19 @@ private fun PremiumHomeFeed(
 
     val nearEnd by remember(homeRows) {
         derivedStateOf {
-            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
             homeRows.isNotEmpty() && last >= homeRows.lastIndex - 3
         }
+    }
+    // The same last visible item can survive an unsuccessful pagination request.
+    // Do not hammer Supabase with duplicates every time isLoadingMore becomes false.
+    // A successful page advances the cursor; refresh or restored connectivity
+    // explicitly opens a new attempt.
+    var lastRequestedPostCursor by remember(laneResumeKey) { mutableStateOf<String?>(null) }
+    var lastRequestedReelCursor by remember(laneResumeKey) { mutableStateOf<String?>(null) }
+    LaunchedEffect(refreshRevision, isOnline) {
+        lastRequestedPostCursor = null
+        lastRequestedReelCursor = null
     }
 
     val scrollConnection = remember(
@@ -1116,18 +1126,29 @@ private fun PremiumHomeFeed(
         }
     }
 
+    // Requests are deduplicated by the last real organic item, not by the
+    // sponsored/boosted slot count (those can change independently).
+    val postPageCursor = remember(stableRankedPosts) {
+        feedPaginationCursor(stableRankedPosts.map { it.id })
+    }
+    val reelPageCursor = remember(stableRankedReels) {
+        feedPaginationCursor(stableRankedReels.map { it.id })
+    }
     LaunchedEffect(
-        nearEnd,
-        hasMorePosts,
-        hasMoreReels,
-        isLoadingMorePosts,
-        isLoadingMoreReels,
-        laneIndex
+        nearEnd, hasMorePosts, hasMoreReels, isLoadingMorePosts,
+        isLoadingMoreReels, laneIndex, isOnline, postPageCursor, reelPageCursor
     ) {
-        // Pagination remains the normal ranked server pagination. We only request the next
-        // reel page alongside a deep For You scroll so the teaser pool can grow naturally.
-        if (nearEnd && hasMorePosts && !isLoadingMorePosts) onLoadMorePosts()
-        if (nearEnd && laneIndex == 0 && hasMoreReels && !isLoadingMoreReels) onLoadMoreReels()
+        if (!nearEnd || !isOnline) return@LaunchedEffect
+        if (hasMorePosts && !isLoadingMorePosts &&
+            shouldRequestFeedPage(postPageCursor, lastRequestedPostCursor)) {
+            lastRequestedPostCursor = postPageCursor
+            onLoadMorePosts()
+        }
+        if (laneIndex == 0 && hasMoreReels && !isLoadingMoreReels &&
+            shouldRequestFeedPage(reelPageCursor, lastRequestedReelCursor)) {
+            lastRequestedReelCursor = reelPageCursor
+            onLoadMoreReels()
+        }
     }
 
     LaunchedEffect(listState, homeRows) {
