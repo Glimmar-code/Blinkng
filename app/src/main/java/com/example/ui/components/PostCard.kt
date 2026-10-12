@@ -2,7 +2,6 @@ package com.example.ui.components
 
 import com.example.R
 import androidx.compose.ui.res.painterResource
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -194,8 +193,8 @@ fun PostCard(
     }
     var showImageFullscreen by remember(post.id) { mutableStateOf(false) }
     var imagePage by remember(post.id) { mutableIntStateOf(0) }
-    var expandedText by remember(post.id) { mutableStateOf(false) }
-    var textCanExpand by remember(post.id) { mutableStateOf(false) }
+    var expandedText by remember(post.id, post.text) { mutableStateOf(false) }
+    var textCanExpand by remember(post.id, post.text) { mutableStateOf(false) }
     val likeScale = remember(post.id) { Animatable(1f) }
     val scope = rememberCoroutineScope()
     val likedTint by animateColorAsState(
@@ -497,8 +496,8 @@ fun PostCard(
                                 maxLines = if (expandedText) Int.MAX_VALUE else 14,
                                 overflow = TextOverflow.Ellipsis,
                                 onTextLayout = { result ->
-                                    if (!expandedText && result.hasVisualOverflow) {
-                                        textCanExpand = true
+                                    if (!expandedText) {
+                                        textCanExpand = result.hasVisualOverflow
                                     }
                                 }
                             )
@@ -514,8 +513,8 @@ fun PostCard(
                             maxLines = if (expandedText) Int.MAX_VALUE else 7,
                             overflow = TextOverflow.Ellipsis,
                             onTextLayout = { result ->
-                                if (!expandedText && result.hasVisualOverflow) {
-                                    textCanExpand = true
+                                if (!expandedText) {
+                                    textCanExpand = result.hasVisualOverflow
                                 }
                             }
                         )
@@ -652,7 +651,7 @@ fun PostCard(
                         if (!isAuthor) {
                             PremiumPostAction(
                                 icon = Icons.Default.Repeat,
-                                value = if (showCounts && post.sharesCount > 0) formatNumber(post.sharesCount) else null,
+                                value = if (showCounts && post.repostsCount > 0) formatNumber(post.repostsCount) else null,
                                 tint = repostTint,
                                 description = if (post.isRepostedByMe) "Undo repost" else "Repost",
                                 onClick = onRepost
@@ -787,6 +786,9 @@ private fun PremiumPollCard(
 ) {
     val outline = MaterialTheme.colorScheme.outlineVariant
     val selectedColor = MaterialTheme.colorScheme.primary
+    // Debounce taps until the server has had time to accept the vote; a
+    // failed request can still be retried after the cooldown.
+    val lastVoteAtMs = remember(poll.question) { longArrayOf(0L) }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -818,7 +820,13 @@ private fun PremiumPollCard(
                     .fillMaxWidth()
                     .padding(vertical = 3.dp)
                     .heightIn(min = 46.dp)
-                    .clickable(enabled = !poll.hasVoted && !selected) { onVote(option.id) },
+                    .clickable(enabled = !poll.hasVoted && !selected) {
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    if (now - lastVoteAtMs[0] >= 1500L) {
+                        lastVoteAtMs[0] = now
+                        onVote(option.id)
+                    }
+                },
                 shape = RoundedCornerShape(10.dp),
                 color = Color.Transparent,
                 border = BorderStroke(1.dp, if (selected) selectedColor else outline)
@@ -881,20 +889,12 @@ private fun RowScope.ReadOnlyMetricAction(
                 modifier = Modifier.size(21.dp)
             )
             Spacer(Modifier.width(4.dp))
-            AnimatedContent(
-                targetState = value,
-                transitionSpec = {
-                    fadeIn(tween(160)) togetherWith fadeOut(tween(110))
-                },
-                label = "postMetricValue"
-            ) { animatedValue ->
-                Text(
-                    text = animatedValue,
-                    color = FeedTextSecondary,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1
-                )
-            }
+            Text(
+                text = value,
+                color = FeedTextSecondary,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1
+            )
         }
     }
 }
@@ -949,20 +949,12 @@ private fun RowScope.PremiumPostAction(
             )
             if (!value.isNullOrBlank()) {
                 Spacer(Modifier.width(4.dp))
-                AnimatedContent(
-                    targetState = value,
-                    transitionSpec = {
-                        fadeIn(tween(120)) togetherWith fadeOut(tween(90))
-                    },
-                    label = "postActionValue"
-                ) { animatedValue ->
-                    Text(
-                        text = animatedValue,
-                        color = tint,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1
-                    )
-                }
+                Text(
+                    text = value,
+                    color = tint,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1
+                )
             }
         }
     }
@@ -988,8 +980,11 @@ private fun NaturalAspectPostImage(
     // Use a stable frame throughout this card's composition lifetime.
     // Image completion updates the bounded cache for future card compositions,
     // never the currently visible row height (which would jump the viewport).
-    val imageAspectRatio = remember(imageUrl) {
-        PostImageAspectRatioCache.get(imageUrl) ?: 4f / 5f
+    // Fixed 4:5 previews on the X-style feed cannot jump in height when
+    // their decoded dimensions change. Fullscreen still displays the original.
+    val imageAspectRatio = remember(imageUrl, cropToFrame) {
+        if (cropToFrame) 4f / 5f
+        else PostImageAspectRatioCache.get(imageUrl) ?: 4f / 5f
     }
     var isLoading by remember(imageUrl) { mutableStateOf(true) }
     var loadFailed by remember(imageUrl) { mutableStateOf(false) }
