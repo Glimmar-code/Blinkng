@@ -1395,11 +1395,11 @@ fun ConnectScreen(state: DesktopAppState) {
                             }
 
                             Text(
-                                "Confirmed online now: $realOnlineCount",
+                                if (liveActivityAvailable) "Confirmed online now: $realOnlineCount" else "Live presence is temporarily unavailable",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            if (myCampus.isNotBlank()) {
+                            if (liveActivityAvailable && myCampus.isNotBlank()) {
                                 Text(
                                     "$myCampus activity: $campusLabel • $realCampusOnline confirmed online",
                                     fontSize = 11.sp,
@@ -1407,7 +1407,7 @@ fun ConnectScreen(state: DesktopAppState) {
                                 )
                             }
 
-                            if (onlinePreview.isNotEmpty()) {
+                            if (liveActivityAvailable && onlinePreview.isNotEmpty()) {
                                 HorizontalDivider()
                                 Text(
                                     "Actually online",
