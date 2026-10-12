@@ -1079,6 +1079,7 @@ fun ConnectScreen(state: DesktopAppState) {
     var requestTarget by remember { mutableStateOf<DesktopConnectListing?>(null) }
     var requestMessage by remember { mutableStateOf("") }
     var connectError by remember { mutableStateOf<String?>(null) }
+    var connectLoadError by remember { mutableStateOf<String?>(null) }
     var selectedDirectorySlug by remember { mutableStateOf("all") }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
@@ -1147,6 +1148,12 @@ fun ConnectScreen(state: DesktopAppState) {
         inbox = inboxResult.getOrDefault(inbox)
         pulsePolicy = policyResult.getOrDefault(pulsePolicy).normalized()
         liveActivityAvailable = studentsResult.isSuccess
+        val essential = listOf(listingsResult, studentsResult, inboxResult)
+        connectLoadError = when {
+            essential.all { it.isFailure } -> "Connect could not reach the server. Showing saved results, if available."
+            essential.any { it.isFailure } -> "Some Connect sections could not refresh. Previously loaded results are preserved."
+            else -> null
+        }
         loading = false
     }
 
@@ -1309,6 +1316,30 @@ fun ConnectScreen(state: DesktopAppState) {
                     ScreenHeader("Connect", "People, study, housing, skills and challenges")
                     if (selectedPane == 0) {
                         Button(onClick = { showCreate = true }) { Text("Create") }
+                    }
+                }
+            }
+
+            if (connectLoadError != null) {
+                item(key = "connect_network_warning") {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.errorContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                connectLoadError.orEmpty(),
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontSize = 12.sp
+                            )
+                            OutlinedButton(onClick = { scope.launch { reload() } }) { Text("Retry") }
+                        }
                     }
                 }
             }
@@ -1588,7 +1619,7 @@ fun ConnectScreen(state: DesktopAppState) {
                 }
             } else if (selectedPane == 1) {
                 item {
-                    Text("Active now · $realOnlineCount", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text("${if (liveActivityAvailable) "Active now" else "Last known online"} · $realOnlineCount", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     OutlinedTextField(
                         value = studentQuery,
                         onValueChange = { studentQuery = it },
@@ -1684,6 +1715,26 @@ fun ConnectScreen(state: DesktopAppState) {
                                         color = if (profile.isOnline) Color(0xFF22C55E)
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
+                                    if (studentSort == "recommended") {
+                                        val reasons = ConnectDiscoveryPolicy.reasons(
+                                            ConnectDiscoverySignals(
+                                                id = profile.id,
+                                                displayName = profile.fullName,
+                                                university = profile.university.orEmpty(),
+                                                department = profile.department.orEmpty(),
+                                                online = profile.isOnline
+                                            ),
+                                            myCampus,
+                                            myDepartment
+                                        )
+                                        if (reasons.isNotEmpty()) {
+                                            Text(
+                                                "Why suggested: " + reasons.take(2).joinToString(" • "),
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
                                 }
                                 OutlinedButton(onClick = { selectedStudentProfile = profile }) {
                                     Text("View")
