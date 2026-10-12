@@ -1,3 +1,12 @@
+## 2026-10-12 — AdMob reliability, safe retries, verified coin rewards (Testlab)
+
+PARITY-EXCEPTION: android-google-mobile-ads-ump-rewarded-native-20261012
+
+- **Shared/backend:** Server-authoritative Blink Coin rewards remain a single Supabase RPC for Android and Windows. The staged SQL migration requires a signed, unique, service-role-recorded AdMob SSV callback before paying newly completed Android rewarded ads; already-paid historical claims stay idempotent. **Do not deploy the migration until Google's actual callback delivery is confirmed against Supabase staging.** The shared 10/60/130/210 coin milestones and 15/day limit are unchanged.
+- **Android-only adapter:** Google Mobile Ads SDK, UMP consent form, native Feed/Reels slots and Activity-backed rewarded full-screen ads do not run on Windows. Fix a stuck ad-loading spinner by timing out the SDK call; discard stale/late callbacks; retry consent on explicit user request; reload sponsored slots on explicit refresh; report non-personal ad error codes. Android persists pending verified-claim IDs per signed-in user and reconciles them on resume, never granting coins offline or before server credit.
+- **Windows equivalent:** No Android SDK calls or ads are transplanted into the Windows client. Desktop must continue to use the same backend wallet and server-enforced coin balance; it must not create or spoof AdMob SSV claims. Paid economy logic and profile balances stay consistent across platforms.
+- **Verification gate:** Android release/runtime smoke, Kotlin unit tests, SSV signature tests, production AdMob account activation/serving check, real signed SSV delivery in Supabase staging, staged migration integration, and physical-device ad tests. Until the external account and staging gates pass, this Testlab change cannot be claimed as a complete production fix.
+
 ## 2026-10-12 — Feed audit follow-up: pagination, refresh, native ads, accessibility
 
 PARITY-EXCEPTION: android-compose-feed-pagination-native-ad-touch-20261012
