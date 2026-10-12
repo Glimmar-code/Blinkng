@@ -1035,14 +1035,33 @@ fun MainAppContent(
                             intentionalLongSwipe = false
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val startY = down.position.y
+                            var peakDownwardTravelPx = 0f
+                            var wasReleased = false
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Final)
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                peakDownwardTravelPx = maxOf(
+                                    peakDownwardTravelPx,
+                                    (change.position.y - startY).coerceAtLeast(0f)
+                                )
                                 intentionalLongSwipe = UtilitySheetDismissPolicy.allowsDownwardDismiss(
-                                    change.position.y - startY,
+                                    peakDownwardTravelPx,
                                     utilityWindowHeightPx
                                 )
-                                if (!change.pressed) break
+                                if (!change.pressed) {
+                                    wasReleased = true
+                                    break
+                                }
+                            }
+                            // Inner scrollables may absorb long pulls so Material3 cannot
+                            // complete the sheet gesture; explicitly close after release.
+                            if (UtilitySheetDismissPolicy.allowsCompletedDownwardDismiss(
+                                    peakDownwardTravelPx,
+                                    utilityWindowHeightPx,
+                                    wasReleased
+                                )
+                            ) {
+                                dismissUtility()
                             }
                         }
                     }
