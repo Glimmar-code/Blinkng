@@ -1267,7 +1267,7 @@ private suspend fun restoreSupabaseSession() {
             ?.takeIf { it.isNotBlank() } ?: return
         val timestamp = rewardedAdPrefs.getLong("started:$userId", 0L)
         val age = System.currentTimeMillis() - timestamp
-        if (timestamp == 0L || age !in 0..(30 * 60_000L)) {
+        if (timestamp == 0L || age !in 0..(7 * 24 * 60 * 60_000L)) {
             clearPendingRewardedAdClaim(userId)
             return
         }
