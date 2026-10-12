@@ -336,7 +336,9 @@ fun PremiumFeedScreen(
     hasUnreadNotifications: Boolean = false,
     unreadNotificationCount: Int = 0,
     routedReelId: String? = null,
-    isInteractionOverlayOpen: Boolean = false
+    isInteractionOverlayOpen: Boolean = false,
+    hiddenFeedPostIds: Set<String> = emptySet(),
+    mutedFeedAuthors: Set<String> = emptySet()
 ) {
     val context = LocalContext.current
     val resumePrefs = remember(context) {
@@ -413,6 +415,8 @@ fun PremiumFeedScreen(
             resumeUserKey = resumeUserKey,
             laneIndex = feedLane,
             followedAuthorKeys = followedAuthorKeys,
+            hiddenFeedPostIds = hiddenFeedPostIds,
+            mutedFeedAuthors = mutedFeedAuthors,
             isLoading = isLoading,
             isRefreshing = if (feedLane == 1) isRefreshingFollowing else isRefreshing,
             refreshRevision = if (feedLane == 1) followingRefreshRevision else postsRefreshRevision,
@@ -577,6 +581,8 @@ private fun PremiumHomeFeed(
     resumeUserKey: String,
     laneIndex: Int,
     followedAuthorKeys: Set<String>,
+    hiddenFeedPostIds: Set<String>,
+    mutedFeedAuthors: Set<String>,
     isLoading: Boolean,
     isRefreshing: Boolean,
     refreshRevision: Int,
@@ -763,8 +769,20 @@ private fun PremiumHomeFeed(
         reelPaginationWasRunning = isLoadingMoreReels
     }
 
-    val filteredPosts = remember(stableRankedPosts, filter, laneIndex, followedAuthorKeys) {
-        val rankedNormalPosts = stableRankedPosts.filterNot { it.isReel || !it.videoUrl.isNullOrBlank() }
+    val normalizedMutedFeedAuthors = remember(mutedFeedAuthors) {
+        mutedFeedAuthors.map { it.trim().removePrefix("@").lowercase() }.toHashSet()
+    }
+    val filteredPosts = remember(stableRankedPosts, filter, laneIndex, followedAuthorKeys, hiddenFeedPostIds, normalizedMutedFeedAuthors) {
+        val rankedNormalPosts = stableRankedPosts.filterNot { post ->
+            post.isReel || !post.videoUrl.isNullOrBlank() ||
+                shouldHideFrozenFeedPost(
+                    postId = post.id,
+                    author = post.author,
+                    authorUsername = post.authorUsername,
+                    hiddenPostIds = hiddenFeedPostIds,
+                    mutedAuthorKeys = normalizedMutedFeedAuthors
+                )
+        }
         // The parent supplies an independent server-backed list for Following.
         // Do not filter the For You page locally; that was the old behavior that made
         // Following look like the same feed with a few rows removed.
@@ -778,9 +796,16 @@ private fun PremiumHomeFeed(
         }
     }
 
-    val rankedInlineReels = remember(stableRankedReels, laneIndex, followedAuthorKeys) {
+    val rankedInlineReels = remember(stableRankedReels, laneIndex, followedAuthorKeys, hiddenFeedPostIds, normalizedMutedFeedAuthors) {
         stableRankedReels.filter { reel ->
-            val hasPlayableVideo = reel.isReel && !reel.videoUrl.isNullOrBlank()
+            val hasPlayableVideo = reel.isReel && !reel.videoUrl.isNullOrBlank() &&
+                !shouldHideFrozenFeedPost(
+                    postId = reel.id,
+                    author = reel.author,
+                    authorUsername = reel.authorUsername,
+                    hiddenPostIds = hiddenFeedPostIds,
+                    mutedAuthorKeys = normalizedMutedFeedAuthors
+                )
             val authorKey = reel.authorUsername
                 .ifBlank { reel.author }
                 .trim()
@@ -789,8 +814,10 @@ private fun PremiumHomeFeed(
             hasPlayableVideo && (laneIndex == 0 || authorKey in followedAuthorKeys)
         }
     }
-    val reelMixSeed = remember(laneResumeKey, filter, filteredPosts.firstOrNull()?.id) {
-        "$laneResumeKey:${filter.name}:${filteredPosts.firstOrNull()?.id.orEmpty()}".hashCode()
+    // Keep Reel / Sponsored / Drop insertion gaps consistent when realtime
+    // receives a newly ranked first post or after an explicit hide/delete.
+    val reelMixSeed = remember(laneResumeKey, filter) {
+        "$laneResumeKey:${filter.name}".hashCode()
     }
     val boostGrowthService = remember { BlinkEconomyService() }
     var promotedFeed by remember(laneResumeKey) {
