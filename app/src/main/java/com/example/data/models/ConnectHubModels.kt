@@ -163,3 +163,19 @@ data class ConnectHubSnapshot(
     /** Sections which failed to load (not legitimately empty). */
     val failedSections: Set<String> = emptySet()
 )
+
+
+/**
+ * Preserve public Connect listings after a partial network failure. A failed
+ * request is not equivalent to a genuinely empty directory.
+ *
+ * Do not retain private/account-specific inbox, matching, challenge or game
+ * data: such data could belong to another account after a fast account switch.
+ */
+fun ConnectHubSnapshot.retainFailedPublicSections(previous: ConnectHubSnapshot): ConnectHubSnapshot = copy(
+    roommates = if ("roommates" in failedSections) previous.roommates else roommates,
+    mentors = if ("mentors" in failedSections) previous.mentors else mentors,
+    readingMates = if ("reading" in failedSections) previous.readingMates else readingMates,
+    housingAgents = if ("agents" in failedSections) previous.housingAgents else housingAgents,
+    housingRequests = if ("housing" in failedSections) previous.housingRequests else housingRequests
+)
