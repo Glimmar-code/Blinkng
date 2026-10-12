@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -609,7 +610,7 @@ private fun ConnectHeader(
             .padding(start = 8.dp, end = 8.dp, top = 38.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onMenuClick, modifier = Modifier.size(44.dp)) {
+        IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.MoreHoriz, contentDescription = "Menu")
         }
 
@@ -623,13 +624,13 @@ private fun ConnectHeader(
 
         Spacer(Modifier.weight(1f))
 
-        IconButton(onClick = onNotificationClick, modifier = Modifier.size(44.dp)) {
+        IconButton(onClick = onNotificationClick, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.NotificationsNone, contentDescription = "Notifications")
         }
 
         Box(
             modifier = Modifier
-                .size(38.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .clickable(onClick = onProfileClick),
             contentAlignment = Alignment.Center
@@ -704,7 +705,7 @@ private fun ConnectTopTab(
         label = "connectTopTabText"
     )
     Surface(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.heightIn(min = 48.dp).clickable(onClick = onClick),
         shape = RoundedCornerShape(100.dp),
         color = background
     ) {
