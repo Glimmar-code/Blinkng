@@ -1099,7 +1099,15 @@ private fun PremiumHomeFeed(
                     }
                 val visibleKey = anchorItem?.key as? String
                 val savedIndex = anchorItem?.index ?: index
-                val savedOffset = anchorItem?.offset ?: offset
+                // LazyListItemInfo.offset is often negative for a partially
+                // scrolled card; scrollToItem needs a positive scrolled-into
+                // offset. Never lose the reader's place within a long post.
+                val savedOffset = anchorItem?.let { item ->
+                    feedRestoreItemScrollOffset(
+                        itemOffsetPx = item.offset,
+                        viewportStartPx = listState.layoutInfo.viewportStartOffset
+                    )
+                } ?: offset
                 val headerHeight = headerHeightPx.value
                 val collapseFraction =
                     if (headerHeight > 0f) (-headerOffsetPx.value / headerHeight).coerceIn(0f, 1f)
