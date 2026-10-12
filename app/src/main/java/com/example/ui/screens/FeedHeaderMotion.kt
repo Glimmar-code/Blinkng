@@ -113,6 +113,18 @@ internal fun feedPrefetchLookahead(
     }
 }
 
+/**
+ * LazyListItemInfo.offset is negative when a partially visible item extends
+ * above the viewport. LazyListState.scrollToItem(index, scrollOffset), however,
+ * expects a *positive* distance scrolled into that item. Saving the raw
+ * negative offset and clamping it on restore lost the position within a post.
+ */
+internal fun feedRestoreItemScrollOffset(
+    itemOffsetPx: Int,
+    viewportStartPx: Int,
+): Int = (viewportStartPx.toLong() - itemOffsetPx.toLong())
+    .coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+
 internal fun resolveFeedRestoreIndex(
     savedKey: String?,
     rowKeys: List<String>,
