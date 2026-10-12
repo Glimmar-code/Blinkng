@@ -19,6 +19,30 @@ internal fun clampFeedHeaderOffset(
     return (currentOffsetPx + deltaYPx).coerceIn(-headerHeightPx, 0f)
 }
 
+/**
+ * The collapsing header *uses* vertical distance. Return only the pixels it
+ * actually moved, so nested LazyColumn scrolling cannot move a second time
+ * by those same pixels (a visible jump during fast drags).
+ *
+ * Retain unused distance for the list once the header reaches either edge,
+ * including distance ignored by the direction-change dead zone.
+ */
+internal fun feedHeaderConsumedScrollDelta(
+    oldOffsetPx: Float,
+    newOffsetPx: Float,
+    availableDeltaYPx: Float
+): Float {
+    if (!oldOffsetPx.isFinite() || !newOffsetPx.isFinite() ||
+        !availableDeltaYPx.isFinite()
+    ) return 0f
+    val moved = newOffsetPx - oldOffsetPx
+    return when {
+        availableDeltaYPx > 0f -> moved.coerceIn(0f, availableDeltaYPx)
+        availableDeltaYPx < 0f -> moved.coerceIn(availableDeltaYPx, 0f)
+        else -> 0f
+    }
+}
+
 internal fun feedHeaderSettleTarget(
     currentOffsetPx: Float,
     headerHeightPx: Float,
