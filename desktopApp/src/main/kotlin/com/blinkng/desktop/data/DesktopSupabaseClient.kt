@@ -1084,11 +1084,27 @@ class DesktopSupabaseClient(
         Unit
     }
 
-    suspend fun fetchMessages(conversationId: String): List<DesktopMessage> = withContext(Dispatchers.IO) {
-        val rows = getArray(
-            "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at&order=created_at.asc&limit=300",
+    suspend fun fetchMessages(
+        conversationId: String,
+        beforeCreatedAt: String? = null,
+        beforeId: String? = null,
+        limit: Int = 100
+    ): List<DesktopMessage> = withContext(Dispatchers.IO) {
+        // The same participant-authorized cursor RPC used by Android. Fetch the
+        // LATEST page, not the first 300 oldest rows of an unbounded conversation.
+        val result = postObject(
+            "/rest/v1/rpc/get_conversation_messages_page",
+            JSONObject()
+                .put("p_conversation_id", conversationId)
+                .put("p_limit", limit.coerceIn(1, 100))
+                .put("p_before", beforeCreatedAt ?: JSONObject.NULL)
+                .put("p_before_id", beforeId ?: JSONObject.NULL)
         )
-        val messages = (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseMessage) }
+        val rows = result as? JSONArray
+            ?: throw IllegalStateException("Invalid message page returned by BLINK server.")
+        val messages = (rows.length() - 1 downTo 0).mapNotNull { i ->
+            rows.optJSONObject(i)?.takeUnless { it.optBoolean("deleted_for_everyone", false) }?.let(::parseMessage)
+        }
         if (messages.isEmpty()) return@withContext messages
         // Same server-authoritative action-state RPC used by Android. Only participants
         // can access the message state; never fabricate reactions or show hidden rows.
