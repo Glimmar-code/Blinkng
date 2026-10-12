@@ -843,6 +843,8 @@ fun MainAppContent(
                     PremiumFeedScreen(
                         posts = uiState.posts,
                         followingPosts = uiState.followingPosts,
+                        hiddenFeedPostIds = uiState.hiddenFeedPostIds,
+                        mutedFeedAuthors = uiState.mutedUsers,
                         reels = uiState.reels,
                         stories = uiState.stories,
                         profiles = uiState.profiles,
