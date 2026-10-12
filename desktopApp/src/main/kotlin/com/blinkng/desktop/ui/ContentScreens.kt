@@ -2705,9 +2705,18 @@ private fun PostCard(
                 PresenceAvatar(post.authorName, post.authorOnline, showStatus = false)
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    VerifiedName(post.authorName, post.authorVerified)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) {
+                            VerifiedName(post.authorName, post.authorVerified)
+                        }
+                        Text(
+                            formatTime(post.createdAt),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Text(
-                        "@${post.authorUsername} • ${formatTime(post.createdAt)}",
+                        "@${post.authorUsername}",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -2815,12 +2824,24 @@ private fun PostCard(
             }
 
             if (xFeedStyle) {
-                // Align media and action metrics with the post text, as on X's timeline.
+                // Identical metric priority to Android: views, likes, comments,
+                // reposts, saved, then sharing.
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 58.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Text("${post.viewCount} views", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onLike) {
+                            Icon(
+                                if (post.isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                contentDescription = if (post.isLiked) "Unlike" else "Like",
+                                tint = if (post.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text("${post.likeCount}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onComments) {
                             Icon(Icons.Rounded.ChatBubbleOutline, contentDescription = "Comments")
@@ -2837,26 +2858,13 @@ private fun PostCard(
                         }
                         Text("${post.repostCount}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onLike) {
-                            Icon(
-                                if (post.isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                                contentDescription = if (post.isLiked) "Unlike" else "Like",
-                                tint = if (post.isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text("${post.likeCount}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Text("${post.viewCount} views", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     IconButton(onClick = onBookmark) {
                         Icon(
                             if (post.isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
                             contentDescription = if (post.isBookmarked) "Remove saved post" else "Save post"
                         )
                     }
-                    TextButton(onClick = onCopyLink) {
-                        Text("Share", fontSize = 11.sp)
-                    }
+                    TextButton(onClick = onCopyLink) { Text("Share", fontSize = 11.sp) }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
             } else {
