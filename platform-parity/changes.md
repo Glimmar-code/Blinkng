@@ -1,3 +1,7 @@
+PARITY-EXCEPTION: android-home-feed-system-insets-and-compose-media-20261012
+Reason: Android uses a status bar/camera cutout and gesture or three-button navigation inset; native Windows windows do not. The mobile-only Coil feed-thumbnail sizing, Compose scroll-transition, text "See more", poll tap throttling, and bottom FloatingBottomBar behavior cannot be transplanted directly onto desktop Compose without destabilizing its separate controls.
+Windows equivalent: desktop keeps a native titlebar/sidebar, platform-appropriate fixed-thumbnail bounds, native scroll layout, desktop poll submission and native post actions. It already shows the independent repost metric (not share count). The incoming-post pill on Android is an ephemeral realtime gesture; desktop users refresh their independently paged feed. This exception does not exempt any server/API/permission changes, of which there are none.
+
 ## 2026-10-12 — Feed audit hardening and production-safety follow-ups (Testlab)
 
 - **Android status bar/nav insets:** keep the Android top status-bar safe area outside scroll-linked Home chrome; keep BottomBar and Create above gesture/three-button navigation via system insets. This is Android-only platform geometry; Windows uses native window chrome and sidebar.
