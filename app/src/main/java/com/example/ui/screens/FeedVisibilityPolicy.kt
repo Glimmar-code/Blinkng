@@ -13,8 +13,10 @@ internal fun shouldHideFrozenFeedPost(
     mutedAuthorKeys: Set<String>
 ): Boolean {
     if (postId in hiddenPostIds) return true
-    val names = sequenceOf(authorUsername, author)
-        .map { it.trim().removePrefix("@").lowercase() }
-        .filter(String::isNotBlank)
-    return names.any { it in mutedAuthorKeys }
+    // A display name is not a stable account identity. Prefer @username
+    // when provided; only fall back to legacy author when the handle is absent.
+    // Otherwise a different account sharing a display name could be hidden.
+    val identity = authorUsername.ifBlank { author }
+        .trim().removePrefix("@").lowercase()
+    return identity.isNotBlank() && identity in mutedAuthorKeys
 }
