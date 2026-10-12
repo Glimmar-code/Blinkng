@@ -17,12 +17,26 @@ class BlinkAdConsentManager(
 ) {
     private val consentInformation: ConsentInformation =
         UserMessagingPlatform.getConsentInformation(activity)
+    private var consentRefreshInProgress = false
+    private val pendingConsentCallbacks = mutableListOf<(FormError?) -> Unit>()
+
+    private fun finishConsentRefresh(error: FormError?) {
+        consentRefreshInProgress = false
+        val listeners = pendingConsentCallbacks.toList()
+        pendingConsentCallbacks.clear()
+        listeners.forEach { it(error) }
+    }
 
     val isPrivacyOptionsRequired: Boolean
         get() = consentInformation.privacyOptionsRequirementStatus ==
             ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
 
     fun gatherConsent(onComplete: (FormError?) -> Unit = {}) {
+        pendingConsentCallbacks += onComplete
+        // On cold start a user can tap Watch Ad before the initial UMP update finishes.
+        // Coalesce both callers; overlapping UMP forms can fail or leave the UI blocked.
+        if (consentRefreshInProgress) return
+        consentRefreshInProgress = true
         val params = ConsentRequestParameters.Builder().build()
 
         consentInformation.requestConsentInfoUpdate(
@@ -35,7 +49,7 @@ class BlinkAdConsentManager(
                     if (consentInformation.canRequestAds()) {
                         BlinkAdsRuntime.initializeMobileAds(activity.applicationContext)
                     }
-                    onComplete(formError)
+                    finishConsentRefresh(formError)
                 }
             },
             { requestError ->
@@ -44,7 +58,7 @@ class BlinkAdConsentManager(
                 if (consentInformation.canRequestAds()) {
                     BlinkAdsRuntime.initializeMobileAds(activity.applicationContext)
                 }
-                onComplete(requestError)
+                finishConsentRefresh(requestError)
             }
         )
 
