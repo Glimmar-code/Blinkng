@@ -383,7 +383,7 @@ fun ConnectSection(
                                 if (onlinePreview.isNotEmpty()) {
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                     Text(
-                                        "Actually online",
+                                        if (isLiveDataAvailable) "Actually online" else "Previously online",
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -563,6 +563,7 @@ fun ConnectSection(
                                         LiveProfileCard(
                                             profile = profile,
                                             isFollowing = isFollowing,
+                                            presenceFresh = isLiveDataAvailable,
                                             recommendation = if (sort == LivePeopleSort.RECOMMENDED) {
                                                 ConnectDiscoveryPolicy.reasons(
                                                     ConnectDiscoverySignals(
@@ -735,6 +736,7 @@ private fun LiveProfileCard(
     profile: UserProfile,
     isFollowing: Boolean,
     recommendation: String?,
+    presenceFresh: Boolean,
     onFollow: () -> Unit,
     onProfileClick: () -> Unit,
     onMessage: () -> Unit
@@ -781,7 +783,7 @@ private fun LiveProfileCard(
                         )
                     }
 
-                    if (profile.onlineNow) {
+                    if (presenceFresh && profile.onlineNow) {
                         Box(
                             Modifier
                                 .size(13.dp)
@@ -833,9 +835,9 @@ private fun LiveProfileCard(
                     }
 
                     Text(
-                        text = presenceLabel(profile),
+                        text = if (presenceFresh) presenceLabel(profile) else "Presence not current",
                         fontSize = 10.sp,
-                        color = if (profile.onlineNow) BlinkOnlineGreen
+                        color = if (presenceFresh && profile.onlineNow) BlinkOnlineGreen
                         else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
