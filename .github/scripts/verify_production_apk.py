@@ -14,8 +14,11 @@ ACTIVITY = PACKAGE + '/com.example.MainActivity'
 
 
 def adb(*args, check=True):
-    return subprocess.run(['adb', *args], check=check, capture_output=True,
-                          text=True, timeout=90).stdout.strip()
+    result = subprocess.run(['adb', *args], check=False, capture_output=True,
+                            text=True, timeout=90)
+    if check and result.returncode:
+        raise RuntimeError(f'adb command failed ({result.returncode}): {args}: {result.stdout} {result.stderr}')
+    return result.stdout.strip()
 
 
 def healthy(seconds=30):
@@ -25,7 +28,7 @@ def healthy(seconds=30):
             raise RuntimeError('BLINK process exited during the release smoke test')
         logs = adb('logcat', '-d', '-b', 'crash')
         if PACKAGE in logs:
-            raise RuntimeError('BLINK Java/native crash detected; see private CI diagnostics')
+            raise RuntimeError('BLINK Java/native crash detected: ' + logs)
         time.sleep(2)
 
 
@@ -70,23 +73,19 @@ def start():
 
 def set_network(online):
     api = int(adb('shell', 'getprop', 'ro.build.version.sdk'))
-    if api < 25:
-        # API 24 emulator images have no simulated Wi-Fi. Use their modem
-        # console instead of spawning the unsupported Wi-Fi service command.
-        result = adb('emu', 'gsm', 'data', 'home' if online else 'unregistered')
-        if 'OK' not in result or 'KO:' in result:
-            raise RuntimeError('Emulator modem did not accept the connectivity change')
-    else:
-        state = 'enable' if online else 'disable'
+    # Simulated Wi-Fi exists only on emulator API 25+. Mobile data control
+    # must disable data itself; changing GSM registration can leave it active.
+    state = 'enable' if online else 'disable'
+    if api >= 25:
         adb('shell', 'svc', 'wifi', state)
-        adb('shell', 'svc', 'data', state)
+    adb('shell', 'svc', 'data', state)
     for _ in range(30):
         state = adb('shell', 'dumpsys', 'connectivity')
         default = re.search(r'^\s*Active default network:\s*(\S+)', state, re.MULTILINE)
         if default and ((default.group(1) != 'none') == online):
             return
         time.sleep(2)
-    raise RuntimeError('Emulator did not reach the required online/offline state')
+    raise RuntimeError('Emulator did not reach the required online/offline state. Connectivity dump: ' + state)
 
 
 def exercise():

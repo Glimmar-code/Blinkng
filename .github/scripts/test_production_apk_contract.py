@@ -48,11 +48,11 @@ class OfflineTests(unittest.TestCase):
             device.set_network(online)
         return calls
 
-    def test_android_24_uses_modem_and_confirms_offline(self):
+    def test_android_24_controls_mobile_data_without_unsupported_wifi(self):
         calls = self.run_network(24, False, False)
-        self.assertIn(('emu', 'gsm', 'data', 'unregistered'), calls)
-        self.assertFalse(any('svc' in call for call in calls))
-        self.assertIn(('emu', 'gsm', 'data', 'home'), self.run_network(24, True, True))
+        self.assertIn(('shell', 'svc', 'data', 'disable'), calls)
+        self.assertFalse(any('wifi' in call for call in calls))
+        self.assertIn(('shell', 'svc', 'data', 'enable'), self.run_network(24, True, True))
 
     def test_android_35_controls_both_radios(self):
         calls = self.run_network(35, False, False)
@@ -65,8 +65,6 @@ class OfflineTests(unittest.TestCase):
                 self.run_network(api, False, True)
             with self.assertRaisesRegex(RuntimeError, 'required online/offline'):
                 self.run_network(api, True, False)
-        with self.assertRaisesRegex(RuntimeError, 'modem'):
-            self.run_network(24, False, False, 'KO: failure')
 
 
 if __name__ == '__main__':
