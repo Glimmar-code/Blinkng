@@ -99,6 +99,8 @@ import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import com.blinkng.shared.BlinkSmartTags
+import com.blinkng.shared.ConnectDiscoveryPolicy
+import com.blinkng.shared.ConnectDiscoverySignals
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkPulseSessionStore
@@ -1217,19 +1219,20 @@ fun ConnectScreen(state: DesktopAppState) {
                     .thenBy { it.fullName.lowercase() }
             )
             "name" -> filtered.sortedBy { it.fullName.ifBlank { it.username }.lowercase() }
-            else -> filtered.sortedWith(
-                compareByDescending<DesktopProfile> { it.isOnline }
-                    .thenByDescending { it.id in followingIds }
-                    .thenByDescending {
-                        myDepartment.isNotBlank() &&
-                            it.department.orEmpty().equals(myDepartment, ignoreCase = true)
-                    }
-                    .thenByDescending {
-                        myCampus.isNotBlank() &&
-                            it.university.orEmpty().equals(myCampus, ignoreCase = true)
-                    }
-                    .thenBy { it.fullName.lowercase() }
-            )
+            else -> ConnectDiscoveryPolicy.rank(
+                candidates = filtered,
+                campus = myCampus,
+                department = myDepartment
+            ) { profile ->
+                ConnectDiscoverySignals(
+                    id = profile.id.ifBlank { profile.username },
+                    displayName = profile.fullName.ifBlank { profile.username },
+                    university = profile.university.orEmpty(),
+                    department = profile.department.orEmpty(),
+                    online = profile.isOnline,
+                    following = profile.id in followingIds
+                )
+            }
         }
     }
 
