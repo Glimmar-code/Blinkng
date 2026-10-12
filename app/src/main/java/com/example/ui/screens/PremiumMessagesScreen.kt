@@ -62,6 +62,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -301,15 +302,15 @@ fun PremiumMessagesScreen(
             } else if (activeConversation != null) {
                 // PREMIUM_CHAT_DIRECT_RETURN_V2
                 Box(modifier = Modifier.fillMaxSize()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .blur(if (isConversationFullScreen) 5.dp else 10.dp)
-                            .graphicsLayer {
-                                alpha = if (isConversationFullScreen) .84f else .74f
-                            }
-                    ) {
-                        PremiumMessagesHome(
+                    // A full-screen chat already paints its own background. Do not keep an
+                    // offscreen, blurred inbox/list rendering behind every message scroll frame.
+                    if (!isConversationFullScreen) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer { alpha = .74f }
+                        ) {
+                            PremiumMessagesHome(
                             conversations = conversations,
                             stories = stories,
                             myAvatar = myAvatar,
@@ -323,7 +324,8 @@ fun PremiumMessagesScreen(
                             onComposeMessage = onComposeMessage,
                             isConnected = isConnected,
                             isLoading = isLoading
-                        )
+                            )
+                        }
                     }
 
                     PremiumMessagesMasterDetail(
@@ -1223,7 +1225,7 @@ private fun ConversationList(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 112.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        itemsIndexed(conversations, key = { index, conversation -> "conversation:$index:${conversation.id}" }) { _, conversation ->
+        items(conversations, key = { conversation -> "conversation:${conversation.id}" }) { conversation ->
             ConversationCard(
                 conversation = conversation,
                 palette = palette,
@@ -1455,7 +1457,7 @@ private fun PremiumChatDetail(
     )
     var pinnedOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
-    val listState = rememberLazyListState()
+    val listState = remember(conversation.id) { LazyListState() }
     val scrollScope = rememberCoroutineScope()
     var newMessagesBelow by remember(conversation.id) { mutableIntStateOf(0) }
     val isNearLatest by remember(conversation.id) {
@@ -1506,12 +1508,22 @@ private fun PremiumChatDetail(
         }
     }
 
-    val visibleMessages = conversation.messages.filter { message ->
-        val matchesSearch = searchQuery.isBlank() || message.text.contains(searchQuery, ignoreCase = true)
-        val matchesPinned = !pinnedOnly || message.isPinned
-        val matchesStarred = !starredOnly || message.isStarred
-        matchesSearch && matchesPinned && matchesStarred
+    // Avoid repeatedly filtering and linearly scanning the entire history for every row.
+    val visibleMessages = remember(conversation.messages, searchQuery, pinnedOnly, starredOnly) {
+        conversation.messages.filter { message ->
+            val matchesSearch = searchQuery.isBlank() || message.text.contains(searchQuery, ignoreCase = true)
+            val matchesPinned = !pinnedOnly || message.isPinned
+            val matchesStarred = !starredOnly || message.isStarred
+            matchesSearch && matchesPinned && matchesStarred
+        }
     }
+    val messagesById = remember(conversation.messages) {
+        conversation.messages.associateBy { it.id }
+    }
+    val visibleMessageIndexes = remember(visibleMessages) {
+        visibleMessages.withIndex().associate { (index, message) -> message.id to index }
+    }
+    val historyHeaderCount = if (isLoadingOlder) 1 else 0
 
     fun submitMessage(value: String = text) {
         val clean = value.trim()
@@ -1530,12 +1542,17 @@ private fun PremiumChatDetail(
 
     val latestVisibleMessageId = visibleMessages.lastOrNull()?.id
     var previousLatestVisibleMessageId by remember(conversation.id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(conversation.partnerUsername, latestVisibleMessageId) {
-        if (visibleMessages.isEmpty()) return@LaunchedEffect
-        val changed = previousLatestVisibleMessageId != null &&
-            previousLatestVisibleMessageId != latestVisibleMessageId
-        if (!userHasScrolled || isNearLatest || previousLatestVisibleMessageId == null) {
-            listState.animateScrollToItem(visibleMessages.lastIndex)
+    LaunchedEffect(conversation.id, latestVisibleMessageId, searchQuery, pinnedOnly, starredOnly) {
+        if (visibleMessages.isEmpty() || searchQuery.isNotBlank() || pinnedOnly || starredOnly) return@LaunchedEffect
+        val previous = previousLatestVisibleMessageId
+        val changed = previous != null && previous != latestVisibleMessageId
+        val lastIndex = visibleMessages.lastIndex + historyHeaderCount
+        if (previous == null || !userHasScrolled) {
+            // Large initial histories must jump directly; animating thousands of rows stutters.
+            listState.scrollToItem(lastIndex)
+            newMessagesBelow = 0
+        } else if (changed && isNearLatest) {
+            listState.animateScrollToItem(lastIndex)
             newMessagesBelow = 0
         } else if (changed) {
             newMessagesBelow = (newMessagesBelow + 1).coerceAtMost(99)
@@ -1697,11 +1714,21 @@ private fun PremiumChatDetail(
             }
 
             if (visibleMessages.isEmpty()) {
-                EmptyConversation(
-                    conversation = conversation,
-                    palette = palette,
-                    modifier = Modifier.weight(1f)
-                )
+                if (isLoadingMessages) {
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Text("Loading messages…", color = palette.textSecondary, fontSize = 12.sp)
+                    }
+                } else if (conversation.messages.isNotEmpty()) {
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Text("No messages match your filters", color = palette.textSecondary, fontSize = 12.sp)
+                    }
+                } else {
+                    EmptyConversation(
+                        conversation = conversation,
+                        palette = palette,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             } else {
                 LazyColumn(
                     state = listState,
@@ -1709,10 +1736,10 @@ private fun PremiumChatDetail(
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(11.dp)
                 ) {
-                    if (isLoadingOlder || (isLoadingMessages && visibleMessages.isEmpty())) {
+                    if (isLoadingOlder) {
                         item(key = "message_history_loading") {
                             Text(
-                                if (isLoadingOlder) "Loading earlier messages…" else "Loading messages…",
+                                "Loading earlier messages…",
                                 color = palette.textSecondary,
                                 fontSize = 10.sp,
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
@@ -1722,9 +1749,7 @@ private fun PremiumChatDetail(
                     }
 
                     items(visibleMessages, key = { it.id }) { message ->
-                        val replyTarget = message.replyToMessageId?.let { replyId ->
-                            conversation.messages.firstOrNull { it.id == replyId }
-                        }
+                        val replyTarget = message.replyToMessageId?.let(messagesById::get)
                         MessageBubble(
                             message = message,
                             replyTarget = replyTarget,
@@ -1737,9 +1762,9 @@ private fun PremiumChatDetail(
                             },
                             onReplyTargetClick = {
                                 val targetId = message.replyToMessageId
-                                val targetIndex = visibleMessages.indexOfFirst { it.id == targetId }
-                                if (targetIndex >= 0) {
-                                    scrollScope.launch { listState.animateScrollToItem(targetIndex) }
+                                val targetIndex = visibleMessageIndexes[targetId]
+                                if (targetIndex != null) {
+                                    scrollScope.launch { listState.animateScrollToItem(targetIndex + historyHeaderCount) }
                                 }
                             },
                             onActions = { selectedMessage = message },
@@ -1768,7 +1793,7 @@ private fun PremiumChatDetail(
                         modifier = Modifier.clickable {
                             scrollScope.launch {
                                 if (visibleMessages.isNotEmpty()) {
-                                    listState.animateScrollToItem(visibleMessages.lastIndex)
+                                    listState.animateScrollToItem(visibleMessages.lastIndex + historyHeaderCount)
                                     newMessagesBelow = 0
                                 }
                             }
