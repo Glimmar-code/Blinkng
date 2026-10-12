@@ -163,6 +163,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
 import com.example.data.models.ActivityItem
+import com.blinkng.shared.BlinkMessageDatePolicy
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
 import com.example.data.models.ChatPrivacySettings
@@ -1536,6 +1537,11 @@ private fun PremiumChatDetail(
     val visibleMessageIndexes = remember(visibleMessages) {
         visibleMessages.withIndex().associate { (index, message) -> message.id to index }
     }
+    val messageDateLabels = remember(visibleMessages) {
+        BlinkMessageDatePolicy.labels(visibleMessages.map {
+            BlinkMessageDatePolicy.Entry(it.id, it.rawTimestamp)
+        })
+    }
     val historyHeaderCount = if (isLoadingOlder) 1 else 0
 
     fun submitMessage(value: String = text) {
@@ -1775,7 +1781,27 @@ private fun PremiumChatDetail(
 
                     items(visibleMessages, key = { it.id }) { message ->
                         val replyTarget = message.replyToMessageId?.let(messagesById::get)
-                        MessageBubble(
+                        Column {
+                            messageDateLabels[message.id]?.let { label ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Surface(
+                                        color = palette.glassElevated,
+                                        shape = RoundedCornerShape(100.dp),
+                                        border = BorderStroke(1.dp, palette.border)
+                                    ) {
+                                        Text(
+                                            label,
+                                            color = palette.textSecondary,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            MessageBubble(
                             message = message,
                             replyTarget = replyTarget,
                             partnerAvatar = conversation.partnerAvatar,
@@ -1795,7 +1821,8 @@ private fun PremiumChatDetail(
                             onActions = { selectedMessage = message },
                             onRetry = { onRetry(message) },
                             allowLinkPreviews = allowLinkPreviews
-                        )
+                            )
+                        }
                     }
                 }
             }
