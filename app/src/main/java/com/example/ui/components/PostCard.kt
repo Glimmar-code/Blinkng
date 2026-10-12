@@ -985,12 +985,11 @@ private fun NaturalAspectPostImage(
     val context = LocalContext.current
     // Reuse measured ratios across recycled feed cards. While the finger is
     // moving, defer first-load ratio changes so the viewport never shifts.
-    var imageAspectRatio by remember(imageUrl) {
-        mutableFloatStateOf(PostImageAspectRatioCache.get(imageUrl) ?: 4f / 5f)
-    }
-    var pendingAspectRatio by remember(imageUrl) { mutableFloatStateOf(imageAspectRatio) }
-    LaunchedEffect(deferAspectChanges, pendingAspectRatio) {
-        if (!deferAspectChanges) imageAspectRatio = pendingAspectRatio
+    // Use a stable frame throughout this card's composition lifetime.
+    // Image completion updates the bounded cache for future card compositions,
+    // never the currently visible row height (which would jump the viewport).
+    val imageAspectRatio = remember(imageUrl) {
+        PostImageAspectRatioCache.get(imageUrl) ?: 4f / 5f
     }
     var isLoading by remember(imageUrl) { mutableStateOf(true) }
     var loadFailed by remember(imageUrl) { mutableStateOf(false) }
@@ -1029,8 +1028,6 @@ private fun NaturalAspectPostImage(
                 if (width > 0 && height > 0) {
                     val ratio = (width.toFloat() / height.toFloat()).coerceIn(0.72f, 1.91f)
                     PostImageAspectRatioCache.put(imageUrl, ratio)
-                    pendingAspectRatio = ratio
-                    if (!deferAspectChanges) imageAspectRatio = ratio
                 }
             },
             onError = {
