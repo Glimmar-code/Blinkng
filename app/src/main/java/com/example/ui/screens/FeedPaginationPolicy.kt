@@ -14,3 +14,14 @@ internal fun shouldRequestFeedPage(
     currentCursor: String,
     previouslyRequestedCursor: String?,
 ): Boolean = currentCursor != previouslyRequestedCursor
+
+/** UI-side throttle; prevents consecutive taps and pull gestures racing network state. */
+internal fun canRequestFeedRefresh(
+    nowElapsedMs: Long,
+    previousRequestElapsedMs: Long,
+    minimumGapMs: Long = 800L,
+): Boolean {
+    if (previousRequestElapsedMs <= 0L) return true
+    if (nowElapsedMs < previousRequestElapsedMs) return true // reboot/clock reset
+    return nowElapsedMs - previousRequestElapsedMs >= minimumGapMs
+}
