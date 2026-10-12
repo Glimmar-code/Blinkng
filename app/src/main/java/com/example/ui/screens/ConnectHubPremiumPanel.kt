@@ -1490,21 +1490,31 @@ private fun SmartMatchHero(
     onMessage: (UserProfile) -> Unit,
     onChallenge: (UserProfile) -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "matchGlow")
-    val glow by infiniteTransition.animateFloat(
-        initialValue = 0.9f,
-        targetValue = 1.14f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1400, easing = FastOutSlowInEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        ),
-        label = "glowScale"
+    // No perpetual animation while Connect is idle or the app is backgrounded.
+    // Advance in measured steps only during a real match operation.
+    val reduceMotion = rememberReducedMotionEnabled()
+    val windowActive = rememberWindowActive()
+    val runMotion = isMatching && !reduceMotion && windowActive
+    var animationStep by remember(isMatching) { mutableStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(runMotion) {
+        if (runMotion) {
+            while (true) {
+                delay(620)
+                animationStep++
+            }
+        } else {
+            animationStep = 0
+        }
+    }
+    val glow by animateFloatAsState(
+        targetValue = if (runMotion) 1.08f else 1f,
+        animationSpec = tween(if (reduceMotion) 0 else 260),
+        label = "matchGlowScale"
     )
-    val spinAngle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(animation = tween(900, easing = LinearEasing)),
-        label = "spinAngle"
+    val spinAngle by animateFloatAsState(
+        targetValue = if (runMotion) animationStep * 75f else 0f,
+        animationSpec = tween(if (reduceMotion) 0 else 620, easing = LinearEasing),
+        label = "matchSpinAngle"
     )
     val stages = remember {
         listOf(
@@ -1514,17 +1524,7 @@ private fun SmartMatchHero(
             "Selecting the strongest fit"
         )
     }
-    var searchStage by remember(isMatching) { mutableStateOf(0) }
-    androidx.compose.runtime.LaunchedEffect(isMatching) {
-        if (isMatching) {
-            while (true) {
-                delay(620)
-                searchStage = (searchStage + 1) % stages.size
-            }
-        } else {
-            searchStage = 0
-        }
-    }
+    val searchStage = if (isMatching) animationStep % stages.size else 0
 
     Surface(
         shape = RoundedCornerShape(26.dp),
