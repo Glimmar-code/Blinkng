@@ -73,6 +73,12 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** PostgREST can relay the raw database code or the friendly error mapped by BlinkEconomyService. */
+internal fun isPendingRewardClaimError(message: String): Boolean =
+    message.contains("REWARDED_AD_VERIFICATION_PENDING", ignoreCase = true) ||
+    message.contains("REWARDED_AD_TOO_SOON", ignoreCase = true) ||
+    message.contains("ad reward is not ready yet", ignoreCase = true)
+
 enum class AppDestination { SPLASH, ONBOARDING, SIGN_IN, SIGN_UP, RESET_PASSWORD, PROFILE_SETUP, MAIN }
 
 enum class MainTab(val index: Int, val title: String) { HOME(0, "Home"), SEARCH(1, "Search"), LEADERBOARD(2, "Leaderboard"), MARKET(3, "Market"), MESSAGES(4, "Messages") }
@@ -1319,7 +1325,7 @@ private suspend fun restoreSupabaseSession() {
                     },
                     onFailure = { error ->
                         val detail = error.message.orEmpty()
-                        if (detail.contains("REWARDED_AD_VERIFICATION_PENDING", ignoreCase = true)) {
+                        if (isPendingRewardClaimError(detail)) {
                             if (attempt < 7) {
                                 delay(2_500L)
                             } else {
