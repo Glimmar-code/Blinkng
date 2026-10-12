@@ -69,6 +69,7 @@ import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
 import com.blinkng.shared.BlinkChatInboxPolicy
 import com.blinkng.shared.BlinkMessageScrollAction
+import com.blinkng.shared.BlinkMessageDatePolicy
 import com.blinkng.shared.BlinkMessageScrollPolicy
 import com.blinkng.shared.BlinkMessageInbox
 import kotlinx.coroutines.launch
@@ -362,6 +363,11 @@ fun MessagesScreen(state: DesktopAppState) {
         if (chatQuery.isBlank()) messages
         else messages.filter { it.content.contains(chatQuery, ignoreCase = true) }
     }
+    val messageDates = remember(visibleMessages) {
+        BlinkMessageDatePolicy.labels(visibleMessages.map {
+            BlinkMessageDatePolicy.Entry(it.id, it.createdAt)
+        })
+    }
     val chatListState = remember(active.id) { LazyListState() }
     var userHasScrolled by remember(active.id) { mutableStateOf(false) }
     var previousLatestId by remember(active.id) { mutableStateOf<String?>(null) }
@@ -481,7 +487,26 @@ fun MessagesScreen(state: DesktopAppState) {
             ) {
                 items(visibleMessages, key = { it.id }) { message ->
                     val mine = message.senderId == myUserId
-                    Row(
+                    Column {
+                        messageDates[message.id]?.let { date ->
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(100.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Text(
+                                        date,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
                     ) {
@@ -616,6 +641,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                 }
                             }
                         }
+                    }
                     }
                 }
             }
