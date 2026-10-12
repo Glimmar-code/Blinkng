@@ -849,11 +849,22 @@ private fun PremiumHomeFeed(
             .onFailure { promotedFeed = emptyList() }
     }
 
-    val homeRows = remember(filteredPosts, rankedInlineReels, promotedFeed, dropDiscovery, reelMixSeed) {
+    val visiblePromotedFeed = remember(promotedFeed, hiddenFeedPostIds, normalizedMutedFeedAuthors) {
+        promotedFeed.filterNot { placement ->
+            shouldHideFrozenFeedPost(
+                postId = placement.post.id,
+                author = placement.post.author,
+                authorUsername = placement.post.authorUsername,
+                hiddenPostIds = hiddenFeedPostIds,
+                mutedAuthorKeys = normalizedMutedFeedAuthors
+            )
+        }
+    }
+    val homeRows = remember(filteredPosts, rankedInlineReels, visiblePromotedFeed, dropDiscovery, reelMixSeed) {
         buildPremiumHomeRows(
             filteredPosts,
             rankedInlineReels,
-            promotedFeed,
+            visiblePromotedFeed,
             dropDiscovery,
             reelMixSeed
         )
@@ -864,9 +875,16 @@ private fun PremiumHomeFeed(
     val currentUserKey = remember(currentUsername) {
         currentUsername.trim().removePrefix("@").lowercase()
     }
-    val pendingNewPostCount = remember(pendingNewPostIds, posts, filter) {
+    val pendingNewPostCount = remember(pendingNewPostIds, posts, filter, hiddenFeedPostIds, normalizedMutedFeedAuthors) {
         posts.count { post ->
             post.id in pendingNewPostIds &&
+                !shouldHideFrozenFeedPost(
+                    postId = post.id,
+                    author = post.author,
+                    authorUsername = post.authorUsername,
+                    hiddenPostIds = hiddenFeedPostIds,
+                    mutedAuthorKeys = normalizedMutedFeedAuthors
+                ) &&
                 !post.isReel && post.videoUrl.isNullOrBlank() &&
                 when (filter) {
                     PremiumFeedFilter.ALL -> true
