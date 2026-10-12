@@ -641,6 +641,14 @@ private fun PremiumHomeFeed(
     val latestViewed by rememberUpdatedState(onViewedPost)
     val latestRefresh by rememberUpdatedState(onRefresh)
     val refreshingNow by rememberUpdatedState(isRefreshing)
+    val lastRefreshTapMs = remember(laneResumeKey) { longArrayOf(0L) }
+    val requestSafeRefresh = {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!refreshingNow && canRequestFeedRefresh(now, lastRefreshTapMs[0])) {
+            lastRefreshTapMs[0] = now
+            latestRefresh()
+        }
+    }
     val impressionTracker = remember { PostImpressionTracker() }
     val deliveredBoostImpressions = remember(laneResumeKey) { mutableSetOf<String>() }
     val performanceMonitor = remember(context, laneResumeKey) {
@@ -863,9 +871,19 @@ private fun PremiumHomeFeed(
 
     val nearEnd by remember(homeRows) {
         derivedStateOf {
-            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
             homeRows.isNotEmpty() && last >= homeRows.lastIndex - 3
         }
+    }
+    // The same last visible item can survive an unsuccessful pagination request.
+    // Do not hammer Supabase with duplicates every time isLoadingMore becomes false.
+    // A successful page advances the cursor; refresh or restored connectivity
+    // explicitly opens a new attempt.
+    var lastRequestedPostCursor by remember(laneResumeKey) { mutableStateOf<String?>(null) }
+    var lastRequestedReelCursor by remember(laneResumeKey) { mutableStateOf<String?>(null) }
+    LaunchedEffect(refreshRevision, isOnline) {
+        lastRequestedPostCursor = null
+        lastRequestedReelCursor = null
     }
 
     val scrollConnection = remember(
@@ -1105,7 +1123,7 @@ private fun PremiumHomeFeed(
                     listState.scrollToItem(0)
                 }
             } else {
-                latestRefresh()
+                requestSafeRefresh()
             }
             headerOffsetPx.value = 0f
             headerScrollDirection[0] = 0
@@ -1116,18 +1134,29 @@ private fun PremiumHomeFeed(
         }
     }
 
+    // Requests are deduplicated by the last real organic item, not by the
+    // sponsored/boosted slot count (those can change independently).
+    val postPageCursor = remember(stableRankedPosts) {
+        feedPaginationCursor(stableRankedPosts.map { it.id })
+    }
+    val reelPageCursor = remember(stableRankedReels) {
+        feedPaginationCursor(stableRankedReels.map { it.id })
+    }
     LaunchedEffect(
-        nearEnd,
-        hasMorePosts,
-        hasMoreReels,
-        isLoadingMorePosts,
-        isLoadingMoreReels,
-        laneIndex
+        nearEnd, hasMorePosts, hasMoreReels, isLoadingMorePosts,
+        isLoadingMoreReels, laneIndex, isOnline, postPageCursor, reelPageCursor
     ) {
-        // Pagination remains the normal ranked server pagination. We only request the next
-        // reel page alongside a deep For You scroll so the teaser pool can grow naturally.
-        if (nearEnd && hasMorePosts && !isLoadingMorePosts) onLoadMorePosts()
-        if (nearEnd && laneIndex == 0 && hasMoreReels && !isLoadingMoreReels) onLoadMoreReels()
+        if (!nearEnd || !isOnline) return@LaunchedEffect
+        if (hasMorePosts && !isLoadingMorePosts &&
+            shouldRequestFeedPage(postPageCursor, lastRequestedPostCursor)) {
+            lastRequestedPostCursor = postPageCursor
+            onLoadMorePosts()
+        }
+        if (laneIndex == 0 && hasMoreReels && !isLoadingMoreReels &&
+            shouldRequestFeedPage(reelPageCursor, lastRequestedReelCursor)) {
+            lastRequestedReelCursor = reelPageCursor
+            onLoadMoreReels()
+        }
     }
 
     LaunchedEffect(listState, homeRows) {
@@ -1331,7 +1360,7 @@ private fun PremiumHomeFeed(
                         onForYouClick = { onLaneChanged(0) },
                         onFollowingClick = { onLaneChanged(1) },
                         onFilterClick = { filterMenuVisible = true },
-                        onRefreshClick = { if (!isRefreshing) latestRefresh() },
+                        onRefreshClick = { if (!isRefreshing) requestSafeRefresh() },
                         isRefreshing = isRefreshing
                     )
                     Box(modifier = Modifier.align(Alignment.TopEnd)) {
@@ -1370,7 +1399,7 @@ private fun PremiumHomeFeed(
                                     lastFlingVelocityY[0] = 0f
                                     fabExpanded = true
                                     onBottomBarVisibilityChange(true)
-                                    latestRefresh()
+                                    requestSafeRefresh()
                                 }
                             },
                             state = pullState,
@@ -1597,7 +1626,7 @@ private fun PremiumHomeFeed(
                                         lastFlingVelocityY[0] = 0f
                                         fabExpanded = true
                                         onBottomBarVisibilityChange(true)
-                                        latestRefresh()
+                                        requestSafeRefresh()
                                     }
                                 }
                             )

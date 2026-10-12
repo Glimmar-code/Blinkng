@@ -1,3 +1,18 @@
+## 2026-10-12 — Feed audit follow-up: pagination, refresh, native ads, accessibility
+
+PARITY-EXCEPTION: android-compose-feed-pagination-native-ad-touch-20261012
+
+**Why Android-only:** The changed pagination deduplication and refresh throttle govern Compose LazyColumn/Android callback lifetimes, Google Mobile Ads NativeAd loading and a touchscreen phone-width action rail. Windows uses its own mouse/keyboard feed paging, desktop ad implementation and sidebar/header layout. The Windows equivalent retains server-authoritative page requests, existing retry options, and labeled native controls; no server cursor, paid placement, moderation, or business semantics are changed.
+
+
+
+- **Shared behaviour:** Feed/inline-Reel pagination requests now use organic content page cursors to avoid duplicate Supabase requests when the same viewport remains at the end, refreshing status changes or decorative ad/boost modules rerender. The server cursor, Feed ranking, sponsored frequency, reward rules and impressions are unchanged. Explicit refresh or reconnect allows retry. Added pure unit tests for deduplication and tap throttling.
+- **Android Feed:** prevent rapid pull-to-refresh/reselect/refresh-tab actions from submitting duplicate concurrent fetches. A deliberate next refresh is accepted after a short 800ms cooldown. Pending media and player state continue to be handled separately.
+- **Android ads:** fail a stalled native Feed ad after 8s (Reels after 6s); discard a late Google SDK callback after timeout instead of injecting a large card into a distant scroll position. Preserve SDK impression attribution, AdChoices, consent and no-fill handling. Ads are never faked.
+- **Android accessibility:** preserve visible views/likes counters at phone width but hide lower-priority numeric labels on narrow 6-action rows, retaining full TalkBack counts. Make all Home header icon touch targets 48dp, collapse its decorative title on very narrow screens, and give See More a larger target.
+- **Windows parity:** Windows shares server-authoritative pagination/refresh semantics and is not subject to Android Compose LazyColumn and Google native-ads loading. This change makes no Windows backend, ranking, money, or public API changes; desktop's separate controls and mouse/keyboard navigation are retained.
+- **Tests and known limitations:** Requires Android UI lint/build, emulator runtime, Windows build, release smoke, integration and security checks. Physical Redmi 15C frame-time benchmarking, benchmark/Baseline Profiles, complete responsive typography review, and user-ID/tombstone backend migration remain out of scope and must not be represented as complete.
+
 PARITY-EXCEPTION: android-home-feed-system-insets-and-compose-media-20261012
 Reason: Android uses a status bar/camera cutout and gesture or three-button navigation inset; native Windows windows do not. The mobile-only Coil feed-thumbnail sizing, Compose scroll-transition, text "See more", poll tap throttling, and bottom FloatingBottomBar behavior cannot be transplanted directly onto desktop Compose without destabilizing its separate controls.
 Windows equivalent: desktop keeps a native titlebar/sidebar, platform-appropriate fixed-thumbnail bounds, native scroll layout, desktop poll submission and native post actions. It already shows the independent repost metric (not share count). The incoming-post pill on Android is an ephemeral realtime gesture; desktop users refresh their independently paged feed. This exception does not exempt any server/API/permission changes, of which there are none.

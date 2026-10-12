@@ -528,7 +528,8 @@ fun PostCard(
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier
                             .padding(start = if (xFeedStyle) 74.dp else 14.dp, top = 6.dp, bottom = 8.dp)
-                            .clickable { expandedText = !expandedText }
+                            .heightIn(min = 40.dp)
+                            .clickable(role = Role.Button) { expandedText = !expandedText }
                     )
                 }
             }
@@ -610,7 +611,11 @@ fun PostCard(
                 // Stable, compact priority: views -> likes -> comments -> reposts
                 // -> save -> share. Counter updates never re-order the row.
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val showCounts = maxWidth >= 340.dp
+                    // Redmi-class phones have six actions competing for a narrow
+                    // metric rail. Always prioritize visible views and likes; show
+                    // extra counts only where each touch target has enough width.
+                    val showCoreCounts = maxWidth >= 340.dp
+                    val showSecondaryCounts = maxWidth >= 450.dp
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -620,14 +625,14 @@ fun PostCard(
                     ) {
                         ReadOnlyMetricAction(
                             icon = Icons.Default.Visibility,
-                            value = if (showCounts) formatNumber(displayedViewsCount) else "",
+                            value = if (showCoreCounts) formatNumber(displayedViewsCount) else "",
                             description = "${displayedViewsCount} views"
                         )
                         PremiumPostAction(
                             icon = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            value = if (showCounts && !post.hideLikes && post.likes > 0) formatNumber(post.likes) else null,
+                            value = if (showCoreCounts && !post.hideLikes && post.likes > 0) formatNumber(post.likes) else null,
                             tint = likedTint,
-                            description = if (post.isLiked) "Unlike post" else "Like post",
+                            description = if (post.isLiked) "Unlike post · ${post.likes} likes" else "Like post · ${post.likes} likes",
                             iconScale = likeScale.value,
                             onClick = {
                                 scope.launch {
@@ -643,7 +648,7 @@ fun PostCard(
                         )
                         PremiumPostAction(
                             icon = Icons.Default.ChatBubbleOutline,
-                            value = if (showCounts && post.commentsCount > 0) formatNumber(post.commentsCount) else null,
+                            value = if (showSecondaryCounts && post.commentsCount > 0) formatNumber(post.commentsCount) else null,
                             tint = secondaryText,
                             description = if (post.allowComments) "${post.commentsCount} comments" else "Comments disabled",
                             enabled = post.allowComments,
@@ -652,9 +657,9 @@ fun PostCard(
                         if (!isAuthor) {
                             PremiumPostAction(
                                 icon = Icons.Default.Repeat,
-                                value = if (showCounts && post.repostsCount > 0) formatNumber(post.repostsCount) else null,
+                                value = if (showSecondaryCounts && post.repostsCount > 0) formatNumber(post.repostsCount) else null,
                                 tint = repostTint,
-                                description = if (post.isRepostedByMe) "Undo repost" else "Repost",
+                                description = if (post.isRepostedByMe) "Undo repost · ${post.repostsCount} reposts" else "Repost · ${post.repostsCount} reposts",
                                 onClick = onRepost
                             )
                         }

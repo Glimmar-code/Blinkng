@@ -110,6 +110,9 @@ fun FeedTopBar(
             .then(if (reserveStatusBar) Modifier.statusBarsPadding() else Modifier)
     ) {
         val horizontalPadding = if (maxWidth >= 600.dp) 20.dp else 14.dp
+        // Reserve proper 48dp minimum targets for all four toolbar buttons.
+        // On narrow devices collapse the decorative title, not the actions.
+        val showHomeTitle = maxWidth >= 380.dp
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -124,6 +127,7 @@ fun FeedTopBar(
             FeedBrandBlock(
                 userAvatar = userAvatar,
                 onProfileClick = onProfileClick,
+                showTitle = showHomeTitle,
                 modifier = Modifier.weight(1f).padding(end = 4.dp)
             )
             FeedHeaderActions(
@@ -142,6 +146,7 @@ fun FeedTopBar(
 private fun FeedBrandBlock(
     userAvatar: String,
     onProfileClick: () -> Unit,
+    showTitle: Boolean,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -150,13 +155,15 @@ private fun FeedBrandBlock(
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         FeedProfileAvatar(userAvatar = userAvatar, onProfileClick = onProfileClick)
-        Text(
-            text = "Home",
-            style = MaterialTheme.typography.headlineSmall,
-            color = FeedTextPrimary,
-            maxLines = 1,
-            modifier = Modifier.weight(1f)
-        )
+        if (showTitle) {
+            Text(
+                text = "Home",
+                style = MaterialTheme.typography.headlineSmall,
+                color = FeedTextPrimary,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
@@ -216,7 +223,7 @@ private fun FeedHeaderActions(
             onClick = onItemsClick,
             modifier = Modifier.testTag("feed_items_action")
         )
-        Box(modifier = Modifier.size(44.dp)) {
+        Box(modifier = Modifier.size(48.dp)) {
             FeedRadialHeaderAction(
                 imageVector = Icons.Default.NotificationsNone,
                 contentDescription = "Notifications",
@@ -269,7 +276,7 @@ private fun FeedRadialHeaderAction(
     )
     Box(
         modifier = modifier
-            .size(44.dp)
+            .size(48.dp)
             .graphicsLayer { scaleX = pressScale; scaleY = pressScale }
             .background(
                 color = if (pressed) FeedPurple.copy(alpha = 0.16f) else Color.Transparent,
