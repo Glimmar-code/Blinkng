@@ -747,20 +747,21 @@ private fun PremiumHomeFeed(
 
     LaunchedEffect(reels, isRefreshing, isLoadingMoreReels, laneResumeKey) {
         val explicitRefreshCompleted = reelRefreshWasRunning && !isRefreshing
-        val paginationCompleted = reelPaginationWasRunning && !isLoadingMoreReels
-
         stableRankedReels = if (explicitRefreshCompleted) {
             reels
         } else {
+            // A realtime Reel can arrive without a pagination state transition.
+            // Append unseen IDs after existing teasers, rather than silently
+            // dropping them until a much later deep scroll. Keep all existing
+            // teaser positions stable while the reader is browsing.
             mergeStablePremiumFeed(
                 current = stableRankedReels,
                 latest = reels,
-                appendNew = paginationCompleted
+                appendNew = true
             )
         }
 
         reelRefreshWasRunning = isRefreshing
-        reelPaginationWasRunning = isLoadingMoreReels
     }
 
     val filteredPosts = remember(stableRankedPosts, filter, laneIndex, followedAuthorKeys) {
