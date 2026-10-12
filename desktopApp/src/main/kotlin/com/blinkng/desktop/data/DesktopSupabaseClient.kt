@@ -1088,7 +1088,69 @@ class DesktopSupabaseClient(
         val rows = getArray(
             "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at&order=created_at.asc&limit=300",
         )
-        (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseMessage) }
+        val messages = (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseMessage) }
+        if (messages.isEmpty()) return@withContext messages
+        // Same server-authoritative action-state RPC used by Android. Only participants
+        // can access the message state; never fabricate reactions or show hidden rows.
+        val actionRows = runCatching {
+            postObject(
+                "/rest/v1/rpc/get_message_action_state",
+                JSONObject().put("p_message_ids", JSONArray(messages.map { it.id }))
+            ) as? JSONArray
+        }.getOrNull()
+        val actions = actionRows?.let { array ->
+            (0 until array.length()).mapNotNull { array.optJSONObject(it) }
+                .associateBy { it.optString("message_id") }
+        }.orEmpty()
+        messages.mapNotNull { message ->
+            val action = actions[message.id] ?: return@mapNotNull message
+            if (action.optBoolean("is_hidden", false)) return@mapNotNull null
+            val reactionJson = action.optJSONObject("reactions") ?: JSONObject()
+            val counts = buildMap {
+                for (emoji in reactionJson.keys()) {
+                    reactionJson.optInt(emoji).takeIf { it > 0 }?.let { put(emoji, it) }
+                }
+            }
+            val myReactions = action.optJSONArray("my_reactions")?.let { mine ->
+                (0 until mine.length()).mapNotNull { mine.optString(it).takeIf(String::isNotBlank) }.toSet()
+            }.orEmpty()
+            message.copy(
+                reactionCounts = counts,
+                myReactions = myReactions,
+                isStarred = action.optBoolean("is_starred", false),
+                isPinned = action.optBoolean("is_pinned", false)
+            )
+        }
+    }
+
+    suspend fun setChatMessageReaction(messageId: String, emoji: String, active: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            rpcBoolean(postObject("/rest/v1/rpc/set_message_reaction", JSONObject()
+                .put("p_message_id", messageId).put("p_emoji", emoji).put("p_active", active)))
+        }
+
+    suspend fun editChatMessage(messageId: String, content: String): Boolean = withContext(Dispatchers.IO) {
+        val clean = content.trim()
+        require(clean.isNotEmpty()) { "Message cannot be empty." }
+        rpcBoolean(postObject("/rest/v1/rpc/edit_message", JSONObject()
+            .put("p_message_id", messageId).put("p_content", clean)))
+    }
+
+    suspend fun deleteChatMessageForEveryone(messageId: String): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/delete_message_for_everyone", JSONObject()
+            .put("p_message_id", messageId)))
+    }
+
+    suspend fun hideChatMessageForMe(messageId: String): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/hide_message_for_me", JSONObject()
+            .put("p_message_id", messageId)))
+    }
+
+    suspend fun reportChatMessage(messageId: String, reason: String): Boolean = withContext(Dispatchers.IO) {
+        val clean = reason.trim().take(500)
+        require(clean.isNotEmpty()) { "Report reason is required." }
+        rpcBoolean(postObject("/rest/v1/rpc/report_message", JSONObject()
+            .put("p_message_id", messageId).put("p_reason", clean)))
     }
 
     suspend fun sendMessage(conversationId: String, content: String): DesktopMessage = withContext(Dispatchers.IO) {
