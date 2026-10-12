@@ -707,7 +707,6 @@ private fun PremiumHomeFeed(
     var seenRefreshRevision by remember(laneResumeKey) { mutableIntStateOf(refreshRevision) }
     var reelRefreshWasRunning by remember(laneResumeKey) { mutableStateOf(isRefreshing) }
     var postPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMorePosts) }
-    var reelPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMoreReels) }
     // Realtime rows are merged into the existing list to keep scroll stable.
     // Track new IDs *before* that merge so the New Posts affordance still works.
     var pendingNewPostIds by remember(laneResumeKey) { mutableStateOf<Set<String>>(emptySet()) }
