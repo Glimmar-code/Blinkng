@@ -63,10 +63,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -82,7 +79,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.ui.theme.FeedBackground
-import com.example.ui.theme.FeedBlue
 import com.example.ui.theme.FeedBorder
 import com.example.ui.theme.FeedElevatedSurface
 import com.example.ui.theme.FeedPurple
@@ -105,23 +101,11 @@ fun FeedTopBar(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
+            // Keep the status-bar safe inset so toolbar controls never sit under
+            // the camera cutout, but match it to the exact Feed background.
+            // The old radial purple/blue wash made this inset look like a
+            // separate colored strip with empty space above Home.
             .background(FeedBackground)
-            .drawBehind {
-                drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(FeedPurple.copy(alpha = 0.16f), Color.Transparent),
-                        center = Offset(size.width * 0.22f, 0f),
-                        radius = size.width * 0.72f
-                    )
-                )
-                drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(FeedBlue.copy(alpha = 0.11f), Color.Transparent),
-                        center = Offset(size.width * 0.84f, 0f),
-                        radius = size.width * 0.58f
-                    )
-                )
-            }
             .statusBarsPadding()
     ) {
         val horizontalPadding = if (maxWidth >= 600.dp) 20.dp else 14.dp
