@@ -114,6 +114,14 @@ class FeedHeaderMotionTest {
     }
 
     @Test
+    fun partiallyVisibleFeedPostRestoresWithoutJumpingToStart() {
+        assertEquals(75, feedRestoreItemScrollOffset(-75, 0))
+        assertEquals(0, feedRestoreItemScrollOffset(12, 0))
+        assertEquals(25, feedRestoreItemScrollOffset(-5, 20))
+        assertEquals(Int.MAX_VALUE, feedRestoreItemScrollOffset(Int.MIN_VALUE, Int.MAX_VALUE))
+    }
+
+    @Test
     fun restorePrefersStableRowKeyOverChangingIndex() {
         val keys = listOf("post:a", "sponsored:0", "post:b", "post:c")
         assertEquals(2, resolveFeedRestoreIndex("post:b", keys, savedIndex = 0))
