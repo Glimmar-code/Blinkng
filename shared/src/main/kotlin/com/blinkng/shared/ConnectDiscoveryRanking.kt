@@ -29,6 +29,9 @@ object ConnectDiscoveryRanking {
  */
 object ConnectDataHealth {
     val sectionNames: Map<String, String> = linkedMapOf(
+        "directory" to "Connect listings",
+        "students" to "Students",
+        "following" to "Follow status",
         "roommates" to "Roommates",
         "mentors" to "Mentors",
         "reading" to "Reading mates",
