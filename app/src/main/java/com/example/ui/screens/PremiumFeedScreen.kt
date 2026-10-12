@@ -1273,6 +1273,9 @@ private fun PremiumHomeFeed(
                     .fillMaxSize()
                     .padding(bottom = 56.dp + bottomNavigationInset)
             ) {
+                // The system status inset never scrolls out from under the clock
+                // or camera cutout. Only Home actions and utility controls collapse.
+                Spacer(Modifier.fillMaxWidth().background(FeedBackground).statusBarsPadding())
                 ScrollLinkedFeedHeader(
                     offsetPx = headerOffsetPx,
                     onMeasuredHeight = { measuredHeight ->
@@ -1296,6 +1299,7 @@ private fun PremiumHomeFeed(
                     }
                 ) {
                     FeedTopBar(
+                        reserveStatusBar = false,
                         userAvatar = userAvatar,
                         hasUnreadNotifications = hasUnreadNotifications,
                         unreadNotificationCount = unreadNotificationCount,
