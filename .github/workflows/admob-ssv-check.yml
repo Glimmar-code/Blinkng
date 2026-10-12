@@ -10,12 +10,16 @@ on:
       - 'supabase/functions/admob-reward-ssv/**'
       - 'supabase/config.toml'
       - 'scripts/test_admob_ssv_verifier.mjs'
+      - 'scripts/test_admob_reward_credit_guard.mjs'
+      - 'supabase/migrations/20261012170000_require_admob_ssv_before_reward_credit.sql'
       - '.github/workflows/admob-ssv-check.yml'
   pull_request:
     paths:
       - 'supabase/functions/admob-reward-ssv/**'
       - 'supabase/config.toml'
       - 'scripts/test_admob_ssv_verifier.mjs'
+      - 'scripts/test_admob_reward_credit_guard.mjs'
+      - 'supabase/migrations/20261012170000_require_admob_ssv_before_reward_credit.sql'
       - '.github/workflows/admob-ssv-check.yml'
 
 permissions:
@@ -30,4 +34,4 @@ jobs:
         with:
           node-version: '24'
       - name: Run AdMob SSV cryptographic regression tests
-        run: node --test scripts/test_admob_ssv_verifier.mjs
+        run: node --test scripts/test_admob_ssv_verifier.mjs scripts/test_admob_reward_credit_guard.mjs
