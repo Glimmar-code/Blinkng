@@ -1,5 +1,11 @@
 ## 2026-10-12 — Feed audit follow-up: pagination, refresh, native ads, accessibility
 
+PARITY-EXCEPTION: android-compose-feed-pagination-native-ad-touch-20261012
+
+**Why Android-only:** The changed pagination deduplication and refresh throttle govern Compose LazyColumn/Android callback lifetimes, Google Mobile Ads NativeAd loading and a touchscreen phone-width action rail. Windows uses its own mouse/keyboard feed paging, desktop ad implementation and sidebar/header layout. The Windows equivalent retains server-authoritative page requests, existing retry options, and labeled native controls; no server cursor, paid placement, moderation, or business semantics are changed.
+
+
+
 - **Shared behaviour:** Feed/inline-Reel pagination requests now use organic content page cursors to avoid duplicate Supabase requests when the same viewport remains at the end, refreshing status changes or decorative ad/boost modules rerender. The server cursor, Feed ranking, sponsored frequency, reward rules and impressions are unchanged. Explicit refresh or reconnect allows retry. Added pure unit tests for deduplication and tap throttling.
 - **Android Feed:** prevent rapid pull-to-refresh/reselect/refresh-tab actions from submitting duplicate concurrent fetches. A deliberate next refresh is accepted after a short 800ms cooldown. Pending media and player state continue to be handled separately.
 - **Android ads:** fail a stalled native Feed ad after 8s (Reels after 6s); discard a late Google SDK callback after timeout instead of injecting a large card into a distant scroll position. Preserve SDK impression attribution, AdChoices, consent and no-fill handling. Ads are never faked.
