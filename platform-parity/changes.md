@@ -1,3 +1,14 @@
+## 2026-10-12 — Feed continuity, clean identity, swipe navigation, and writing (Testlab)
+
+- **Feed identity (Android + Windows):** display name above @username, age of post on the right; remove redundant public audience/category badges, retain restricted-audience disclosure. X-style metrics display views before likes, comments, repost, save, share. Follow, verification, report, and post permission actions remain intact.
+- **Input (Android + Windows):** sentence capitalization is a keyboard suggestion for post/reel/story captions, styled posts, chat messages and desktop chat. Never rewrite user-entered text or auto-capitalize usernames, links or credentials. Android comments already had sentence-capitalization enabled.
+- **Navigation (Android):** swipe Feed -> Reels -> Connect -> Market -> Messages, and reverse. For You/Following stay distinct *tap-selected* feed lanes, not horizontal swipe targets. Use non-consuming touch observation so image carousels and vertical scrolling win. Reels left swipe opens Connect rather than the author profile; the profile button continues to open the profile. Apply restrained scale/slide transitions with reduced-motion support.
+- **Navigation (Windows):** keep desktop keyboard/mouse and sidebar semantics; these mobile touch gestures are intentionally Android-only, but the same page destinations and profile actions remain accessible.
+- **Feed smoothness (Android):** eliminate height-changing entry animation for recycled posts; freeze each mounted image card's measured aspect-ratio frame and cache its natural ratio for future mounts; only prefetch limited image assets after scrolling pauses; avoid Reel preview autoplays during fast scroll; avoid resetting the header on unrelated feed row-key updates. Server ranking, 30s qualified views and ad-impression logic remain unchanged.
+- **Feed smoothness (Windows):** its separate desktop composables already use fixed media bounds and stable scroll; no Android-specific native image pipeline / Choreographer gesture changes needed.
+- **Game / utility sheets (Android):** downward half-screen pull closes after release, with explicit accessible close button. Windows retains desktop close controls.
+- **Validation gates:** Android lint, debug APK and unit checks; emulator/game swipe and nested scroll smoke; desktop build/parity; release smoke; no schema or migration changes. Keep on Testlab until green.
+
 ## 2026-10-12 — Half-screen dismissal for full-screen utilities (Testlab)
 
 PARITY-EXCEPTION: android-touch-utility-sheets-half-screen-dismiss-20261012
