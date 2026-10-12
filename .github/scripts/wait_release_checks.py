@@ -18,7 +18,7 @@ def gate(runs, commit):
             continue
         if run.get('event') not in ('push', 'workflow_dispatch'):
             continue
-        path = run.get('path', '').split('/')[-1].split('@')[0]
+        path = run.get('path', '').split('@')[0].split('/')[-1]
         if path not in REQUIRED:
             continue
         if path not in latest or run['id'] > latest[path]['id']:

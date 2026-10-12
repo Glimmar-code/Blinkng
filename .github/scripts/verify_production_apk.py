@@ -32,6 +32,7 @@ def healthy(seconds=30):
 def nodes():
     # Retry while Compose transitions settle. Do not capture authenticated UI.
     for _ in range(5):
+        adb('shell', 'rm', '-f', '/sdcard/blink-smoke-ui.xml')
         adb('shell', 'uiautomator', 'dump', '/sdcard/blink-smoke-ui.xml', check=False)
         raw = adb('shell', 'cat', '/sdcard/blink-smoke-ui.xml', check=False)
         try:
@@ -67,6 +68,27 @@ def start():
     healthy()
 
 
+def set_network(online):
+    api = int(adb('shell', 'getprop', 'ro.build.version.sdk'))
+    if api < 25:
+        # API 24 emulator images have no simulated Wi-Fi. Use their modem
+        # console instead of spawning the unsupported Wi-Fi service command.
+        result = adb('emu', 'gsm', 'data', 'home' if online else 'unregistered')
+        if 'OK' not in result or 'KO:' in result:
+            raise RuntimeError('Emulator modem did not accept the connectivity change')
+    else:
+        state = 'enable' if online else 'disable'
+        adb('shell', 'svc', 'wifi', state)
+        adb('shell', 'svc', 'data', state)
+    for _ in range(30):
+        state = adb('shell', 'dumpsys', 'connectivity')
+        default = re.search(r'^\s*Active default network:\s*(\S+)', state, re.MULTILINE)
+        if default and ((default.group(1) != 'none') == online):
+            return
+        time.sleep(2)
+    raise RuntimeError('Emulator did not reach the required online/offline state')
+
+
 def exercise():
     start()
     require_text('Connect. Share. Discover.')
@@ -82,14 +104,12 @@ def exercise():
     adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
     start()
     adb('shell', 'am', 'force-stop', PACKAGE)
-    adb('shell', 'svc', 'wifi', 'disable')
-    adb('shell', 'svc', 'data', 'disable')
     try:
+        set_network(False)
         start()
         require_text('Connect. Share. Discover.')
     finally:
-        adb('shell', 'svc', 'wifi', 'enable')
-        adb('shell', 'svc', 'data', 'enable')
+        set_network(True)
     adb('shell', 'am', 'force-stop', PACKAGE)
     start()
     require_text('Connect. Share. Discover.')

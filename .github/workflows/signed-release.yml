@@ -374,6 +374,8 @@ jobs:
       - name: Test exact signed APK including upgrade from previous release
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
+          ram-size: 2048M
+          heap-size: 512M
           api-level: ${{ matrix.api }}
           target: google_apis
           arch: x86_64

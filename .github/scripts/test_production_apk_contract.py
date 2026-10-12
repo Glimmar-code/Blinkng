@@ -1,6 +1,8 @@
 """Prevent changes that bypass exact-artifact validation or downgrade update checks."""
 from pathlib import Path
 import unittest
+from unittest.mock import patch
+import verify_production_apk as device
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -28,6 +30,43 @@ class ContractTests(unittest.TestCase):
         self.assertIn("adb('install', '-r', str(args.apk))", between)
         self.assertNotIn("'uninstall'", between)
         self.assertNotIn("'-d'", between)
+
+
+class OfflineTests(unittest.TestCase):
+    def run_network(self, api, online, connected, console='OK'):
+        calls = []
+        def fake_adb(*args):
+            calls.append(args)
+            if args[:2] == ('shell', 'getprop'):
+                return str(api)
+            if args[0] == 'emu':
+                return console
+            if args[:2] == ('shell', 'dumpsys'):
+                return 'Active default network: ' + ('100' if connected else 'none')
+            return ''
+        with patch.object(device, 'adb', fake_adb), patch.object(device.time, 'sleep'):
+            device.set_network(online)
+        return calls
+
+    def test_android_24_uses_modem_and_confirms_offline(self):
+        calls = self.run_network(24, False, False)
+        self.assertIn(('emu', 'gsm', 'data', 'unregistered'), calls)
+        self.assertFalse(any('svc' in call for call in calls))
+        self.assertIn(('emu', 'gsm', 'data', 'home'), self.run_network(24, True, True))
+
+    def test_android_35_controls_both_radios(self):
+        calls = self.run_network(35, False, False)
+        for radio in ('wifi', 'data'):
+            self.assertIn(('shell', 'svc', radio, 'disable'), calls)
+
+    def test_unconfirmed_disconnect_or_reconnect_cannot_pass(self):
+        for api in (24, 35):
+            with self.assertRaisesRegex(RuntimeError, 'required online/offline'):
+                self.run_network(api, False, True)
+            with self.assertRaisesRegex(RuntimeError, 'required online/offline'):
+                self.run_network(api, True, False)
+        with self.assertRaisesRegex(RuntimeError, 'modem'):
+            self.run_network(24, False, False, 'KO: failure')
 
 
 if __name__ == '__main__':
