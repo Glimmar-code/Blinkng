@@ -127,6 +127,10 @@ data class DesktopMessage(
     val deliveredAt: String?,
     val readAt: String?,
     val createdAt: String,
+    val reactionCounts: Map<String, Int> = emptyMap(),
+    val myReactions: Set<String> = emptySet(),
+    val isStarred: Boolean = false,
+    val isPinned: Boolean = false,
 )
 
 data class DesktopNotification(
