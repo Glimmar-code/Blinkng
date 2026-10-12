@@ -932,9 +932,14 @@ private fun PremiumHomeFeed(
                     headerOffsetPx.value = nextOffset
                     fabExpanded = direction > 0
                 }
-                // Header follows the gesture, but must not consume LazyColumn's
-                // vertical drag. Existing eased fade and settling are preserved.
-                return androidx.compose.ui.geometry.Offset.Zero
+                // Header and LazyColumn must never both apply the same drag
+                // distance. Consume only the pixels the header actually moved;
+                // let the list receive the remainder when the header is at an
+                // edge, or during the direction reversal dead zone.
+                return androidx.compose.ui.geometry.Offset(
+                    0f,
+                    feedHeaderConsumedScrollDelta(previousOffset, nextOffset, deltaY)
+                )
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
