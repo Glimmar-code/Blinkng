@@ -649,13 +649,15 @@ private fun PremiumMessagesHome(
 ) {
     var query by rememberPersistentTextState(key = "message_home_search")
     var inboxTab by rememberSaveable { mutableStateOf(MessageInboxTab.PRIMARY) }
+    val unreadCount = conversations.count { !it.isArchived && it.inboxCategory != "requests" && (it.unreadCount > 0 || it.isMarkedUnread) }
     val requestCount = conversations.count { it.inboxCategory == "requests" && !it.isArchived }
     val archivedCount = conversations.count { it.isArchived }
     val sortedConversations = remember(conversations, inboxTab) {
         conversations
             .filter { conversation ->
                 com.blinkng.shared.BlinkChatInboxPolicy.matches(
-                    inboxTab, conversation.isArchived, conversation.inboxCategory
+                    inboxTab, conversation.isArchived, conversation.inboxCategory,
+                    conversation.unreadCount > 0 || conversation.isMarkedUnread
                 )
             }
             .sortedWith(
@@ -724,6 +726,7 @@ private fun PremiumMessagesHome(
             MessageInboxTabs(
                 selected = inboxTab,
                 requestCount = requestCount,
+                unreadCount = unreadCount,
                 archivedCount = archivedCount,
                 palette = palette,
                 onSelect = { inboxTab = it }
@@ -762,6 +765,7 @@ private fun PremiumMessagesHome(
 private fun MessageInboxTabs(
     selected: MessageInboxTab,
     requestCount: Int,
+    unreadCount: Int,
     archivedCount: Int,
     palette: MessagePalette,
     onSelect: (MessageInboxTab) -> Unit
@@ -777,6 +781,15 @@ private fun MessageInboxTabs(
                 count = null,
                 palette = palette,
                 onClick = { onSelect(MessageInboxTab.PRIMARY) }
+            )
+        }
+        item {
+            MessageInboxTabChip(
+                label = "Unread",
+                selected = selected == MessageInboxTab.UNREAD,
+                count = unreadCount.takeIf { it > 0 },
+                palette = palette,
+                onClick = { onSelect(MessageInboxTab.UNREAD) }
             )
         }
         item {
