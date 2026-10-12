@@ -367,12 +367,13 @@ fun ConnectSection(
                                 }
 
                                 Text(
-                                    "Confirmed online now: $realOnlineCount",
+                                    if (isLiveDataAvailable) "Confirmed online now: $realOnlineCount"
+                                    else "Live presence is temporarily unavailable",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
 
-                                if (campusName.isNotBlank()) {
+                                if (isLiveDataAvailable && campusName.isNotBlank()) {
                                     Text(
                                         "$campusName activity: $campusLabel • $realCampusOnline confirmed online",
                                         fontSize = 11.sp,
@@ -380,7 +381,7 @@ fun ConnectSection(
                                     )
                                 }
 
-                                if (onlinePreview.isNotEmpty()) {
+                                if (isLiveDataAvailable && onlinePreview.isNotEmpty()) {
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                     Text(
                                         "Actually online",
@@ -470,7 +471,7 @@ fun ConnectSection(
                                     color = BlinkOnlineGreen.copy(alpha = .13f)
                                 ) {
                                     Text(
-                                        "Active now · ${if (reduceMotion) activeNowCount else displayedOnlineCount}",
+                                        "Active now · ${if (!isLiveDataAvailable) "—" else if (reduceMotion) activeNowCount.toString() else displayedOnlineCount.toString()}",
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                         color = BlinkOnlineGreen,
                                         fontSize = 10.5.sp,
