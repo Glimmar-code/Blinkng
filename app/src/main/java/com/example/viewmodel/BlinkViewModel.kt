@@ -1714,6 +1714,7 @@ private suspend fun restoreSupabaseSession() {
 
                     val connectHub = connectHubRequest.await()
                         .getOrDefault(before.connectHub)
+                        .retainFailedPublicSections(before.connectHub)
 
                     val scheduledPosts = scheduledPostsRequest.await()
                         .getOrDefault(before.scheduledPosts)
@@ -2123,7 +2124,7 @@ private suspend fun restoreSupabaseSession() {
             runCatching { connectHubRepository.fetchSnapshot() }
                 .onSuccess { snapshot ->
                     _uiState.value = _uiState.value.copy(
-                        connectHub = snapshot,
+                        connectHub = snapshot.retainFailedPublicSections(_uiState.value.connectHub),
                         isConnectHubLoading = false
                     )
                     persistExtendedCache()
