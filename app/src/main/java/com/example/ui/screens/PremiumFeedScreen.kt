@@ -641,6 +641,14 @@ private fun PremiumHomeFeed(
     val latestViewed by rememberUpdatedState(onViewedPost)
     val latestRefresh by rememberUpdatedState(onRefresh)
     val refreshingNow by rememberUpdatedState(isRefreshing)
+    val lastRefreshTapMs = remember(laneResumeKey) { longArrayOf(0L) }
+    val requestSafeRefresh = {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!refreshingNow && canRequestFeedRefresh(now, lastRefreshTapMs[0])) {
+            lastRefreshTapMs[0] = now
+            latestRefresh()
+        }
+    }
     val impressionTracker = remember { PostImpressionTracker() }
     val deliveredBoostImpressions = remember(laneResumeKey) { mutableSetOf<String>() }
     val performanceMonitor = remember(context, laneResumeKey) {
@@ -1115,7 +1123,7 @@ private fun PremiumHomeFeed(
                     listState.scrollToItem(0)
                 }
             } else {
-                latestRefresh()
+                requestSafeRefresh()
             }
             headerOffsetPx.value = 0f
             headerScrollDirection[0] = 0
@@ -1352,7 +1360,7 @@ private fun PremiumHomeFeed(
                         onForYouClick = { onLaneChanged(0) },
                         onFollowingClick = { onLaneChanged(1) },
                         onFilterClick = { filterMenuVisible = true },
-                        onRefreshClick = { if (!isRefreshing) latestRefresh() },
+                        onRefreshClick = { if (!isRefreshing) requestSafeRefresh() },
                         isRefreshing = isRefreshing
                     )
                     Box(modifier = Modifier.align(Alignment.TopEnd)) {
@@ -1391,7 +1399,7 @@ private fun PremiumHomeFeed(
                                     lastFlingVelocityY[0] = 0f
                                     fabExpanded = true
                                     onBottomBarVisibilityChange(true)
-                                    latestRefresh()
+                                    requestSafeRefresh()
                                 }
                             },
                             state = pullState,
@@ -1618,7 +1626,7 @@ private fun PremiumHomeFeed(
                                         lastFlingVelocityY[0] = 0f
                                         fabExpanded = true
                                         onBottomBarVisibilityChange(true)
-                                        latestRefresh()
+                                        requestSafeRefresh()
                                     }
                                 }
                             )
