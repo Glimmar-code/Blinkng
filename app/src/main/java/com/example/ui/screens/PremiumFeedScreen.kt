@@ -678,7 +678,6 @@ private fun PremiumHomeFeed(
     val lastFlingVelocityY = remember(laneResumeKey) { floatArrayOf(0f) }
     val pendingRestoredHeaderFraction = remember(laneResumeKey) { floatArrayOf(0f) }
     var fabExpanded by remember(laneResumeKey) { mutableStateOf(true) }
-    val secondaryChromeVisible = true
 
     val networkMonitor = remember(context) { NetworkMonitor(context) }
     val isOnline by networkMonitor.isOnline.collectAsState(
@@ -1371,7 +1370,9 @@ private fun PremiumHomeFeed(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(top = 0.dp, bottom = 16.dp)
+                        // Keep the final post's actions scrollable above the floating
+                        // create control, without reserving a permanent empty rail.
+                        contentPadding = PaddingValues(top = 0.dp, bottom = 64.dp)
                     ) {
                         if (!errorMessage.isNullOrBlank() && stableRankedPosts.isNotEmpty()) {
                             item(key = "refresh_error") {
@@ -1597,25 +1598,22 @@ private fun PremiumHomeFeed(
                     )
                 }
 
-                AnimatedVisibility(
-                    visible = secondaryChromeVisible,
-                    enter = fadeIn(tween(110)),
-                    exit = fadeOut(tween(90))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp)
-                            .background(FeedBackground)
-                            .padding(horizontal = 14.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.CenterEnd
-                    ) {
-                        CreatePostFab(
-                            expanded = fabExpanded,
-                            onClick = onOpenCreatePost
-                        )
-                    }
-                }
+            }
+
+            // The old Create rail was a full-width 56dp row beneath the
+            // timeline, leaving a large empty strip except for its button.
+            // Float the same speed-dial above navigation instead, allowing
+            // the feed to use all of the space between the tabs and nav bar.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 14.dp, bottom = 64.dp),
+                contentAlignment = Alignment.BottomEnd
+            ) {
+                CreatePostFab(
+                    expanded = fabExpanded,
+                    onClick = onOpenCreatePost
+                )
             }
         }
     }
