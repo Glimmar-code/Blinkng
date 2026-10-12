@@ -114,6 +114,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
+import com.blinkng.shared.ConnectDataHealth
 import com.example.data.models.ConnectRequestItem
 import com.example.data.models.GameChallenge
 import com.example.data.models.MatchSpinPreferences
@@ -226,34 +227,32 @@ fun ConnectHubPremiumPanel(
         }
     }
 
-    val candidates = remember(hub.smartMatches, profiles, current) {
-        if (hub.smartMatches.isNotEmpty()) {
-            hub.smartMatches.mapNotNull { candidate ->
-                if (candidate.username.isBlank()) null else {
-                    UserProfile(
-                        id = candidate.userId,
-                        fullName = candidate.fullName,
-                        username = candidate.username,
-                        avatarUrl = candidate.avatarUrl,
-                        university = candidate.university,
-                        faculty = candidate.faculty,
-                        department = candidate.department,
-                        academicLevel = candidate.academicLevel,
-                        relationshipStatus = candidate.relationshipStatus,
-                        onlineNow = candidate.onlineNow,
-                        lastSeenAt = candidate.lastSeenAt,
-                        coreSkills = candidate.commonSkills.toMutableList(),
-                        hobbies = candidate.commonHobbies
-                    ) to candidate.compatibilityScore
-                }
+    // Only show server-approved matches. A failed/empty RPC must NEVER fall back
+    // to all profiles: doing so can bypass discovery opt-outs or blocked-user rules.
+    val candidates = remember(hub.smartMatches, current?.id) {
+        hub.smartMatches.mapNotNull { candidate ->
+            if (candidate.userId.isBlank() || candidate.username.isBlank() ||
+                candidate.userId == current?.id
+            ) {
+                null
+            } else {
+                UserProfile(
+                    id = candidate.userId,
+                    fullName = candidate.fullName,
+                    username = candidate.username,
+                    avatarUrl = candidate.avatarUrl,
+                    university = candidate.university,
+                    faculty = candidate.faculty,
+                    department = candidate.department,
+                    academicLevel = candidate.academicLevel,
+                    relationshipStatus = candidate.relationshipStatus,
+                    onlineNow = candidate.onlineNow,
+                    lastSeenAt = candidate.lastSeenAt,
+                    coreSkills = candidate.commonSkills.toMutableList(),
+                    hobbies = candidate.commonHobbies
+                ) to candidate.compatibilityScore
             }
-        } else {
-            val me = current
-            if (me == null) emptyList() else profiles
-                .filter { it.id.isNotBlank() && it.id != me.id && it.username.isNotBlank() }
-                .sortedByDescending { compatibilityScore(me, it) }
-                .map { it to compatibilityScore(me, it) }
-        }
+        }.distinctBy { it.first.id }
     }
 
     val filteredRoommates = remember(hub.roommates, hubQuery) {
@@ -359,6 +358,33 @@ fun ConnectHubPremiumPanel(
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
     ) {
+        val refreshWarning = remember(hub.failedSections) {
+            ConnectDataHealth.message(hub.failedSections)
+        }
+        if (refreshWarning != null) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = refreshWarning,
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontSize = 12.sp
+                    )
+                    TextButton(onClick = actions.refresh, enabled = !isLoading) {
+                        Text("Retry")
+                    }
+                }
+            }
+        }
         SmartMatchHero(
             candidates = candidates,
             current = current,
@@ -607,6 +633,32 @@ fun ConnectHubPremiumPanel(
                                 }
                             }
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .7f))
+                            val failedKey = when (openCategory) {
+                                ConnectCategory.ROOMMATE -> "roommates"
+                                ConnectCategory.MENTOR -> "mentors"
+                                ConnectCategory.READING -> "reading"
+                                ConnectCategory.AGENTS -> "agents"
+                                ConnectCategory.HOUSING -> "housing"
+                                ConnectCategory.CHALLENGES -> "challenges"
+                            }
+                            if (failedKey in hub.failedSections) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "Couldn't update ${openCategory.label}. Try again.",
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.weight(1f),
+                                        fontSize = 12.sp
+                                    )
+                                    TextButton(onClick = actions.refresh, enabled = !isLoading) {
+                                        Text("Retry")
+                                    }
+                                }
+                            }
 
         HorizontalPager(
             state = pagerState,
@@ -1490,22 +1542,34 @@ private fun SmartMatchHero(
     onMessage: (UserProfile) -> Unit,
     onChallenge: (UserProfile) -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "matchGlow")
-    val glow by infiniteTransition.animateFloat(
-        initialValue = 0.9f,
-        targetValue = 1.14f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1400, easing = FastOutSlowInEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        ),
-        label = "glowScale"
-    )
-    val spinAngle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(animation = tween(900, easing = LinearEasing)),
-        label = "spinAngle"
-    )
+    // A permanently running infinite transition wastes frames during Connect
+    // scrolling. Only animate the hero while matchmaking is actually active.
+    val reduceMotion = rememberReducedMotionEnabled()
+    val glow: Float
+    val spinAngle: Float
+    if (isMatching && !reduceMotion) {
+        val transition = rememberInfiniteTransition(label = "activeMatchEffects")
+        val currentGlow by transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.08f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1050, easing = FastOutSlowInEasing),
+                repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+            ),
+            label = "activeMatchGlow"
+        )
+        val currentAngle by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(animation = tween(1000, easing = LinearEasing)),
+            label = "activeMatchSpin"
+        )
+        glow = currentGlow
+        spinAngle = currentAngle
+    } else {
+        glow = 1f
+        spinAngle = 0f
+    }
     val stages = remember {
         listOf(
             "Reading your preferences",
@@ -2371,22 +2435,15 @@ private fun CategoryScaffold(
     }
 }
 
+/**
+ * Lazy rows must have their full height immediately. Per-row deferred reveal
+ * animated the list's geometry on every recycle and produced scroll skipping.
+ * Preserve card press feedback without delayed row entry.
+ */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 private fun StaggeredItem(index: Int, content: @Composable () -> Unit) {
-    var shown by remember(index) { mutableStateOf(false) }
-    androidx.compose.runtime.LaunchedEffect(index) {
-        delay(35L * index.coerceAtMost(8))
-        shown = true
-    }
-    AnimatedVisibility(
-        visible = shown,
-        enter = fadeIn(tween(260)) + slideInVertically(
-            initialOffsetY = { it / 6 },
-            animationSpec = tween(300, easing = FastOutSlowInEasing)
-        )
-    ) {
-        content()
-    }
+    content()
 }
 
 @Composable

@@ -1,4 +1,6 @@
 package com.example.ui.screens
+import com.blinkng.shared.ConnectDiscoveryRanking
+import com.blinkng.shared.ConnectDiscoverySignals
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateIntAsState
@@ -22,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -186,17 +189,18 @@ fun ConnectSection(
 
         when (sort) {
             LivePeopleSort.RECOMMENDED -> filtered.sortedWith(
-                compareByDescending<UserProfile> { it.onlineNow }
-                    .thenByDescending { it.id in followingIds }
-                    .thenByDescending {
-                        myDepartment.isNotBlank() &&
-                            it.department.equals(myDepartment, ignoreCase = true)
-                    }
-                    .thenByDescending {
-                        myCampus.isNotBlank() &&
-                            it.university.equals(myCampus, ignoreCase = true)
-                    }
-                    .thenBy { it.fullName.lowercase() }
+                compareByDescending<UserProfile> { candidate ->
+                    ConnectDiscoveryRanking.score(
+                        ConnectDiscoverySignals(
+                            onlineNow = candidate.onlineNow,
+                            sameCampus = myCampus.isNotBlank() &&
+                                candidate.university.equals(myCampus, ignoreCase = true),
+                            sameDepartment = myDepartment.isNotBlank() &&
+                                candidate.department.equals(myDepartment, ignoreCase = true),
+                            alreadyFollowing = candidate.id in followingIds
+                        )
+                    )
+                }.thenBy { it.fullName.ifBlank { it.username }.lowercase() }
             )
             LivePeopleSort.RECENTLY_ACTIVE -> filtered.sortedWith(
                 compareByDescending<UserProfile> { it.onlineNow }
@@ -364,12 +368,13 @@ fun ConnectSection(
                                 }
 
                                 Text(
-                                    "Confirmed online now: $realOnlineCount",
+                                    if (isLiveDataAvailable) "Confirmed online now: $realOnlineCount"
+                                    else "Live presence is temporarily unavailable",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
 
-                                if (campusName.isNotBlank()) {
+                                if (isLiveDataAvailable && campusName.isNotBlank()) {
                                     Text(
                                         "$campusName activity: $campusLabel • $realCampusOnline confirmed online",
                                         fontSize = 11.sp,
@@ -377,7 +382,7 @@ fun ConnectSection(
                                     )
                                 }
 
-                                if (onlinePreview.isNotEmpty()) {
+                                if (isLiveDataAvailable && onlinePreview.isNotEmpty()) {
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                     Text(
                                         "Actually online",
@@ -467,7 +472,7 @@ fun ConnectSection(
                                     color = BlinkOnlineGreen.copy(alpha = .13f)
                                 ) {
                                     Text(
-                                        "Active now · ${if (reduceMotion) activeNowCount else displayedOnlineCount}",
+                                        "Active now · ${if (!isLiveDataAvailable) "—" else if (reduceMotion) activeNowCount.toString() else displayedOnlineCount.toString()}",
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                         color = BlinkOnlineGreen,
                                         fontSize = 10.5.sp,
@@ -605,7 +610,7 @@ private fun ConnectHeader(
             .padding(start = 8.dp, end = 8.dp, top = 38.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onMenuClick, modifier = Modifier.size(44.dp)) {
+        IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.MoreHoriz, contentDescription = "Menu")
         }
 
@@ -619,13 +624,13 @@ private fun ConnectHeader(
 
         Spacer(Modifier.weight(1f))
 
-        IconButton(onClick = onNotificationClick, modifier = Modifier.size(44.dp)) {
+        IconButton(onClick = onNotificationClick, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.NotificationsNone, contentDescription = "Notifications")
         }
 
         Box(
             modifier = Modifier
-                .size(38.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .clickable(onClick = onProfileClick),
             contentAlignment = Alignment.Center
@@ -700,7 +705,7 @@ private fun ConnectTopTab(
         label = "connectTopTabText"
     )
     Surface(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.heightIn(min = 48.dp).clickable(onClick = onClick),
         shape = RoundedCornerShape(100.dp),
         color = background
     ) {

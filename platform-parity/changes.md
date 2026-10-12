@@ -1,3 +1,11 @@
+## 2026-10-12 — Connect reliability, trustworthy discovery, and Android/Windows parity (Testlab)
+
+- **Shared policy:** introduce `ConnectDiscoveryRanking` on Android and Windows. Same-campus/department relevance and real presence boost results; previously followed users do not unfairly crowd out new connections. No coins, XP, paid status, or inferred sensitive traits affect this scoring. Deterministic ordering and pure JVM tests cover the policy.
+- **Android Connect:** request independent backend Connect sections concurrently instead of serially; return named partial-failure diagnostics so a failed RPC cannot masquerade as a genuinely empty category. Show accessible page-level and category-level Retry actions. Restrict Smart Match cards to server-approved recommendations; no local fallback to all users on RPC failure. Never claim cached/offline activity counts are confirmed live presence.
+- **Windows Connect:** fetch independent lists, student profiles, following state, inbox and policy concurrently, preserving successfully loaded sections. Show partial-refresh diagnostics and a Retry action. Apply the same shared student discovery ranking and offline presence accuracy.
+- **Backend/security:** no Supabase schema or permission modifications. Existing RLS, auth, request lifecycle, privacy opt-outs, server-approved match RPC and coin rules remain authoritative. The client must never fabricate profiles as a workaround for failed discovery calls.
+- **Validation:** require Android JVM/lint/assemble, emulator runtime smoke, Windows unit/build/install packaging, feature-parity checks, release smoke and safety CI before main promotion. Device performance benchmarking, broader matching features, backend RLS audits, offline persistence improvements, and the remaining 100-point Connect enhancement backlog are **not yet complete**; do not represent them as shipped.
+
 ## 2026-10-12 — Feed audit follow-up: pagination, refresh, native ads, accessibility
 
 PARITY-EXCEPTION: android-compose-feed-pagination-native-ad-touch-20261012

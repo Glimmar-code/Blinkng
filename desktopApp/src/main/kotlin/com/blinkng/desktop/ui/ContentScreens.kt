@@ -1,4 +1,6 @@
 package com.blinkng.desktop.ui
+import com.blinkng.shared.ConnectDiscoveryRanking
+import com.blinkng.shared.ConnectDiscoverySignals
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -115,6 +117,9 @@ import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import com.blinkng.shared.xpProgress
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import com.blinkng.shared.ConnectDataHealth
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlin.random.Random
@@ -1077,6 +1082,7 @@ fun ConnectScreen(state: DesktopAppState) {
     var requestTarget by remember { mutableStateOf<DesktopConnectListing?>(null) }
     var requestMessage by remember { mutableStateOf("") }
     var connectError by remember { mutableStateOf<String?>(null) }
+    var connectLoadWarning by remember { mutableStateOf<String?>(null) }
     var selectedDirectorySlug by remember { mutableStateOf("all") }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
@@ -1128,23 +1134,39 @@ fun ConnectScreen(state: DesktopAppState) {
         }
     }
 
-    suspend fun reload() {
+    suspend fun reload() = coroutineScope {
         loading = true
-        val listingsResult = runCatching { state.client.fetchConnectListings() }
-        val studentsResult = runCatching { state.client.fetchOnboardingSuggestions(100) }
-        val followingResult = runCatching { state.client.fetchFollowingIds() }
-        val inboxResult = runCatching { state.client.fetchConnectInbox() }
-        val policyResult = runCatching { state.client.fetchActivityPulsePolicy() }
+        // Independent requests run together, but any successful section stays visible.
+        val listingsRequest = async { runCatching { state.client.fetchConnectListings() } }
+        val studentsRequest = async { runCatching { state.client.fetchOnboardingSuggestions(100) } }
+        val followingRequest = async { runCatching { state.client.fetchFollowingIds() } }
+        val inboxRequest = async { runCatching { state.client.fetchConnectInbox() } }
+        val policyRequest = async { runCatching { state.client.fetchActivityPulsePolicy() } }
+
+        val listingsResult = listingsRequest.await()
+        val studentsResult = studentsRequest.await()
+        val followingResult = followingRequest.await()
+        val inboxResult = inboxRequest.await()
+        val policyResult = policyRequest.await()
 
         listings = listingsResult.getOrDefault(listings)
-        directoryApplications = runCatching {
+        val applicationsResult = runCatching {
             state.client.fetchConnectApplications(listings.filter { it.userId == state.profile?.id }.map { it.id })
-        }.getOrDefault(directoryApplications)
+        }
+        directoryApplications = applicationsResult.getOrDefault(directoryApplications)
         students = studentsResult.getOrDefault(students).filterNot { it.id == state.profile?.id }
         followingIds = followingResult.getOrDefault(followingIds)
         inbox = inboxResult.getOrDefault(inbox)
         pulsePolicy = policyResult.getOrDefault(pulsePolicy).normalized()
         liveActivityAvailable = studentsResult.isSuccess
+
+        val failed = buildSet {
+            if (listingsResult.isFailure || applicationsResult.isFailure) add("directory")
+            if (studentsResult.isFailure) add("students")
+            if (followingResult.isFailure) add("following")
+            if (inboxResult.isFailure) add("inbox")
+        }
+        connectLoadWarning = ConnectDataHealth.message(failed)
         loading = false
     }
 
@@ -1218,17 +1240,18 @@ fun ConnectScreen(state: DesktopAppState) {
             )
             "name" -> filtered.sortedBy { it.fullName.ifBlank { it.username }.lowercase() }
             else -> filtered.sortedWith(
-                compareByDescending<DesktopProfile> { it.isOnline }
-                    .thenByDescending { it.id in followingIds }
-                    .thenByDescending {
-                        myDepartment.isNotBlank() &&
-                            it.department.orEmpty().equals(myDepartment, ignoreCase = true)
-                    }
-                    .thenByDescending {
-                        myCampus.isNotBlank() &&
-                            it.university.orEmpty().equals(myCampus, ignoreCase = true)
-                    }
-                    .thenBy { it.fullName.lowercase() }
+                compareByDescending<DesktopProfile> { candidate ->
+                    ConnectDiscoveryRanking.score(
+                        ConnectDiscoverySignals(
+                            onlineNow = candidate.isOnline,
+                            sameCampus = myCampus.isNotBlank() &&
+                                candidate.university.orEmpty().equals(myCampus, ignoreCase = true),
+                            sameDepartment = myDepartment.isNotBlank() &&
+                                candidate.department.orEmpty().equals(myDepartment, ignoreCase = true),
+                            alreadyFollowing = candidate.id in followingIds,
+                        )
+                    )
+                }.thenBy { it.fullName.ifBlank { it.username }.lowercase() }
             )
         }
     }
@@ -1310,6 +1333,32 @@ fun ConnectScreen(state: DesktopAppState) {
                 }
             }
 
+            if (connectLoadWarning != null) {
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(
+                                connectLoadWarning.orEmpty(),
+                                modifier = Modifier.weight(1f),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                            OutlinedButton(onClick = { scope.launch { reload() } }, enabled = !loading) {
+                                Text("Retry")
+                            }
+                        }
+                    }
+                }
+            }
+
             if (policy.enabled) {
                 item {
                     Surface(
@@ -1346,11 +1395,11 @@ fun ConnectScreen(state: DesktopAppState) {
                             }
 
                             Text(
-                                "Confirmed online now: $realOnlineCount",
+                                if (liveActivityAvailable) "Confirmed online now: $realOnlineCount" else "Live presence is temporarily unavailable",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            if (myCampus.isNotBlank()) {
+                            if (liveActivityAvailable && myCampus.isNotBlank()) {
                                 Text(
                                     "$myCampus activity: $campusLabel • $realCampusOnline confirmed online",
                                     fontSize = 11.sp,
@@ -1358,7 +1407,7 @@ fun ConnectScreen(state: DesktopAppState) {
                                 )
                             }
 
-                            if (onlinePreview.isNotEmpty()) {
+                            if (liveActivityAvailable && onlinePreview.isNotEmpty()) {
                                 HorizontalDivider()
                                 Text(
                                     "Actually online",
