@@ -159,5 +159,7 @@ data class ConnectHubSnapshot(
     val gameChallenges: List<GameChallenge> = emptyList(),
     val smartMatches: List<SmartMatchCandidate> = emptyList(),
     val requests: List<ConnectRequestItem> = emptyList(),
-    val gameStats: GameProfileStats = GameProfileStats()
+    val gameStats: GameProfileStats = GameProfileStats(),
+    /** Sections that failed to refresh; cached values may still be displayed. */
+    val failedSections: List<String> = emptyList()
 )
