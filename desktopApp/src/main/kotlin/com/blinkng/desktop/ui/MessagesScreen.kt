@@ -87,6 +87,8 @@ fun MessagesScreen(state: DesktopAppState) {
     var chatSearchVisible by remember { mutableStateOf(false) }
     var showContactCard by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
+    var olderLoading by remember { mutableStateOf(false) }
+    var hasMoreOlder by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var actionMessageId by remember { mutableStateOf<String?>(null) }
     var inbox by remember { mutableStateOf(BlinkMessageInbox.PRIMARY) }
@@ -142,12 +144,36 @@ fun MessagesScreen(state: DesktopAppState) {
                 // A slow response from chat A must never repaint chat B (or another account).
                 if (state.session?.userId == owner && selected?.id == target.id) {
                     messages = it
+                    hasMoreOlder = it.size >= 100
                     error = null
                 }
             }
             .onFailure {
                 if (state.session?.userId == owner && selected?.id == target.id) error = it.message
             }
+    }
+
+    fun loadOlderMessages() {
+        if (olderLoading || !hasMoreOlder || messages.isEmpty() || chatQuery.isNotBlank()) return
+        val target = selected ?: return
+        val owner = state.session?.userId ?: return
+        val earliest = messages.first()
+        olderLoading = true
+        scope.launch {
+            runCatching {
+                state.client.fetchMessages(target.id, earliest.createdAt, earliest.id)
+            }.onSuccess { older ->
+                if (state.session?.userId == owner && selected?.id == target.id) {
+                    // Keep server ordering and deduplicate rows replayed at a cursor boundary.
+                    val knownIds = messages.map { it.id }.toHashSet()
+                    messages = older.filterNot { it.id in knownIds } + messages
+                    hasMoreOlder = older.size >= 100
+                }
+            }.onFailure {
+                if (state.session?.userId == owner && selected?.id == target.id) error = it.message
+            }
+            olderLoading = false
+        }
     }
 
     fun changeMessageControl(conversationId: String, action: suspend () -> Boolean) {
@@ -177,6 +203,8 @@ fun MessagesScreen(state: DesktopAppState) {
         editingMessage = null
         deleteMessage = null
         reportMessage = null
+        olderLoading = false
+        hasMoreOlder = false
         error = null
         if (myUserId.isNotBlank()) loadConversations()
     }
@@ -187,6 +215,8 @@ fun MessagesScreen(state: DesktopAppState) {
         editingMessage = null
         deleteMessage = null
         reportMessage = null
+        olderLoading = false
+        hasMoreOlder = false
         // Never display the previous contact's private history while the next chat loads.
         messages = emptyList()
         loadMessages(selected)
@@ -479,6 +509,15 @@ fun MessagesScreen(state: DesktopAppState) {
                 )
             }
 
+            if (hasMoreOlder && chatQuery.isBlank() && chatListState.firstVisibleItemIndex <= 2) {
+                TextButton(
+                    onClick = { loadOlderMessages() },
+                    enabled = !olderLoading,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text(if (olderLoading) "Loading earlier messages…" else "Load earlier messages")
+                }
+            }
             LazyColumn(
                 state = chatListState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
