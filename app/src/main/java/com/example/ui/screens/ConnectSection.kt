@@ -4,6 +4,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.ConnectDiscoveryPolicy
+import com.blinkng.shared.ConnectDiscoverySignals
 
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
@@ -185,19 +187,20 @@ fun ConnectSection(
         }
 
         when (sort) {
-            LivePeopleSort.RECOMMENDED -> filtered.sortedWith(
-                compareByDescending<UserProfile> { it.onlineNow }
-                    .thenByDescending { it.id in followingIds }
-                    .thenByDescending {
-                        myDepartment.isNotBlank() &&
-                            it.department.equals(myDepartment, ignoreCase = true)
-                    }
-                    .thenByDescending {
-                        myCampus.isNotBlank() &&
-                            it.university.equals(myCampus, ignoreCase = true)
-                    }
-                    .thenBy { it.fullName.lowercase() }
-            )
+            LivePeopleSort.RECOMMENDED -> ConnectDiscoveryPolicy.rank(
+                candidates = filtered,
+                campus = myCampus,
+                department = myDepartment
+            ) { profile ->
+                ConnectDiscoverySignals(
+                    id = profile.id.ifBlank { profile.username },
+                    displayName = profile.fullName.ifBlank { profile.username },
+                    university = profile.university,
+                    department = profile.department,
+                    online = profile.onlineNow,
+                    following = profile.id in followingIds
+                )
+            }
             LivePeopleSort.RECENTLY_ACTIVE -> filtered.sortedWith(
                 compareByDescending<UserProfile> { it.onlineNow }
                     .thenByDescending { it.lastSeenAt }
@@ -364,7 +367,7 @@ fun ConnectSection(
                                 }
 
                                 Text(
-                                    "Confirmed online now: $realOnlineCount",
+                                    if (isLiveDataAvailable) "Confirmed online now: $realOnlineCount" else "Last known online: $realOnlineCount",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -380,7 +383,7 @@ fun ConnectSection(
                                 if (onlinePreview.isNotEmpty()) {
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                     Text(
-                                        "Actually online",
+                                        if (isLiveDataAvailable) "Actually online" else "Previously online",
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -467,7 +470,7 @@ fun ConnectSection(
                                     color = BlinkOnlineGreen.copy(alpha = .13f)
                                 ) {
                                     Text(
-                                        "Active now · ${if (reduceMotion) activeNowCount else displayedOnlineCount}",
+                                        "${if (isLiveDataAvailable) "Active now" else "Last known online"} · ${if (reduceMotion) activeNowCount else displayedOnlineCount}",
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                         color = BlinkOnlineGreen,
                                         fontSize = 10.5.sp,
@@ -560,6 +563,20 @@ fun ConnectSection(
                                         LiveProfileCard(
                                             profile = profile,
                                             isFollowing = isFollowing,
+                                            presenceFresh = isLiveDataAvailable,
+                                            recommendation = if (sort == LivePeopleSort.RECOMMENDED) {
+                                                ConnectDiscoveryPolicy.reasons(
+                                                    ConnectDiscoverySignals(
+                                                        id = profile.id.ifBlank { profile.username },
+                                                        displayName = profile.fullName,
+                                                        university = profile.university,
+                                                        department = profile.department,
+                                                        online = profile.onlineNow
+                                                    ),
+                                                    current?.university.orEmpty(),
+                                                    current?.department.orEmpty()
+                                                ).take(2).joinToString(" • ").takeIf { it.isNotBlank() }
+                                            } else null,
                                             onFollow = {
                                                 if (profileId.isNotBlank()) {
                                                     followScope.launch {
@@ -718,6 +735,8 @@ private fun ConnectTopTab(
 private fun LiveProfileCard(
     profile: UserProfile,
     isFollowing: Boolean,
+    recommendation: String?,
+    presenceFresh: Boolean,
     onFollow: () -> Unit,
     onProfileClick: () -> Unit,
     onMessage: () -> Unit
@@ -764,7 +783,7 @@ private fun LiveProfileCard(
                         )
                     }
 
-                    if (profile.onlineNow) {
+                    if (presenceFresh && profile.onlineNow) {
                         Box(
                             Modifier
                                 .size(13.dp)
@@ -816,12 +835,22 @@ private fun LiveProfileCard(
                     }
 
                     Text(
-                        text = presenceLabel(profile),
+                        text = if (presenceFresh) presenceLabel(profile) else "Presence not current",
                         fontSize = 10.sp,
-                        color = if (profile.onlineNow) BlinkOnlineGreen
+                        color = if (presenceFresh && profile.onlineNow) BlinkOnlineGreen
                         else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+
+            if (!recommendation.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "Why suggested: $recommendation",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
 
             if (profile.bio.isNotBlank() && !profile.bio.equals("null", true)) {
