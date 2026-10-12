@@ -824,6 +824,8 @@ private fun PremiumHomeFeed(
         )
     }
     val homeRowKeys = remember(homeRows) { homeRows.map(::premiumHomeRowKey) }
+    // Avoid scanning every loaded row on each debounced scroll-position save.
+    val homeRowKeySet = remember(homeRowKeys) { homeRowKeys.toHashSet() }
     val currentUserKey = remember(currentUsername) {
         currentUsername.trim().removePrefix("@").lowercase()
     }
@@ -1070,7 +1072,7 @@ private fun PremiumHomeFeed(
                 delay(300)
                 val anchorItem = listState.layoutInfo.visibleItemsInfo
                     .firstOrNull { item ->
-                        (item.key as? String)?.let(homeRowKeys::contains) == true
+                        (item.key as? String)?.let(homeRowKeySet::contains) == true
                     }
                 val visibleKey = anchorItem?.key as? String
                 val savedIndex = anchorItem?.index ?: index
