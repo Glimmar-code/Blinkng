@@ -1540,7 +1540,7 @@ private fun PremiumChatDetail(
         showEmojiRail = false
     }
 
-    val latestVisibleMessageId = visibleMessages.lastOrNull()?.id
+    val latestVisibleMessageId = conversation.messages.lastOrNull()?.id
     var previousLatestVisibleMessageId by remember(conversation.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(conversation.id, latestVisibleMessageId, searchQuery, pinnedOnly, starredOnly) {
         val previous = previousLatestVisibleMessageId
@@ -1567,7 +1567,9 @@ private fun PremiumChatDetail(
                 newMessagesBelow = (newMessagesBelow + 1).coerceAtMost(99)
             com.blinkng.shared.BlinkMessageScrollAction.KEEP -> Unit
         }
-        if (visibleMessages.isNotEmpty()) previousLatestVisibleMessageId = latestVisibleMessageId
+        if (visibleMessages.isNotEmpty() && searchQuery.isBlank() && !pinnedOnly && !starredOnly) {
+            previousLatestVisibleMessageId = latestVisibleMessageId
+        }
     }
     LaunchedEffect(isNearLatest) {
         if (isNearLatest) newMessagesBelow = 0
