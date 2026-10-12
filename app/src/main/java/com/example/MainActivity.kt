@@ -755,15 +755,83 @@ fun MainAppContent(
         }
     }
 
+    // A non-consuming gesture observer lets normal vertical feed scrolling,
+    // gallery swipes, search inputs and overlays keep priority over page changes.
+    val mainPageSwipeEnabled =
+        feedUtilitySheet == null &&
+        uiState.viewingProduct == null &&
+        uiState.viewingProfile == null &&
+        uiState.activeConversationPartner == null &&
+        uiState.activeCommentsPostId == null &&
+        uiState.activePostOptionsPost == null &&
+        !uiState.isMenuOpen &&
+        !uiState.isCreatePostOpen &&
+        !uiState.isCreateStoryOpen &&
+        !uiState.isPostItemOpen &&
+        !uiState.isEditProfileOpen &&
+        !uiState.isActivityOpen &&
+        uiState.deepLinkedPost == null &&
+        uiState.activeViewingStory == null &&
+        (uiState.selectedTab != MainTab.HOME || uiState.feedSubTab != 1)
+    val reducePageMotion = com.example.performance.rememberBlinkReduceMotion()
+
     Box(modifier = Modifier.fillMaxSize()) {
-        // Main Tab Content
+        // Main Tab Content; real content remains mounted during a short transition.
         androidx.compose.animation.AnimatedContent(
             targetState = uiState.selectedTab,
+            modifier = Modifier
+                .fillMaxSize()
+                .blinkHorizontalPageSwipe(
+                    enabled = mainPageSwipeEnabled,
+                    onSwipeLeft = {
+                        when {
+                            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0 ->
+                                viewModel.setFeedSubTab(1)
+                            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 2 ->
+                                viewModel.setTab(MainTab.MARKET)
+                            uiState.selectedTab == MainTab.MARKET ->
+                                viewModel.setTab(MainTab.MESSAGES)
+                        }
+                    },
+                    onSwipeRight = {
+                        when {
+                            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 2 ->
+                                viewModel.setFeedSubTab(1)
+                            uiState.selectedTab == MainTab.MARKET -> {
+                                viewModel.setTab(MainTab.HOME)
+                                viewModel.setFeedSubTab(2)
+                            }
+                            uiState.selectedTab == MainTab.MESSAGES ->
+                                viewModel.setTab(MainTab.MARKET)
+                        }
+                    }
+                ),
             label = "TabAnimatedContent",
             transitionSpec = {
-                (androidx.compose.animation.fadeIn(animationSpec = tween(180)) +
-                    androidx.compose.animation.scaleIn(initialScale = .988f, animationSpec = tween(220))) togetherWith
-                    androidx.compose.animation.fadeOut(animationSpec = tween(110))
+                val forward = targetState.index > initialState.index
+                val direction = if (forward) 1 else -1
+                val duration = if (reducePageMotion) 0 else 225
+                (
+                    androidx.compose.animation.slideInHorizontally(
+                        initialOffsetX = { direction * it },
+                        animationSpec = tween(duration)
+                    ) +
+                    androidx.compose.animation.scaleIn(
+                        initialScale = 0.96f,
+                        animationSpec = tween(duration)
+                    ) +
+                    androidx.compose.animation.fadeIn(animationSpec = tween(duration))
+                ) togetherWith (
+                    androidx.compose.animation.slideOutHorizontally(
+                        targetOffsetX = { -direction * it / 4 },
+                        animationSpec = tween(duration)
+                    ) +
+                    androidx.compose.animation.scaleOut(
+                        targetScale = 0.96f,
+                        animationSpec = tween(duration)
+                    ) +
+                    androidx.compose.animation.fadeOut(animationSpec = tween(duration))
+                )
             }
         ) { tab ->
             when (tab) {
