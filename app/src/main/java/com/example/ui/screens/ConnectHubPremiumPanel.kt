@@ -635,6 +635,32 @@ fun ConnectHubPremiumPanel(
                                 }
                             }
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .7f))
+                            val failedKey = when (openCategory) {
+                                ConnectCategory.ROOMMATE -> "roommates"
+                                ConnectCategory.MENTOR -> "mentors"
+                                ConnectCategory.READING -> "reading"
+                                ConnectCategory.AGENTS -> "agents"
+                                ConnectCategory.HOUSING -> "housing"
+                                ConnectCategory.CHALLENGES -> "challenges"
+                            }
+                            if (failedKey in hub.failedSections) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "Couldn't update ${openCategory.label}. Try again.",
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.weight(1f),
+                                        fontSize = 12.sp
+                                    )
+                                    TextButton(onClick = actions.refresh, enabled = !isLoading) {
+                                        Text("Retry")
+                                    }
+                                }
+                            }
 
         HorizontalPager(
             state = pagerState,
