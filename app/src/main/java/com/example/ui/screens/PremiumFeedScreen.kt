@@ -1,6 +1,12 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -369,7 +375,32 @@ fun PremiumFeedScreen(
             .toSet()
     }
 
-    when (currentSubTab) {
+    val reducePageMotion = rememberBlinkReduceMotion()
+    AnimatedContent(
+        targetState = currentSubTab,
+        transitionSpec = {
+            val forward = targetState > initialState
+            val direction = if (forward) 1 else -1
+            val duration = if (reducePageMotion) 0 else 225
+            (
+                slideInHorizontally(
+                    initialOffsetX = { direction * it },
+                    animationSpec = tween(duration)
+                ) +
+                scaleIn(initialScale = 0.96f, animationSpec = tween(duration)) +
+                fadeIn(animationSpec = tween(duration))
+            ) togetherWith (
+                slideOutHorizontally(
+                    targetOffsetX = { -direction * it / 4 },
+                    animationSpec = tween(duration)
+                ) +
+                scaleOut(targetScale = 0.96f, animationSpec = tween(duration)) +
+                fadeOut(animationSpec = tween(duration))
+            )
+        },
+        label = "feedReelsConnectTransition",
+    ) { page ->
+    when (page) {
         0 -> PremiumHomeFeed(
             posts = if (feedLane == 1) followingPosts else posts,
             reels = reels,
@@ -529,6 +560,7 @@ fun PremiumFeedScreen(
 
         else -> onSubTabChanged(0)
     }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -631,8 +663,9 @@ private fun PremiumHomeFeed(
     }
     var filterMenuVisible by remember { mutableStateOf(false) }
     var screenVisible by remember { mutableStateOf(false) }
-    var horizontalDrag by remember { mutableStateOf(0f) }
-    val swipeThreshold = with(density) { 64.dp.toPx() }
+    // For You / Following remain available via their explicit tabs.
+    // Horizontal page navigation is owned by the parent destination observer,
+    // so image galleries can handle their own swipes.
 
     // The upper feed chrome slides and fades together with the actual scroll offset.
     // Layout/layer updates avoid recomposing post cards on every scroll frame and the
@@ -1229,22 +1262,6 @@ private fun PremiumHomeFeed(
                 .fillMaxSize()
                 .background(FeedBackground)
                 .nestedScroll(scrollConnection)
-                .pointerInput(laneIndex) {
-                    detectHorizontalDragGestures(
-                        onHorizontalDrag = { change, amount ->
-                            change.consume()
-                            horizontalDrag += amount
-                        },
-                        onDragEnd = {
-                            when {
-                                horizontalDrag <= -swipeThreshold && laneIndex == 0 -> onLaneChanged(1)
-                                horizontalDrag >= swipeThreshold && laneIndex == 1 -> onLaneChanged(0)
-                            }
-                            horizontalDrag = 0f
-                        },
-                        onDragCancel = { horizontalDrag = 0f }
-                    )
-                }
         ) {
             Column(
                 modifier = Modifier
