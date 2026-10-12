@@ -51,6 +51,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -106,6 +107,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -808,6 +810,7 @@ fun CreatePostSheet(
                         OutlinedTextField(
                             value = text,
                             onValueChange = { if (it.length <= 5000) text = it },
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                             enabled = !isSubmitting,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -832,6 +835,7 @@ fun CreatePostSheet(
                     OutlinedTextField(
                         value = text,
                         onValueChange = { if (it.length <= 5000) text = it },
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                         enabled = !isSubmitting,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1643,6 +1647,7 @@ private fun ColoredTextComposer(
         BasicTextField(
             value = text,
             onValueChange = onTextChanged,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             enabled = enabled,
             textStyle = TextStyle(
                 color = style.textColor,
@@ -1953,6 +1958,7 @@ private fun PollComposer(
             OutlinedTextField(
                 value = question,
                 onValueChange = onQuestionChanged,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 enabled = enabled,
                 modifier = Modifier
                     .fillMaxWidth()
