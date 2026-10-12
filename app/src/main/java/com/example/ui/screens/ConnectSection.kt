@@ -605,7 +605,7 @@ private fun ConnectHeader(
             .padding(start = 8.dp, end = 8.dp, top = 38.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onMenuClick, modifier = Modifier.size(44.dp)) {
+        IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.MoreHoriz, contentDescription = "Menu")
         }
 
@@ -619,7 +619,7 @@ private fun ConnectHeader(
 
         Spacer(Modifier.weight(1f))
 
-        IconButton(onClick = onNotificationClick, modifier = Modifier.size(44.dp)) {
+        IconButton(onClick = onNotificationClick, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.NotificationsNone, contentDescription = "Notifications")
         }
 
@@ -709,7 +709,7 @@ private fun ConnectTopTab(
             color = foreground,
             fontSize = 13.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp)
         )
     }
 }
