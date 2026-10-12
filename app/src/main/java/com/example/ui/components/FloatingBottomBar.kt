@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -95,7 +96,12 @@ fun FeedBottomBar(
     val navigationBorder = if (isDark) Color(0xFF242424) else Color(0xFFE1E4E8)
 
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        // Paint behind gesture navigation and keep destinations above the
+        // system bar on edge-to-edge Android 15+ devices.
+        modifier = modifier
+            .fillMaxWidth()
+            .background(navigationSurface)
+            .navigationBarsPadding(),
         shape = RoundedCornerShape(0.dp),
         color = navigationSurface,
         tonalElevation = 0.dp,

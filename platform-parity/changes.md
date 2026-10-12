@@ -1,3 +1,17 @@
+PARITY-EXCEPTION: android-home-feed-system-insets-and-compose-media-20261012
+Reason: Android uses a status bar/camera cutout and gesture or three-button navigation inset; native Windows windows do not. The mobile-only Coil feed-thumbnail sizing, Compose scroll-transition, text "See more", poll tap throttling, and bottom FloatingBottomBar behavior cannot be transplanted directly onto desktop Compose without destabilizing its separate controls.
+Windows equivalent: desktop keeps a native titlebar/sidebar, platform-appropriate fixed-thumbnail bounds, native scroll layout, desktop poll submission and native post actions. It already shows the independent repost metric (not share count). The incoming-post pill on Android is an ephemeral realtime gesture; desktop users refresh their independently paged feed. This exception does not exempt any server/API/permission changes, of which there are none.
+
+## 2026-10-12 — Feed audit hardening and production-safety follow-ups (Testlab)
+
+- **Android status bar/nav insets:** keep the Android top status-bar safe area outside scroll-linked Home chrome; keep BottomBar and Create above gesture/three-button navigation via system insets. This is Android-only platform geometry; Windows uses native window chrome and sidebar.
+- **Android Home image preview:** use stable 4:5 cropping only for X-style thumbnail cards, and retain the original, uncropped source in full-screen viewing; this prevents LazyColumn recycled rows changing dimensions after image decoding. Windows desktop uses independently fixed preview bounds.
+- **Android post interactions:** repost button reflects `repostsCount` (not shares); edited post text resets its expansion; counter text does not re-run expensive animations during scrolling; comment actions are disabled when `allowComments=false`; poll votes have a short duplicate-tap guard. **Windows:** already uses `repostCount` and preserves its existing text-expansion/keyboard and comment permission behaviours. Android's poll handler and Coil image rendering are platform-specific.
+- **Android incoming post UI:** preserve currently visible feed row positions while detecting newly *prepended* IDs before merging live updates. Do not treat pagination, first load, feed replacement or refresh as new-post events. Following and For You remain separate server-backed lanes. Windows uses separate desktop feed paging and refresh UI.
+- **Unchanged contracts:** Supabase query/auth/RLS, Feed ranking, media upload, coins, views/XP, ad impressions, real Reel exposure, and Windows/backend data contracts remain untouched.
+- **Limitations:** Full accessibility audit, physical Redmi 15C frame benchmark, complete author-ID ownership migration, and ad-placeholder redesign require separate measured validation. They are not represented as resolved here.
+- **Required gates:** Android unit/lint/build, Android 15 runtime smoke, signed release smoke, Windows build, security/integrity and parity; no merge to main unless green.
+
 ## 2026-10-12 — Home feed header glow and empty Create-rail spacing (Testlab)
 
 PARITY-EXCEPTION: android-home-feed-inset-and-floating-create-20261012
