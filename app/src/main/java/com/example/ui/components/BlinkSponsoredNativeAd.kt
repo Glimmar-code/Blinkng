@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import android.graphics.Color as AndroidColor
 import android.graphics.Typeface
+import android.util.Log
 import android.graphics.drawable.GradientDrawable
 import android.content.res.ColorStateList
 import android.view.Gravity
@@ -56,31 +57,35 @@ enum class BlinkNativeAdPlacement {
 fun BlinkSponsoredNativeAd(
     adUnitId: String,
     placement: BlinkNativeAdPlacement,
+    requestKey: Int = 0,
     modifier: Modifier = Modifier,
     onUnavailable: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val canRequestAds by BlinkAdsRuntime.canRequestAds.collectAsState()
-    var nativeAd by remember(adUnitId) { mutableStateOf<NativeAd?>(null) }
-    var loadFailed by remember(adUnitId) { mutableStateOf(false) }
+    var nativeAd by remember(adUnitId, requestKey) { mutableStateOf<NativeAd?>(null) }
+    var loadFailed by remember(adUnitId, requestKey) { mutableStateOf(false) }
     val latestOnUnavailable by rememberUpdatedState(onUnavailable)
 
     // The SDK may never return (poor signal or disconnected Google services).
     // Time out BOTH native placements. A timed-out Feed slot collapses instead
     // of suddenly injecting an ad long after the reader has scrolled past.
     // Reels notify their pager to remove the unfilled full-screen placement.
-    LaunchedEffect(adUnitId, canRequestAds, placement, nativeAd, loadFailed) {
+    LaunchedEffect(adUnitId, requestKey, canRequestAds, placement, nativeAd, loadFailed) {
         if (!canRequestAds || nativeAd != null || loadFailed) return@LaunchedEffect
         if (adUnitId.isNotBlank()) {
             delay(if (placement == BlinkNativeAdPlacement.FEED) 8_000L else 6_000L)
         }
         if (nativeAd == null && !loadFailed) {
             loadFailed = true
+            val placementName = if (placement == BlinkNativeAdPlacement.FEED) "feed" else "reels"
+            BlinkAdAnalytics.failed(context, placementName, "native", -1)
+            Log.w("BlinkSponsoredAds", "$placementName native request timed out")
             latestOnUnavailable()
         }
     }
 
-    DisposableEffect(adUnitId, canRequestAds) {
+    DisposableEffect(adUnitId, requestKey, canRequestAds) {
         if (!canRequestAds) {
             nativeAd?.destroy()
             nativeAd = null
@@ -109,7 +114,9 @@ fun BlinkSponsoredNativeAd(
             .withAdListener(
                 object : AdListener() {
                     override fun onAdLoaded() {
-                        BlinkAdAnalytics.loaded(context, placementName, "native")
+                        if (!disposed && !loadFailed) {
+                            BlinkAdAnalytics.loaded(context, placementName, "native")
+                        }
                     }
 
                     override fun onAdImpression() {
@@ -121,9 +128,10 @@ fun BlinkSponsoredNativeAd(
                     }
 
                     override fun onAdFailedToLoad(error: LoadAdError) {
-                        if (disposed) return
+                        if (disposed || loadFailed) return
                         loadFailed = true
                         BlinkAdAnalytics.failed(context, placementName, "native", error.code)
+                        Log.w("BlinkSponsoredAds", "$placementName native no-fill/failure: ${error.domain} ${error.code}")
                         latestOnUnavailable()
                     }
                 }
