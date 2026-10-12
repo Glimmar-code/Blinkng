@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -48,6 +49,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +68,8 @@ import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
 import com.blinkng.shared.BlinkChatInboxPolicy
+import com.blinkng.shared.BlinkMessageScrollAction
+import com.blinkng.shared.BlinkMessageScrollPolicy
 import com.blinkng.shared.BlinkMessageInbox
 import kotlinx.coroutines.launch
 import java.awt.Toolkit
@@ -125,7 +129,14 @@ fun MessagesScreen(state: DesktopAppState) {
             .onFailure { error = it.message }
     }
 
-    LaunchedEffect(Unit) { loadConversations() }
+    LaunchedEffect(myUserId) {
+        // A reused desktop window must never show the previous account's chats.
+        selected = null
+        messages = emptyList()
+        conversations = emptyList()
+        error = null
+        if (myUserId.isNotBlank()) loadConversations()
+    }
     LaunchedEffect(selected?.id) {
         showContactCard = false
         chatSearchVisible = false
@@ -306,6 +317,47 @@ fun MessagesScreen(state: DesktopAppState) {
         if (chatQuery.isBlank()) messages
         else messages.filter { it.content.contains(chatQuery, ignoreCase = true) }
     }
+    val chatListState = remember(active.id) { LazyListState() }
+    var userHasScrolled by remember(active.id) { mutableStateOf(false) }
+    var previousLatestId by remember(active.id) { mutableStateOf<String?>(null) }
+    var hasNewMessages by remember(active.id) { mutableStateOf(false) }
+    val nearLatest by remember(active.id) {
+        derivedStateOf {
+            val layout = chatListState.layoutInfo
+            layout.totalItemsCount == 0 ||
+                (layout.visibleItemsInfo.lastOrNull()?.index ?: 0) >= layout.totalItemsCount - 2
+        }
+    }
+    LaunchedEffect(chatListState.isScrollInProgress) {
+        if (chatListState.isScrollInProgress) userHasScrolled = true
+    }
+    val latestId = visibleMessages.lastOrNull()?.id
+    LaunchedEffect(active.id, latestId, chatQuery) {
+        val action = BlinkMessageScrollPolicy.decide(
+            hasMessages = visibleMessages.isNotEmpty(),
+            filtering = chatQuery.isNotBlank(),
+            hasSeenLatest = previousLatestId != null,
+            userHasScrolled = userHasScrolled,
+            nearLatest = nearLatest,
+            latestChanged = previousLatestId != null && previousLatestId != latestId
+        )
+        when (action) {
+            BlinkMessageScrollAction.JUMP_TO_LATEST -> {
+                chatListState.scrollToItem(visibleMessages.lastIndex)
+                hasNewMessages = false
+            }
+            BlinkMessageScrollAction.ANIMATE_TO_LATEST -> {
+                chatListState.animateScrollToItem(visibleMessages.lastIndex)
+                hasNewMessages = false
+            }
+            BlinkMessageScrollAction.SHOW_NEW_MESSAGE -> hasNewMessages = true
+            BlinkMessageScrollAction.KEEP -> Unit
+        }
+        if (visibleMessages.isNotEmpty()) previousLatestId = latestId
+    }
+    LaunchedEffect(nearLatest) {
+        if (nearLatest) hasNewMessages = false
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -377,6 +429,7 @@ fun MessagesScreen(state: DesktopAppState) {
             }
 
             LazyColumn(
+                state = chatListState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(18.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -465,6 +518,17 @@ fun MessagesScreen(state: DesktopAppState) {
                 }
             }
 
+            if (hasNewMessages && visibleMessages.isNotEmpty()) {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            chatListState.animateScrollToItem(visibleMessages.lastIndex)
+                            hasNewMessages = false
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.End)
+                ) { Text("↓ New messages") }
+            }
             HorizontalDivider()
             Row(
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
