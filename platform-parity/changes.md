@@ -1,3 +1,11 @@
+## 2026-10-12 — Message timeline performance and draft isolation (Testlab)
+
+- **Shared:** `BlinkMessageScrollPolicy` specifies deterministic initial jump, animated append at bottom, preservation of reading position, and new-message indication when reading history; four Android unit-test scenarios cover its behavior.
+- **Android:** do not compose a second blurred inbox behind an already full-screen chat; assign stable conversation list keys so reordering does not destroy row identity; isolate lazy timeline state per conversation; memoize search/filter and reply-target lookup; distinguish history loading from an actually empty or filtered conversation; keep reply navigation accurate when a history-loading header is displayed.
+- **Windows:** use the same shared timeline policy when loading and appending messages; offer an explicit New messages jump instead of yanking the reader away from older history. Store drafts per conversation and user; clear old account history on session switch; clear prior chat history immediately when switching conversations; avoid fixed-width bubble overflow in narrow windows.
+- **Safety:** no Supabase schema, auth policies, upload semantics, server send/receipt semantics, message contents, notification delivery or stored history are modified. Drafts on desktop are in-memory until further persistence work and are cleared on application restart. These changes must pass Android unit/build/lint, Windows build, and runtime messaging tests on Testlab before main promotion.
+- **Not claimed:** full 100-feature rollout, idempotent server sends, encrypted end-to-end messaging, GIF licensing, realtime subscription reliability, and real device frame-time validation remain independent tasks. Test the first set before merging.
+
 ## 2026-10-12 — Feed audit follow-up: pagination, refresh, native ads, accessibility
 
 PARITY-EXCEPTION: android-compose-feed-pagination-native-ad-touch-20261012
