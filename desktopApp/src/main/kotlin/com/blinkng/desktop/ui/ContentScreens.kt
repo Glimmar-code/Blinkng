@@ -1,4 +1,6 @@
 package com.blinkng.desktop.ui
+import com.blinkng.shared.ConnectDiscoveryRanking
+import com.blinkng.shared.ConnectDiscoverySignals
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -1218,17 +1220,18 @@ fun ConnectScreen(state: DesktopAppState) {
             )
             "name" -> filtered.sortedBy { it.fullName.ifBlank { it.username }.lowercase() }
             else -> filtered.sortedWith(
-                compareByDescending<DesktopProfile> { it.isOnline }
-                    .thenByDescending { it.id in followingIds }
-                    .thenByDescending {
-                        myDepartment.isNotBlank() &&
-                            it.department.orEmpty().equals(myDepartment, ignoreCase = true)
-                    }
-                    .thenByDescending {
-                        myCampus.isNotBlank() &&
-                            it.university.orEmpty().equals(myCampus, ignoreCase = true)
-                    }
-                    .thenBy { it.fullName.lowercase() }
+                compareByDescending<DesktopProfile> { candidate ->
+                    ConnectDiscoveryRanking.score(
+                        ConnectDiscoverySignals(
+                            onlineNow = candidate.isOnline,
+                            sameCampus = myCampus.isNotBlank() &&
+                                candidate.university.orEmpty().equals(myCampus, ignoreCase = true),
+                            sameDepartment = myDepartment.isNotBlank() &&
+                                candidate.department.orEmpty().equals(myDepartment, ignoreCase = true),
+                            alreadyFollowing = candidate.id in followingIds,
+                        )
+                    )
+                }.thenBy { it.fullName.ifBlank { it.username }.lowercase() }
             )
         }
     }
