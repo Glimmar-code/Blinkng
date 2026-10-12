@@ -1543,21 +1543,31 @@ private fun PremiumChatDetail(
     val latestVisibleMessageId = visibleMessages.lastOrNull()?.id
     var previousLatestVisibleMessageId by remember(conversation.id) { mutableStateOf<String?>(null) }
     LaunchedEffect(conversation.id, latestVisibleMessageId, searchQuery, pinnedOnly, starredOnly) {
-        if (visibleMessages.isEmpty() || searchQuery.isNotBlank() || pinnedOnly || starredOnly) return@LaunchedEffect
         val previous = previousLatestVisibleMessageId
-        val changed = previous != null && previous != latestVisibleMessageId
+        val action = com.blinkng.shared.BlinkMessageScrollPolicy.decide(
+            hasMessages = visibleMessages.isNotEmpty(),
+            filtering = searchQuery.isNotBlank() || pinnedOnly || starredOnly,
+            hasSeenLatest = previous != null,
+            userHasScrolled = userHasScrolled,
+            nearLatest = isNearLatest,
+            latestChanged = previous != null && previous != latestVisibleMessageId
+        )
         val lastIndex = visibleMessages.lastIndex + historyHeaderCount
-        if (previous == null || !userHasScrolled) {
-            // Large initial histories must jump directly; animating thousands of rows stutters.
-            listState.scrollToItem(lastIndex)
-            newMessagesBelow = 0
-        } else if (changed && isNearLatest) {
-            listState.animateScrollToItem(lastIndex)
-            newMessagesBelow = 0
-        } else if (changed) {
-            newMessagesBelow = (newMessagesBelow + 1).coerceAtMost(99)
+        when (action) {
+            com.blinkng.shared.BlinkMessageScrollAction.JUMP_TO_LATEST -> {
+                // Large initial histories must jump directly; animating thousands of rows stutters.
+                listState.scrollToItem(lastIndex)
+                newMessagesBelow = 0
+            }
+            com.blinkng.shared.BlinkMessageScrollAction.ANIMATE_TO_LATEST -> {
+                listState.animateScrollToItem(lastIndex)
+                newMessagesBelow = 0
+            }
+            com.blinkng.shared.BlinkMessageScrollAction.SHOW_NEW_MESSAGE ->
+                newMessagesBelow = (newMessagesBelow + 1).coerceAtMost(99)
+            com.blinkng.shared.BlinkMessageScrollAction.KEEP -> Unit
         }
-        previousLatestVisibleMessageId = latestVisibleMessageId
+        if (visibleMessages.isNotEmpty()) previousLatestVisibleMessageId = latestVisibleMessageId
     }
     LaunchedEffect(isNearLatest) {
         if (isNearLatest) newMessagesBelow = 0
