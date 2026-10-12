@@ -1,3 +1,11 @@
+## 2026-10-12 — Message rendering, actions and privacy hardening (Testlab PR #251)
+
+- **Shared Android + Windows:** deterministic Today / Yesterday / dated conversation dividers from server timestamps and the reader's timezone, inside keyed message rows so pagination and quote navigation keep stable indices; pure unit tests cover invalid timestamps, offset conversion and day boundaries.
+- **Android:** preserve existing message actions, unread inbox, auth-aware drafts and server-side contracts while avoiding a blurred/active background inbox under full-screen chat; optimize long-history loading, reply lookups and read-position retention.
+- **Windows:** use the SAME pre-existing participant-authorized Supabase RPC names as Android for message reaction, edit, delete for everyone, hide for self, report, and get_message_action_state. Show server-confirmed reaction counts and remove fake 'reaction sync pending' messaging. Do not expose privileged credentials or implement a parallel backend.
+- **Windows privacy:** guard late inbox and message fetches against account/thread switching; clear previously visible private chat content immediately on account/chat changes. Drafts remain account-scoped and per-conversation. Guard destructive actions with confirmation.
+- **Validation pending:** real user/account switching, network interruption, Android and Windows UI interaction and Supabase permissions must be verified before merging. Backend migrations, server policies, coin economy, and production data are untouched.
+
 ## 2026-10-12 — Message timeline performance and draft isolation (Testlab)
 
 - **Shared:** `BlinkChatInboxPolicy` adds the unread-only inbox filter without changing existing Primary/Requests/Archived semantics. Android and Windows use the same unread predicate; focused unit tests cover archived/request exclusion.
