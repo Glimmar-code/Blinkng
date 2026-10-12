@@ -1,3 +1,12 @@
+## 2026-10-12 — Home feed header glow and empty Create-rail spacing (Testlab)
+
+PARITY-EXCEPTION: android-home-feed-inset-and-floating-create-20261012
+
+- Android Home feed: remove the purple/blue radial halo that was drawn across the top system-status inset and toolbar. Keep the system status-bar safe area and touch targets intact so no controls end up under the camera cutout or clock; preserve purple as an intentional accent for selected tabs, badges and the Create control.
+- Android Home feed: remove the otherwise-empty full-width 56dp Create-action rail beneath the timeline. Anchor the existing expandable Create speed dial directly above the 56dp bottom navigation while keeping post scrolling, media, sponsored rows, and engagement intact. Reserve content-end scrolling space so the final post's controls remain reachable.
+- Windows: this is an Android edge-to-edge/status-inset/overlaid bottom-navigation layout correction. Windows uses a fixed sidebar and different window insets; no equivalent empty Android utility rail is present. The shared brand colors and feature semantics are unchanged.
+- No changes to user content, feeds, view counts, ad placements, navigation destinations, API calls, Supabase or SQL. Validate Android build/lint, emulator UI and last-post interaction, and Windows build/parity before promotion.
+
 ## 2026-10-12 — Feed continuity, clean identity, swipe navigation, and writing (Testlab)
 
 - **Feed identity (Android + Windows):** display name above @username, age of post on the right; remove redundant public audience/category badges, retain restricted-audience disclosure. X-style metrics display views before likes, comments, repost, save, share. Follow, verification, report, and post permission actions remain intact.
