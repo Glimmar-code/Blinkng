@@ -99,6 +99,7 @@ import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import com.blinkng.shared.BlinkSmartTags
+import com.blinkng.shared.BlinkConnectHealth
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkPulseSessionStore
@@ -1077,6 +1078,7 @@ fun ConnectScreen(state: DesktopAppState) {
     var requestTarget by remember { mutableStateOf<DesktopConnectListing?>(null) }
     var requestMessage by remember { mutableStateOf("") }
     var connectError by remember { mutableStateOf<String?>(null) }
+    var connectRefreshWarning by remember { mutableStateOf<String?>(null) }
     var selectedDirectorySlug by remember { mutableStateOf("all") }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
@@ -1137,14 +1139,23 @@ fun ConnectScreen(state: DesktopAppState) {
         val policyResult = runCatching { state.client.fetchActivityPulsePolicy() }
 
         listings = listingsResult.getOrDefault(listings)
-        directoryApplications = runCatching {
+        val applicationsResult = runCatching {
             state.client.fetchConnectApplications(listings.filter { it.userId == state.profile?.id }.map { it.id })
-        }.getOrDefault(directoryApplications)
+        }
+        directoryApplications = applicationsResult.getOrDefault(directoryApplications)
         students = studentsResult.getOrDefault(students).filterNot { it.id == state.profile?.id }
         followingIds = followingResult.getOrDefault(followingIds)
         inbox = inboxResult.getOrDefault(inbox)
         pulsePolicy = policyResult.getOrDefault(pulsePolicy).normalized()
         liveActivityAvailable = studentsResult.isSuccess
+        connectRefreshWarning = BlinkConnectHealth.warning(buildList {
+            if (listingsResult.isFailure) add("Listings")
+            if (studentsResult.isFailure) add("Students")
+            if (followingResult.isFailure) add("Following")
+            if (inboxResult.isFailure) add("Inbox")
+            if (applicationsResult.isFailure) add("Applications")
+            if (policyResult.isFailure) add("Activity")
+        })
         loading = false
     }
 
@@ -1306,6 +1317,31 @@ fun ConnectScreen(state: DesktopAppState) {
                     ScreenHeader("Connect", "People, study, housing, skills and challenges")
                     if (selectedPane == 0) {
                         Button(onClick = { showCreate = true }) { Text("Create") }
+                    }
+                }
+            }
+
+            connectRefreshWarning?.let { message ->
+                item(key = "connect-refresh-warning") {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                message,
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontSize = 12.sp
+                            )
+                            TextButton(onClick = { scope.launch { reload() } }, enabled = !loading) {
+                                Text("Retry")
+                            }
+                        }
                     }
                 }
             }

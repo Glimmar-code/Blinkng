@@ -1660,7 +1660,7 @@ private suspend fun restoreSupabaseSession() {
                             .onFailure { Log.e(TAG, "Game ranking fetch failed", it) }
                     }
                     val connectHubRequest = async {
-                        runCatching { connectHubRepository.fetchSnapshot() }
+                        runCatching { connectHubRepository.fetchSnapshot(before.connectHub) }
                             .onFailure { Log.e(TAG, "Connect Hub fetch failed", it) }
                     }
                     val storiesRequest = async {
@@ -2118,9 +2118,11 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun refreshConnectHub() {
+        if (_uiState.value.isConnectHubLoading) return
         viewModelScope.launch {
+            if (_uiState.value.isConnectHubLoading) return@launch
             _uiState.value = _uiState.value.copy(isConnectHubLoading = true)
-            runCatching { connectHubRepository.fetchSnapshot() }
+            runCatching { connectHubRepository.fetchSnapshot(_uiState.value.connectHub) }
                 .onSuccess { snapshot ->
                     _uiState.value = _uiState.value.copy(
                         connectHub = snapshot,
