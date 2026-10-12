@@ -49,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -76,7 +77,6 @@ fun MessagesScreen(state: DesktopAppState) {
     var conversations by remember { mutableStateOf<List<DesktopConversation>>(emptyList()) }
     var selected by remember { mutableStateOf<DesktopConversation?>(null) }
     var messages by remember { mutableStateOf<List<DesktopMessage>>(emptyList()) }
-    var draft by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
     var chatQuery by remember { mutableStateOf("") }
     var chatSearchVisible by remember { mutableStateOf(false) }
@@ -90,6 +90,8 @@ fun MessagesScreen(state: DesktopAppState) {
     var forwardUsername by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val myUserId = state.session?.userId.orEmpty()
+    // Drafts must never cross conversations or accounts, including after switching chats.
+    val draftsByConversation = remember(myUserId) { mutableStateMapOf<String, String>() }
 
     suspend fun loadConversations() {
         loading = true
@@ -128,6 +130,8 @@ fun MessagesScreen(state: DesktopAppState) {
         showContactCard = false
         chatSearchVisible = false
         chatQuery = ""
+        // Never display the previous contact's private history while the next chat loads.
+        messages = emptyList()
         loadMessages(selected)
     }
 
@@ -297,6 +301,7 @@ fun MessagesScreen(state: DesktopAppState) {
         return
     }
 
+    val draft = draftsByConversation[active.id].orEmpty()
     val visibleMessages = remember(messages, chatQuery) {
         if (chatQuery.isBlank()) messages
         else messages.filter { it.content.contains(chatQuery, ignoreCase = true) }
@@ -391,7 +396,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                 color = if (mine) MaterialTheme.colorScheme.primaryContainer
                                 else MaterialTheme.colorScheme.surfaceVariant
                             ) {
-                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).width(360.dp)) {
+                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).widthIn(max = 360.dp)) {
                                     Text(message.content)
                                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                         Text(
@@ -431,7 +436,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                 DropdownMenuItem(
                                     text = { Text("Reply") },
                                     onClick = {
-                                        draft = if (message.content.isBlank()) "" else "> " + message.content.take(80) + "\n"
+                                        draftsByConversation[active.id] = if (message.content.isBlank()) "" else "> " + message.content.take(80) + "\n"
                                         actionMessageId = null
                                     }
                                 )
@@ -468,7 +473,7 @@ fun MessagesScreen(state: DesktopAppState) {
             ) {
                 OutlinedTextField(
                     value = draft,
-                    onValueChange = { draft = it },
+                    onValueChange = { draftsByConversation[active.id] = it },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("Message") },
@@ -483,11 +488,17 @@ fun MessagesScreen(state: DesktopAppState) {
                     IconButton(
                         onClick = {
                             val text = draft
-                            draft = ""
+                            draftsByConversation[active.id] = ""
                             scope.launch {
                                 runCatching { state.client.sendMessage(active.id, text) }
                                     .onSuccess { messages = messages + it }
-                                    .onFailure { error = it.message; draft = text }
+                                    .onFailure {
+                                        error = it.message
+                                        // Preserve any text entered while sending; restore only an empty draft.
+                                        if (draftsByConversation[active.id].isNullOrEmpty()) {
+                                            draftsByConversation[active.id] = text
+                                        }
+                                    }
                             }
                         },
                         enabled = draft.isNotBlank()
