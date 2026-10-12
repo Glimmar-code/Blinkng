@@ -331,7 +331,7 @@ fun MessagesScreen(state: DesktopAppState) {
     LaunchedEffect(chatListState.isScrollInProgress) {
         if (chatListState.isScrollInProgress) userHasScrolled = true
     }
-    val latestId = visibleMessages.lastOrNull()?.id
+    val latestId = messages.lastOrNull()?.id
     LaunchedEffect(active.id, latestId, chatQuery) {
         val action = BlinkMessageScrollPolicy.decide(
             hasMessages = visibleMessages.isNotEmpty(),
@@ -353,7 +353,7 @@ fun MessagesScreen(state: DesktopAppState) {
             BlinkMessageScrollAction.SHOW_NEW_MESSAGE -> hasNewMessages = true
             BlinkMessageScrollAction.KEEP -> Unit
         }
-        if (visibleMessages.isNotEmpty()) previousLatestId = latestId
+        if (visibleMessages.isNotEmpty() && chatQuery.isBlank()) previousLatestId = latestId
     }
     LaunchedEffect(nearLatest) {
         if (nearLatest) hasNewMessages = false
