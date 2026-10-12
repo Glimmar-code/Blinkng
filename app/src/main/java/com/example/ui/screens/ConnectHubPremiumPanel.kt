@@ -229,7 +229,7 @@ fun ConnectHubPremiumPanel(
 
     // Only show server-approved matches. A failed/empty RPC must NEVER fall back
     // to all profiles: doing so can bypass discovery opt-outs or blocked-user rules.
-    val candidates = remember(hub.smartMatches) {
+    val candidates = remember(hub.smartMatches, current?.id) {
         hub.smartMatches.mapNotNull { candidate ->
             if (candidate.userId.isBlank() || candidate.username.isBlank() ||
                 candidate.userId == current?.id
