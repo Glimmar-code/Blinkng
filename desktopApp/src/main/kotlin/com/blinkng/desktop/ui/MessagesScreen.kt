@@ -1,5 +1,7 @@
 package com.blinkng.desktop.ui
 
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -467,6 +469,7 @@ fun MessagesScreen(state: DesktopAppState) {
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it },
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("Message") },
                     maxLines = 5,
