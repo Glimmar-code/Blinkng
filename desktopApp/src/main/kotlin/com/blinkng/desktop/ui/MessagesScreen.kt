@@ -92,21 +92,30 @@ fun MessagesScreen(state: DesktopAppState) {
     var controlsBusy by remember { mutableStateOf(false) }
     var forwardMessageId by remember { mutableStateOf<String?>(null) }
     var forwardUsername by remember { mutableStateOf("") }
+    var editingMessage by remember { mutableStateOf<DesktopMessage?>(null) }
+    var editDraft by remember { mutableStateOf("") }
+    var deleteMessage by remember { mutableStateOf<DesktopMessage?>(null) }
+    var reportMessage by remember { mutableStateOf<DesktopMessage?>(null) }
+    var reportReason by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val myUserId = state.session?.userId.orEmpty()
     // Drafts must never cross conversations or accounts, including after switching chats.
     val draftsByConversation = remember(myUserId) { mutableStateMapOf<String, String>() }
 
     suspend fun loadConversations() {
+        val owner = state.session?.userId.orEmpty()
+        if (owner.isBlank()) return
         loading = true
         runCatching { state.client.fetchConversations() }
             .onSuccess {
-                conversations = it
-                selected?.id?.let { id -> selected = it.firstOrNull { conversation -> conversation.id == id } }
-                error = null
+                if (state.session?.userId == owner) {
+                    conversations = it
+                    selected?.id?.let { id -> selected = it.firstOrNull { conversation -> conversation.id == id } }
+                    error = null
+                }
             }
-            .onFailure { error = it.message }
-        loading = false
+            .onFailure { if (state.session?.userId == owner) error = it.message }
+        if (state.session?.userId == owner) loading = false
     }
 
     fun changeControl(action: suspend () -> Boolean) {
@@ -124,9 +133,38 @@ fun MessagesScreen(state: DesktopAppState) {
             messages = emptyList()
             return
         }
+        val owner = state.session?.userId.orEmpty()
+        if (owner.isBlank()) return
         runCatching { state.client.fetchMessages(target.id) }
-            .onSuccess { messages = it; error = null }
-            .onFailure { error = it.message }
+            .onSuccess {
+                // A slow response from chat A must never repaint chat B (or another account).
+                if (state.session?.userId == owner && selected?.id == target.id) {
+                    messages = it
+                    error = null
+                }
+            }
+            .onFailure {
+                if (state.session?.userId == owner && selected?.id == target.id) error = it.message
+            }
+    }
+
+    fun changeMessageControl(conversationId: String, action: suspend () -> Boolean) {
+        if (controlsBusy) return
+        controlsBusy = true
+        val owner = state.session?.userId
+        scope.launch {
+            runCatching {
+                check(action()) { "The message action could not be saved." }
+                if (state.session?.userId == owner && selected?.id == conversationId) {
+                    loadMessages(selected)
+                }
+            }.onFailure {
+                if (state.session?.userId == owner && selected?.id == conversationId) {
+                    error = it.message
+                }
+            }
+            controlsBusy = false
+        }
     }
 
     LaunchedEffect(myUserId) {
@@ -134,6 +172,9 @@ fun MessagesScreen(state: DesktopAppState) {
         selected = null
         messages = emptyList()
         conversations = emptyList()
+        editingMessage = null
+        deleteMessage = null
+        reportMessage = null
         error = null
         if (myUserId.isNotBlank()) loadConversations()
     }
@@ -141,6 +182,9 @@ fun MessagesScreen(state: DesktopAppState) {
         showContactCard = false
         chatSearchVisible = false
         chatQuery = ""
+        editingMessage = null
+        deleteMessage = null
+        reportMessage = null
         // Never display the previous contact's private history while the next chat loads.
         messages = emptyList()
         loadMessages(selected)
@@ -451,6 +495,18 @@ fun MessagesScreen(state: DesktopAppState) {
                             ) {
                                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).widthIn(max = 360.dp)) {
                                     Text(message.content)
+                                    if (message.reactionCounts.isNotEmpty()) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            message.reactionCounts.forEach { (emoji, count) ->
+                                                Text(
+                                                    "$emoji $count",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (emoji in message.myReactions) FontWeight.Bold else FontWeight.Normal,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
                                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                         Text(
                                             when {
@@ -478,9 +534,13 @@ fun MessagesScreen(state: DesktopAppState) {
                                         Text(
                                             emoji,
                                             fontSize = 18.sp,
-                                            modifier = Modifier.clickable {
+                                            modifier = Modifier.clickable(enabled = !controlsBusy) {
                                                 actionMessageId = null
-                                                error = "Reaction ${emoji} selected. Desktop reaction sync is pending."
+                                                changeMessageControl(active.id) {
+                                                    state.client.setChatMessageReaction(
+                                                        message.id, emoji, emoji !in message.myReactions
+                                                    )
+                                                }
                                             }
                                         )
                                     }
@@ -512,6 +572,45 @@ fun MessagesScreen(state: DesktopAppState) {
                                         actionMessageId = null
                                     }
                                 )
+                                if (mine && message.messageType == "text") {
+                                    DropdownMenuItem(
+                                        text = { Text("Edit") },
+                                        enabled = !controlsBusy,
+                                        onClick = {
+                                            editingMessage = message
+                                            editDraft = message.content
+                                            actionMessageId = null
+                                        }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text("Delete for me") },
+                                    enabled = !controlsBusy,
+                                    onClick = {
+                                        deleteMessage = message
+                                        actionMessageId = null
+                                    }
+                                )
+                                if (mine) {
+                                    DropdownMenuItem(
+                                        text = { Text("Unsend for everyone") },
+                                        enabled = !controlsBusy,
+                                        onClick = {
+                                            deleteMessage = message
+                                            actionMessageId = null
+                                        }
+                                    )
+                                } else {
+                                    DropdownMenuItem(
+                                        text = { Text("Report message") },
+                                        enabled = !controlsBusy,
+                                        onClick = {
+                                            reportMessage = message
+                                            reportReason = ""
+                                            actionMessageId = null
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
