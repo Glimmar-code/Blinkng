@@ -13,9 +13,13 @@ class FeedVisibilityPolicyTest {
         assertFalse(shouldHideFrozenFeedPost("post-1", "Author", "author", emptySet(), emptySet()))
     }
 
-    @Test fun mutedAuthorCannotRemainVisibleThroughOldUsernameOrDisplayName() {
-        assertTrue(shouldHideFrozenFeedPost("p2", "Old Handle", "@new_handle", emptySet(), setOf("old handle")))
+    @Test fun muteMatchesStableUsernameNotUnrelatedDisplayName() {
+        assertFalse(shouldHideFrozenFeedPost("p2", "Old Handle", "@new_handle", emptySet(), setOf("old handle")))
         assertTrue(shouldHideFrozenFeedPost("p2", "Old Handle", "@new_handle", emptySet(), setOf("new_handle")))
+    }
+
+    @Test fun legacyAuthorFallbackAppliesOnlyWithoutUsername() {
+        assertTrue(shouldHideFrozenFeedPost("p2", "Muted Legacy", "", emptySet(), setOf("muted legacy")))
     }
 
     @Test fun unrelatedPostsRemainVisible() {
