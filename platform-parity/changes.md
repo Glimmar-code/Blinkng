@@ -1,6 +1,7 @@
 ## 2026-10-13 — Connect partial-load resilience and truthful online presence (Testlab)
 
 - **Android and Windows:** The Connect header now shows a count of users actually confirmed online from the available student list rather than a fluctuating synthetic "Community Activity" number. When student presence cannot be refreshed, the live count is shown as unavailable rather than presented as confirmed.
+- **Android resilience:** Preserve the last known good records for individual failed backend sections while surfacing the failures; genuine successful empty responses correctly clear stale listings. Added tests for these conditions.
 - **Android backend:** Roommates, mentorship, reading mates, housing agents, housing requests, challenges, matches, and the Connect inbox load concurrently rather than one after another. Each section remains independently failure-isolated and its failure name is exposed to the UI; a failed request must not silently masquerade as an empty directory.
 - **Android UI:** Show a visible partial-load warning listing unavailable sections and a Retry action. Preserve existing Connect categories, Spin, request and game functionality, authentication, monetary rules, and backend contracts.
 - **Windows UI:** Surface unsuccessful Connect listings/applications/discovery/following/inbox loads with a Retry action. Keep last-known UI records on partial failures, matching the existing desktop recovery semantics.
