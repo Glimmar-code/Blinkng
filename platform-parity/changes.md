@@ -1,3 +1,10 @@
+## 2026-10-13 — Message inbox completeness and desktop reply/send safety (Testlab)
+
+- **Android + Windows:** introduce a shared `All` inbox filter for active (non-archived) threads including message requests; retain `Primary`, `Unread`, `Requests` and `Archived` filters and previous default. Shared unit tests cover All semantics.
+- **Windows:** upgrade the Reply action from an unlinked quoted text draft to an actual `set_message_reply` RPC, the same server-authoritative function already called by Android. Show a reply preview only when the server saves the link; gracefully acknowledge a link failure without pretending the sent message failed.
+- **Windows privacy and reliability:** limit concurrent sends to one per conversation and guard all async UI updates against account or selected-conversation changes, including preserving an unsent draft on errors. Display incoming reply references based on the server's `reply_to_message_id` rather than a fabricated client quote.
+- **Limitations:** this does not add server-level idempotency tokens; a request interrupted after server acceptance still needs backend deduplication before automatic resend can be considered safe. Physical device and live multi-account staging tests remain required before production promotion.
+
 ## 2026-10-12 — Message rendering, actions and privacy hardening (Testlab PR #251)
 
 - **Shared Android + Windows:** deterministic Today / Yesterday / dated conversation dividers from server timestamps and the reader's timezone, inside keyed message rows so pagination and quote navigation keep stable indices; pure unit tests cover invalid timestamps, offset conversion and day boundaries.
