@@ -128,6 +128,9 @@ data class BlinkUiState(
     val isCommentsLoading: Boolean = false,
     val isPostingComment: Boolean = false,
     val mutedUsers: Set<String> = emptySet(),
+    // Explicit local/realtime removals must also hide frozen Compose Feed rows.
+    // This is session-only and cleared by logout to prevent account crossover.
+    val hiddenFeedPostIds: Set<String> = emptySet(),
     val feedSubTab: Int = 0,
     val routedReelId: String? = null,
     val isOnline: Boolean = true,
@@ -3469,6 +3472,7 @@ private suspend fun restoreSupabaseSession() {
             profilePostsByUserId = state.profilePostsByUserId.mapValues { it.value.filterNot { post -> post.id == postId } },
             myLikedPosts = state.myLikedPosts.filterNot { it.id == postId },
             mySavedPosts = state.mySavedPosts.filterNot { it.id == postId },
+            hiddenFeedPostIds = state.hiddenFeedPostIds + postId,
             activePostOptionsPost = null
         )
         persistCurrentFeed()
@@ -3484,7 +3488,8 @@ private suspend fun restoreSupabaseSession() {
                     reels = reelsBefore,
                     profilePostsByUserId = state.profilePostsByUserId,
                     myLikedPosts = state.myLikedPosts,
-                    mySavedPosts = state.mySavedPosts
+                    mySavedPosts = state.mySavedPosts,
+                    hiddenFeedPostIds = _uiState.value.hiddenFeedPostIds - postId
                 )
                 persistCurrentFeed()
                 showToast("Delete failed. Only the owner can delete this content.")
@@ -3501,7 +3506,8 @@ private suspend fun restoreSupabaseSession() {
             posts = state.posts.filterNot { it.id == postId },
             followingPosts = state.followingPosts.filterNot { it.id == postId },
             reels = state.reels.filterNot { it.id == postId },
-            discoverPosts = state.discoverPosts.filterNot { it.id == postId }
+            discoverPosts = state.discoverPosts.filterNot { it.id == postId },
+            hiddenFeedPostIds = state.hiddenFeedPostIds + postId
         )
         persistCurrentFeed()
         showToast(
@@ -4785,7 +4791,8 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = current.copy(
                         posts = current.posts.filterNot { it.id == event.postId },
                         followingPosts = current.followingPosts.filterNot { it.id == event.postId },
-                        reels = current.reels.filterNot { it.id == event.postId }
+                        reels = current.reels.filterNot { it.id == event.postId },
+                        hiddenFeedPostIds = current.hiddenFeedPostIds + event.postId
                     )
                     persistCurrentFeed()
                     return@launch
