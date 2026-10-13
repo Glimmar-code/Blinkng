@@ -1,3 +1,12 @@
+## 2026-10-13 — Android AdMob SDK recovery (production-safe subset)
+
+PARITY-EXCEPTION: android-google-admob-native-rewarded-retries-20261013
+
+- Android: recover from stalled Google Mobile Ads rewarded requests with a finite timeout and ignore callbacks from expired attempts; expire cached rewarded ads; coalesce overlapping UMP consent refreshes; re-request Sponsored native ads on explicit Feed or Reels refresh; reconcile pending coin claims only through the authenticated Supabase RPC.
+- Windows: Google's Android SDK, UMP privacy forms, and native Compose Feed/Reels ad components are Android-only. No Windows money, account, feed, or marketplace rules are changed.
+- **Deployment gate:** This release excludes the new SSV-required coin RPC migration and its test workflow. Signed SSV callbacks have not been observed in production; enabling SSV-only coin credits before a verified AdMob callback could deny legitimate users coins. Keep that migration in the separate draft Testlab PR #249 until the signed callback is confirmed end-to-end in Supabase staging.
+- Verification: Android quality/runtime/release, Windows, and existing security CI required before merge. Live AdMob fill, physical-device installation, and website APK still require independent confirmation.
+
 ## 2026-10-12 — Android Feed header double-scroll and exact scroll-resume position
 
 PARITY-EXCEPTION: android-lazycolumn-collapsing-header-distance-and-offset-20261012

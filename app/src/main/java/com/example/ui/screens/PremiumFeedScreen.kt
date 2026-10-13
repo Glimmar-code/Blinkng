@@ -1563,6 +1563,7 @@ private fun PremiumHomeFeed(
                                             BlinkSponsoredNativeAd(
                                                 adUnitId = BuildConfig.ADMOB_FEED_NATIVE_AD_UNIT_ID,
                                                 placement = BlinkNativeAdPlacement.FEED,
+                                                requestKey = refreshRevision,
                                                 modifier = Modifier.fillMaxWidth()
                                             )
                                         }
