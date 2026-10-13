@@ -4,6 +4,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import com.blinkng.shared.BlinkDesignTokens
+import com.blinkng.shared.ConnectDiscoveryPolicy
+import com.blinkng.shared.ConnectDiscoverySignals
 
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
@@ -130,6 +132,8 @@ fun ConnectSection(
     var query by rememberPersistentTextState(key = "com/example/ui/screens/ConnectSection.kt:query:1")
     var filter by rememberSaveable { mutableStateOf(LivePeopleFilter.ALL) }
     var sort by rememberSaveable { mutableStateOf(LivePeopleSort.RECOMMENDED) }
+    // Local, session-safe "Not interested" feedback. Backend remains responsible for block/privacy rules.
+    var dismissedIds by rememberSaveable(currentUsername) { mutableStateOf<List<String>>(emptyList()) }
     val pullToRefreshState = rememberPullToRefreshState()
     val followScope = rememberCoroutineScope()
     val followingIds by FollowStateStore.followingIds.collectAsState()
@@ -154,13 +158,17 @@ fun ConnectSection(
         sort,
         current?.university,
         current?.department,
-        followingIds
+        followingIds,
+        current?.interests,
+        dismissedIds
     ) {
         val clean = query.trim()
         val myCampus = current?.university.orEmpty()
         val myDepartment = current?.department.orEmpty()
 
         val filtered = liveProfiles.filter { profile ->
+            val key = profile.id.ifBlank { profile.username }
+            if (dismissedIds.any { it.equals(key, ignoreCase = true) }) return@filter false
             val matchesQuery = clean.isBlank() ||
                 profile.fullName.contains(clean, ignoreCase = true) ||
                 profile.username.contains(clean, ignoreCase = true) ||
@@ -185,19 +193,22 @@ fun ConnectSection(
         }
 
         when (sort) {
-            LivePeopleSort.RECOMMENDED -> filtered.sortedWith(
-                compareByDescending<UserProfile> { it.onlineNow }
-                    .thenByDescending { it.id in followingIds }
-                    .thenByDescending {
-                        myDepartment.isNotBlank() &&
-                            it.department.equals(myDepartment, ignoreCase = true)
-                    }
-                    .thenByDescending {
-                        myCampus.isNotBlank() &&
-                            it.university.equals(myCampus, ignoreCase = true)
-                    }
-                    .thenBy { it.fullName.lowercase() }
-            )
+            LivePeopleSort.RECOMMENDED -> ConnectDiscoveryPolicy.rank(
+                candidates = filtered,
+                campus = myCampus,
+                department = myDepartment,
+                myInterests = current?.interests.orEmpty()
+            ) { profile ->
+                ConnectDiscoverySignals(
+                    id = profile.id.ifBlank { profile.username },
+                    displayName = profile.fullName.ifBlank { profile.username },
+                    university = profile.university,
+                    department = profile.department,
+                    interests = profile.interests,
+                    online = isLiveDataAvailable && profile.onlineNow,
+                    following = profile.id in followingIds
+                )
+            }
             LivePeopleSort.RECENTLY_ACTIVE -> filtered.sortedWith(
                 compareByDescending<UserProfile> { it.onlineNow }
                     .thenByDescending { it.lastSeenAt }
@@ -549,6 +560,25 @@ fun ConnectSection(
                                         LiveProfileCard(
                                             profile = profile,
                                             isFollowing = isFollowing,
+                                            presenceFresh = isLiveDataAvailable,
+                                            recommendation = if (sort == LivePeopleSort.RECOMMENDED) {
+                                                ConnectDiscoveryPolicy.reasons(
+                                                    ConnectDiscoverySignals(
+                                                        id = profile.id.ifBlank { profile.username },
+                                                        displayName = profile.fullName,
+                                                        university = profile.university,
+                                                        department = profile.department,
+                                                        interests = profile.interests,
+                                                        online = isLiveDataAvailable && profile.onlineNow
+                                                    ),
+                                                    current?.university.orEmpty(),
+                                                    current?.department.orEmpty(),
+                                                    current?.interests.orEmpty()
+                                                ).take(2).joinToString(" • ").takeIf { it.isNotBlank() }
+                                            } else null,
+                                            onNotInterested = {
+                                                dismissedIds = (dismissedIds + profile.id.ifBlank { profile.username }).distinct().takeLast(200)
+                                            },
                                             onFollow = {
                                                 if (profileId.isNotBlank()) {
                                                     followScope.launch {
@@ -594,7 +624,7 @@ private fun ConnectHeader(
             .padding(start = 8.dp, end = 8.dp, top = 38.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onMenuClick, modifier = Modifier.size(44.dp)) {
+        IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.MoreHoriz, contentDescription = "Menu")
         }
 
@@ -608,13 +638,13 @@ private fun ConnectHeader(
 
         Spacer(Modifier.weight(1f))
 
-        IconButton(onClick = onNotificationClick, modifier = Modifier.size(44.dp)) {
+        IconButton(onClick = onNotificationClick, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.NotificationsNone, contentDescription = "Notifications")
         }
 
         Box(
             modifier = Modifier
-                .size(38.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .clickable(onClick = onProfileClick),
             contentAlignment = Alignment.Center
@@ -689,7 +719,7 @@ private fun ConnectTopTab(
         label = "connectTopTabText"
     )
     Surface(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.clickable(onClick = onClick).height(48.dp),
         shape = RoundedCornerShape(100.dp),
         color = background
     ) {
@@ -698,7 +728,7 @@ private fun ConnectTopTab(
             color = foreground,
             fontSize = 13.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
         )
     }
 }
@@ -707,6 +737,9 @@ private fun ConnectTopTab(
 private fun LiveProfileCard(
     profile: UserProfile,
     isFollowing: Boolean,
+    presenceFresh: Boolean,
+    recommendation: String?,
+    onNotInterested: () -> Unit,
     onFollow: () -> Unit,
     onProfileClick: () -> Unit,
     onMessage: () -> Unit
@@ -753,7 +786,7 @@ private fun LiveProfileCard(
                         )
                     }
 
-                    if (profile.onlineNow) {
+                    if (presenceFresh && profile.onlineNow) {
                         Box(
                             Modifier
                                 .size(13.dp)
@@ -805,12 +838,26 @@ private fun LiveProfileCard(
                     }
 
                     Text(
-                        text = presenceLabel(profile),
+                        text = if (presenceFresh) presenceLabel(profile) else "Presence not current",
                         fontSize = 10.sp,
-                        color = if (profile.onlineNow) BlinkOnlineGreen
+                        color = if (presenceFresh && profile.onlineNow) BlinkOnlineGreen
                         else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+
+            if (!recommendation.isNullOrBlank()) {
+                Text(
+                    "Why suggested: $recommendation",
+                    modifier = Modifier.padding(top = 8.dp),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            TextButton(onClick = onNotInterested) {
+                Text("Not interested", fontSize = 11.sp)
             }
 
             if (profile.bio.isNotBlank() && !profile.bio.equals("null", true)) {
