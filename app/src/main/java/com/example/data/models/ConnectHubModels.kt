@@ -159,5 +159,7 @@ data class ConnectHubSnapshot(
     val gameChallenges: List<GameChallenge> = emptyList(),
     val smartMatches: List<SmartMatchCandidate> = emptyList(),
     val requests: List<ConnectRequestItem> = emptyList(),
-    val gameStats: GameProfileStats = GameProfileStats()
+    val gameStats: GameProfileStats = GameProfileStats(),
+    /** Names of backend sections that failed; never present a network error as an empty directory. */
+    val failedSections: List<String> = emptyList()
 )
