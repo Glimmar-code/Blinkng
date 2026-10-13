@@ -764,11 +764,24 @@ fun MessagesScreen(state: DesktopAppState) {
                                 replyingTo = null
                                 scope.launch {
                                     try {
-                                        val result = runCatching { state.client.sendMessage(conversationId, text) }
+                                        val result = runCatching {
+                                            state.client.sendMessage(
+                                                conversationId = conversationId,
+                                                content = text,
+                                                partnerUsername = active.partnerUsername,
+                                                isGroup = active.isGroup
+                                            )
+                                        }
                                         result.onSuccess { sent ->
-                                            // Never repaint a different chat/account if the request finishes late.
+                                            // The authorized server may resolve an older duplicate direct
+                                            // thread to a different conversation: do not append across chats.
                                             if (state.session?.userId == accountId && selected?.id == conversationId) {
-                                                messages = messages.filterNot { it.id == sent.id } + sent
+                                                if (sent.conversationId == conversationId) {
+                                                    messages = messages.filterNot { it.id == sent.id } + sent
+                                                } else {
+                                                    error = "Sent to your existing chat. Refresh Messages to view it."
+                                                    scope.launch { loadConversations() }
+                                                }
                                             }
                                             if (replyId != null) {
                                                 val linked = runCatching {
