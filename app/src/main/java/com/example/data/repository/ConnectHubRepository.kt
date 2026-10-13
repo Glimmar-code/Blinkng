@@ -16,6 +16,7 @@ import com.example.data.models.MatchSpinResult
 import com.example.data.supabase.SupabaseConfig
 import com.example.data.supabase.SupabaseService
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -41,45 +42,62 @@ class ConnectHubRepository(
         // Keep Connect useful when one backend surface is temporarily unavailable.
         // Each section is isolated so a Housing/Challenge/RPC failure cannot blank
         // Roommates, Mentors, Reading Mates, student discovery or the rest of the hub.
-        val roommates = runCatching {
+        // Fan requests out concurrently so one slow Supabase endpoint does not serialize the whole screen.
+        val roommatesDeferred = async {
+            runCatching {
             getArray("/rest/v1/roommate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
                 .mapObjects(::parseRoommate)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val mentors = runCatching {
+        val mentorsDeferred = async {
+            runCatching {
             getArray("/rest/v1/mentor_profiles?select=*&is_active=eq.true&mode=in.(mentor,both)&order=created_at.desc&limit=30")
                 .mapObjects(::parseMentor)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val reading = runCatching {
+        val readingDeferred = async {
+            runCatching {
             getArray("/rest/v1/reading_mate_profiles?select=*&is_active=eq.true&order=created_at.desc&limit=30")
                 .mapObjects(::parseReadingMate)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val agents = runCatching {
+        val agentsDeferred = async {
+            runCatching {
             getArray("/rest/v1/housing_agent_profiles?select=*&is_active=eq.true&is_verified=eq.true&order=created_at.desc&limit=30")
                 .mapObjects(::parseHousingAgent)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val housingRequests = runCatching {
+        val housingRequestsDeferred = async {
+            runCatching {
             getArray("/rest/v1/housing_requests?select=*&status=eq.open&order=created_at.desc&limit=40")
                 .mapObjects(::parseHousingRequest)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val challenges = runCatching {
+        val challengesDeferred = async {
+            runCatching {
             getArray("/rest/v1/game_challenges?select=*&order=created_at.desc&limit=30")
                 .mapObjects(::parseChallenge)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val smartMatches = runCatching {
+        val smartMatchesDeferred = async {
+            runCatching {
             JSONArray(rpc("get_connect_matches", JSONObject().put("p_limit", 30)))
                 .mapObjects(::parseSmartMatch)
-        }.getOrDefault(emptyList())
+            }
+        }
 
-        val requests = runCatching {
+        val requestsDeferred = async {
+            runCatching {
             JSONArray(rpc("get_connect_request_inbox", JSONObject().put("p_limit", 120)))
                 .mapObjects(::parseConnectRequest)
-        }.getOrDefault(emptyList())
+            }
+        }
 
         val uid = supabaseService.getCurrentUserId().orEmpty()
         val gameStats = if (uid.isBlank()) {
@@ -93,16 +111,36 @@ class ConnectHubRepository(
             }.getOrDefault(GameProfileStats())
         }
 
+        val roommatesResult = roommatesDeferred.await()
+        val mentorsResult = mentorsDeferred.await()
+        val readingResult = readingDeferred.await()
+        val agentsResult = agentsDeferred.await()
+        val housingRequestsResult = housingRequestsDeferred.await()
+        val challengesResult = challengesDeferred.await()
+        val smartMatchesResult = smartMatchesDeferred.await()
+        val requestsResult = requestsDeferred.await()
+        val failedSections = listOfNotNull(
+            roommatesResult.exceptionOrNull()?.let { "Roommates" },
+            mentorsResult.exceptionOrNull()?.let { "Mentors" },
+            readingResult.exceptionOrNull()?.let { "Reading mates" },
+            agentsResult.exceptionOrNull()?.let { "Housing agents" },
+            housingRequestsResult.exceptionOrNull()?.let { "Housing" },
+            challengesResult.exceptionOrNull()?.let { "Challenges" },
+            smartMatchesResult.exceptionOrNull()?.let { "Student matches" },
+            requestsResult.exceptionOrNull()?.let { "Connect inbox" }
+        )
+
         ConnectHubSnapshot(
-            roommates = roommates,
-            mentors = mentors,
-            readingMates = reading,
-            housingAgents = agents,
-            housingRequests = housingRequests,
-            gameChallenges = challenges,
-            smartMatches = smartMatches,
-            requests = requests,
-            gameStats = gameStats
+            roommates = roommatesResult.getOrDefault(emptyList()),
+            mentors = mentorsResult.getOrDefault(emptyList()),
+            readingMates = readingResult.getOrDefault(emptyList()),
+            housingAgents = agentsResult.getOrDefault(emptyList()),
+            housingRequests = housingRequestsResult.getOrDefault(emptyList()),
+            gameChallenges = challengesResult.getOrDefault(emptyList()),
+            smartMatches = smartMatchesResult.getOrDefault(emptyList()),
+            requests = requestsResult.getOrDefault(emptyList()),
+            gameStats = gameStats,
+            failedSections = failedSections
         )
     }
 
