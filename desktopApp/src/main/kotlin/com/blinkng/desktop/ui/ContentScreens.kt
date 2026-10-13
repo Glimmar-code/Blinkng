@@ -1369,13 +1369,13 @@ fun ConnectScreen(state: DesktopAppState) {
                             }
 
                             Text(
-                                "Confirmed online now: $realOnlineCount",
+                                if (liveActivityAvailable) "Confirmed online now: $realOnlineCount" else "Online count unavailable",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             if (myCampus.isNotBlank()) {
                                 Text(
-                                    "$myCampus activity: $campusLabel • $realCampusOnline confirmed online",
+                                    if (liveActivityAvailable) "$myCampus activity: $campusLabel • $realCampusOnline confirmed online" else "$myCampus activity is temporarily unavailable",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
