@@ -113,6 +113,7 @@ import com.example.util.startActivitySafely
 import com.blinkng.shared.BlinkStoreProductGroup
 import com.blinkng.shared.BlinkStoreProductGroups
 import com.blinkng.shared.BlinkStoreJourneys
+import com.blinkng.shared.BlinkStoreAvailability
 import com.blinkng.shared.BlinkCoinCheckoutOffer
 import com.blinkng.shared.BlinkCoinCheckoutPolicy
 import kotlinx.coroutines.launch
@@ -145,6 +146,12 @@ private enum class BlinkStoreTab(val label: String) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BlinkStoreRoute(onClose: () -> Unit) {
+    // Preserve the Store catalog and purchase code below for relaunch; do not load
+    // sensitive Store state or present any purchase/react/preview controls while paused.
+    if (BlinkStoreAvailability.isPaused) {
+        BlinkStoreComingSoonDialog(onDismiss = onClose)
+        return
+    }
     val service = remember { BlinkEconomyService() }
     val scope = rememberCoroutineScope()
     val liveWalletBalance by BlinkWalletStore.balance.collectAsState()
