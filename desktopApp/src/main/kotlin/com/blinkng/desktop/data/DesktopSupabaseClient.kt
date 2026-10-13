@@ -1009,6 +1009,7 @@ class DesktopSupabaseClient(
                         isOnline = row.optBoolean("partner_online", false),
                         lastSeenAt = row.optNullableString("partner_last_seen"),
                         unreadCount = row.optLong("unread_count"),
+                        partnerUsername = row.optString("partner_username").takeIf { it.isNotBlank() && it != "null" },
                     )
                 }
             })
@@ -1174,18 +1175,75 @@ class DesktopSupabaseClient(
             .put("p_message_id", messageId).put("p_reply_to_message_id", replyToMessageId)))
     }
 
-    suspend fun sendMessage(conversationId: String, content: String): DesktopMessage = withContext(Dispatchers.IO) {
+    /**
+     * Always use the same server-authoritative send RPCs as Android. Direct inserts
+     * bypass recipient block/privacy checks and the group rate limit, so they must
+     * not be used from the desktop client.
+     *
+     * Once the RPC confirms an ID, a failed follow-up fetch is not a failed send:
+     * do not encourage blind retrying of an already committed message.
+     */
+    suspend fun sendMessage(
+        conversationId: String,
+        content: String,
+        partnerUsername: String? = null,
+        isGroup: Boolean = false
+    ): DesktopMessage = withContext(Dispatchers.IO) {
         val clean = content.trim()
         require(clean.isNotBlank()) { "Message cannot be empty." }
-        val created = postArray(
-            "/rest/v1/messages",
-            JSONObject()
-                .put("conversation_id", conversationId)
-                .put("sender_id", requireSession().userId)
-                .put("content", clean),
-            prefer = "return=representation",
-        ).optJSONObject(0) ?: throw IllegalStateException("Message was not returned by the server.")
-        parseMessage(created)
+        require(clean.length <= 5000) { "Message is too long (maximum 5,000 characters)." }
+        val sender = requireSession().userId
+
+        val messageId: String
+        val confirmedConversationId: String
+        val confirmedTime: String?
+        if (isGroup) {
+            val result = postObject(
+                "/rest/v1/rpc/send_group_message",
+                JSONObject().put("p_conversation_id", conversationId).put("p_content", clean)
+            ) as? JSONObject ?: error("Invalid group send confirmation.")
+            messageId = result.optString("value").trim().removeSurrounding("\"")
+            confirmedConversationId = conversationId
+            confirmedTime = null
+        } else {
+            val username = partnerUsername?.trim()?.removePrefix("@")
+                ?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException(
+                    "Recipient account was not available. Refresh Messages and try again."
+                )
+            val rows = postObject(
+                "/rest/v1/rpc/send_message_v2",
+                JSONObject().put("p_receiver_username", username).put("p_content", clean)
+            ) as? JSONArray ?: error("Invalid direct message send confirmation.")
+            val row = rows.optJSONObject(0)
+                ?: throw IllegalStateException("Server did not confirm the message.")
+            messageId = row.optString("message_id")
+            confirmedConversationId = row.optString("conversation_id")
+            confirmedTime = row.optNullableString("created_at")
+        }
+        require(messageId.isNotBlank() && confirmedConversationId.isNotBlank()) {
+            "Server returned an incomplete message confirmation."
+        }
+
+        // Read back server state, but never turn a successful send into a retryable error.
+        runCatching {
+            getArray(
+                "/rest/v1/messages?id=eq.${encode(messageId)}&select=" +
+                    "id,conversation_id,sender_id,content,media_url,message_type,is_read," +
+                    "delivered_at,read_at,created_at,reply_to_message_id&limit=1"
+            ).optJSONObject(0)?.let(::parseMessage)
+        }.getOrNull() ?: DesktopMessage(
+            id = messageId,
+            conversationId = confirmedConversationId,
+            senderId = sender,
+            content = clean,
+            mediaUrl = null,
+            messageType = "text",
+            isRead = false,
+            deliveredAt = null,
+            readAt = null,
+            createdAt = confirmedTime ?: Instant.now().toString()
+        )
     }
 
     suspend fun fetchMarketplace(): List<DesktopMarketItem> = withContext(Dispatchers.IO) {
