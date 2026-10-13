@@ -1,3 +1,12 @@
+## 2026-10-13 — Connect partial-load resilience and truthful online presence (Testlab)
+
+- **Android and Windows:** The Connect header now shows a count of users actually confirmed online from the available student list rather than a fluctuating synthetic "Community Activity" number. When student presence cannot be refreshed, the live count is shown as unavailable rather than presented as confirmed.
+- **Android backend:** Roommates, mentorship, reading mates, housing agents, housing requests, challenges, matches, and the Connect inbox load concurrently rather than one after another. Each section remains independently failure-isolated and its failure name is exposed to the UI; a failed request must not silently masquerade as an empty directory.
+- **Android UI:** Show a visible partial-load warning listing unavailable sections and a Retry action. Preserve existing Connect categories, Spin, request and game functionality, authentication, monetary rules, and backend contracts.
+- **Windows UI:** Surface unsuccessful Connect listings/applications/discovery/following/inbox loads with a Retry action. Keep last-known UI records on partial failures, matching the existing desktop recovery semantics.
+- **Deployment:** No Supabase production schema change, RLS modification, coin charge, or new server permission is included. Test Kotlin/Compose builds, Android runtime and Windows parity, plus behavior during slow/offline/401/500 responses before promoting this branch to main.
+- **Scope:** This is a reliability-focused subset of the 100 requested Connect enhancements; the other redesign, matching, safety, housing, and feature initiatives are not represented as implemented.
+
 ## 2026-10-12 — Android Feed header double-scroll and exact scroll-resume position
 
 PARITY-EXCEPTION: android-lazycolumn-collapsing-header-distance-and-offset-20261012
