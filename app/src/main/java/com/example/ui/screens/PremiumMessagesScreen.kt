@@ -260,7 +260,7 @@ fun PremiumMessagesScreen(
     val liveActiveConversation = activePartner?.let { partner ->
         conversations.firstOrNull { it.partnerUsername.equals(partner, ignoreCase = true) }
     }
-    var retainedActiveConversation by remember(activePartner) {
+    var retainedActiveConversation by remember {
         mutableStateOf<ChatConversation?>(liveActiveConversation)
     }
     LaunchedEffect(liveActiveConversation) {
@@ -268,13 +268,20 @@ fun PremiumMessagesScreen(
     }
     val activeConversation = activePartner?.let { partner ->
         liveActiveConversation
-            ?: retainedActiveConversation
+            ?: retainedActiveConversation?.takeIf { it.partnerUsername.equals(partner, ignoreCase = true) }
             ?: ChatConversation(
                 id = "local_$partner",
                 partnerUsername = partner,
                 partnerName = partner.replace("_", " ").replace(".", " "),
                 partnerAvatar = ""
             )
+    }
+
+    // Keep the old partner rendered until the closing slide completes.
+    var chatSlideVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(activePartner) {
+        if (activeConversation != null) retainedActiveConversation = activeConversation
+        chatSlideVisible = activeConversation != null
     }
 
     BackHandler(enabled = activeCall != null) { activeCall = null }
@@ -300,78 +307,70 @@ fun PremiumMessagesScreen(
                         launchSecureCall(context, call.conversation, call.kind)
                     }
                 )
-            } else if (activeConversation != null) {
-                // PREMIUM_CHAT_DIRECT_RETURN_V2
+            } else {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // A full-screen chat already paints its own background. Do not keep an
-                    // offscreen, blurred inbox/list rendering behind every message scroll frame.
-                    if (!isConversationFullScreen) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer { alpha = .74f }
-                        ) {
-                            PremiumMessagesHome(
+                    // The inbox remains available for the entrance/exit transition.
+                    // Do not keep a blurred offscreen inbox alive during full-screen chat.
+                    if (activeConversation == null || !isConversationFullScreen) {
+                        PremiumMessagesHome(
+                            conversations = conversations,
+                            stories = stories,
+                            myAvatar = myAvatar,
+                            myName = myName,
+                            palette = palette,
+                            onOpenConversation = onOpenConversation,
+                            onProfileClick = onProfileClick,
+                            onStoryClick = onStoryClick,
+                            onAddStoryClick = onAddStoryClick,
+                            onOpenAppearance = { showAppearanceSheet = true },
+                            onComposeMessage = onComposeMessage,
+                            isConnected = isConnected,
+                            isLoading = isLoading
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = chatSlideVisible && activeConversation != null,
+                        enter = slideInHorizontally(
+                            initialOffsetX = { -it },
+                            animationSpec = tween(420, easing = FastOutSlowInEasing)
+                        ) + fadeIn(tween(260)),
+                        exit = slideOutHorizontally(
+                            targetOffsetX = { -it },
+                            animationSpec = tween(390, easing = FastOutSlowInEasing)
+                        ) + fadeOut(tween(240))
+                    ) {
+                        val displayedConversation = activeConversation ?: retainedActiveConversation
+                        if (displayedConversation != null) {
+                            PremiumMessagesMasterDetail(
                                 conversations = conversations,
-                                stories = stories,
-                                myAvatar = myAvatar,
-                                myName = myName,
+                                activeConversation = displayedConversation,
                                 palette = palette,
+                                isFullScreen = isConversationFullScreen,
+                                onFullScreenChange = onConversationFullScreenChange,
                                 onOpenConversation = onOpenConversation,
+                                onCloseConversation = onCloseConversation,
+                                onSendMessage = onSendMessage,
+                                onForwardMessage = onForwardMessage,
+                                onSendVideo = onSendVideo,
+                                onSendAttachment = onSendAttachment,
+                                onPresenceChange = onPresenceChange,
+                                allowLinkPreviews = chatPrivacySettings.allowLinkPreviews,
+                                onRetryMessage = onRetryMessage,
+                                hasMoreMessages = hasMoreMessages,
+                                isLoadingOlder = isLoadingOlder,
+                                onLoadOlder = onLoadOlder,
+                                isLoadingMessages = isLoadingMessages,
+                                interactionActions = interactionActions,
                                 onProfileClick = onProfileClick,
-                                onStoryClick = onStoryClick,
-                                onAddStoryClick = onAddStoryClick,
-                                onOpenAppearance = { showAppearanceSheet = true },
-                                onComposeMessage = onComposeMessage,
-                                isConnected = isConnected,
-                                isLoading = isLoading
+                                onStartCall = { conversation, kind ->
+                                    launchSecureCall(context, conversation, kind)
+                                },
+                                isConnected = isConnected
                             )
                         }
                     }
-
-                    PremiumMessagesMasterDetail(
-                        conversations = conversations,
-                        activeConversation = activeConversation,
-                        palette = palette,
-                        isFullScreen = isConversationFullScreen,
-                        onFullScreenChange = onConversationFullScreenChange,
-                        onOpenConversation = onOpenConversation,
-                        onCloseConversation = onCloseConversation,
-                        onSendMessage = onSendMessage,
-                        onForwardMessage = onForwardMessage,
-                        onSendVideo = onSendVideo,
-                        onSendAttachment = onSendAttachment,
-                        onPresenceChange = onPresenceChange,
-                        allowLinkPreviews = chatPrivacySettings.allowLinkPreviews,
-                        onRetryMessage = onRetryMessage,
-                        hasMoreMessages = hasMoreMessages,
-                        isLoadingOlder = isLoadingOlder,
-                        onLoadOlder = onLoadOlder,
-                        isLoadingMessages = isLoadingMessages,
-                        interactionActions = interactionActions,
-                        onProfileClick = onProfileClick,
-                        onStartCall = { conversation, kind ->
-                            launchSecureCall(context, conversation, kind)
-                        },
-                        isConnected = isConnected
-                    )
                 }
-            } else {
-                PremiumMessagesHome(
-                    conversations = conversations,
-                    stories = stories,
-                    myAvatar = myAvatar,
-                    myName = myName,
-                    palette = palette,
-                    onOpenConversation = onOpenConversation,
-                    onProfileClick = onProfileClick,
-                    onStoryClick = onStoryClick,
-                    onAddStoryClick = onAddStoryClick,
-                    onOpenAppearance = { showAppearanceSheet = true },
-                    onComposeMessage = onComposeMessage,
-                    isConnected = isConnected,
-                    isLoading = isLoading
-                )
             }
         }
 
@@ -409,10 +408,10 @@ fun PremiumMessagesScreen(
 }
 
 
-private fun Modifier.observeRightSwipeToClose(
+private fun Modifier.observeLeftSwipeToClose(
     thresholdPx: Float,
-    onSwipeRight: () -> Unit
-): Modifier = pointerInput(thresholdPx, onSwipeRight) {
+    onSwipeLeft: () -> Unit
+): Modifier = pointerInput(thresholdPx, onSwipeLeft) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         var horizontal = 0f
@@ -430,11 +429,11 @@ private fun Modifier.observeRightSwipeToClose(
 
             if (
                 !fired &&
-                horizontal >= thresholdPx &&
-                horizontal > abs(vertical) * 1.25f
+                horizontal <= -thresholdPx &&
+                -horizontal > abs(vertical) * 1.25f
             ) {
                 fired = true
-                onSwipeRight()
+                onSwipeLeft()
                 break
             }
 
@@ -475,20 +474,20 @@ private fun PremiumMessagesMasterDetail(
         modifier = Modifier
             .fillMaxSize()
             .semantics { contentDescription = "Chat" }
-            .observeRightSwipeToClose(
+            .observeLeftSwipeToClose(
                 thresholdPx = swipeThresholdPx,
-                onSwipeRight = onCloseConversation
+                onSwipeLeft = onCloseConversation
             )
     ) {
         AnimatedContent(
             targetState = activeConversation.partnerUsername,
             transitionSpec = {
                 (slideInHorizontally(
-                    initialOffsetX = { it / 6 },
+                    initialOffsetX = { -it / 6 },
                     animationSpec = tween(240, easing = FastOutSlowInEasing)
                 ) + fadeIn(tween(180))) togetherWith
                     (slideOutHorizontally(
-                        targetOffsetX = { -it / 8 },
+                        targetOffsetX = { -it / 6 },
                         animationSpec = tween(180, easing = FastOutSlowInEasing)
                     ) + fadeOut(tween(120)))
             },
@@ -2591,12 +2590,12 @@ private fun MessageBubble(
     )
 
     Box(modifier = Modifier.fillMaxWidth()) {
-        if (displayOffset < -10f) {
+        if (displayOffset > 10f) {
             Icon(
                 Icons.Default.Reply,
                 contentDescription = null,
-                tint = palette.accent.copy(alpha = ((-displayOffset) / threshold).coerceIn(.25f, 1f)),
-                modifier = Modifier.align(Alignment.CenterEnd).padding(horizontal = 6.dp).size(20.dp)
+                tint = palette.accent.copy(alpha = (displayOffset / threshold).coerceIn(.25f, 1f)),
+                modifier = Modifier.align(Alignment.CenterStart).padding(horizontal = 6.dp).size(20.dp)
             )
         }
         Row(
@@ -2606,10 +2605,10 @@ private fun MessageBubble(
                 .pointerInput(message.id) {
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { _, amount ->
-                            dragOffset = (dragOffset + amount).coerceIn(-threshold * 1.35f, 0f)
+                            dragOffset = (dragOffset + amount).coerceIn(0f, threshold * 1.35f)
                         },
                         onDragEnd = {
-                            if (dragOffset <= -threshold) onReply()
+                            if (dragOffset >= threshold) onReply()
                             dragOffset = 0f
                         },
                         onDragCancel = { dragOffset = 0f }
