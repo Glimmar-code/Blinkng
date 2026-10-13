@@ -101,10 +101,12 @@ fun MessagesScreen(state: DesktopAppState) {
     var deleteForEveryone by remember { mutableStateOf(false) }
     var reportMessage by remember { mutableStateOf<DesktopMessage?>(null) }
     var reportReason by remember { mutableStateOf("") }
+    var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
     val scope = rememberCoroutineScope()
     val myUserId = state.session?.userId.orEmpty()
     // Drafts must never cross conversations or accounts, including after switching chats.
     val draftsByConversation = remember(myUserId) { mutableStateMapOf<String, String>() }
+    val sendingConversations = remember(myUserId) { mutableStateMapOf<String, Boolean>() }
 
     suspend fun loadConversations() {
         val owner = state.session?.userId.orEmpty()
@@ -203,6 +205,7 @@ fun MessagesScreen(state: DesktopAppState) {
         editingMessage = null
         deleteMessage = null
         reportMessage = null
+        replyingTo = null
         olderLoading = false
         hasMoreOlder = false
         error = null
@@ -215,6 +218,7 @@ fun MessagesScreen(state: DesktopAppState) {
         editingMessage = null
         deleteMessage = null
         reportMessage = null
+        replyingTo = null
         olderLoading = false
         hasMoreOlder = false
         // Never display the previous contact's private history while the next chat loads.
@@ -389,6 +393,7 @@ fun MessagesScreen(state: DesktopAppState) {
     }
 
     val draft = draftsByConversation[active.id].orEmpty()
+    val replyLookup = remember(messages) { messages.associateBy { it.id } }
     val visibleMessages = remember(messages, chatQuery) {
         if (chatQuery.isBlank()) messages
         else messages.filter { it.content.contains(chatQuery, ignoreCase = true) }
@@ -559,6 +564,22 @@ fun MessagesScreen(state: DesktopAppState) {
                                 else MaterialTheme.colorScheme.surfaceVariant
                             ) {
                                 Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).widthIn(max = 360.dp)) {
+                                    message.replyToMessageId?.let { reference ->
+                                        val quoted = replyLookup[reference]?.content?.take(100) ?: "Earlier message"
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                            modifier = Modifier.padding(bottom = 6.dp)
+                                        ) {
+                                            Text(
+                                                "↳ $quoted",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                maxLines = 2
+                                            )
+                                        }
+                                    }
                                     Text(message.content)
                                     if (message.reactionCounts.isNotEmpty()) {
                                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -614,7 +635,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                 DropdownMenuItem(
                                     text = { Text("Reply") },
                                     onClick = {
-                                        draftsByConversation[active.id] = if (message.content.isBlank()) "" else "> " + message.content.take(80) + "\n"
+                                        replyingTo = message
                                         actionMessageId = null
                                     }
                                 )
@@ -697,6 +718,21 @@ fun MessagesScreen(state: DesktopAppState) {
                 ) { Text("↓ New messages") }
             }
             HorizontalDivider()
+            replyingTo?.let { target ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Replying to: " + target.content.take(100),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                    TextButton(onClick = { replyingTo = null }) { Text("Cancel") }
+                }
+            }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -718,21 +754,56 @@ fun MessagesScreen(state: DesktopAppState) {
                 ) {
                     IconButton(
                         onClick = {
-                            val text = draft
-                            draftsByConversation[active.id] = ""
-                            scope.launch {
-                                runCatching { state.client.sendMessage(active.id, text) }
-                                    .onSuccess { messages = messages + it }
-                                    .onFailure {
-                                        error = it.message
-                                        // Preserve any text entered while sending; restore only an empty draft.
-                                        if (draftsByConversation[active.id].isNullOrEmpty()) {
-                                            draftsByConversation[active.id] = text
+                            val conversationId = active.id
+                            val accountId = myUserId
+                            val text = draft.trim()
+                            if (accountId.isNotBlank() && text.isNotBlank() && sendingConversations[conversationId] != true) {
+                                val replyId = replyingTo?.takeIf { it.conversationId == conversationId }?.id
+                                sendingConversations[conversationId] = true
+                                draftsByConversation[conversationId] = ""
+                                replyingTo = null
+                                scope.launch {
+                                    try {
+                                        val result = runCatching { state.client.sendMessage(conversationId, text) }
+                                        result.onSuccess { sent ->
+                                            // Never repaint a different chat/account if the request finishes late.
+                                            if (state.session?.userId == accountId && selected?.id == conversationId) {
+                                                messages = messages.filterNot { it.id == sent.id } + sent
+                                            }
+                                            if (replyId != null) {
+                                                val linked = runCatching {
+                                                    state.client.setChatMessageReply(sent.id, replyId)
+                                                }.getOrDefault(false)
+                                                if (state.session?.userId == accountId && selected?.id == conversationId) {
+                                                    if (linked) {
+                                                        messages = messages.map {
+                                                            if (it.id == sent.id) it.copy(replyToMessageId = replyId) else it
+                                                        }
+                                                    } else {
+                                                        error = "Message sent, but its reply link could not be saved."
+                                                    }
+                                                }
+                                            }
+                                        }.onFailure { failure ->
+                                            if (state.session?.userId == accountId) {
+                                                if (selected?.id == conversationId) {
+                                                    error = failure.message
+                                                    if (replyId != null && replyingTo == null) {
+                                                        replyingTo = messages.firstOrNull { it.id == replyId }
+                                                    }
+                                                }
+                                                if (draftsByConversation[conversationId].isNullOrEmpty()) {
+                                                    draftsByConversation[conversationId] = text
+                                                }
+                                            }
                                         }
+                                    } finally {
+                                        sendingConversations[conversationId] = false
                                     }
+                                }
                             }
                         },
-                        enabled = draft.isNotBlank()
+                        enabled = draft.isNotBlank() && sendingConversations[active.id] != true && myUserId.isNotBlank()
                     ) {
                         Icon(Icons.Rounded.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.onPrimary)
                     }
