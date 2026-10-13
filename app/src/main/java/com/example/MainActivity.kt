@@ -19,6 +19,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.snapshotFlow
+import com.blinkng.shared.BlinkSwipeNavigation
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.zIndex
@@ -549,17 +554,77 @@ fun MainAppContent(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Main Tab Content
-        androidx.compose.animation.AnimatedContent(
-            targetState = uiState.selectedTab,
-            label = "TabAnimatedContent",
-            transitionSpec = {
-                androidx.compose.animation.fadeIn(animationSpec = tween(140)) togetherWith
-                    androidx.compose.animation.fadeOut(animationSpec = tween(90))
+    // Main five-page sequence; Search, Leaderboard, and Game remain direct routes.
+    val selectedPage = when (uiState.selectedTab) {
+        MainTab.HOME -> when (uiState.feedSubTab) { 1 -> 1; 2 -> 3; 3 -> 7; else -> 0 }
+        MainTab.MARKET -> 2
+        MainTab.MESSAGES -> 4
+        MainTab.SEARCH -> 5
+        MainTab.LEADERBOARD -> 6
+    }
+    val pagerState = rememberPagerState(initialPage = selectedPage, pageCount = { 8 })
+    var requestedPage by remember { mutableIntStateOf(selectedPage) }
+
+    LaunchedEffect(selectedPage) {
+        requestedPage = selectedPage
+        if (pagerState.currentPage != selectedPage) {
+            if (pagerState.currentPage in 0..4 && selectedPage in 0..4 &&
+                kotlin.math.abs(pagerState.currentPage - selectedPage) == 1
+            ) {
+                pagerState.animateScrollToPage(selectedPage)
+            } else {
+                pagerState.scrollToPage(selectedPage)
             }
-        ) { tab ->
-            when (tab) {
+        }
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collectLatest { page ->
+            if (page == requestedPage || page !in 0..4) return@collectLatest
+            requestedPage = page
+            when (page) {
+                0 -> { viewModel.setFeedSubTab(0); viewModel.setTab(MainTab.HOME) }
+                1 -> { viewModel.setFeedSubTab(1); viewModel.setTab(MainTab.HOME) }
+                2 -> viewModel.setTab(MainTab.MARKET)
+                3 -> { viewModel.setFeedSubTab(2); viewModel.setTab(MainTab.HOME) }
+                4 -> viewModel.setTab(MainTab.MESSAGES)
+            }
+        }
+    }
+    val allowMainPageSwipe =
+        uiState.selectedTab in setOf(MainTab.HOME, MainTab.MARKET, MainTab.MESSAGES) &&
+        uiState.feedSubTab != 3 &&
+        uiState.activeConversationPartner == null && !uiState.isConversationFullScreen &&
+        uiState.viewingProfile == null && uiState.viewingProduct == null &&
+        !uiState.isPostItemOpen && !uiState.isBecomeSellerOpen &&
+        !uiState.isEditProfileOpen && !uiState.isMenuOpen &&
+        !uiState.isGetVerifiedOpen && !uiState.isCreatePostOpen &&
+        !uiState.isCreateStoryOpen && uiState.activeViewingStory == null &&
+        !uiState.isActivityOpen && uiState.activePostOptionsPost == null &&
+        uiState.activeCommentsPostId == null && !uiState.showSellerCongratulationsDialog &&
+        uiState.deepLinkedPost == null
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = allowMainPageSwipe && pagerState.currentPage in 0..4
+        ) { page ->
+            val tab = when (page) {
+                2 -> MainTab.MARKET
+                4 -> MainTab.MESSAGES
+                5 -> MainTab.SEARCH
+                6 -> MainTab.LEADERBOARD
+                else -> MainTab.HOME
+            }
+            val pageDistance = (pagerState.currentPage - page) +
+                pagerState.currentPageOffsetFraction
+            Box(modifier = Modifier.fillMaxSize().graphicsLayer {
+                val cardScale = BlinkSwipeNavigation.scale(pageDistance)
+                scaleX = cardScale
+                scaleY = cardScale
+                alpha = BlinkSwipeNavigation.alpha(pageDistance)
+            }) {
+                when (tab) {
                 MainTab.HOME -> {
                     PremiumFeedScreen(
                         posts = uiState.posts,
@@ -610,7 +675,7 @@ fun MainAppContent(
                         ),
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
-                        currentSubTab = uiState.feedSubTab,
+                        currentSubTab = when (page) { 1 -> 1; 3 -> 2; 7 -> 3; else -> 0 },
                         routedReelId = uiState.routedReelId,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
                         isDark = uiState.isDarkMode,
@@ -759,6 +824,7 @@ fun MainAppContent(
                     )
                 }
             }
+        }
         }
 
         OfflineConnectionBanner(
@@ -1107,8 +1173,8 @@ fun MainAppContent(
         // Sub-screen Overlays: Chat Conversation
         AnimatedVisibility(
             visible = uiState.isConversationFullScreen && uiState.activeConversationPartner != null && uiState.selectedTab != MainTab.MESSAGES,
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+            enter = slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(420)) + fadeIn(tween(220)),
+            exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(370)) + fadeOut(tween(220))
         ) {
             val convo = uiState.conversations.find { it.partnerUsername == uiState.activeConversationPartner }
             if (convo != null) {
