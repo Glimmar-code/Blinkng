@@ -53,6 +53,7 @@ import com.example.util.startActivitySafely
 import com.example.viewmodel.AppDestination
 import com.example.viewmodel.BlinkViewModel
 import com.example.viewmodel.MainTab
+import com.blinkng.shared.BlinkStoreAvailability
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -658,6 +659,14 @@ fun MainAppContent(
     var isBottomBarVisibleByScroll by rememberSaveable { mutableStateOf(true) }
     var homeReselectSignal by rememberSaveable { mutableIntStateOf(0) }
     var feedUtilitySheet by rememberSaveable { mutableStateOf<String?>(null) }
+    var showStoreComingSoon by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(feedUtilitySheet) {
+        // Restored states and old navigation callers cannot reopen the paused Store.
+        if (BlinkStoreAvailability.isPaused && feedUtilitySheet == "store") {
+            feedUtilitySheet = null
+            showStoreComingSoon = true
+        }
+    }
     LaunchedEffect(itemsOpenSignal) {
         if (itemsOpenSignal > 0) feedUtilitySheet = "items"
     }
@@ -914,7 +923,10 @@ fun MainAppContent(
                         onSearchClick = { viewModel.setTab(MainTab.SEARCH) },
                         onItemsClick = { feedUtilitySheet = "items" },
                         onLeaderboardClick = { feedUtilitySheet = "leaderboard" },
-                        onStoreClick = { feedUtilitySheet = "store" },
+                        onStoreClick = {
+                            if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true
+                            else feedUtilitySheet = "store"
+                        },
                         onBoostClick = { feedUtilitySheet = "boost" },
                         onDropsClick = { feedUtilitySheet = "drops" },
                         onGameClick = { feedUtilitySheet = "game" },
@@ -1290,7 +1302,10 @@ fun MainAppContent(
                                     viewModel.openProductDetail(listing)
                                 }
                             },
-                            onGetCoins = { feedUtilitySheet = "store" },
+                            onGetCoins = {
+                                if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true
+                                else feedUtilitySheet = "store"
+                            },
                             onCreateContent = {
                                 dismissUtility { viewModel.openCreatePost(true) }
                             },
@@ -1298,7 +1313,10 @@ fun MainAppContent(
                         )
 
                         "drops" -> BlinkDropsRoute(
-                            onGetCoins = { feedUtilitySheet = "store" },
+                            onGetCoins = {
+                                if (BlinkStoreAvailability.isPaused) showStoreComingSoon = true
+                                else feedUtilitySheet = "store"
+                            },
                             onClose = { dismissUtility() }
                         )
 
@@ -1312,6 +1330,10 @@ fun MainAppContent(
                     }
                 }
             }
+        }
+
+        if (showStoreComingSoon && BlinkStoreAvailability.isPaused) {
+            BlinkStoreComingSoonDialog(onDismiss = { showStoreComingSoon = false })
         }
 
         OfflineConnectionBanner(
