@@ -796,6 +796,7 @@ fun MainAppContent(
         MainTab.SEARCH -> 5
         MainTab.LEADERBOARD -> 6
     }
+    val reducePageMotion = com.example.performance.rememberBlinkReduceMotion()
     val pagerState = rememberPagerState(
         initialPage = selectedPage,
         pageCount = { if (selectedPage in 0..4) 5 else 8 }
@@ -808,7 +809,7 @@ fun MainAppContent(
     LaunchedEffect(selectedPage) {
         requestedPage = selectedPage
         if (pagerState.currentPage != selectedPage) {
-            if (pagerState.currentPage in 0..4 && selectedPage in 0..4 &&
+            if (!reducePageMotion && pagerState.currentPage in 0..4 && selectedPage in 0..4 &&
                 kotlin.math.abs(pagerState.currentPage - selectedPage) == 1
             ) pagerState.animateScrollToPage(selectedPage)
             else pagerState.scrollToPage(selectedPage)
@@ -859,10 +860,10 @@ fun MainAppContent(
             val pageDistance = (pagerState.currentPage - page) +
                 pagerState.currentPageOffsetFraction
             Box(modifier = Modifier.fillMaxSize().graphicsLayer {
-                val depthScale = BlinkSwipeNavigation.scale(pageDistance)
+                val depthScale = if (reducePageMotion) 1f else BlinkSwipeNavigation.scale(pageDistance)
                 scaleX = depthScale
                 scaleY = depthScale
-                alpha = BlinkSwipeNavigation.alpha(pageDistance)
+                alpha = if (reducePageMotion) 1f else BlinkSwipeNavigation.alpha(pageDistance)
             }) {
                 when (tab) {
                 MainTab.HOME -> {
