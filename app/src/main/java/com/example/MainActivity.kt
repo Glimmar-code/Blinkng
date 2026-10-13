@@ -1181,8 +1181,10 @@ fun MainAppContent(
         // Sub-screen Overlays: Chat Conversation
         AnimatedVisibility(
             visible = uiState.isConversationFullScreen && uiState.activeConversationPartner != null && uiState.selectedTab != MainTab.MESSAGES,
-            enter = slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(420)) + fadeIn(tween(220)),
-            exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(370)) + fadeOut(tween(220))
+            // The embedded PremiumMessagesScreen already slides the chat in from the left.
+            // Avoid stacking two independent slides, which doubles travel distance.
+            enter = fadeIn(tween(180)),
+            exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(390)) + fadeOut(tween(220))
         ) {
             val convo = uiState.conversations.find { it.partnerUsername == uiState.activeConversationPartner }
             if (convo != null) {
