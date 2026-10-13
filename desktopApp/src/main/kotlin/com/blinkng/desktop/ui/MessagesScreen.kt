@@ -2,6 +2,14 @@ package com.blinkng.desktop.ui
 
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -227,7 +235,20 @@ fun MessagesScreen(state: DesktopAppState) {
         loadMessages(selected)
     }
 
-    val active = selected
+    AnimatedContent(
+        targetState = selected,
+        transitionSpec = {
+            (slideInHorizontally(
+                initialOffsetX = { -it },
+                animationSpec = tween(420, easing = FastOutSlowInEasing)
+            ) + fadeIn(tween(260))) togetherWith
+                (slideOutHorizontally(
+                    targetOffsetX = { -it },
+                    animationSpec = tween(390, easing = FastOutSlowInEasing)
+                ) + fadeOut(tween(220)))
+        },
+        label = "desktop_chat_slide"
+    ) { active ->
     if (active == null) {
         val filtered = remember(conversations, query, inbox) {
             conversations.filter {
@@ -393,7 +414,7 @@ fun MessagesScreen(state: DesktopAppState) {
                 }
             }
         }
-        return
+        return@AnimatedContent
     }
 
     val draft = draftsByConversation[active.id].orEmpty()
@@ -1057,6 +1078,7 @@ fun MessagesScreen(state: DesktopAppState) {
             }) { Text("Forward") } },
             dismissButton = { TextButton(enabled = !controlsBusy, onClick = { forwardMessageId = null }) { Text("Cancel") } },
         )
+    }
     }
 }
 
