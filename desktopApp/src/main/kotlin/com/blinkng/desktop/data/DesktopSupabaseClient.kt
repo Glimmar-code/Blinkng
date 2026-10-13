@@ -1009,6 +1009,7 @@ class DesktopSupabaseClient(
                         isOnline = row.optBoolean("partner_online", false),
                         lastSeenAt = row.optNullableString("partner_last_seen"),
                         unreadCount = row.optLong("unread_count"),
+                        lastMessage = row.optString("last_message").takeIf { it != "null" }.orEmpty(),
                         partnerUsername = row.optString("partner_username").takeIf { it.isNotBlank() && it != "null" },
                     )
                 }
