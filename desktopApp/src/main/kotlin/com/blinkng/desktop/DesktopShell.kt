@@ -69,6 +69,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import com.blinkng.shared.BlinkSwipeNavigation
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -485,7 +492,25 @@ private fun AuthenticatedShell(
     }
     if (state.selectedRoute == "admin" && !state.adminCapability.allowed) state.selectedRoute = "home"
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    // Alt+Right and Alt+Left provide a mouse/keyboard native counterpart
+    // to the five Android swipe destinations; regular editing keys are untouched.
+    Column(modifier = Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+        if (event.type != KeyEventType.KeyDown || !event.isAltPressed) {
+            false
+        } else {
+            val direction = when (event.key) {
+                Key.DirectionRight -> 1
+                Key.DirectionLeft -> -1
+                else -> 0
+            }
+            val current = BlinkSwipeNavigation.pageForDesktopRoute(state.selectedRoute)
+            val next = current?.let { BlinkSwipeNavigation.adjacent(it, direction) }
+            if (next == null) false else {
+                state.selectedRoute = BlinkSwipeNavigation.surfaces[next].desktopRoute
+                true
+            }
+        }
+    }) {
         DesktopTopBar(state, unreadNotificationCount)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         AndroidParityDesignDock(
