@@ -1,3 +1,10 @@
+## 2026-10-13 — Protected desktop message sends and cross-platform inbox search (Testlab)
+
+- **Critical messaging correctness:** Windows no longer POSTs chat messages directly to the `messages` table. Both clients now use server-authoritative Supabase sending RPCs for normal direct chats; desktop groups use `send_group_message`. The backend already enforces recipient blocks for direct messages and group membership / rate limits for group messages. Windows takes the recipient's actual `partner_username` from authorized summaries; it never guesses from display name.
+- **Server confirmation:** Desktop only treats a send as complete after the RPC returns a stable server ID, and uses an optional authorized read-back to populate state. If read-back fails after confirmation, do not mislabel a committed message as failed and prompt blind resending. On a different conversation returned by the server, direct users to refresh rather than painting another chat's content.
+- **Search/UI parity:** Android + Windows use the same case-insensitive shared inbox search policy over display name, username and permitted last-message preview. Windows displays the server-provided latest message with single-line ellipsis, retaining stable compact conversation cards. Shared unit tests cover match/no-match and whitespace.
+- **Not covered:** server idempotency against ambiguous network outcomes, full production RPC / RLS policy penetration tests, genuine multi-user physical device testing, GIF/sticker/media work and the full 100 feature checklist remain pending. Backend schema and prod data were not changed. Testlab checks must finish before promotion.
+
 ## 2026-10-12 — Android Feed header double-scroll and exact scroll-resume position
 
 PARITY-EXCEPTION: android-lazycolumn-collapsing-header-distance-and-offset-20261012
