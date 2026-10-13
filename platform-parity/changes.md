@@ -1,3 +1,14 @@
+## 2026-10-13 — Connect personalized discovery, safety and match-motion hardening (Testlab)
+
+- **Shared discovery:** New deterministic `ConnectDiscoveryPolicy` scores actual same-campus/department and optional public interests, prioritizes useful matches over generic online status, deduplicates case-insensitive IDs and gives human-readable reasons. Android and Windows call the same shared policy and unit tests. Paid boosts, coins, XP, gender, birth date, relationship status and private contacts are not ranking inputs.
+- **Android and Windows:** Profile suggestions include up to two explanation labels; a per-session **Not interested** button hides a recommendation with **Restore hidden suggestions** to undo. It is a local session control, not an on-server block or durable interest preference. Server privacy, RLS and actual user messaging permissions remain authoritative.
+- **Truthful presence:** Both clients avoid treating cached presence as live online when discovery refresh is unavailable. Android student cards show presence freshness; Windows cards show stale state.
+- **Android Connect:** Improve top navigation touch targets to 48dp, remove an always-running Match glow/rotation animation (now active only during matching, with reduce-motion/background support), route the Housing shortcut to actual housing requests, and reset match history, saved preferences, wallet preview, pending dialogs and match details across accounts. Remove the local candidate fallback that could circumvent Supabase-approved Connect discovery.
+- **Windows Connect:** Shared ordering, explanatory labels, opt-out feedback and stale-presence protection using native desktop layout. Android's touch target and Compose animation specifics are platform-only.
+- **Backend:** No new migration or production data change. Spin coin billing, RLS, verification, reporting, block states, paid monetization and existing backend RPC semantics remain unchanged.
+- **Release gates:** Android and Windows build, unit tests, Android 15 runtime smoke, release smoke, parity, security and Supabase safety checks; also manual session-switch, blocked-discovery, real spinner, narrow-layout, offline/500 and Redmi 15C checks before production.
+- **Scope:** This ships a coherent **subset** of the proposed 100 Connect items, not all 100. Other safety, durable preferences, housing, mentorship, notifications, deep links, pagination and benchmarking remain tracked in issue #262.
+
 ## 2026-10-13 — Connect partial-load resilience and truthful online presence (Testlab)
 
 - **Android and Windows:** The Connect header now shows a count of users actually confirmed online from the available student list rather than a fluctuating synthetic "Community Activity" number. When student presence cannot be refreshed, the live count is shown as unavailable rather than presented as confirmed.
