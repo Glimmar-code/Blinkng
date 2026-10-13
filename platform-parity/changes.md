@@ -1,3 +1,10 @@
+## 2026-10-13 — Five-page gesture navigation and chat direction parity
+
+- **Shared:** `BlinkSwipeNavigation` defines the canonical Feed → Reels → Market → Connect → Messages ordering, bounds and interactive scale/opacity motion. No backend, Supabase, messaging transport, moderation, coins or schema changes.
+- **Android:** Main pages use a drag-responsive Compose pager. The current page subtly shrinks while the next expands; tab taps and deep links use the existing ViewModel routes. Paging is disabled while a chat, composer, menu or other modal/overlay is active. Messages open/close from the left; an individual message swiped right selects reply, whereas a chat swiped left dismisses. The pager stops after Messages.
+- **Windows:** The same shared ordering is reachable with Alt+Right/Alt+Left within primary routes (without intercepting ordinary editing keys). Conversations enter and exit with matching left-side slide animations; native mouse and keyboard message replying remain available.
+- **Tests required before promotion:** Android compilation, shared navigation unit tests, Windows compilation, on-device vertical-feed/reel/chat/image-carousels and predictive Android Back navigation; gesture collision and low-end animation checks. Keep `main` untouched until validated.
+
 ## 2026-10-11 — Verify APK delivery before publishing
 
 - Android packaging exception: APK archive integrity and signed-build checksum are checked before upload and again after downloading the draft release from GitHub. Missing checksums, mismatched build identity, corrupt archives and altered metadata prevent promotion to latest.
