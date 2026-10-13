@@ -62,6 +62,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -162,6 +163,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import coil.compose.AsyncImage
 import com.example.data.models.ActivityItem
+import com.blinkng.shared.BlinkMessageDatePolicy
 import com.example.data.models.ChatConversation
 import com.example.data.models.ChatMessage
 import com.example.data.models.ChatPrivacySettings
@@ -301,29 +303,30 @@ fun PremiumMessagesScreen(
             } else if (activeConversation != null) {
                 // PREMIUM_CHAT_DIRECT_RETURN_V2
                 Box(modifier = Modifier.fillMaxSize()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .blur(if (isConversationFullScreen) 5.dp else 10.dp)
-                            .graphicsLayer {
-                                alpha = if (isConversationFullScreen) .84f else .74f
-                            }
-                    ) {
-                        PremiumMessagesHome(
-                            conversations = conversations,
-                            stories = stories,
-                            myAvatar = myAvatar,
-                            myName = myName,
-                            palette = palette,
-                            onOpenConversation = onOpenConversation,
-                            onProfileClick = onProfileClick,
-                            onStoryClick = onStoryClick,
-                            onAddStoryClick = onAddStoryClick,
-                            onOpenAppearance = { showAppearanceSheet = true },
-                            onComposeMessage = onComposeMessage,
-                            isConnected = isConnected,
-                            isLoading = isLoading
-                        )
+                    // A full-screen chat already paints its own background. Do not keep an
+                    // offscreen, blurred inbox/list rendering behind every message scroll frame.
+                    if (!isConversationFullScreen) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer { alpha = .74f }
+                        ) {
+                            PremiumMessagesHome(
+                                conversations = conversations,
+                                stories = stories,
+                                myAvatar = myAvatar,
+                                myName = myName,
+                                palette = palette,
+                                onOpenConversation = onOpenConversation,
+                                onProfileClick = onProfileClick,
+                                onStoryClick = onStoryClick,
+                                onAddStoryClick = onAddStoryClick,
+                                onOpenAppearance = { showAppearanceSheet = true },
+                                onComposeMessage = onComposeMessage,
+                                isConnected = isConnected,
+                                isLoading = isLoading
+                            )
+                        }
                     }
 
                     PremiumMessagesMasterDetail(
@@ -647,13 +650,15 @@ private fun PremiumMessagesHome(
 ) {
     var query by rememberPersistentTextState(key = "message_home_search")
     var inboxTab by rememberSaveable { mutableStateOf(MessageInboxTab.PRIMARY) }
+    val unreadCount = conversations.count { !it.isArchived && it.inboxCategory != "requests" && (it.unreadCount > 0 || it.isMarkedUnread) }
     val requestCount = conversations.count { it.inboxCategory == "requests" && !it.isArchived }
     val archivedCount = conversations.count { it.isArchived }
     val sortedConversations = remember(conversations, inboxTab) {
         conversations
             .filter { conversation ->
                 com.blinkng.shared.BlinkChatInboxPolicy.matches(
-                    inboxTab, conversation.isArchived, conversation.inboxCategory
+                    inboxTab, conversation.isArchived, conversation.inboxCategory,
+                    conversation.unreadCount > 0 || conversation.isMarkedUnread
                 )
             }
             .sortedWith(
@@ -665,9 +670,9 @@ private fun PremiumMessagesHome(
     val filteredConversations = remember(sortedConversations, query) {
         if (query.isBlank()) sortedConversations
         else sortedConversations.filter {
-            it.partnerName.contains(query, ignoreCase = true) ||
-                it.partnerUsername.contains(query, ignoreCase = true) ||
-                it.lastMessage.contains(query, ignoreCase = true)
+            com.blinkng.shared.BlinkConversationSearchPolicy.matches(
+                query, it.partnerName, it.partnerUsername, it.lastMessage
+            )
         }
     }
     val startVoiceSearch = rememberSpeechInput { result -> query = result }
@@ -722,6 +727,7 @@ private fun PremiumMessagesHome(
             MessageInboxTabs(
                 selected = inboxTab,
                 requestCount = requestCount,
+                unreadCount = unreadCount,
                 archivedCount = archivedCount,
                 palette = palette,
                 onSelect = { inboxTab = it }
@@ -760,6 +766,7 @@ private fun PremiumMessagesHome(
 private fun MessageInboxTabs(
     selected: MessageInboxTab,
     requestCount: Int,
+    unreadCount: Int,
     archivedCount: Int,
     palette: MessagePalette,
     onSelect: (MessageInboxTab) -> Unit
@@ -770,11 +777,29 @@ private fun MessageInboxTabs(
     ) {
         item {
             MessageInboxTabChip(
+                label = "All",
+                selected = selected == MessageInboxTab.ALL,
+                count = null,
+                palette = palette,
+                onClick = { onSelect(MessageInboxTab.ALL) }
+            )
+        }
+        item {
+            MessageInboxTabChip(
                 label = "Primary",
                 selected = selected == MessageInboxTab.PRIMARY,
                 count = null,
                 palette = palette,
                 onClick = { onSelect(MessageInboxTab.PRIMARY) }
+            )
+        }
+        item {
+            MessageInboxTabChip(
+                label = "Unread",
+                selected = selected == MessageInboxTab.UNREAD,
+                count = unreadCount.takeIf { it > 0 },
+                palette = palette,
+                onClick = { onSelect(MessageInboxTab.UNREAD) }
             )
         }
         item {
@@ -1223,7 +1248,7 @@ private fun ConversationList(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 112.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        itemsIndexed(conversations, key = { index, conversation -> "conversation:$index:${conversation.id}" }) { _, conversation ->
+        items(conversations, key = { conversation -> "conversation:${conversation.id}" }) { conversation ->
             ConversationCard(
                 conversation = conversation,
                 palette = palette,
@@ -1455,7 +1480,7 @@ private fun PremiumChatDetail(
     )
     var pinnedOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
     var starredOnly by remember(conversation.partnerUsername) { mutableStateOf(false) }
-    val listState = rememberLazyListState()
+    val listState = remember(conversation.id) { LazyListState() }
     val scrollScope = rememberCoroutineScope()
     var newMessagesBelow by remember(conversation.id) { mutableIntStateOf(0) }
     val isNearLatest by remember(conversation.id) {
@@ -1506,12 +1531,27 @@ private fun PremiumChatDetail(
         }
     }
 
-    val visibleMessages = conversation.messages.filter { message ->
-        val matchesSearch = searchQuery.isBlank() || message.text.contains(searchQuery, ignoreCase = true)
-        val matchesPinned = !pinnedOnly || message.isPinned
-        val matchesStarred = !starredOnly || message.isStarred
-        matchesSearch && matchesPinned && matchesStarred
+    // Avoid repeatedly filtering and linearly scanning the entire history for every row.
+    val visibleMessages = remember(conversation.messages, searchQuery, pinnedOnly, starredOnly) {
+        conversation.messages.filter { message ->
+            val matchesSearch = searchQuery.isBlank() || message.text.contains(searchQuery, ignoreCase = true)
+            val matchesPinned = !pinnedOnly || message.isPinned
+            val matchesStarred = !starredOnly || message.isStarred
+            matchesSearch && matchesPinned && matchesStarred
+        }
     }
+    val messagesById = remember(conversation.messages) {
+        conversation.messages.associateBy { it.id }
+    }
+    val visibleMessageIndexes = remember(visibleMessages) {
+        visibleMessages.withIndex().associate { (index, message) -> message.id to index }
+    }
+    val messageDateLabels = remember(visibleMessages) {
+        BlinkMessageDatePolicy.labels(visibleMessages.map {
+            BlinkMessageDatePolicy.Entry(it.id, it.rawTimestamp)
+        })
+    }
+    val historyHeaderCount = if (isLoadingOlder) 1 else 0
 
     fun submitMessage(value: String = text) {
         val clean = value.trim()
@@ -1528,19 +1568,36 @@ private fun PremiumChatDetail(
         showEmojiRail = false
     }
 
-    val latestVisibleMessageId = visibleMessages.lastOrNull()?.id
+    val latestVisibleMessageId = conversation.messages.lastOrNull()?.id
     var previousLatestVisibleMessageId by remember(conversation.id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(conversation.partnerUsername, latestVisibleMessageId) {
-        if (visibleMessages.isEmpty()) return@LaunchedEffect
-        val changed = previousLatestVisibleMessageId != null &&
-            previousLatestVisibleMessageId != latestVisibleMessageId
-        if (!userHasScrolled || isNearLatest || previousLatestVisibleMessageId == null) {
-            listState.animateScrollToItem(visibleMessages.lastIndex)
-            newMessagesBelow = 0
-        } else if (changed) {
-            newMessagesBelow = (newMessagesBelow + 1).coerceAtMost(99)
+    LaunchedEffect(conversation.id, latestVisibleMessageId, searchQuery, pinnedOnly, starredOnly) {
+        val previous = previousLatestVisibleMessageId
+        val action = com.blinkng.shared.BlinkMessageScrollPolicy.decide(
+            hasMessages = visibleMessages.isNotEmpty(),
+            filtering = searchQuery.isNotBlank() || pinnedOnly || starredOnly,
+            hasSeenLatest = previous != null,
+            userHasScrolled = userHasScrolled,
+            nearLatest = isNearLatest,
+            latestChanged = previous != null && previous != latestVisibleMessageId
+        )
+        val lastIndex = visibleMessages.lastIndex + historyHeaderCount
+        when (action) {
+            com.blinkng.shared.BlinkMessageScrollAction.JUMP_TO_LATEST -> {
+                // Large initial histories must jump directly; animating thousands of rows stutters.
+                listState.scrollToItem(lastIndex)
+                newMessagesBelow = 0
+            }
+            com.blinkng.shared.BlinkMessageScrollAction.ANIMATE_TO_LATEST -> {
+                listState.animateScrollToItem(lastIndex)
+                newMessagesBelow = 0
+            }
+            com.blinkng.shared.BlinkMessageScrollAction.SHOW_NEW_MESSAGE ->
+                newMessagesBelow = (newMessagesBelow + 1).coerceAtMost(99)
+            com.blinkng.shared.BlinkMessageScrollAction.KEEP -> Unit
         }
-        previousLatestVisibleMessageId = latestVisibleMessageId
+        if (visibleMessages.isNotEmpty() && searchQuery.isBlank() && !pinnedOnly && !starredOnly) {
+            previousLatestVisibleMessageId = latestVisibleMessageId
+        }
     }
     LaunchedEffect(isNearLatest) {
         if (isNearLatest) newMessagesBelow = 0
@@ -1697,11 +1754,21 @@ private fun PremiumChatDetail(
             }
 
             if (visibleMessages.isEmpty()) {
-                EmptyConversation(
-                    conversation = conversation,
-                    palette = palette,
-                    modifier = Modifier.weight(1f)
-                )
+                if (isLoadingMessages) {
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Text("Loading messages…", color = palette.textSecondary, fontSize = 12.sp)
+                    }
+                } else if (conversation.messages.isNotEmpty()) {
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Text("No messages match your filters", color = palette.textSecondary, fontSize = 12.sp)
+                    }
+                } else {
+                    EmptyConversation(
+                        conversation = conversation,
+                        palette = palette,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             } else {
                 LazyColumn(
                     state = listState,
@@ -1709,10 +1776,10 @@ private fun PremiumChatDetail(
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(11.dp)
                 ) {
-                    if (isLoadingOlder || (isLoadingMessages && visibleMessages.isEmpty())) {
+                    if (isLoadingOlder) {
                         item(key = "message_history_loading") {
                             Text(
-                                if (isLoadingOlder) "Loading earlier messages…" else "Loading messages…",
+                                "Loading earlier messages…",
                                 color = palette.textSecondary,
                                 fontSize = 10.sp,
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
@@ -1722,10 +1789,28 @@ private fun PremiumChatDetail(
                     }
 
                     items(visibleMessages, key = { it.id }) { message ->
-                        val replyTarget = message.replyToMessageId?.let { replyId ->
-                            conversation.messages.firstOrNull { it.id == replyId }
-                        }
-                        MessageBubble(
+                        val replyTarget = message.replyToMessageId?.let(messagesById::get)
+                        Column {
+                            messageDateLabels[message.id]?.let { label ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Surface(
+                                        color = palette.glassElevated,
+                                        shape = RoundedCornerShape(100.dp),
+                                        border = BorderStroke(1.dp, palette.border)
+                                    ) {
+                                        Text(
+                                            label,
+                                            color = palette.textSecondary,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            MessageBubble(
                             message = message,
                             replyTarget = replyTarget,
                             partnerAvatar = conversation.partnerAvatar,
@@ -1737,15 +1822,16 @@ private fun PremiumChatDetail(
                             },
                             onReplyTargetClick = {
                                 val targetId = message.replyToMessageId
-                                val targetIndex = visibleMessages.indexOfFirst { it.id == targetId }
-                                if (targetIndex >= 0) {
-                                    scrollScope.launch { listState.animateScrollToItem(targetIndex) }
+                                val targetIndex = visibleMessageIndexes[targetId]
+                                if (targetIndex != null) {
+                                    scrollScope.launch { listState.animateScrollToItem(targetIndex + historyHeaderCount) }
                                 }
                             },
                             onActions = { selectedMessage = message },
                             onRetry = { onRetry(message) },
                             allowLinkPreviews = allowLinkPreviews
-                        )
+                            )
+                        }
                     }
                 }
             }
@@ -1768,7 +1854,7 @@ private fun PremiumChatDetail(
                         modifier = Modifier.clickable {
                             scrollScope.launch {
                                 if (visibleMessages.isNotEmpty()) {
-                                    listState.animateScrollToItem(visibleMessages.lastIndex)
+                                    listState.animateScrollToItem(visibleMessages.lastIndex + historyHeaderCount)
                                     newMessagesBelow = 0
                                 }
                             }

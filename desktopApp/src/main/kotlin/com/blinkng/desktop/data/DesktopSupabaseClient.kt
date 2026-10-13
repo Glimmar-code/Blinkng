@@ -1009,6 +1009,8 @@ class DesktopSupabaseClient(
                         isOnline = row.optBoolean("partner_online", false),
                         lastSeenAt = row.optNullableString("partner_last_seen"),
                         unreadCount = row.optLong("unread_count"),
+                        lastMessage = row.optString("last_message").takeIf { it != "null" }.orEmpty(),
+                        partnerUsername = row.optString("partner_username").takeIf { it.isNotBlank() && it != "null" },
                     )
                 }
             })
@@ -1041,10 +1043,30 @@ class DesktopSupabaseClient(
         }
         val inbox = rows("get_chat_inbox_state")
         val notifications = rows("get_conversation_notification_settings")
-        return conversations.map { conversation ->
+        // The summaries RPC returns partner metadata, not is_group. Relying on
+        // optBoolean("is_group", false) silently turns groups into direct chats.
+        // Fetch the conversation kind via a participant-visible RLS query.
+        val ids = conversations.mapNotNull {
+            it.id.takeIf { id -> runCatching { UUID.fromString(id) }.isSuccess }
+        }.distinct()
+        val conversationMetadata = if (ids.isEmpty()) emptyMap() else runCatching {
+            val path = "/rest/v1/conversations?select=id,is_group,title&id=in.(${ids.joinToString(",")})"
+            val rows = getArray(path)
+            (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
+                .associateBy { it.optString("id") }
+        }.getOrElse { emptyMap() }
+        // Group summaries may contain one partner row per group member. Display
+        // a single inbox conversation card per conversation ID, not one per member.
+        return conversations.distinctBy { it.id }.map { conversation ->
             val entry = inbox[conversation.id]
             val preference = notifications[conversation.id]
+            val metadata = conversationMetadata[conversation.id]
+            val isGroup = metadata?.optBoolean("is_group") ?: conversation.isGroup
             conversation.copy(
+                isGroup = isGroup,
+                title = if (isGroup && !metadata?.optString("title").isNullOrBlank()) {
+                    metadata!!.optString("title")
+                } else conversation.title,
                 isArchived = entry?.optBoolean("is_archived") ?: false,
                 isPinned = entry?.optBoolean("is_pinned") ?: false,
                 markedUnread = entry?.optBoolean("marked_unread") ?: false,
@@ -1084,25 +1106,177 @@ class DesktopSupabaseClient(
         Unit
     }
 
-    suspend fun fetchMessages(conversationId: String): List<DesktopMessage> = withContext(Dispatchers.IO) {
-        val rows = getArray(
-            "/rest/v1/messages?conversation_id=eq.${encode(conversationId)}&deleted_for_everyone=eq.false&select=id,conversation_id,sender_id,content,media_url,message_type,is_read,delivered_at,read_at,created_at&order=created_at.asc&limit=300",
+    suspend fun fetchMessages(
+        conversationId: String,
+        beforeCreatedAt: String? = null,
+        beforeId: String? = null,
+        limit: Int = 100
+    ): List<DesktopMessage> = withContext(Dispatchers.IO) {
+        // The same participant-authorized cursor RPC used by Android. Fetch the
+        // LATEST page, not the first 300 oldest rows of an unbounded conversation.
+        val result = postObject(
+            "/rest/v1/rpc/get_conversation_messages_page",
+            JSONObject()
+                .put("p_conversation_id", conversationId)
+                .put("p_limit", limit.coerceIn(1, 100))
+                .put("p_before", beforeCreatedAt ?: JSONObject.NULL)
+                .put("p_before_id", beforeId ?: JSONObject.NULL)
         )
-        (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseMessage) }
+        val rows = result as? JSONArray
+            ?: throw IllegalStateException("Invalid message page returned by BLINK server.")
+        val messages = (rows.length() - 1 downTo 0).mapNotNull { i ->
+            rows.optJSONObject(i)?.takeUnless { it.optBoolean("deleted_for_everyone", false) }?.let(::parseMessage)
+        }
+        if (messages.isEmpty()) return@withContext messages
+        // Same server-authoritative action-state RPC used by Android. Only participants
+        // can access the message state; never fabricate reactions or show hidden rows.
+        val actionRows = runCatching {
+            postObject(
+                "/rest/v1/rpc/get_message_action_state",
+                JSONObject().put("p_message_ids", JSONArray(messages.map { it.id }))
+            ) as? JSONArray
+        }.getOrNull()
+        val actions = actionRows?.let { array ->
+            (0 until array.length()).mapNotNull { array.optJSONObject(it) }
+                .associateBy { it.optString("message_id") }
+        }.orEmpty()
+        messages.mapNotNull { message ->
+            val action = actions[message.id] ?: return@mapNotNull message
+            if (action.optBoolean("is_hidden", false)) return@mapNotNull null
+            val reactionJson = action.optJSONObject("reactions") ?: JSONObject()
+            val counts = buildMap {
+                for (emoji in reactionJson.keys()) {
+                    reactionJson.optInt(emoji).takeIf { it > 0 }?.let { put(emoji, it) }
+                }
+            }
+            val myReactions = action.optJSONArray("my_reactions")?.let { mine ->
+                (0 until mine.length()).mapNotNull { mine.optString(it).takeIf(String::isNotBlank) }.toSet()
+            }.orEmpty()
+            message.copy(
+                reactionCounts = counts,
+                myReactions = myReactions,
+                isStarred = action.optBoolean("is_starred", false),
+                isPinned = action.optBoolean("is_pinned", false)
+            )
+        }
     }
 
-    suspend fun sendMessage(conversationId: String, content: String): DesktopMessage = withContext(Dispatchers.IO) {
+    suspend fun setChatMessageReaction(messageId: String, emoji: String, active: Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            rpcBoolean(postObject("/rest/v1/rpc/set_message_reaction", JSONObject()
+                .put("p_message_id", messageId).put("p_emoji", emoji).put("p_active", active)))
+        }
+
+    suspend fun editChatMessage(messageId: String, content: String): Boolean = withContext(Dispatchers.IO) {
+        val clean = content.trim()
+        require(clean.isNotEmpty()) { "Message cannot be empty." }
+        rpcBoolean(postObject("/rest/v1/rpc/edit_message", JSONObject()
+            .put("p_message_id", messageId).put("p_content", clean)))
+    }
+
+    suspend fun deleteChatMessageForEveryone(messageId: String): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/delete_message_for_everyone", JSONObject()
+            .put("p_message_id", messageId)))
+    }
+
+    suspend fun hideChatMessageForMe(messageId: String): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/hide_message_for_me", JSONObject()
+            .put("p_message_id", messageId)))
+    }
+
+    suspend fun reportChatMessage(messageId: String, reason: String): Boolean = withContext(Dispatchers.IO) {
+        val clean = reason.trim().take(500)
+        require(clean.isNotEmpty()) { "Report reason is required." }
+        rpcBoolean(postObject("/rest/v1/rpc/report_message", JSONObject()
+            .put("p_message_id", messageId).put("p_reason", clean)))
+    }
+
+    suspend fun setChatMessageReply(messageId: String, replyToMessageId: String): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/set_message_reply", JSONObject()
+            .put("p_message_id", messageId).put("p_reply_to_message_id", replyToMessageId)))
+    }
+
+    /**
+     * Always use the same server-authoritative send RPCs as Android. Direct inserts
+     * bypass recipient block/privacy checks and the group rate limit, so they must
+     * not be used from the desktop client.
+     *
+     * Once the RPC confirms an ID, a failed follow-up fetch is not a failed send:
+     * do not encourage blind retrying of an already committed message.
+     */
+    suspend fun sendMessage(
+        conversationId: String,
+        content: String,
+        partnerUsername: String? = null,
+        isGroup: Boolean = false
+    ): DesktopMessage = withContext(Dispatchers.IO) {
         val clean = content.trim()
         require(clean.isNotBlank()) { "Message cannot be empty." }
-        val created = postArray(
-            "/rest/v1/messages",
-            JSONObject()
-                .put("conversation_id", conversationId)
-                .put("sender_id", requireSession().userId)
-                .put("content", clean),
-            prefer = "return=representation",
-        ).optJSONObject(0) ?: throw IllegalStateException("Message was not returned by the server.")
-        parseMessage(created)
+        require(clean.length <= 5000) { "Message is too long (maximum 5,000 characters)." }
+        val sender = requireSession().userId
+
+        // Validate conversation kind from the server for every send, rather than
+        // trusting cached UI data; prevents sending a group reply as a DM.
+        val conversationRows = getArray(
+            "/rest/v1/conversations?select=id,is_group&id=eq.${encode(conversationId)}&limit=1"
+        )
+        val actualKind = conversationRows.optJSONObject(0)
+            ?: throw IllegalStateException("Conversation is no longer accessible. Refresh Messages.")
+        val actualIsGroup = actualKind.optBoolean("is_group")
+        if (actualIsGroup != isGroup) {
+            throw IllegalStateException("Chat details changed. Refresh Messages before sending.")
+        }
+
+        val messageId: String
+        val confirmedConversationId: String
+        val confirmedTime: String?
+        if (isGroup) {
+            val result = postObject(
+                "/rest/v1/rpc/send_group_message",
+                JSONObject().put("p_conversation_id", conversationId).put("p_content", clean)
+            ) as? JSONObject ?: error("Invalid group send confirmation.")
+            messageId = result.optString("value").trim().removeSurrounding("\"")
+            confirmedConversationId = conversationId
+            confirmedTime = null
+        } else {
+            val username = partnerUsername?.trim()?.removePrefix("@")
+                ?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException(
+                    "Recipient account was not available. Refresh Messages and try again."
+                )
+            val rows = postObject(
+                "/rest/v1/rpc/send_message_v2",
+                JSONObject().put("p_receiver_username", username).put("p_content", clean)
+            ) as? JSONArray ?: error("Invalid direct message send confirmation.")
+            val row = rows.optJSONObject(0)
+                ?: throw IllegalStateException("Server did not confirm the message.")
+            messageId = row.optString("message_id")
+            confirmedConversationId = row.optString("conversation_id")
+            confirmedTime = row.optNullableString("created_at")
+        }
+        require(messageId.isNotBlank() && confirmedConversationId.isNotBlank()) {
+            "Server returned an incomplete message confirmation."
+        }
+
+        // Read back server state, but never turn a successful send into a retryable error.
+        runCatching {
+            getArray(
+                "/rest/v1/messages?id=eq.${encode(messageId)}&select=" +
+                    "id,conversation_id,sender_id,content,media_url,message_type,is_read," +
+                    "delivered_at,read_at,created_at,reply_to_message_id&limit=1"
+            ).optJSONObject(0)?.let(::parseMessage)
+        }.getOrNull() ?: DesktopMessage(
+            id = messageId,
+            conversationId = confirmedConversationId,
+            senderId = sender,
+            content = clean,
+            mediaUrl = null,
+            messageType = "text",
+            isRead = false,
+            deliveredAt = null,
+            readAt = null,
+            createdAt = confirmedTime ?: Instant.now().toString()
+        )
     }
 
     suspend fun fetchMarketplace(): List<DesktopMarketItem> = withContext(Dispatchers.IO) {
@@ -1546,6 +1720,7 @@ class DesktopSupabaseClient(
         deliveredAt = row.optNullableString("delivered_at"),
         readAt = row.optNullableString("read_at"),
         createdAt = row.optString("created_at"),
+        replyToMessageId = row.optNullableString("reply_to_message_id"),
     )
 
     private fun parseMarketItem(row: JSONObject) = DesktopMarketItem(

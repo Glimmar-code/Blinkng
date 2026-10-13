@@ -111,6 +111,9 @@ data class DesktopConversation(
     val markedUnread: Boolean = false,
     val unreadCount: Long = 0,
     val requestStatus: String = "accepted",
+    val lastMessage: String = "",
+    // Authenticated server summary username; never infer recipient identity from display title.
+    val partnerUsername: String? = null,
     val notificationMode: String = "all",
     val muteUntil: String? = null,
     val controlsAvailable: Boolean = false,
@@ -127,6 +130,11 @@ data class DesktopMessage(
     val deliveredAt: String?,
     val readAt: String?,
     val createdAt: String,
+    val reactionCounts: Map<String, Int> = emptyMap(),
+    val myReactions: Set<String> = emptySet(),
+    val isStarred: Boolean = false,
+    val isPinned: Boolean = false,
+    val replyToMessageId: String? = null,
 )
 
 data class DesktopNotification(

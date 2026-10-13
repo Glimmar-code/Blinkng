@@ -8,7 +8,6 @@
 - **Backend:** No new migration or production data change. Spin coin billing, RLS, verification, reporting, block states, paid monetization and existing backend RPC semantics remain unchanged.
 - **Release gates:** Android and Windows build, unit tests, Android 15 runtime smoke, release smoke, parity, security and Supabase safety checks; also manual session-switch, blocked-discovery, real spinner, narrow-layout, offline/500 and Redmi 15C checks before production.
 - **Scope:** This ships a coherent **subset** of the proposed 100 Connect items, not all 100. Other safety, durable preferences, housing, mentorship, notifications, deep links, pagination and benchmarking remain tracked in issue #262.
-
 ## 2026-10-13 — Connect partial-load resilience and truthful online presence (Testlab)
 
 - **Android and Windows:** The Connect header now shows a count of users actually confirmed online from the available student list rather than a fluctuating synthetic "Community Activity" number. When student presence cannot be refreshed, the live count is shown as unavailable rather than presented as confirmed.
@@ -19,16 +18,11 @@
 - **Deployment:** No Supabase production schema change, RLS modification, coin charge, or new server permission is included. Test Kotlin/Compose builds, Android runtime and Windows parity, plus behavior during slow/offline/401/500 responses before promoting this branch to main.
 - **Scope:** This is a reliability-focused subset of the 100 requested Connect enhancements; the other redesign, matching, safety, housing, and feature initiatives are not represented as implemented.
 
-## 2026-10-12 — Android Feed header double-scroll and exact scroll-resume position
+## 2026-10-13 — Desktop group metadata and guarded messaging
 
-PARITY-EXCEPTION: android-lazycolumn-collapsing-header-distance-and-offset-20261012
-
-- Android Feed: the scroll-linked Home header previously changed visible height while returning zero consumed drag distance, so a single vertical gesture could collapse the header **and** scroll the underlying LazyColumn by the full amount. Consume only the actual vertical pixels spent moving the header, and pass the remainder to the list. Once fully collapsed/open (or reversing under the dead zone), feed scroll proceeds normally. No app-shell navigation or gesture-priority changes.
-- Android Feed: append genuinely new server-delivered inline Reel teasers after the existing preview pool on realtime updates, not only on a pagination-completed transition. Already displayed preview positions and the server-supplied order remain unchanged; explicit refresh still rebuilds the snapshot. This closes a stale-preview case where new Reels never appeared until the viewer scrolled deeply.
-- Android Feed: fix scroll-position restoration of partially visible posts. LazyListItemInfo.offset is negative when clipped above the viewport, but scrollToItem expects a positive into-item offset. Convert to the proper non-negative offset rather than rounding the saved position back to the post's start.
-- Add unit tests for clamp, direction, available-vs-consumed delta, partial-row position restoration and integer boundaries. Follow up with Android emulator scroll/rotation and runtime smoke plus Windows build/parity.
-- Windows equivalent: the desktop app uses native Compose desktop scrolling and sidebar navigation without Android's collapsing status-bar header or LazyListState insets; preserve its independent scroll-resume and responsive window behaviour. Feed data, ranking, post views, ads, monetization, credentials and Supabase remain unchanged.
-- Physical Redmi 15C frame profiling and device-specific long-session validation remain outstanding; this code correction is not evidence every one of the earlier 50 audit risks has been eliminated.
+- **Android + Windows server parity:** Android already uses server-backed conversation types and recipient identities. Windows now resolves `is_group` from an authenticated, row-level-security-filtered conversation lookup because the summary RPC does **not** supply that field. Preserve the group title from the actual conversation row.
+- **Safe sending:** Windows verifies the signed-in user can read the conversation and its actual group/direct kind immediately before sending. If the chat kind differs from the displayed cache, the app refuses to send and requests inbox refresh; it cannot misroute a group message to a one-to-one conversation.
+- **Scope:** no Supabase migration, direct production data mutation, or APK release included here. Regression CI and live multi-account/group device testing remain required.
 
 ## 2026-10-12 — Stable Android Feed tombstones and ranked module positions
 
@@ -48,6 +42,48 @@ PARITY-EXCEPTION: android-google-mobile-ads-ump-rewarded-native-20261012
 - **Android-only adapter:** Google Mobile Ads SDK, UMP consent form, native Feed/Reels slots and Activity-backed rewarded full-screen ads do not run on Windows. Fix a stuck ad-loading spinner by timing out the SDK call; discard stale/late callbacks; retry consent on explicit user request; reload sponsored slots on explicit refresh; report non-personal ad error codes. Android persists pending verified-claim IDs per signed-in user and reconciles them on resume, never granting coins offline or before server credit.
 - **Windows equivalent:** No Android SDK calls or ads are transplanted into the Windows client. Desktop must continue to use the same backend wallet and server-enforced coin balance; it must not create or spoof AdMob SSV claims. Paid economy logic and profile balances stay consistent across platforms.
 - **Verification gate:** Android release/runtime smoke, Kotlin unit tests, Windows checks, and physical-device ad verification. The SSV-enforcing migration is staged separately in PR #249 and is deliberately NOT in this safe client rollout; production AdMob serving and signed SSV delivery must be confirmed before enabling server-side enforcement. Client changes alone cannot guarantee that Google serves ads.
+
+## 2026-10-13 — Protected desktop message sends and cross-platform inbox search (Testlab)
+
+- **Critical messaging correctness:** Windows no longer POSTs chat messages directly to the `messages` table. Both clients now use server-authoritative Supabase sending RPCs for normal direct chats; desktop groups use `send_group_message`. The backend already enforces recipient blocks for direct messages and group membership / rate limits for group messages. Windows takes the recipient's actual `partner_username` from authorized summaries; it never guesses from display name.
+- **Server confirmation:** Desktop only treats a send as complete after the RPC returns a stable server ID, and uses an optional authorized read-back to populate state. If read-back fails after confirmation, do not mislabel a committed message as failed and prompt blind resending. On a different conversation returned by the server, direct users to refresh rather than painting another chat's content.
+- **Search/UI parity:** Android + Windows use the same case-insensitive shared inbox search policy over display name, username and permitted last-message preview. Windows displays the server-provided latest message with single-line ellipsis, retaining stable compact conversation cards. Shared unit tests cover match/no-match and whitespace.
+- **Not covered:** server idempotency against ambiguous network outcomes, full production RPC / RLS policy penetration tests, genuine multi-user physical device testing, GIF/sticker/media work and the full 100 feature checklist remain pending. Backend schema and prod data were not changed. Testlab checks must finish before promotion.
+
+## 2026-10-12 — Android Feed header double-scroll and exact scroll-resume position
+
+PARITY-EXCEPTION: android-lazycolumn-collapsing-header-distance-and-offset-20261012
+
+- Android Feed: the scroll-linked Home header previously changed visible height while returning zero consumed drag distance, so a single vertical gesture could collapse the header **and** scroll the underlying LazyColumn by the full amount. Consume only the actual vertical pixels spent moving the header, and pass the remainder to the list. Once fully collapsed/open (or reversing under the dead zone), feed scroll proceeds normally. No app-shell navigation or gesture-priority changes.
+- Android Feed: append genuinely new server-delivered inline Reel teasers after the existing preview pool on realtime updates, not only on a pagination-completed transition. Already displayed preview positions and the server-supplied order remain unchanged; explicit refresh still rebuilds the snapshot. This closes a stale-preview case where new Reels never appeared until the viewer scrolled deeply.
+- Android Feed: fix scroll-position restoration of partially visible posts. LazyListItemInfo.offset is negative when clipped above the viewport, but scrollToItem expects a positive into-item offset. Convert to the proper non-negative offset rather than rounding the saved position back to the post's start.
+- Add unit tests for clamp, direction, available-vs-consumed delta, partial-row position restoration and integer boundaries. Follow up with Android emulator scroll/rotation and runtime smoke plus Windows build/parity.
+- Windows equivalent: the desktop app uses native Compose desktop scrolling and sidebar navigation without Android's collapsing status-bar header or LazyListState insets; preserve its independent scroll-resume and responsive window behaviour. Feed data, ranking, post views, ads, monetization, credentials and Supabase remain unchanged.
+- Physical Redmi 15C frame profiling and device-specific long-session validation remain outstanding; this code correction is not evidence every one of the earlier 50 audit risks has been eliminated.
+
+## 2026-10-13 — Message inbox completeness and desktop reply/send safety (Testlab)
+
+- **Android + Windows:** introduce a shared `All` inbox filter for active (non-archived) threads including message requests; retain `Primary`, `Unread`, `Requests` and `Archived` filters and previous default. Shared unit tests cover All semantics.
+- **Windows:** upgrade the Reply action from an unlinked quoted text draft to an actual `set_message_reply` RPC, the same server-authoritative function already called by Android. Show a reply preview only when the server saves the link; gracefully acknowledge a link failure without pretending the sent message failed.
+- **Windows privacy and reliability:** limit concurrent sends to one per conversation and guard all async UI updates against account or selected-conversation changes, including preserving an unsent draft on errors. Display incoming reply references based on the server's `reply_to_message_id` rather than a fabricated client quote.
+- **Limitations:** this does not add server-level idempotency tokens; a request interrupted after server acceptance still needs backend deduplication before automatic resend can be considered safe. Physical device and live multi-account staging tests remain required before production promotion.
+
+## 2026-10-12 — Message rendering, actions and privacy hardening (Testlab PR #251)
+
+- **Shared Android + Windows:** deterministic Today / Yesterday / dated conversation dividers from server timestamps and the reader's timezone, inside keyed message rows so pagination and quote navigation keep stable indices; pure unit tests cover invalid timestamps, offset conversion and day boundaries.
+- **Android:** preserve existing message actions, unread inbox, auth-aware drafts and server-side contracts while avoiding a blurred/active background inbox under full-screen chat; optimize long-history loading, reply lookups and read-position retention.
+- **Windows:** use the SAME pre-existing participant-authorized Supabase RPC names as Android for message reaction, edit, delete for everyone, hide for self, report, and get_message_action_state. Show server-confirmed reaction counts and remove fake 'reaction sync pending' messaging. Do not expose privileged credentials or implement a parallel backend.
+- **Windows privacy:** guard late inbox and message fetches against account/thread switching; clear previously visible private chat content immediately on account/chat changes. Drafts remain account-scoped and per-conversation. Guard destructive actions with confirmation.
+- **Validation pending:** real user/account switching, network interruption, Android and Windows UI interaction and Supabase permissions must be verified before merging. Backend migrations, server policies, coin economy, and production data are untouched.
+
+## 2026-10-12 — Message timeline performance and draft isolation (Testlab)
+
+- **Shared:** `BlinkChatInboxPolicy` adds the unread-only inbox filter without changing existing Primary/Requests/Archived semantics. Android and Windows use the same unread predicate; focused unit tests cover archived/request exclusion.
+- **Shared:** `BlinkMessageScrollPolicy` specifies deterministic initial jump, animated append at bottom, preservation of reading position, and new-message indication when reading history; four Android unit-test scenarios cover its behavior.
+- **Android:** expose an Unread tab/count driven by actual unread/marked-unread state. Do not compose a second blurred inbox behind an already full-screen chat; assign stable conversation list keys so reordering does not destroy row identity; isolate lazy timeline state per conversation; memoize search/filter and reply-target lookup; distinguish history loading from an actually empty or filtered conversation; keep reply navigation accurate when a history-loading header is displayed.
+- **Windows:** include the Unread inbox tab from the same shared predicate and use the same shared timeline policy when loading and appending messages; offer an explicit New messages jump instead of yanking the reader away from older history. Store drafts per conversation and user; clear old account history on session switch; clear prior chat history immediately when switching conversations; avoid fixed-width bubble overflow in narrow windows.
+- **Safety:** no Supabase schema, auth policies, upload semantics, server send/receipt semantics, message contents, notification delivery or stored history are modified. Drafts on desktop are in-memory until further persistence work and are cleared on application restart. These changes must pass Android unit/build/lint, Windows build, and runtime messaging tests on Testlab before main promotion.
+- **Not claimed:** full 100-feature rollout, idempotent server sends, encrypted end-to-end messaging, GIF licensing, realtime subscription reliability, and real device frame-time validation remain independent tasks. Test the first set before merging.
 
 ## 2026-10-12 — Feed audit follow-up: pagination, refresh, native ads, accessibility
 

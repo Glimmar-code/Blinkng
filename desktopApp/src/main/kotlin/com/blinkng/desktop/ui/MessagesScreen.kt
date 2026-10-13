@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -48,7 +49,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,6 +68,10 @@ import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
 import com.blinkng.shared.BlinkChatInboxPolicy
+import com.blinkng.shared.BlinkConversationSearchPolicy
+import com.blinkng.shared.BlinkMessageScrollAction
+import com.blinkng.shared.BlinkMessageDatePolicy
+import com.blinkng.shared.BlinkMessageScrollPolicy
 import com.blinkng.shared.BlinkMessageInbox
 import kotlinx.coroutines.launch
 import java.awt.Toolkit
@@ -76,31 +83,46 @@ fun MessagesScreen(state: DesktopAppState) {
     var conversations by remember { mutableStateOf<List<DesktopConversation>>(emptyList()) }
     var selected by remember { mutableStateOf<DesktopConversation?>(null) }
     var messages by remember { mutableStateOf<List<DesktopMessage>>(emptyList()) }
-    var draft by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
     var chatQuery by remember { mutableStateOf("") }
     var chatSearchVisible by remember { mutableStateOf(false) }
     var showContactCard by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
+    var olderLoading by remember { mutableStateOf(false) }
+    var hasMoreOlder by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var actionMessageId by remember { mutableStateOf<String?>(null) }
     var inbox by remember { mutableStateOf(BlinkMessageInbox.PRIMARY) }
     var controlsBusy by remember { mutableStateOf(false) }
     var forwardMessageId by remember { mutableStateOf<String?>(null) }
     var forwardUsername by remember { mutableStateOf("") }
+    var editingMessage by remember { mutableStateOf<DesktopMessage?>(null) }
+    var editDraft by remember { mutableStateOf("") }
+    var deleteMessage by remember { mutableStateOf<DesktopMessage?>(null) }
+    var deleteForEveryone by remember { mutableStateOf(false) }
+    var reportMessage by remember { mutableStateOf<DesktopMessage?>(null) }
+    var reportReason by remember { mutableStateOf("") }
+    var replyingTo by remember { mutableStateOf<DesktopMessage?>(null) }
     val scope = rememberCoroutineScope()
     val myUserId = state.session?.userId.orEmpty()
+    // Drafts must never cross conversations or accounts, including after switching chats.
+    val draftsByConversation = remember(myUserId) { mutableStateMapOf<String, String>() }
+    val sendingConversations = remember(myUserId) { mutableStateMapOf<String, Boolean>() }
 
     suspend fun loadConversations() {
+        val owner = state.session?.userId.orEmpty()
+        if (owner.isBlank()) return
         loading = true
         runCatching { state.client.fetchConversations() }
             .onSuccess {
-                conversations = it
-                selected?.id?.let { id -> selected = it.firstOrNull { conversation -> conversation.id == id } }
-                error = null
+                if (state.session?.userId == owner) {
+                    conversations = it
+                    selected?.id?.let { id -> selected = it.firstOrNull { conversation -> conversation.id == id } }
+                    error = null
+                }
             }
-            .onFailure { error = it.message }
-        loading = false
+            .onFailure { if (state.session?.userId == owner) error = it.message }
+        if (state.session?.userId == owner) loading = false
     }
 
     fun changeControl(action: suspend () -> Boolean) {
@@ -118,16 +140,90 @@ fun MessagesScreen(state: DesktopAppState) {
             messages = emptyList()
             return
         }
+        val owner = state.session?.userId.orEmpty()
+        if (owner.isBlank()) return
         runCatching { state.client.fetchMessages(target.id) }
-            .onSuccess { messages = it; error = null }
-            .onFailure { error = it.message }
+            .onSuccess {
+                // A slow response from chat A must never repaint chat B (or another account).
+                if (state.session?.userId == owner && selected?.id == target.id) {
+                    messages = it
+                    hasMoreOlder = it.size >= 100
+                    error = null
+                }
+            }
+            .onFailure {
+                if (state.session?.userId == owner && selected?.id == target.id) error = it.message
+            }
     }
 
-    LaunchedEffect(Unit) { loadConversations() }
+    fun loadOlderMessages() {
+        if (olderLoading || !hasMoreOlder || messages.isEmpty() || chatQuery.isNotBlank()) return
+        val target = selected ?: return
+        val owner = state.session?.userId ?: return
+        val earliest = messages.first()
+        olderLoading = true
+        scope.launch {
+            runCatching {
+                state.client.fetchMessages(target.id, earliest.createdAt, earliest.id)
+            }.onSuccess { older ->
+                if (state.session?.userId == owner && selected?.id == target.id) {
+                    // Keep server ordering and deduplicate rows replayed at a cursor boundary.
+                    val knownIds = messages.map { it.id }.toHashSet()
+                    messages = older.filterNot { it.id in knownIds } + messages
+                    hasMoreOlder = older.size >= 100
+                }
+            }.onFailure {
+                if (state.session?.userId == owner && selected?.id == target.id) error = it.message
+            }
+            olderLoading = false
+        }
+    }
+
+    fun changeMessageControl(conversationId: String, action: suspend () -> Boolean) {
+        if (controlsBusy) return
+        controlsBusy = true
+        val owner = state.session?.userId
+        scope.launch {
+            runCatching {
+                check(action()) { "The message action could not be saved." }
+                if (state.session?.userId == owner && selected?.id == conversationId) {
+                    loadMessages(selected)
+                }
+            }.onFailure {
+                if (state.session?.userId == owner && selected?.id == conversationId) {
+                    error = it.message
+                }
+            }
+            controlsBusy = false
+        }
+    }
+
+    LaunchedEffect(myUserId) {
+        // A reused desktop window must never show the previous account's chats.
+        selected = null
+        messages = emptyList()
+        conversations = emptyList()
+        editingMessage = null
+        deleteMessage = null
+        reportMessage = null
+        replyingTo = null
+        olderLoading = false
+        hasMoreOlder = false
+        error = null
+        if (myUserId.isNotBlank()) loadConversations()
+    }
     LaunchedEffect(selected?.id) {
         showContactCard = false
         chatSearchVisible = false
         chatQuery = ""
+        editingMessage = null
+        deleteMessage = null
+        reportMessage = null
+        replyingTo = null
+        olderLoading = false
+        hasMoreOlder = false
+        // Never display the previous contact's private history while the next chat loads.
+        messages = emptyList()
         loadMessages(selected)
     }
 
@@ -135,8 +231,8 @@ fun MessagesScreen(state: DesktopAppState) {
     if (active == null) {
         val filtered = remember(conversations, query, inbox) {
             conversations.filter {
-                BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary") &&
-                    (query.isBlank() || it.title.contains(query, ignoreCase = true))
+                BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary", it.unreadCount > 0 || it.markedUnread) &&
+                    BlinkConversationSearchPolicy.matches(query, it.title, it.partnerUsername, it.lastMessage)
             }.sortedWith(compareByDescending<DesktopConversation> { it.isPinned }.thenByDescending { it.lastMessageAt.orEmpty() })
         }
         val important = remember(conversations) {
@@ -282,11 +378,14 @@ fun MessagesScreen(state: DesktopAppState) {
                                     fontWeight = if (conversation.markedUnread || conversation.unreadCount > 0) FontWeight.Black else FontWeight.SemiBold,
                                     maxLines = 1)
                                 Text(
-                                    if (conversation.isGroup) "Group conversation"
-                                    else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt),
+                                    conversation.lastMessage.ifBlank {
+                                        if (conversation.isGroup) "Group conversation"
+                                        else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt)
+                                    },
                                     fontSize = 11.sp,
-                                    color = if (!conversation.isGroup && conversation.isOnline) Color(0xFF22C55E)
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -297,9 +396,57 @@ fun MessagesScreen(state: DesktopAppState) {
         return
     }
 
+    val draft = draftsByConversation[active.id].orEmpty()
+    val replyLookup = remember(messages) { messages.associateBy { it.id } }
     val visibleMessages = remember(messages, chatQuery) {
         if (chatQuery.isBlank()) messages
         else messages.filter { it.content.contains(chatQuery, ignoreCase = true) }
+    }
+    val messageDates = remember(visibleMessages) {
+        BlinkMessageDatePolicy.labels(visibleMessages.map {
+            BlinkMessageDatePolicy.Entry(it.id, it.createdAt)
+        })
+    }
+    val chatListState = remember(active.id) { LazyListState() }
+    var userHasScrolled by remember(active.id) { mutableStateOf(false) }
+    var previousLatestId by remember(active.id) { mutableStateOf<String?>(null) }
+    var hasNewMessages by remember(active.id) { mutableStateOf(false) }
+    val nearLatest by remember(active.id) {
+        derivedStateOf {
+            val layout = chatListState.layoutInfo
+            layout.totalItemsCount == 0 ||
+                (layout.visibleItemsInfo.lastOrNull()?.index ?: 0) >= layout.totalItemsCount - 2
+        }
+    }
+    LaunchedEffect(chatListState.isScrollInProgress) {
+        if (chatListState.isScrollInProgress) userHasScrolled = true
+    }
+    val latestId = messages.lastOrNull()?.id
+    LaunchedEffect(active.id, latestId, chatQuery) {
+        val action = BlinkMessageScrollPolicy.decide(
+            hasMessages = visibleMessages.isNotEmpty(),
+            filtering = chatQuery.isNotBlank(),
+            hasSeenLatest = previousLatestId != null,
+            userHasScrolled = userHasScrolled,
+            nearLatest = nearLatest,
+            latestChanged = previousLatestId != null && previousLatestId != latestId
+        )
+        when (action) {
+            BlinkMessageScrollAction.JUMP_TO_LATEST -> {
+                chatListState.scrollToItem(visibleMessages.lastIndex)
+                hasNewMessages = false
+            }
+            BlinkMessageScrollAction.ANIMATE_TO_LATEST -> {
+                chatListState.animateScrollToItem(visibleMessages.lastIndex)
+                hasNewMessages = false
+            }
+            BlinkMessageScrollAction.SHOW_NEW_MESSAGE -> hasNewMessages = true
+            BlinkMessageScrollAction.KEEP -> Unit
+        }
+        if (visibleMessages.isNotEmpty() && chatQuery.isBlank()) previousLatestId = latestId
+    }
+    LaunchedEffect(nearLatest) {
+        if (nearLatest) hasNewMessages = false
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -371,14 +518,43 @@ fun MessagesScreen(state: DesktopAppState) {
                 )
             }
 
+            if (hasMoreOlder && chatQuery.isBlank() && chatListState.firstVisibleItemIndex <= 2) {
+                TextButton(
+                    onClick = { loadOlderMessages() },
+                    enabled = !olderLoading,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text(if (olderLoading) "Loading earlier messages…" else "Load earlier messages")
+                }
+            }
             LazyColumn(
+                state = chatListState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(18.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(visibleMessages, key = { it.id }) { message ->
                     val mine = message.senderId == myUserId
-                    Row(
+                    Column {
+                        messageDates[message.id]?.let { date ->
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(100.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Text(
+                                        date,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
                     ) {
@@ -391,8 +567,36 @@ fun MessagesScreen(state: DesktopAppState) {
                                 color = if (mine) MaterialTheme.colorScheme.primaryContainer
                                 else MaterialTheme.colorScheme.surfaceVariant
                             ) {
-                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).width(360.dp)) {
+                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp).widthIn(max = 360.dp)) {
+                                    message.replyToMessageId?.let { reference ->
+                                        val quoted = replyLookup[reference]?.content?.take(100) ?: "Earlier message"
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                            modifier = Modifier.padding(bottom = 6.dp)
+                                        ) {
+                                            Text(
+                                                "↳ $quoted",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                maxLines = 2
+                                            )
+                                        }
+                                    }
                                     Text(message.content)
+                                    if (message.reactionCounts.isNotEmpty()) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            message.reactionCounts.forEach { (emoji, count) ->
+                                                Text(
+                                                    "$emoji $count",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (emoji in message.myReactions) FontWeight.Bold else FontWeight.Normal,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
                                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                         Text(
                                             when {
@@ -420,9 +624,13 @@ fun MessagesScreen(state: DesktopAppState) {
                                         Text(
                                             emoji,
                                             fontSize = 18.sp,
-                                            modifier = Modifier.clickable {
+                                            modifier = Modifier.clickable(enabled = !controlsBusy) {
                                                 actionMessageId = null
-                                                error = "Reaction ${emoji} selected. Desktop reaction sync is pending."
+                                                changeMessageControl(active.id) {
+                                                    state.client.setChatMessageReaction(
+                                                        message.id, emoji, emoji !in message.myReactions
+                                                    )
+                                                }
                                             }
                                         )
                                     }
@@ -431,7 +639,7 @@ fun MessagesScreen(state: DesktopAppState) {
                                 DropdownMenuItem(
                                     text = { Text("Reply") },
                                     onClick = {
-                                        draft = if (message.content.isBlank()) "" else "> " + message.content.take(80) + "\n"
+                                        replyingTo = message
                                         actionMessageId = null
                                     }
                                 )
@@ -454,13 +662,81 @@ fun MessagesScreen(state: DesktopAppState) {
                                         actionMessageId = null
                                     }
                                 )
+                                if (mine && message.messageType == "text") {
+                                    DropdownMenuItem(
+                                        text = { Text("Edit") },
+                                        enabled = !controlsBusy,
+                                        onClick = {
+                                            editingMessage = message
+                                            editDraft = message.content
+                                            actionMessageId = null
+                                        }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text("Delete for me") },
+                                    enabled = !controlsBusy,
+                                    onClick = {
+                                        deleteForEveryone = false
+                                        deleteMessage = message
+                                        actionMessageId = null
+                                    }
+                                )
+                                if (mine) {
+                                    DropdownMenuItem(
+                                        text = { Text("Unsend for everyone") },
+                                        enabled = !controlsBusy,
+                                        onClick = {
+                                            deleteForEveryone = true
+                                            deleteMessage = message
+                                            actionMessageId = null
+                                        }
+                                    )
+                                } else {
+                                    DropdownMenuItem(
+                                        text = { Text("Report message") },
+                                        enabled = !controlsBusy,
+                                        onClick = {
+                                            reportMessage = message
+                                            reportReason = ""
+                                            actionMessageId = null
+                                        }
+                                    )
+                                }
                             }
                         }
+                    }
                     }
                 }
             }
 
+            if (hasNewMessages && visibleMessages.isNotEmpty()) {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            chatListState.animateScrollToItem(visibleMessages.lastIndex)
+                            hasNewMessages = false
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.End)
+                ) { Text("↓ New messages") }
+            }
             HorizontalDivider()
+            replyingTo?.let { target ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Replying to: " + target.content.take(100),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                    TextButton(onClick = { replyingTo = null }) { Text("Cancel") }
+                }
+            }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -468,7 +744,7 @@ fun MessagesScreen(state: DesktopAppState) {
             ) {
                 OutlinedTextField(
                     value = draft,
-                    onValueChange = { draft = it },
+                    onValueChange = { draftsByConversation[active.id] = it },
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("Message") },
@@ -482,15 +758,69 @@ fun MessagesScreen(state: DesktopAppState) {
                 ) {
                     IconButton(
                         onClick = {
-                            val text = draft
-                            draft = ""
-                            scope.launch {
-                                runCatching { state.client.sendMessage(active.id, text) }
-                                    .onSuccess { messages = messages + it }
-                                    .onFailure { error = it.message; draft = text }
+                            val conversationId = active.id
+                            val accountId = myUserId
+                            val text = draft.trim()
+                            if (accountId.isNotBlank() && text.isNotBlank() && sendingConversations[conversationId] != true) {
+                                val replyId = replyingTo?.takeIf { it.conversationId == conversationId }?.id
+                                sendingConversations[conversationId] = true
+                                draftsByConversation[conversationId] = ""
+                                replyingTo = null
+                                scope.launch {
+                                    try {
+                                        val result = runCatching {
+                                            state.client.sendMessage(
+                                                conversationId = conversationId,
+                                                content = text,
+                                                partnerUsername = active.partnerUsername,
+                                                isGroup = active.isGroup
+                                            )
+                                        }
+                                        result.onSuccess { sent ->
+                                            // The authorized server may resolve an older duplicate direct
+                                            // thread to a different conversation: do not append across chats.
+                                            if (state.session?.userId == accountId && selected?.id == conversationId) {
+                                                if (sent.conversationId == conversationId) {
+                                                    messages = messages.filterNot { it.id == sent.id } + sent
+                                                } else {
+                                                    error = "Sent to your existing chat. Refresh Messages to view it."
+                                                    scope.launch { loadConversations() }
+                                                }
+                                            }
+                                            if (replyId != null) {
+                                                val linked = runCatching {
+                                                    state.client.setChatMessageReply(sent.id, replyId)
+                                                }.getOrDefault(false)
+                                                if (state.session?.userId == accountId && selected?.id == conversationId) {
+                                                    if (linked) {
+                                                        messages = messages.map {
+                                                            if (it.id == sent.id) it.copy(replyToMessageId = replyId) else it
+                                                        }
+                                                    } else {
+                                                        error = "Message sent, but its reply link could not be saved."
+                                                    }
+                                                }
+                                            }
+                                        }.onFailure { failure ->
+                                            if (state.session?.userId == accountId) {
+                                                if (selected?.id == conversationId) {
+                                                    error = failure.message
+                                                    if (replyId != null && replyingTo == null) {
+                                                        replyingTo = messages.firstOrNull { it.id == replyId }
+                                                    }
+                                                }
+                                                if (draftsByConversation[conversationId].isNullOrEmpty()) {
+                                                    draftsByConversation[conversationId] = text
+                                                }
+                                            }
+                                        }
+                                    } finally {
+                                        sendingConversations[conversationId] = false
+                                    }
+                                }
                             }
                         },
-                        enabled = draft.isNotBlank()
+                        enabled = draft.isNotBlank() && sendingConversations[active.id] != true && myUserId.isNotBlank()
                     ) {
                         Icon(Icons.Rounded.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.onPrimary)
                     }
@@ -616,6 +946,98 @@ fun MessagesScreen(state: DesktopAppState) {
             }
         }
     }
+    editingMessage?.let { target ->
+        AlertDialog(
+            onDismissRequest = { if (!controlsBusy) editingMessage = null },
+            title = { Text("Edit message") },
+            text = {
+                OutlinedTextField(
+                    value = editDraft,
+                    onValueChange = { editDraft = it },
+                    label = { Text("Message") },
+                    maxLines = 7
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = !controlsBusy && editDraft.trim().isNotEmpty(),
+                    onClick = {
+                        val updatedText = editDraft
+                        changeMessageControl(target.conversationId) {
+                            state.client.editChatMessage(target.id, updatedText)
+                        }
+                        editingMessage = null
+                    }
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(enabled = !controlsBusy, onClick = { editingMessage = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    deleteMessage?.let { target ->
+        AlertDialog(
+            onDismissRequest = { if (!controlsBusy) deleteMessage = null },
+            title = { Text(if (deleteForEveryone) "Unsend message?" else "Delete message for you?") },
+            text = {
+                Text(
+                    if (deleteForEveryone) "This removes the message for all conversation participants."
+                    else "This hides the message from your own account."
+                )
+            },
+            confirmButton = {
+                Button(enabled = !controlsBusy, onClick = {
+                    val unsend = deleteForEveryone
+                    changeMessageControl(target.conversationId) {
+                        if (unsend) state.client.deleteChatMessageForEveryone(target.id)
+                        else state.client.hideChatMessageForMe(target.id)
+                    }
+                    deleteMessage = null
+                }) { Text(if (deleteForEveryone) "Unsend" else "Delete") }
+            },
+            dismissButton = {
+                TextButton(enabled = !controlsBusy, onClick = { deleteMessage = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    reportMessage?.let { target ->
+        AlertDialog(
+            onDismissRequest = { if (!controlsBusy) reportMessage = null },
+            title = { Text("Report message") },
+            text = {
+                OutlinedTextField(
+                    value = reportReason,
+                    onValueChange = { reportReason = it },
+                    label = { Text("Reason") },
+                    maxLines = 4
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = !controlsBusy && reportReason.trim().isNotEmpty(),
+                    onClick = {
+                        val reason = reportReason
+                        changeMessageControl(target.conversationId) {
+                            state.client.reportChatMessage(target.id, reason)
+                        }
+                        reportMessage = null
+                    }
+                ) { Text("Submit report") }
+            },
+            dismissButton = {
+                TextButton(enabled = !controlsBusy, onClick = { reportMessage = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     forwardMessageId?.let { messageId ->
         AlertDialog(
             onDismissRequest = { if (!controlsBusy) forwardMessageId = null },
