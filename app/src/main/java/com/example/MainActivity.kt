@@ -562,7 +562,12 @@ fun MainAppContent(
         MainTab.SEARCH -> 5
         MainTab.LEADERBOARD -> 6
     }
-    val pagerState = rememberPagerState(initialPage = selectedPage, pageCount = { 8 })
+    val pagerState = rememberPagerState(
+        initialPage = selectedPage,
+        // The swipeable range ends at Messages. Direct-only routes extend the
+        // pager solely while they are selected by an explicit navigation action.
+        pageCount = { if (selectedPage in 0..4) 5 else 8 }
+    )
     var requestedPage by remember { mutableIntStateOf(selectedPage) }
 
     LaunchedEffect(selectedPage) {
@@ -592,7 +597,7 @@ fun MainAppContent(
     }
     val allowMainPageSwipe =
         uiState.selectedTab in setOf(MainTab.HOME, MainTab.MARKET, MainTab.MESSAGES) &&
-        uiState.feedSubTab != 3 &&
+        !(uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 3) &&
         uiState.activeConversationPartner == null && !uiState.isConversationFullScreen &&
         uiState.viewingProfile == null && uiState.viewingProduct == null &&
         !uiState.isPostItemOpen && !uiState.isBecomeSellerOpen &&
