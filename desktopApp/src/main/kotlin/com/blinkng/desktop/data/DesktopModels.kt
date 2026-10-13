@@ -111,6 +111,7 @@ data class DesktopConversation(
     val markedUnread: Boolean = false,
     val unreadCount: Long = 0,
     val requestStatus: String = "accepted",
+    val lastMessage: String = "",
     // Authenticated server summary username; never infer recipient identity from display title.
     val partnerUsername: String? = null,
     val notificationMode: String = "all",
