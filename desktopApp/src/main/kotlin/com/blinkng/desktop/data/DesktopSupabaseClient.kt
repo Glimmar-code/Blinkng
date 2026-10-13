@@ -1169,6 +1169,11 @@ class DesktopSupabaseClient(
             .put("p_message_id", messageId).put("p_reason", clean)))
     }
 
+    suspend fun setChatMessageReply(messageId: String, replyToMessageId: String): Boolean = withContext(Dispatchers.IO) {
+        rpcBoolean(postObject("/rest/v1/rpc/set_message_reply", JSONObject()
+            .put("p_message_id", messageId).put("p_reply_to_message_id", replyToMessageId)))
+    }
+
     suspend fun sendMessage(conversationId: String, content: String): DesktopMessage = withContext(Dispatchers.IO) {
         val clean = content.trim()
         require(clean.isNotBlank()) { "Message cannot be empty." }
@@ -1624,6 +1629,7 @@ class DesktopSupabaseClient(
         deliveredAt = row.optNullableString("delivered_at"),
         readAt = row.optNullableString("read_at"),
         createdAt = row.optString("created_at"),
+        replyToMessageId = row.optNullableString("reply_to_message_id"),
     )
 
     private fun parseMarketItem(row: JSONObject) = DesktopMarketItem(
