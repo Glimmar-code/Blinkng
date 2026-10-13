@@ -1211,7 +1211,7 @@ fun ConnectScreen(state: DesktopAppState) {
                     profile.university.orEmpty().equals(myCampus, ignoreCase = true)
                 "department" -> myDepartment.isNotBlank() &&
                     profile.department.orEmpty().equals(myDepartment, ignoreCase = true)
-                "online" -> profile.isOnline
+                "online" -> liveActivityAvailable && profile.isOnline
                 "verified" -> profile.isVerified
                 else -> true
             }
