@@ -1,3 +1,9 @@
+## 2026-10-13 — Desktop group metadata and guarded messaging
+
+- **Android + Windows server parity:** Android already uses server-backed conversation types and recipient identities. Windows now resolves `is_group` from an authenticated, row-level-security-filtered conversation lookup because the summary RPC does **not** supply that field. Preserve the group title from the actual conversation row.
+- **Safe sending:** Windows verifies the signed-in user can read the conversation and its actual group/direct kind immediately before sending. If the chat kind differs from the displayed cache, the app refuses to send and requests inbox refresh; it cannot misroute a group message to a one-to-one conversation.
+- **Scope:** no Supabase migration, direct production data mutation, or APK release included here. Regression CI and live multi-account/group device testing remain required.
+
 ## 2026-10-12 — Stable Android Feed tombstones and ranked module positions
 
 PARITY-EXCEPTION: android-frozen-feed-tombstones-and-module-stability-20261012
