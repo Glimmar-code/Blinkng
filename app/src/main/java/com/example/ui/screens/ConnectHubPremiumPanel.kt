@@ -226,34 +226,31 @@ fun ConnectHubPremiumPanel(
         }
     }
 
-    val candidates = remember(hub.smartMatches, profiles, current) {
-        if (hub.smartMatches.isNotEmpty()) {
-            hub.smartMatches.mapNotNull { candidate ->
-                if (candidate.username.isBlank()) null else {
-                    UserProfile(
-                        id = candidate.userId,
-                        fullName = candidate.fullName,
-                        username = candidate.username,
-                        avatarUrl = candidate.avatarUrl,
-                        university = candidate.university,
-                        faculty = candidate.faculty,
-                        department = candidate.department,
-                        academicLevel = candidate.academicLevel,
-                        relationshipStatus = candidate.relationshipStatus,
-                        onlineNow = candidate.onlineNow,
-                        lastSeenAt = candidate.lastSeenAt,
-                        coreSkills = candidate.commonSkills.toMutableList(),
-                        hobbies = candidate.commonHobbies
-                    ) to candidate.compatibilityScore
-                }
+    // Only server-approved candidates from get_connect_matches are eligible.
+    // Falling back to unrelated local profiles can bypass private/discoverability rules.
+    val candidates = remember(hub.smartMatches, current?.id) {
+        hub.smartMatches.asSequence()
+            .filter { it.userId.isNotBlank() && it.username.isNotBlank() }
+            .filterNot { it.userId == current?.id }
+            .distinctBy { it.userId.lowercase() }
+            .map { candidate ->
+                UserProfile(
+                    id = candidate.userId,
+                    fullName = candidate.fullName,
+                    username = candidate.username,
+                    avatarUrl = candidate.avatarUrl,
+                    university = candidate.university,
+                    faculty = candidate.faculty,
+                    department = candidate.department,
+                    academicLevel = candidate.academicLevel,
+                    relationshipStatus = candidate.relationshipStatus,
+                    onlineNow = candidate.onlineNow,
+                    lastSeenAt = candidate.lastSeenAt,
+                    coreSkills = candidate.commonSkills.toMutableList(),
+                    hobbies = candidate.commonHobbies
+                ) to candidate.compatibilityScore
             }
-        } else {
-            val me = current
-            if (me == null) emptyList() else profiles
-                .filter { it.id.isNotBlank() && it.id != me.id && it.username.isNotBlank() }
-                .sortedByDescending { compatibilityScore(me, it) }
-                .map { it to compatibilityScore(me, it) }
-        }
+            .toList()
     }
 
     val filteredRoommates = remember(hub.roommates, hubQuery) {
