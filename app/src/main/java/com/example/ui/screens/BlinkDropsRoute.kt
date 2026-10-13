@@ -1,5 +1,12 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import com.blinkng.shared.BlinkDesignTokens
@@ -22,6 +29,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -975,230 +985,285 @@ private fun OrganizeDropDialog(
         total <= balance &&
         action in actions.map { it.name }
 
+    var setupStep by remember { mutableIntStateOf(0) }
+    val stepLabels = listOf("Content", "Action", "Reward", "Audience", "Duration", "Review")
+
     Dialog(onDismissRequest = { if (!creating) onDismiss() }) {
         Surface(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(.9f),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(.90f),
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,
         ) {
-            LazyColumn(
-                contentPadding = PaddingValues(18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                item {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Column(modifier = Modifier.padding(start = 18.dp, end = 10.dp, top = 14.dp, bottom = 8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Organize a Drop", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                            Text(
-                                "Only followers who are eligible when you publish are included.",
-                                style = MaterialTheme.typography.bodySmall,
+                            Text("Step ${setupStep + 1} of 6 · ${stepLabels[setupStep]}",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                                style = MaterialTheme.typography.bodySmall)
                         }
                         IconButton(onClick = onDismiss, enabled = !creating) {
                             Icon(Icons.Default.Close, contentDescription = "Close")
                         }
                     }
-                }
-
-                if (!isOnline) {
-                    item {
-                        StatusCard(
-                            "You're offline. Your Drop draft is saved, but publishing waits until you reconnect.",
-                            isError = false,
-                        )
+                    LinearProgressIndicator(
+                        progress = { (setupStep + 1) / 6f },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                    if (!isOnline) {
+                        Text("Offline · Your draft will be kept until you reconnect.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall)
                     }
                 }
 
-                item {
-                    Text("1. Choose content", fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        BlinkDropTargetType.entries.forEach { type ->
-                            FilterChip(
-                                selected = targetType == type,
-                                onClick = {
-                                    targetType = type
-                                    selectedTargetId = ""
-                                    action = BlinkDropsPolicy.actionsFor(type).first().name
-                                },
-                                label = { Text(targetLabel(type.name)) },
-                            )
-                        }
-                    }
-                }
-
-                if (availableTargets.isEmpty()) {
-                    item { EmptyCard("You do not have an eligible ${targetLabel(targetType.name).lowercase()} yet.") }
-                } else {
-                    items(availableTargets.take(20), key = { "drop-target-${it.id}" }) { target ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(enabled = !creating) { selectedTargetId = target.id },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (selectedTargetId == target.id) {
-                                    MaterialTheme.colorScheme.surfaceVariant
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f)
+                AnimatedContent(
+                    targetState = setupStep,
+                    modifier = Modifier.weight(1f),
+                    transitionSpec = {
+                        (slideInHorizontally(tween(280)) { if (targetState > initialState) it else -it } +
+                            fadeIn(tween(210))) togetherWith
+                            (slideOutHorizontally(tween(230)) { if (targetState > initialState) -it else it } +
+                                fadeOut(tween(160)))
+                    },
+                    label = "drop-setup-step",
+                ) { stage ->
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        when (stage) {
+                            0 -> {
+                                item {
+                                    Text("Choose a post, Reel or listing", fontWeight = FontWeight.Bold)
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        items(BlinkDropTargetType.entries) { type ->
+                                            FilterChip(
+                                                selected = targetType == type,
+                                                onClick = {
+                                                    targetType = type
+                                                    selectedTargetId = ""
+                                                    action = BlinkDropsPolicy.actionsFor(type).first().name
+                                                },
+                                                label = { Text(targetLabel(type.name)) },
+                                            )
+                                        }
+                                    }
                                 }
-                            )
-                        ) {
-                            Column(Modifier.padding(12.dp)) {
-                                Text(target.title.ifBlank { targetLabel(target.type) }, fontWeight = FontWeight.SemiBold)
-                                if (target.subtitle.isNotBlank()) {
-                                    Text(
-                                        target.subtitle,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.bodySmall,
+                                item {
+                                    if (availableTargets.isEmpty()) {
+                                        EmptyCard("No active ${targetLabel(targetType.name).lowercase()} found. Refresh Drops after creating content.")
+                                    } else {
+                                        val listState = rememberLazyListState()
+                                        LazyRow(
+                                            state = listState,
+                                            flingBehavior = rememberSnapFlingBehavior(listState),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            contentPadding = PaddingValues(end = 16.dp),
+                                        ) {
+                                            items(availableTargets, key = { it.id }) { target ->
+                                                val selected = selectedTargetId == target.id
+                                                val scale by animateFloatAsState(
+                                                    targetValue = if (selected) 1f else .96f,
+                                                    animationSpec = tween(220),
+                                                    label = "drop-target-scale",
+                                                )
+                                                Card(
+                                                    modifier = Modifier.width(248.dp)
+                                                        .graphicsLayer(scaleX = scale, scaleY = scale)
+                                                        .clickable(enabled = !creating) {
+                                                            selectedTargetId = target.id
+                                                            setupStep = 1
+                                                        },
+                                                    border = androidx.compose.foundation.BorderStroke(
+                                                        if (selected) 2.dp else 1.dp,
+                                                        if (selected) MaterialTheme.colorScheme.primary
+                                                        else MaterialTheme.colorScheme.outlineVariant
+                                                    ),
+                                                    colors = CardDefaults.cardColors(
+                                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .52f)
+                                                    ),
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.fillMaxWidth().height(162.dp).padding(14.dp),
+                                                        verticalArrangement = Arrangement.SpaceBetween,
+                                                    ) {
+                                                        Text(targetLabel(target.type), style = MaterialTheme.typography.labelMedium,
+                                                            color = MaterialTheme.colorScheme.primary)
+                                                        Text(target.title.ifBlank { targetLabel(target.type) },
+                                                            maxLines = 3, overflow = TextOverflow.Ellipsis,
+                                                            fontWeight = FontWeight.SemiBold)
+                                                        Text(target.subtitle.ifBlank { "Tap to select and continue" },
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                        Text(if (selected) "✓ Selected" else "Select →",
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.primary)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            1 -> item {
+                                Text("Required action", fontWeight = FontWeight.Bold)
+                                Text("What should your followers do to receive the reward?",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(actions.toList(), key = { it.name }) { value ->
+                                        FilterChip(
+                                            selected = action == value.name,
+                                            onClick = { action = value.name },
+                                            label = { Text(actionLabel(value.name)) },
+                                            leadingIcon = { Icon(actionIcon(value.name), null, modifier = Modifier.size(16.dp)) },
+                                        )
+                                    }
+                                }
+                            }
+                            2 -> item {
+                                Text("Reward", fontWeight = FontWeight.Bold)
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    OutlinedTextField(
+                                        value = rewardText,
+                                        onValueChange = { rewardText = it.filter(Char::isDigit).take(6) },
+                                        label = { Text("Coins/person") },
+                                        supportingText = { Text("100 minimum") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        enabled = !creating,
+                                        modifier = Modifier.weight(1f),
                                     )
+                                    OutlinedTextField(
+                                        value = winnerText,
+                                        onValueChange = { winnerText = it.filter(Char::isDigit).take(3) },
+                                        label = { Text("People") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        enabled = !creating,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                                Text("Rewards must be multiples of 100 coins.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Reserved: ${NumberFormat.getIntegerInstance(Locale.US).format(total)} · Balance: " +
+                                    (balance?.let { NumberFormat.getIntegerInstance(Locale.US).format(it) } ?: "—"))
+                                if (balance != null && total > balance) {
+                                    OutlinedButton(onClick = onGetCoins, enabled = !creating) { Text("Get Blink Coins") }
+                                }
+                            }
+                            3 -> item {
+                                Text("Audience", fontWeight = FontWeight.Bold)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    item {
+                                        FilterChip(
+                                            selected = audience == BlinkDropAudienceScope.ALL_CAMPUSES.name,
+                                            onClick = { audience = BlinkDropAudienceScope.ALL_CAMPUSES.name },
+                                            label = { Text("All campuses") },
+                                            leadingIcon = { Icon(Icons.Default.Public, null, modifier = Modifier.size(16.dp)) },
+                                        )
+                                    }
+                                    item {
+                                        FilterChip(
+                                            selected = audience == BlinkDropAudienceScope.MY_CAMPUS.name,
+                                            onClick = { audience = BlinkDropAudienceScope.MY_CAMPUS.name },
+                                            label = { Text("My campus") },
+                                            leadingIcon = { Icon(Icons.Default.School, null, modifier = Modifier.size(16.dp)) },
+                                        )
+                                    }
+                                }
+                                Text("Eligible followers: ${NumberFormat.getIntegerInstance(Locale.US).format(eligibleFollowers)} · " +
+                                    "Maximum recipients: ${NumberFormat.getIntegerInstance(Locale.US).format(maximumPossibleRecipients)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (quoteLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                if (eligibleFollowers == 0) {
+                                    Text("No eligible followers yet. You can save your draft and try when followers become eligible.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            4 -> item {
+                                Text("Duration", fontWeight = FontWeight.Bold)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(listOf(1, 6, 12, 24, 72, 168)) { hours ->
+                                        FilterChip(
+                                            selected = duration == hours,
+                                            onClick = { duration = hours },
+                                            label = { Text(when (hours) {
+                                                24 -> "1d"
+                                                72 -> "3d"
+                                                168 -> "7d"
+                                                else -> "${hours}h"
+                                            }) },
+                                        )
+                                    }
+                                }
+                                Text("Unclaimed rewards are returned when a Drop ends.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            else -> item {
+                                Text("Review your Drop", fontWeight = FontWeight.Bold)
+                                Text(selectedTarget?.title.orEmpty().ifBlank { "Choose content first" })
+                                Text("${actionLabel(action)} · ${if (audience == BlinkDropAudienceScope.MY_CAMPUS.name) "My campus" else "All campuses"}")
+                                Text("${NumberFormat.getIntegerInstance(Locale.US).format(total)} coins reserved for ${winners} people")
+                                Text("Remaining: " + (remainingBalance?.coerceAtLeast(0L)?.let {
+                                    NumberFormat.getIntegerInstance(Locale.US).format(it)
+                                } ?: "—") + " coins")
+                                if (quoteLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                if (!valid && !creating) {
+                                    Text(when {
+                                        !isOnline -> "Reconnect to publish."
+                                        selectedTarget == null -> "Choose content first."
+                                        !BlinkDropsPolicy.isRewardValid(reward) -> "Reward must be a multiple of 100."
+                                        !BlinkDropsPolicy.isWinnerCountValid(winners) -> "Enter a valid number of recipients."
+                                        total > BlinkDropsPolicy.MAX_TOTAL_BUDGET -> "Total exceeds the maximum budget."
+                                        balance == null -> "Balance unavailable. Retry."
+                                        total > balance -> "Not enough Blink Coins."
+                                        else -> "Review the details before publishing."
+                                    }, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
                     }
                 }
 
-                item {
-                    Text("2. Required action", fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        actions.forEach { value ->
-                            FilterChip(
-                                selected = action == value.name,
-                                onClick = { action = value.name },
-                                label = { Text(actionLabel(value.name)) },
-                                leadingIcon = { Icon(actionIcon(value.name), null, modifier = Modifier.size(16.dp)) }
-                            )
-                        }
-                    }
-                }
-
-                item {
-                    Text("3. Reward", fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        OutlinedTextField(
-                            value = rewardText,
-                            onValueChange = { rewardText = it.filter(Char::isDigit).take(6) },
-                            label = { Text("Coins per person") },
-                            supportingText = { Text("Minimum 100 · multiples of 100") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    if (setupStep > 0) {
+                        OutlinedButton(
+                            onClick = { setupStep-- },
                             enabled = !creating,
                             modifier = Modifier.weight(1f),
-                        )
-                        OutlinedTextField(
-                            value = winnerText,
-                            onValueChange = { winnerText = it.filter(Char::isDigit).take(3) },
-                            label = { Text("People") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            enabled = !creating,
-                            modifier = Modifier.weight(1f),
-                        )
+                        ) { Text("Back") }
                     }
-                    Text(
-                        "Total reserved: ${NumberFormat.getIntegerInstance(Locale.US).format(total)} coins · Balance: " +
-                            (balance?.let { NumberFormat.getIntegerInstance(Locale.US).format(it) } ?: "—"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    remainingBalance?.let {
-                        Text(
-                            "Balance after reserve: ${NumberFormat.getIntegerInstance(Locale.US).format(it.coerceAtLeast(0L))} coins",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    if (balance != null && total > balance) {
-                        OutlinedButton(onClick = onGetCoins, enabled = !creating) {
-                            Text("Get Blink Coins")
-                        }
-                    }
-                }
-
-                item {
-                    Text("4. Audience", fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = audience == BlinkDropAudienceScope.ALL_CAMPUSES.name,
-                            onClick = { audience = BlinkDropAudienceScope.ALL_CAMPUSES.name },
-                            label = { Text("All campuses") },
-                            leadingIcon = { Icon(Icons.Default.Public, null, modifier = Modifier.size(16.dp)) }
-                        )
-                        FilterChip(
-                            selected = audience == BlinkDropAudienceScope.MY_CAMPUS.name,
-                            onClick = { audience = BlinkDropAudienceScope.MY_CAMPUS.name },
-                            label = { Text("My campus") },
-                            leadingIcon = { Icon(Icons.Default.School, null, modifier = Modifier.size(16.dp)) }
-                        )
-                    }
-                    Text(
-                        "Eligible followers: ${NumberFormat.getIntegerInstance(Locale.US).format(eligibleFollowers)} · " +
-                            "Maximum possible recipients: ${NumberFormat.getIntegerInstance(Locale.US).format(maximumPossibleRecipients)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (quoteLoading) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    }
-                }
-
-                item {
-                    Text("5. Duration", fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(1, 6, 12, 24, 72, 168).forEach { hours ->
-                            FilterChip(
-                                selected = duration == hours,
-                                onClick = { duration = hours },
-                                label = {
-                                    Text(
-                                        when (hours) {
-                                            24 -> "1d"
-                                            72 -> "3d"
-                                            168 -> "7d"
-                                            else -> "${hours}h"
-                                        }
-                                    )
-                                }
-                            )
-                        }
-                    }
-                }
-
-                item {
-                    Divider()
                     Button(
-                        onClick = { confirmPublish = true },
-                        enabled = valid,
-                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            if (setupStep == 5) confirmPublish = true
+                            else setupStep++
+                        },
+                        enabled = !creating && if (setupStep == 5) valid else when (setupStep) {
+                            0 -> selectedTarget != null
+                            2 -> BlinkDropsPolicy.isRewardValid(reward) &&
+                                BlinkDropsPolicy.isWinnerCountValid(winners) &&
+                                total <= BlinkDropsPolicy.MAX_TOTAL_BUDGET
+                            else -> true
+                        },
+                        modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.onSurface,
                             contentColor = MaterialTheme.colorScheme.surface,
-                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
                     ) {
-                        if (creating) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Spacer(Modifier.width(6.dp))
-                        } else {
-                            Icon(Icons.Default.CardGiftcard, null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                        }
-                        Text(if (creating) "Publishing…" else "Review & publish Drop")
-                    }
-                    if (!valid && !creating) {
-                        Text(
-                            when {
-                                !isOnline -> "Reconnect to publish this Drop."
-                                selectedTarget == null -> "Choose content first."
-                                balance == null -> "Balance is unavailable. Retry."
-                                !BlinkDropsPolicy.isRewardValid(reward) -> "Reward must be 100, 200, 300… coins per person."
-                                !BlinkDropsPolicy.isWinnerCountValid(winners) -> "Choose between 1 and ${BlinkDropsPolicy.MAX_WINNERS} recipients."
-                                total > BlinkDropsPolicy.MAX_TOTAL_BUDGET -> "This Drop is above the supported total budget."
-                                balance != null && total > balance -> "You do not have enough BLINK Coins."
-                                else -> "Check the Drop details."
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Text(if (setupStep == 5) "Review & publish Drop" else "Continue →")
                     }
                 }
             }
