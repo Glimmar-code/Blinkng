@@ -1043,10 +1043,28 @@ class DesktopSupabaseClient(
         }
         val inbox = rows("get_chat_inbox_state")
         val notifications = rows("get_conversation_notification_settings")
+        // The summaries RPC returns partner metadata, not is_group. Relying on
+        // optBoolean("is_group", false) silently turns groups into direct chats.
+        // Fetch the conversation kind via a participant-visible RLS query.
+        val ids = conversations.mapNotNull {
+            it.id.takeIf { id -> runCatching { UUID.fromString(id) }.isSuccess }
+        }.distinct()
+        val conversationMetadata = if (ids.isEmpty()) emptyMap() else runCatching {
+            val path = "/rest/v1/conversations?select=id,is_group,title&id=in.(${ids.joinToString(",")})"
+            val rows = getArray(path)
+            (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
+                .associateBy { it.optString("id") }
+        }.getOrElse { emptyMap() }
         return conversations.map { conversation ->
             val entry = inbox[conversation.id]
             val preference = notifications[conversation.id]
+            val metadata = conversationMetadata[conversation.id]
+            val isGroup = metadata?.optBoolean("is_group") ?: conversation.isGroup
             conversation.copy(
+                isGroup = isGroup,
+                title = if (isGroup && !metadata?.optString("title").isNullOrBlank()) {
+                    metadata!!.optString("title")
+                } else conversation.title,
                 isArchived = entry?.optBoolean("is_archived") ?: false,
                 isPinned = entry?.optBoolean("is_pinned") ?: false,
                 markedUnread = entry?.optBoolean("marked_unread") ?: false,
@@ -1194,6 +1212,18 @@ class DesktopSupabaseClient(
         require(clean.isNotBlank()) { "Message cannot be empty." }
         require(clean.length <= 5000) { "Message is too long (maximum 5,000 characters)." }
         val sender = requireSession().userId
+
+        // Validate conversation kind from the server for every send, rather than
+        // trusting cached UI data; prevents sending a group reply as a DM.
+        val conversationRows = getArray(
+            "/rest/v1/conversations?select=id,is_group&id=eq.${encode(conversationId)}&limit=1"
+        )
+        val actualKind = conversationRows.optJSONObject(0)
+            ?: throw IllegalStateException("Conversation is no longer accessible. Refresh Messages.")
+        val actualIsGroup = actualKind.optBoolean("is_group")
+        if (actualIsGroup != isGroup) {
+            throw IllegalStateException("Chat details changed. Refresh Messages before sending.")
+        }
 
         val messageId: String
         val confirmedConversationId: String
