@@ -670,9 +670,9 @@ private fun PremiumMessagesHome(
     val filteredConversations = remember(sortedConversations, query) {
         if (query.isBlank()) sortedConversations
         else sortedConversations.filter {
-            it.partnerName.contains(query, ignoreCase = true) ||
-                it.partnerUsername.contains(query, ignoreCase = true) ||
-                it.lastMessage.contains(query, ignoreCase = true)
+            com.blinkng.shared.BlinkConversationSearchPolicy.matches(
+                query, it.partnerName, it.partnerUsername, it.lastMessage
+            )
         }
     }
     val startVoiceSearch = rememberSpeechInput { result -> query = result }
