@@ -1,3 +1,12 @@
+## 2026-10-13 — Temporarily pause public BLINK Store (Testlab)
+
+- **Shared policy:** `BlinkStoreAvailability.isPaused` keeps Store temporarily unavailable on Android and Windows while retaining the complete catalog, purchase routes, reaction effects, provider surfaces, collection data, and Supabase contracts for reopening later.
+- **Android:** The five Home shortcuts are now Rank → Game → Boost → Drops → **Store**. The fifth shortcut is visually muted but remains tappable; tapping shows a simple dismissible **Coming Soon** pop-up with no close button. Back or tapping outside dismisses it. Direct Store activity entry, restored Store sheets, and Store links from Boost/Drops are also guarded, so no Store purchase or activation UI mounts.
+- **Windows:** Blink Store is visibly marked **Soon** in the sidebar, and opening it displays the same no-buttons informational dialog rather than loading the Store catalog or payment UI.
+- **Web:** Store, Vault, VIP and Store digital-gift routes show a Coming Soon overlay instead of rendering their catalog, prices, reactions, collections or purchase/activation controls. Existing unrelated Boost, Drops, Messages and normal reactions are unchanged.
+- **Data preservation:** No migrations, billing changes, entitlement revocations, transaction updates, catalog deletions or wallet mutations. Previously owned items and balances remain server-side; UI-only access is paused pending relaunch.
+- **Release gates:** Android compile/unit/lint/runtime smoke, shared tests, Windows build and web parity checks are required before main. Restore Store only by switching the synchronized shared Kotlin and web pause flags after review.
+
 ## 2026-10-13 — Connect personalized discovery, safety and match-motion hardening (Testlab)
 
 - **Shared discovery:** New deterministic `ConnectDiscoveryPolicy` scores actual same-campus/department and optional public interests, prioritizes useful matches over generic online status, deduplicates case-insensitive IDs and gives human-readable reasons. Android and Windows call the same shared policy and unit tests. Paid boosts, coins, XP, gender, birth date, relationship status and private contacts are not ranking inputs.
