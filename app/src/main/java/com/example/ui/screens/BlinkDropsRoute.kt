@@ -1115,7 +1115,7 @@ private fun OrganizeDropDialog(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(actions, key = { it.name }) { value ->
+                                    items(actions.toList(), key = { it.name }) { value ->
                                         FilterChip(
                                             selected = action == value.name,
                                             onClick = { action = value.name },
