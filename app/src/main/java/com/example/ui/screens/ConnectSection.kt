@@ -180,7 +180,7 @@ fun ConnectSection(
 
             val matchesFilter = when (filter) {
                 LivePeopleFilter.ALL -> true
-                LivePeopleFilter.ONLINE -> profile.onlineNow
+                LivePeopleFilter.ONLINE -> isLiveDataAvailable && profile.onlineNow
                 LivePeopleFilter.VERIFIED -> profile.verificationBadge != VerificationBadge.NONE
                 LivePeopleFilter.SAME_CAMPUS -> myCampus.isNotBlank() &&
                     !myCampus.equals("null", ignoreCase = true) &&
