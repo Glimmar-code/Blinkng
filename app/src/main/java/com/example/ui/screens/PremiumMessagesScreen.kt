@@ -777,6 +777,15 @@ private fun MessageInboxTabs(
     ) {
         item {
             MessageInboxTabChip(
+                label = "All",
+                selected = selected == MessageInboxTab.ALL,
+                count = null,
+                palette = palette,
+                onClick = { onSelect(MessageInboxTab.ALL) }
+            )
+        }
+        item {
+            MessageInboxTabChip(
                 label = "Primary",
                 selected = selected == MessageInboxTab.PRIMARY,
                 count = null,
