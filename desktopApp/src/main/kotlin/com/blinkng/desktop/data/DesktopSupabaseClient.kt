@@ -1055,7 +1055,9 @@ class DesktopSupabaseClient(
             (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
                 .associateBy { it.optString("id") }
         }.getOrElse { emptyMap() }
-        return conversations.map { conversation ->
+        // Group summaries may contain one partner row per group member. Display
+        // a single inbox conversation card per conversation ID, not one per member.
+        return conversations.distinctBy { it.id }.map { conversation ->
             val entry = inbox[conversation.id]
             val preference = notifications[conversation.id]
             val metadata = conversationMetadata[conversation.id]
