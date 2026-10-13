@@ -18,5 +18,6 @@ class ExampleInstrumentedTest {
     // Context of the app under test.
     val appContext = InstrumentationRegistry.getInstrumentation().targetContext
     assertEquals("com.aistudio.blink.appvtwo", appContext.packageName)
+    assertEquals("Blink", appContext.getString(R.string.app_name))
   }
 }
