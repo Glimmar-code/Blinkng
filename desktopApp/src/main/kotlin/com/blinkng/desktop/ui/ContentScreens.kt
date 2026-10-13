@@ -99,6 +99,8 @@ import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import com.blinkng.shared.BlinkSmartTags
+import com.blinkng.shared.ConnectDiscoveryPolicy
+import com.blinkng.shared.ConnectDiscoverySignals
 import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkPulseSessionStore
@@ -1089,6 +1091,7 @@ fun ConnectScreen(state: DesktopAppState) {
     var studentQuery by remember { mutableStateOf("") }
     var studentFilter by remember { mutableStateOf("all") }
     var studentSort by remember { mutableStateOf("recommended") }
+    var dismissedStudents by remember(state.profile?.id) { mutableStateOf<Set<String>>(emptySet()) }
 
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -1187,10 +1190,14 @@ fun ConnectScreen(state: DesktopAppState) {
         studentSort,
         myCampus,
         myDepartment,
-        followingIds
+        followingIds,
+        dismissedStudents,
+        state.profile?.interests,
+        liveActivityAvailable
     ) {
         val query = studentQuery.trim()
         val filtered = students.filter { profile ->
+            if (profile.id.lowercase() in dismissedStudents) return@filter false
             val matchesQuery = query.isBlank() ||
                 profile.fullName.contains(query, ignoreCase = true) ||
                 profile.username.contains(query, ignoreCase = true) ||
@@ -1226,19 +1233,22 @@ fun ConnectScreen(state: DesktopAppState) {
                     .thenBy { it.fullName.lowercase() }
             )
             "name" -> filtered.sortedBy { it.fullName.ifBlank { it.username }.lowercase() }
-            else -> filtered.sortedWith(
-                compareByDescending<DesktopProfile> { it.isOnline }
-                    .thenByDescending { it.id in followingIds }
-                    .thenByDescending {
-                        myDepartment.isNotBlank() &&
-                            it.department.orEmpty().equals(myDepartment, ignoreCase = true)
-                    }
-                    .thenByDescending {
-                        myCampus.isNotBlank() &&
-                            it.university.orEmpty().equals(myCampus, ignoreCase = true)
-                    }
-                    .thenBy { it.fullName.lowercase() }
-            )
+            else -> ConnectDiscoveryPolicy.rank(
+                candidates = filtered,
+                campus = myCampus,
+                department = myDepartment,
+                myInterests = state.profile?.interests.orEmpty()
+            ) { profile ->
+                ConnectDiscoverySignals(
+                    id = profile.id.ifBlank { profile.username },
+                    displayName = profile.fullName.ifBlank { profile.username },
+                    university = profile.university.orEmpty(),
+                    department = profile.department.orEmpty(),
+                    interests = profile.interests,
+                    online = liveActivityAvailable && profile.isOnline,
+                    following = profile.id in followingIds
+                )
+            }
         }
     }
 
@@ -1699,12 +1709,34 @@ fun ConnectScreen(state: DesktopAppState) {
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                     Text(
-                                        if (profile.isOnline) "Online" else "Offline",
+                                        if (!liveActivityAvailable) "Presence not current" else if (profile.isOnline) "Online" else "Offline",
                                         fontSize = 11.sp,
-                                        color = if (profile.isOnline) Color(0xFF22C55E)
+                                        color = if (liveActivityAvailable && profile.isOnline) Color(0xFF22C55E)
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
+                                    if (studentSort == "recommended") {
+                                        val reasons = ConnectDiscoveryPolicy.reasons(
+                                            ConnectDiscoverySignals(
+                                                id = profile.id,
+                                                displayName = profile.fullName,
+                                                university = profile.university.orEmpty(),
+                                                department = profile.department.orEmpty(),
+                                                interests = profile.interests,
+                                                online = liveActivityAvailable && profile.isOnline
+                                            ),
+                                            myCampus,
+                                            myDepartment,
+                                            state.profile?.interests.orEmpty()
+                                        )
+                                        if (reasons.isNotEmpty()) {
+                                            Text(
+                                                "Why suggested: " + reasons.take(2).joinToString(" • "),
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
                                 OutlinedButton(onClick = { selectedStudentProfile = profile }) {
                                     Text("View")
                                 }
@@ -1719,6 +1751,9 @@ fun ConnectScreen(state: DesktopAppState) {
                                 ) {
                                     Text(if (isFollowing) "Following" else "Follow")
                                 }
+                                TextButton(onClick = {
+                                    dismissedStudents = dismissedStudents + profile.id.lowercase()
+                                }) { Text("Not interested") }
                             }
                         }
                     }
