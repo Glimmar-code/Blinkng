@@ -353,14 +353,14 @@ fun ConnectSection(
                                 }
 
                                 Text(
-                                    "Confirmed online now: $realOnlineCount",
+                                    if (isLiveDataAvailable) "Confirmed online now: $realOnlineCount" else "Online count unavailable",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
 
                                 if (campusName.isNotBlank()) {
                                     Text(
-                                        "$campusName activity: $campusLabel • $realCampusOnline confirmed online",
+                                        if (isLiveDataAvailable) "$campusName activity: $campusLabel • $realCampusOnline confirmed online" else "$campusName activity is temporarily unavailable",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
