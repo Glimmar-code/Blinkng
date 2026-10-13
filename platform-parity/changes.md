@@ -1,3 +1,11 @@
+## 2026-10-13 — Premium swipe navigation production port
+
+- Staged and validated through Testlab pull request #265; ported selectively onto the newer production code instead of merging older Testlab dependencies into main.
+- Shared: canonical Feed → Reels → Market → Connect → Messages order and bounded animation scale/opacity contract.
+- Android: finger-driven horizontal pager with depth transitions; protects composer, modal, chat and feed overlays from page swipes. Direct-only Search/Leaderboard/Game routes remain accessible. Swipe a chat left to close; swipe an individual message right to reply; chats enter from the left.
+- Windows: Alt+Left/Right moves between equivalent primary routes, and chat content enters/exits from the left; messaging data contracts are unchanged.
+- Production requirements: all Android/Windows compile, unit, release smoke, domain and Supabase gates green on the main-target PR before merge. No database/schema/coins/auth changes.
+
 ## 2026-10-13 — Temporarily pause public BLINK Store (Testlab)
 
 - **Shared policy:** `BlinkStoreAvailability.isPaused` keeps Store temporarily unavailable on Android and Windows while retaining the complete catalog, purchase routes, reaction effects, provider surfaces, collection data, and Supabase contracts for reopening later.
