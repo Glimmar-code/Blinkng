@@ -409,10 +409,10 @@ fun PremiumMessagesScreen(
 }
 
 
-private fun Modifier.observeRightSwipeToClose(
+private fun Modifier.observeLeftSwipeToClose(
     thresholdPx: Float,
-    onSwipeRight: () -> Unit
-): Modifier = pointerInput(thresholdPx, onSwipeRight) {
+    onSwipeLeft: () -> Unit
+): Modifier = pointerInput(thresholdPx, onSwipeLeft) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         var horizontal = 0f
@@ -430,11 +430,11 @@ private fun Modifier.observeRightSwipeToClose(
 
             if (
                 !fired &&
-                horizontal >= thresholdPx &&
-                horizontal > abs(vertical) * 1.25f
+                horizontal <= -thresholdPx &&
+                -horizontal > abs(vertical) * 1.25f
             ) {
                 fired = true
-                onSwipeRight()
+                onSwipeLeft()
                 break
             }
 
@@ -475,20 +475,20 @@ private fun PremiumMessagesMasterDetail(
         modifier = Modifier
             .fillMaxSize()
             .semantics { contentDescription = "Chat" }
-            .observeRightSwipeToClose(
+            .observeLeftSwipeToClose(
                 thresholdPx = swipeThresholdPx,
-                onSwipeRight = onCloseConversation
+                onSwipeLeft = onCloseConversation
             )
     ) {
         AnimatedContent(
             targetState = activeConversation.partnerUsername,
             transitionSpec = {
                 (slideInHorizontally(
-                    initialOffsetX = { it / 6 },
+                    initialOffsetX = { -it / 6 },
                     animationSpec = tween(240, easing = FastOutSlowInEasing)
                 ) + fadeIn(tween(180))) togetherWith
                     (slideOutHorizontally(
-                        targetOffsetX = { -it / 8 },
+                        targetOffsetX = { -it / 6 },
                         animationSpec = tween(180, easing = FastOutSlowInEasing)
                     ) + fadeOut(tween(120)))
             },
@@ -2591,12 +2591,12 @@ private fun MessageBubble(
     )
 
     Box(modifier = Modifier.fillMaxWidth()) {
-        if (displayOffset < -10f) {
+        if (displayOffset > 10f) {
             Icon(
                 Icons.Default.Reply,
                 contentDescription = null,
-                tint = palette.accent.copy(alpha = ((-displayOffset) / threshold).coerceIn(.25f, 1f)),
-                modifier = Modifier.align(Alignment.CenterEnd).padding(horizontal = 6.dp).size(20.dp)
+                tint = palette.accent.copy(alpha = (displayOffset / threshold).coerceIn(.25f, 1f)),
+                modifier = Modifier.align(Alignment.CenterStart).padding(horizontal = 6.dp).size(20.dp)
             )
         }
         Row(
@@ -2606,10 +2606,10 @@ private fun MessageBubble(
                 .pointerInput(message.id) {
                     detectHorizontalDragGestures(
                         onHorizontalDrag = { _, amount ->
-                            dragOffset = (dragOffset + amount).coerceIn(-threshold * 1.35f, 0f)
+                            dragOffset = (dragOffset + amount).coerceIn(0f, threshold * 1.35f)
                         },
                         onDragEnd = {
-                            if (dragOffset <= -threshold) onReply()
+                            if (dragOffset >= threshold) onReply()
                             dragOffset = 0f
                         },
                         onDragCancel = { dragOffset = 0f }
