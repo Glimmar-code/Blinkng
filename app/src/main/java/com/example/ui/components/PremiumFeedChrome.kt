@@ -332,13 +332,6 @@ fun FeedUtilityRow(
             modifier = Modifier.weight(1f).testTag("feed_game_action")
         )
         FeedUtilityAction(
-            icon = Icons.Default.Storefront,
-            label = "Store",
-            contentDescription = "Open Blink Store",
-            onClick = onStoreClick,
-            modifier = Modifier.weight(1f).testTag("feed_store_action")
-        )
-        FeedUtilityAction(
             icon = Icons.Default.Campaign,
             label = "Boost",
             contentDescription = "Open Boost and Earn Rank Points",
@@ -352,6 +345,14 @@ fun FeedUtilityRow(
             onClick = onDropsClick,
             modifier = Modifier.weight(1f).testTag("feed_drops_action")
         )
+        FeedUtilityAction(
+            icon = Icons.Default.Storefront,
+            label = "Store",
+            contentDescription = "BLINK Store coming soon",
+            onClick = onStoreClick,
+            modifier = Modifier.weight(1f).testTag("feed_store_action"),
+            muted = true
+        )
     }
 }
 
@@ -361,7 +362,8 @@ private fun FeedUtilityAction(
     label: String,
     contentDescription: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    muted: Boolean = false
 ) {
     Column(
         modifier = modifier
@@ -374,13 +376,13 @@ private fun FeedUtilityAction(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = FeedTextPrimary,
+            tint = if (muted) FeedTextSecondary.copy(alpha = 0.5f) else FeedTextPrimary,
             modifier = Modifier.size(20.dp)
         )
         Spacer(Modifier.height(2.dp))
         Text(
             text = label,
-            color = FeedTextSecondary,
+            color = if (muted) FeedTextSecondary.copy(alpha = 0.6f) else FeedTextSecondary,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Medium,
             maxLines = 1
