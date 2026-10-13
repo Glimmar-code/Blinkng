@@ -768,3 +768,14 @@ Validation: Isolated PostgreSQL checks prove private circles/members stay hidden
 - Android: the ranked-feed RPC can time out under backend load. Fall back only for PostgreSQL statement timeout to the standard paginated feed, preserving posts/Reels type and pagination; auth/RLS failures still surface. Windows currently uses a separate chronological `feed_posts` fetch, so it is already independent of the Android ranked-feed RPC.
 - Shared Supabase: expand the discovery window from seven to 90 days (the live server had only four active non-reels from the last seven days but 49 active posts in the last 90 days); postpone the content view-counter update until after points/repost work to shorten exclusive `feed_posts` lock duration; guard fallback visibility with audience, moderation and expiration checks. These changes affect both clients and require database preview/rollout, not just Android build tests.
 - Validation: Android debug/release smoke, R8 DEX retention check, Windows compilation, SQL parser/static regression gates, mobile call media startup, For You pagination, Follow feed, privacy and recorded-view integrity. Do not merge or deploy until release and backend validation.
+
+---
+
+PARITY-EXCEPTION: android-touch-growth-drop-stepper-20261013
+Date: 2026-10-13
+Feature: Phone-first horizontally swipeable content selection and animated step-by-step Boost/Drop campaign forms
+Android behavior: Android's compact vertical sheet changes to a finger-driven horizontally snapping content card picker, motion-reduced selection preview and Back/Continue wizard. Boost fetches the existing authenticated 'get_my_blink_boostable_content' inventory instead of relying on the public discovery-feed cache. Coin reservations and payouts remain server-authoritative.
+Why this is Android-specific presentation: The change addresses touch navigation inside Android Compose bottom sheets on narrow phone screens, not a business-rule change. It introduces no new entitlement and no distinct Android pricing, eligibility, audience, wallet or promotion semantics.
+Windows equivalent: The Windows desktop Boost and Drops dialogs already offer selection with mouse/keyboard and step-labeled controls (DesktopBoostGrowthScreen / DesktopDropsScreen); the desktop layout has room for its existing scrollable content pickers, and touch-snap transitions are not desirable for desktop pointer navigation. Both clients share the same core server-side campaign and Drop eligibility contracts.
+Backend parity: The additive migration restores pre-existing Growth v3 RPC contracts that have not yet reached production. It does not modify the underlying Boost/Drop pricing, reward/eligibility, coin accounting, anti-replay or feed ranking rules. Server-owned content remains user-scoped.
+Validation: Android compilation/release/runtime gates and migration safety must pass on Testlab before promotion; production migration must be deployed separately after validation.
