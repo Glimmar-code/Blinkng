@@ -39,6 +39,51 @@ test("AdMob signed SSV endpoint is publicly reachable without a user JWT", async
   console.log("SSV endpoint reachable; unsigned requests are rejected.");
 });
 
+
+test("AdMob dashboard-shaped URL check is acknowledged without minting a reward", async () => {
+  // Google tests callback reachability with no user_id or custom_data.
+  // This is NOT proof of a signed reward. Check that the server marks the
+  // request as a non-persisted probe; do not create credits or claims.
+  const params = new URLSearchParams({
+    ad_network: "5450213213286189855",
+    ad_unit: "4343111201",
+    reward_amount: "10",
+    reward_item: "Blink Coins",
+    timestamp: String(Date.now()),
+    transaction_id: "non-crediting-url-check",
+    signature: "invalid_test_signature",
+    key_id: "1234",
+  });
+  const response = await get(`${SSV_URL}?${params.toString()}`);
+  assert.equal(response.status, 200, "SSV dashboard reachability probe was not accepted.");
+  const body = JSON.parse(response.content);
+  assert.equal(body.verification_probe, true);
+  assert.equal(body.persisted, false);
+  assert.equal(body.ok, true);
+  console.log("Dashboard-shaped probe acknowledged without reward persistence.");
+});
+
+test("Identifiable forged reward callback is rejected", async () => {
+  // An invalid signature MUST NOT get the dashboard-probe exception when user
+  // or claim information is supplied. This does not contact the credit RPC.
+  const params = new URLSearchParams({
+    ad_network: "5450213213286189855",
+    ad_unit: "4343111201",
+    custom_data: "00000000-0000-0000-0000-000000000000",
+    reward_amount: "10",
+    reward_item: "Blink Coins",
+    timestamp: String(Date.now()),
+    transaction_id: "invalid-signature-test",
+    user_id: "00000000-0000-0000-0000-000000000000",
+    signature: "invalid_test_signature",
+    key_id: "1234",
+  });
+  const response = await get(`${SSV_URL}?${params.toString()}`);
+  assert.notEqual(response.status, 200,
+    "An identifiable reward callback was accepted without cryptographic verification.");
+  console.log("Forged identifiable callbacks rejected.");
+});
+
 test("AdMob publisher authorization file is available from the public root domain", { skip: !DOMAIN_READY }, async () => {
   const r = await get(APP_ADS_URL);
   assert.equal(r.status, 200,
