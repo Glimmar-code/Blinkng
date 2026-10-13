@@ -236,7 +236,7 @@ fun PremiumMessagesScreen(
     val liveActiveConversation = activePartner?.let { partner ->
         conversations.firstOrNull { it.partnerUsername.equals(partner, ignoreCase = true) }
     }
-    var retainedActiveConversation by remember(activePartner) {
+    var retainedActiveConversation by remember {
         mutableStateOf<ChatConversation?>(liveActiveConversation)
     }
     LaunchedEffect(liveActiveConversation) {
@@ -244,13 +244,19 @@ fun PremiumMessagesScreen(
     }
     val activeConversation = activePartner?.let { partner ->
         liveActiveConversation
-            ?: retainedActiveConversation
+            ?: retainedActiveConversation?.takeIf { it.partnerUsername.equals(partner, ignoreCase = true) }
             ?: ChatConversation(
                 id = "local_$partner",
                 partnerUsername = partner,
                 partnerName = partner.replace("_", " ").replace(".", " "),
                 partnerAvatar = ""
             )
+    }
+
+    var chatSlideVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(activePartner) {
+        if (activeConversation != null) retainedActiveConversation = activeConversation
+        chatSlideVisible = activeConversation != null
     }
 
     BackHandler(enabled = activeCall != null) { activeCall = null }
@@ -276,15 +282,15 @@ fun PremiumMessagesScreen(
                         launchSecureCall(context, call.conversation, call.kind)
                     }
                 )
-            } else if (activeConversation != null) {
-                // PREMIUM_CHAT_DIRECT_RETURN_V2
+            } else if (activeConversation != null || retainedActiveConversation != null) {
+                // Keep the messages list mounted until the closing slide completes.
                 Box(modifier = Modifier.fillMaxSize()) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .blur(if (isConversationFullScreen) 5.dp else 10.dp)
+                            .blur(if (activeConversation != null) 5.dp else 0.dp)
                             .graphicsLayer {
-                                alpha = if (isConversationFullScreen) .84f else .74f
+                                alpha = if (activeConversation != null) .84f else 1f
                             }
                     ) {
                         PremiumMessagesHome(
@@ -303,9 +309,22 @@ fun PremiumMessagesScreen(
                         )
                     }
 
+                    AnimatedVisibility(
+                        visible = chatSlideVisible && activeConversation != null,
+                        enter = slideInHorizontally(
+                            initialOffsetX = { -it },
+                            animationSpec = tween(420, easing = FastOutSlowInEasing)
+                        ) + fadeIn(tween(260)),
+                        exit = slideOutHorizontally(
+                            targetOffsetX = { -it },
+                            animationSpec = tween(390, easing = FastOutSlowInEasing)
+                        ) + fadeOut(tween(240))
+                    ) {
+                    val displayedConversation = activeConversation ?: retainedActiveConversation
+                    if (displayedConversation != null) {
                     PremiumMessagesMasterDetail(
                         conversations = conversations,
-                        activeConversation = activeConversation,
+                        activeConversation = displayedConversation,
                         palette = palette,
                         isFullScreen = isConversationFullScreen,
                         onFullScreenChange = onConversationFullScreenChange,
@@ -325,6 +344,8 @@ fun PremiumMessagesScreen(
                         },
                         isConnected = isConnected
                     )
+                    }
+                    }
                 }
             } else {
                 PremiumMessagesHome(
