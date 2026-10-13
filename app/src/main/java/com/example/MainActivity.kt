@@ -352,6 +352,16 @@ class MainActivity : ComponentActivity() {
 
             BlinkTheme(darkTheme = uiState.isDarkMode) {
                 Scaffold(
+                    // The main pages paint behind the status bar. Their own headers
+                    // apply statusBarsPadding once; keep the bottom/side safe areas
+                    // so the floating navigation stays clear of gesture navigation.
+                    contentWindowInsets = if (uiState.destination == AppDestination.MAIN) {
+                        WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
+                        )
+                    } else {
+                        ScaffoldDefaults.contentWindowInsets
+                    },
                     snackbarHost = {
                         SnackbarHost(
                             hostState = snackbarHostState,
