@@ -859,7 +859,6 @@ fun MainAppContent(
                 uiState.activeCommentsPostId == null &&
                 uiState.deepLinkedPost == null &&
                 !uiState.isMenuOpen &&
-                !(uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 1) &&
                 isBottomBarVisibleByScroll
 
         androidx.compose.animation.AnimatedVisibility(
@@ -945,9 +944,10 @@ fun MainAppContent(
                     viewModel.setTab(MainTab.HOME)
                     viewModel.setFeedSubTab(2)
                 },
-                onLeaderboardClick = {
+                onReelsClick = {
                     isBottomBarVisibleByScroll = true
-                    viewModel.setTab(MainTab.LEADERBOARD)
+                    viewModel.setTab(MainTab.HOME)
+                    viewModel.setFeedSubTab(1)
                 },
                 onMarketClick = {
                     isBottomBarVisibleByScroll = true
