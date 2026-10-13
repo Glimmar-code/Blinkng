@@ -260,7 +260,7 @@ fun PremiumMessagesScreen(
     val liveActiveConversation = activePartner?.let { partner ->
         conversations.firstOrNull { it.partnerUsername.equals(partner, ignoreCase = true) }
     }
-    var retainedActiveConversation by remember(activePartner) {
+    var retainedActiveConversation by remember {
         mutableStateOf<ChatConversation?>(liveActiveConversation)
     }
     LaunchedEffect(liveActiveConversation) {
@@ -268,13 +268,20 @@ fun PremiumMessagesScreen(
     }
     val activeConversation = activePartner?.let { partner ->
         liveActiveConversation
-            ?: retainedActiveConversation
+            ?: retainedActiveConversation?.takeIf { it.partnerUsername.equals(partner, ignoreCase = true) }
             ?: ChatConversation(
                 id = "local_$partner",
                 partnerUsername = partner,
                 partnerName = partner.replace("_", " ").replace(".", " "),
                 partnerAvatar = ""
             )
+    }
+
+    // Retain the outgoing message until its slide-out has completed.
+    var chatSlideVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(activePartner) {
+        if (activeConversation != null) retainedActiveConversation = activeConversation
+        chatSlideVisible = activeConversation != null
     }
 
     BackHandler(enabled = activeCall != null) { activeCall = null }
@@ -300,12 +307,12 @@ fun PremiumMessagesScreen(
                         launchSecureCall(context, call.conversation, call.kind)
                     }
                 )
-            } else if (activeConversation != null) {
-                // PREMIUM_CHAT_DIRECT_RETURN_V2
+            } else if (activeConversation != null || retainedActiveConversation != null) {
+                // Never dispose the closing chat before its departure animation ends.
                 Box(modifier = Modifier.fillMaxSize()) {
                     // A full-screen chat already paints its own background. Do not keep an
                     // offscreen, blurred inbox/list rendering behind every message scroll frame.
-                    if (!isConversationFullScreen) {
+                    if (activeConversation == null || !isConversationFullScreen) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -329,9 +336,22 @@ fun PremiumMessagesScreen(
                         }
                     }
 
+                    AnimatedVisibility(
+                        visible = chatSlideVisible && activeConversation != null,
+                        enter = slideInHorizontally(
+                            initialOffsetX = { -it },
+                            animationSpec = tween(420, easing = FastOutSlowInEasing)
+                        ) + fadeIn(tween(260)),
+                        exit = slideOutHorizontally(
+                            targetOffsetX = { -it },
+                            animationSpec = tween(390, easing = FastOutSlowInEasing)
+                        ) + fadeOut(tween(240))
+                    ) {
+                    val displayedConversation = activeConversation ?: retainedActiveConversation
+                    if (displayedConversation != null) {
                     PremiumMessagesMasterDetail(
                         conversations = conversations,
-                        activeConversation = activeConversation,
+                        activeConversation = displayedConversation,
                         palette = palette,
                         isFullScreen = isConversationFullScreen,
                         onFullScreenChange = onConversationFullScreenChange,
@@ -355,6 +375,8 @@ fun PremiumMessagesScreen(
                         },
                         isConnected = isConnected
                     )
+                    }
+                    }
                 }
             } else {
                 PremiumMessagesHome(
