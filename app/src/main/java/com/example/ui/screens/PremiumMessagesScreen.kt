@@ -365,7 +365,7 @@ fun PremiumMessagesScreen(
 }
 
 
-private fun Modifier.observeRightSwipeToClose(
+private fun Modifier.observeLeftSwipeToClose(
     thresholdPx: Float,
     onSwipeRight: () -> Unit
 ): Modifier = pointerInput(thresholdPx, onSwipeRight) {
