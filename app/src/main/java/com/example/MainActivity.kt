@@ -590,10 +590,10 @@ fun MainAppContent(
             ) return@collectLatest
             requestedPage = page
             when (page) {
-                0 -> { viewModel.setFeedSubTab(0); viewModel.setTab(MainTab.HOME) }
-                1 -> { viewModel.setFeedSubTab(1); viewModel.setTab(MainTab.HOME) }
+                0 -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(0) }
+                1 -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(1) }
                 2 -> viewModel.setTab(MainTab.MARKET)
-                3 -> { viewModel.setFeedSubTab(2); viewModel.setTab(MainTab.HOME) }
+                3 -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(2) }
                 4 -> viewModel.setTab(MainTab.MESSAGES)
             }
         }
