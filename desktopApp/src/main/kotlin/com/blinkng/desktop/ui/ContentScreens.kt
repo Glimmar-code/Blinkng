@@ -1313,7 +1313,7 @@ fun ConnectScreen(state: DesktopAppState) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ScreenHeader("Connect", "People, study, housing, skills and challenges")
+                    ScreenHeader("Connect", "Find students, study partners, housing and challenges")
                     if (selectedPane == 0) {
                         Button(onClick = { showCreate = true }) { Text("Create") }
                     }
@@ -1618,7 +1618,7 @@ fun ConnectScreen(state: DesktopAppState) {
                 }
             } else if (selectedPane == 1) {
                 item {
-                    Text("Active now · $realOnlineCount", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text(if (liveActivityAvailable) "Active now · $realOnlineCount" else "Presence temporarily unavailable", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     OutlinedTextField(
                         value = studentQuery,
                         onValueChange = { studentQuery = it },
@@ -1658,6 +1658,14 @@ fun ConnectScreen(state: DesktopAppState) {
                                     label = { Text(label) },
                                 )
                             }
+                        }
+                    }
+                }
+
+                if (dismissedStudents.isNotEmpty()) {
+                    item(key = "restore_hidden_suggestions") {
+                        TextButton(onClick = { dismissedStudents = emptySet() }) {
+                            Text("Restore hidden suggestions (${dismissedStudents.size})")
                         }
                     }
                 }
