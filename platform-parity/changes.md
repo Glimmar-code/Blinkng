@@ -1,3 +1,11 @@
+## 2026-10-13 — Premium five-page swipe navigation promoted from Testlab
+
+- **Staging:** Feature implementation was verified on Testlab in PR #265 with Android quality, Windows quality, domain, Supabase safety and Android release-smoke checks green at commit `4bc8f9dd`.
+- **Shared:** `BlinkSwipeNavigation` defines Feed → Reels → Market → Connect → Messages; movement bounds and depth scale are common to Android and Windows.
+- **Android:** Native finger-tracked horizontal pager replaces non-interactive top-level swipe observer; existing Home/Reels/Market/Connect/Messages view models, overlays, data and feed screens remain. Five bottom tabs already exist on current main. Navigation resets the bottom dock when the Home subtab changes. Chat opens from the left, messages swipe right to reply, and left swipe dismisses chat.
+- **Windows:** Alt+Right/Alt+Left traverse the same five routes; mouse/keyboard message controls remain, with a matching left-side conversation transition.
+- **Production gates:** Rebase is against current main rather than merging stale Testlab wholesale (main has newer unrelated changes). Run all Android/Windows quality gates and signed APK smoke checks on this exact production promotion. Confirm touch navigation and scrolling on a physical device before releasing new APKs.
+
 ## 2026-10-13 — Temporarily pause public BLINK Store (Testlab)
 
 - **Shared policy:** `BlinkStoreAvailability.isPaused` keeps Store temporarily unavailable on Android and Windows while retaining the complete catalog, purchase routes, reaction effects, provider surfaces, collection data, and Supabase contracts for reopening later.
