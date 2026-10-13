@@ -221,17 +221,6 @@ fun ConnectSection(
     // Count only users with confirmed online presence; never fabricate a baseline user.
     val realOnlineCount = activeNowCount
     val reduceMotion = rememberReducedMotionEnabled()
-    val windowActive = rememberWindowActive()
-    val communityPulse = rememberManagedPulse(
-        key = "connect:" + currentUsername.trim().lowercase(),
-        range = communityActivityRange(realOnlineCount, policy),
-        tickMillis = policy.connectTickMillis,
-        policy = policy,
-        liveDataAvailable = isLiveDataAvailable,
-        windowActive = windowActive,
-        reduceMotion = reduceMotion,
-    )
-
     var previousRealOnline by rememberSaveable(currentUsername) { mutableStateOf(realOnlineCount) }
     var activityTrend by rememberSaveable(currentUsername) { mutableStateOf(BlinkPulseTrend.STABLE) }
     LaunchedEffect(realOnlineCount) {
@@ -258,8 +247,8 @@ fun ConnectSection(
         liveProfiles.filter { it.onlineNow }.take(policy.onlinePreviewLimit)
     }
 
-    LaunchedEffect(communityPulse.value != null, currentUsername, isLiveDataAvailable) {
-        val shown = communityPulse.value
+    LaunchedEffect(realOnlineCount, currentUsername, isLiveDataAvailable) {
+        val shown = if (isLiveDataAvailable) realOnlineCount else null
         if (shown != null && isLiveDataAvailable) {
             onActivityPulseEvent(
                 "connect",
@@ -320,14 +309,14 @@ fun ConnectSection(
                                 ) {
                                     Column(Modifier.weight(1f)) {
                                         Text(
-                                            "Community Activity",
+                                            "Online students",
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.Black
                                         )
                                         Text(
                                             when {
-                                                communityPulse.isStale -> "Last known activity • offline"
-                                                else -> "Activity Pulse • ${activityTrend.label}"
+                                                !isLiveDataAvailable -> "Online status temporarily unavailable"
+                                                else -> "Live presence • ${activityTrend.label}"
                                             },
                                             fontSize = 10.5.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -340,7 +329,7 @@ fun ConnectSection(
                                     ) {
                                         if (reduceMotion) {
                                             Text(
-                                                communityPulse.value?.toString() ?: "—",
+                                                if (isLiveDataAvailable) realOnlineCount.toString() else "—",
                                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                                                 color = BlinkOnlineGreen,
                                                 fontSize = 13.sp,
@@ -348,7 +337,7 @@ fun ConnectSection(
                                             )
                                         } else {
                                             Crossfade(
-                                                targetState = communityPulse.value,
+                                                targetState = if (isLiveDataAvailable) realOnlineCount else null,
                                                 label = "communityActivityPulse"
                                             ) { pulseValue ->
                                                 Text(
@@ -364,14 +353,14 @@ fun ConnectSection(
                                 }
 
                                 Text(
-                                    "Confirmed online now: $realOnlineCount",
+                                    if (isLiveDataAvailable) "Confirmed online now: $realOnlineCount" else "Online count unavailable",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
 
                                 if (campusName.isNotBlank()) {
                                     Text(
-                                        "$campusName activity: $campusLabel • $realCampusOnline confirmed online",
+                                        if (isLiveDataAvailable) "$campusName activity: $campusLabel • $realCampusOnline confirmed online" else "$campusName activity is temporarily unavailable",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -398,7 +387,7 @@ fun ConnectSection(
                                                             "connect",
                                                             "online_preview_open",
                                                             realOnlineCount,
-                                                            communityPulse.value,
+                                                            if (isLiveDataAvailable) realOnlineCount else null,
                                                             mapOf("username" to profile.username)
                                                         )
                                                         onProfileClick(profile.username)

@@ -1077,6 +1077,7 @@ fun ConnectScreen(state: DesktopAppState) {
     var requestTarget by remember { mutableStateOf<DesktopConnectListing?>(null) }
     var requestMessage by remember { mutableStateOf("") }
     var connectError by remember { mutableStateOf<String?>(null) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     var selectedDirectorySlug by remember { mutableStateOf("all") }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
@@ -1137,14 +1138,22 @@ fun ConnectScreen(state: DesktopAppState) {
         val policyResult = runCatching { state.client.fetchActivityPulsePolicy() }
 
         listings = listingsResult.getOrDefault(listings)
-        directoryApplications = runCatching {
+        val applicationsResult = runCatching {
             state.client.fetchConnectApplications(listings.filter { it.userId == state.profile?.id }.map { it.id })
-        }.getOrDefault(directoryApplications)
+        }
+        directoryApplications = applicationsResult.getOrDefault(directoryApplications)
         students = studentsResult.getOrDefault(students).filterNot { it.id == state.profile?.id }
         followingIds = followingResult.getOrDefault(followingIds)
         inbox = inboxResult.getOrDefault(inbox)
         pulsePolicy = policyResult.getOrDefault(pulsePolicy).normalized()
         liveActivityAvailable = studentsResult.isSuccess
+        loadError = listOfNotNull(
+            listingsResult.exceptionOrNull()?.let { "Listings" },
+            applicationsResult.exceptionOrNull()?.let { "Applications" },
+            studentsResult.exceptionOrNull()?.let { "Student discovery" },
+            followingResult.exceptionOrNull()?.let { "Following" },
+            inboxResult.exceptionOrNull()?.let { "Connect inbox" },
+        ).takeIf { it.isNotEmpty() }?.joinToString(", ")
         loading = false
     }
 
@@ -1235,15 +1244,6 @@ fun ConnectScreen(state: DesktopAppState) {
 
     val policy = remember(pulsePolicy) { pulsePolicy.normalized() }
     val realOnlineCount = remember(students) { students.count { it.isOnline } }
-    val reduceMotion = state.settings?.reduceMotion == true
-    val communityActivity = rememberDesktopManagedPulse(
-        key = "desktop-connect:" + state.profile?.username.orEmpty().lowercase(),
-        range = communityActivityRange(realOnlineCount, policy),
-        tickMillis = policy.connectTickMillis,
-        policy = policy,
-        liveDataAvailable = liveActivityAvailable,
-        reduceMotion = reduceMotion,
-    )
     var previousRealOnline by remember { mutableIntStateOf(realOnlineCount) }
     var activityTrend by remember { mutableStateOf(BlinkPulseTrend.STABLE) }
     LaunchedEffect(realOnlineCount) {
@@ -1263,13 +1263,13 @@ fun ConnectScreen(state: DesktopAppState) {
         students.filter { it.isOnline }.take(policy.onlinePreviewLimit)
     }
 
-    LaunchedEffect(communityActivity, liveActivityAvailable, pulseImpressionRecorded) {
-        if (communityActivity != null && liveActivityAvailable && !pulseImpressionRecorded) {
+    LaunchedEffect(realOnlineCount, liveActivityAvailable, pulseImpressionRecorded) {
+        if (liveActivityAvailable && !pulseImpressionRecorded) {
             state.client.recordActivityPulseEvent(
                 surface = "connect",
                 eventType = "impression",
                 realCount = realOnlineCount,
-                displayedValue = communityActivity,
+                displayedValue = if (liveActivityAvailable) realOnlineCount else null,
                 metadata = mapOf("trend" to activityTrend.label),
             )
             pulseImpressionRecorded = true
@@ -1310,6 +1310,29 @@ fun ConnectScreen(state: DesktopAppState) {
                 }
             }
 
+            if (loadError != null) {
+                item(key = "connect_partial_load_error") {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Some Connect features could not load", fontWeight = FontWeight.Bold)
+                                Text(loadError.orEmpty(), fontSize = 12.sp)
+                            }
+                            OutlinedButton(onClick = { scope.launch { reload() } }, enabled = !loading) {
+                                Text("Retry")
+                            }
+                        }
+                    }
+                }
+            }
+
             if (policy.enabled) {
                 item {
                     Surface(
@@ -1323,9 +1346,9 @@ fun ConnectScreen(state: DesktopAppState) {
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Community Activity", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                                    Text("Online students", fontWeight = FontWeight.Black, fontSize = 15.sp)
                                     Text(
-                                        if (liveActivityAvailable) "Activity Pulse • ${activityTrend.label}"
+                                        if (liveActivityAvailable) "Live presence • ${activityTrend.label}"
                                         else "Last known activity • offline",
                                         fontSize = 10.5.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1336,7 +1359,7 @@ fun ConnectScreen(state: DesktopAppState) {
                                     color = Color(0xFF22C55E).copy(alpha = 0.13f),
                                 ) {
                                     Text(
-                                        communityActivity?.toString() ?: "—",
+                                        if (liveActivityAvailable) realOnlineCount.toString() else "—",
                                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                                         color = Color(0xFF22C55E),
                                         fontSize = 13.sp,
@@ -1346,13 +1369,13 @@ fun ConnectScreen(state: DesktopAppState) {
                             }
 
                             Text(
-                                "Confirmed online now: $realOnlineCount",
+                                if (liveActivityAvailable) "Confirmed online now: $realOnlineCount" else "Online count unavailable",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             if (myCampus.isNotBlank()) {
                                 Text(
-                                    "$myCampus activity: $campusLabel • $realCampusOnline confirmed online",
+                                    if (liveActivityAvailable) "$myCampus activity: $campusLabel • $realCampusOnline confirmed online" else "$myCampus activity is temporarily unavailable",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -1377,7 +1400,7 @@ fun ConnectScreen(state: DesktopAppState) {
                                                             surface = "connect",
                                                             eventType = "online_preview_open",
                                                             realCount = realOnlineCount,
-                                                            displayedValue = communityActivity,
+                                                            displayedValue = if (liveActivityAvailable) realOnlineCount else null,
                                                             metadata = mapOf("username" to profile.username),
                                                         )
                                                     }
