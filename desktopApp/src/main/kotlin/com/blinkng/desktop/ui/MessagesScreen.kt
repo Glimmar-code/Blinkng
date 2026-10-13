@@ -68,6 +68,7 @@ import com.blinkng.desktop.DesktopAppState
 import com.blinkng.desktop.data.DesktopConversation
 import com.blinkng.desktop.data.DesktopMessage
 import com.blinkng.shared.BlinkChatInboxPolicy
+import com.blinkng.shared.BlinkConversationSearchPolicy
 import com.blinkng.shared.BlinkMessageScrollAction
 import com.blinkng.shared.BlinkMessageDatePolicy
 import com.blinkng.shared.BlinkMessageScrollPolicy
@@ -231,7 +232,7 @@ fun MessagesScreen(state: DesktopAppState) {
         val filtered = remember(conversations, query, inbox) {
             conversations.filter {
                 BlinkChatInboxPolicy.matches(inbox, it.isArchived, if (it.requestStatus == "pending") "requests" else "primary", it.unreadCount > 0 || it.markedUnread) &&
-                    (query.isBlank() || it.title.contains(query, ignoreCase = true))
+                    BlinkConversationSearchPolicy.matches(query, it.title, it.partnerUsername, it.lastMessage)
             }.sortedWith(compareByDescending<DesktopConversation> { it.isPinned }.thenByDescending { it.lastMessageAt.orEmpty() })
         }
         val important = remember(conversations) {
@@ -377,11 +378,14 @@ fun MessagesScreen(state: DesktopAppState) {
                                     fontWeight = if (conversation.markedUnread || conversation.unreadCount > 0) FontWeight.Black else FontWeight.SemiBold,
                                     maxLines = 1)
                                 Text(
-                                    if (conversation.isGroup) "Group conversation"
-                                    else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt),
+                                    conversation.lastMessage.ifBlank {
+                                        if (conversation.isGroup) "Group conversation"
+                                        else desktopPresenceStatus(conversation.isOnline, conversation.lastSeenAt)
+                                    },
                                     fontSize = 11.sp,
-                                    color = if (!conversation.isGroup && conversation.isOnline) Color(0xFF22C55E)
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
