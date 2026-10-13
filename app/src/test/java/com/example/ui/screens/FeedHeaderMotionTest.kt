@@ -8,6 +8,20 @@ import org.junit.Test
 class FeedHeaderMotionTest {
 
     @Test
+    fun headerConsumesOnlyItsMovementToAvoidDoubleScroll() {
+        assertEquals(-30f, feedHeaderConsumedScrollDelta(0f, -30f, -30f), 0.001f)
+        // Header was only 20px from its collapsed stop: list gets the other 30px.
+        assertEquals(-20f, feedHeaderConsumedScrollDelta(-80f, -100f, -50f), 0.001f)
+        assertEquals(25f, feedHeaderConsumedScrollDelta(-60f, -35f, 40f), 0.001f)
+        assertEquals(0f, feedHeaderConsumedScrollDelta(0f, 0f, 50f), 0.001f)
+        // Reversals below the dead zone are left to the list.
+        assertEquals(0f, feedHeaderConsumedScrollDelta(-70f, -70f, 5f), 0.001f)
+        // No more than the received delta may be consumed.
+        assertEquals(-10f, feedHeaderConsumedScrollDelta(0f, -40f, -10f), 0.001f)
+        assertEquals(0f, feedHeaderConsumedScrollDelta(Float.NaN, -10f, -10f), 0.001f)
+    }
+
+    @Test
     fun collapseOffset_tracksDeltaAndClampsToHeaderBounds() {
         assertEquals(-50f, clampFeedHeaderOffset(-20f, -30f, 100f), 0.001f)
         assertEquals(-100f, clampFeedHeaderOffset(-80f, -50f, 100f), 0.001f)
@@ -97,6 +111,14 @@ class FeedHeaderMotionTest {
         assertEquals(3, feedPrefetchLookahead(itemDelta = 1, elapsedMs = 500))
         assertEquals(2, feedPrefetchLookahead(itemDelta = 3, elapsedMs = 500))
         assertEquals(1, feedPrefetchLookahead(itemDelta = 5, elapsedMs = 500))
+    }
+
+    @Test
+    fun partiallyVisibleFeedPostRestoresWithoutJumpingToStart() {
+        assertEquals(75, feedRestoreItemScrollOffset(-75, 0))
+        assertEquals(0, feedRestoreItemScrollOffset(12, 0))
+        assertEquals(25, feedRestoreItemScrollOffset(-5, 20))
+        assertEquals(Int.MAX_VALUE, feedRestoreItemScrollOffset(Int.MIN_VALUE, Int.MAX_VALUE))
     }
 
     @Test

@@ -707,7 +707,6 @@ private fun PremiumHomeFeed(
     var seenRefreshRevision by remember(laneResumeKey) { mutableIntStateOf(refreshRevision) }
     var reelRefreshWasRunning by remember(laneResumeKey) { mutableStateOf(isRefreshing) }
     var postPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMorePosts) }
-    var reelPaginationWasRunning by remember(laneResumeKey) { mutableStateOf(isLoadingMoreReels) }
     // Realtime rows are merged into the existing list to keep scroll stable.
     // Track new IDs *before* that merge so the New Posts affordance still works.
     var pendingNewPostIds by remember(laneResumeKey) { mutableStateOf<Set<String>>(emptySet()) }
@@ -747,20 +746,21 @@ private fun PremiumHomeFeed(
 
     LaunchedEffect(reels, isRefreshing, isLoadingMoreReels, laneResumeKey) {
         val explicitRefreshCompleted = reelRefreshWasRunning && !isRefreshing
-        val paginationCompleted = reelPaginationWasRunning && !isLoadingMoreReels
-
         stableRankedReels = if (explicitRefreshCompleted) {
             reels
         } else {
+            // A realtime Reel can arrive without a pagination state transition.
+            // Append unseen IDs after existing teasers, rather than silently
+            // dropping them until a much later deep scroll. Keep all existing
+            // teaser positions stable while the reader is browsing.
             mergeStablePremiumFeed(
                 current = stableRankedReels,
                 latest = reels,
-                appendNew = paginationCompleted
+                appendNew = true
             )
         }
 
         reelRefreshWasRunning = isRefreshing
-        reelPaginationWasRunning = isLoadingMoreReels
     }
 
     val filteredPosts = remember(stableRankedPosts, filter, laneIndex, followedAuthorKeys) {
@@ -932,9 +932,14 @@ private fun PremiumHomeFeed(
                     headerOffsetPx.value = nextOffset
                     fabExpanded = direction > 0
                 }
-                // Header follows the gesture, but must not consume LazyColumn's
-                // vertical drag. Existing eased fade and settling are preserved.
-                return androidx.compose.ui.geometry.Offset.Zero
+                // Header and LazyColumn must never both apply the same drag
+                // distance. Consume only the pixels the header actually moved;
+                // let the list receive the remainder when the header is at an
+                // edge, or during the direction reversal dead zone.
+                return androidx.compose.ui.geometry.Offset(
+                    0f,
+                    feedHeaderConsumedScrollDelta(previousOffset, nextOffset, deltaY)
+                )
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
@@ -1094,7 +1099,15 @@ private fun PremiumHomeFeed(
                     }
                 val visibleKey = anchorItem?.key as? String
                 val savedIndex = anchorItem?.index ?: index
-                val savedOffset = anchorItem?.offset ?: offset
+                // LazyListItemInfo.offset is often negative for a partially
+                // scrolled card; scrollToItem needs a positive scrolled-into
+                // offset. Never lose the reader's place within a long post.
+                val savedOffset = anchorItem?.let { item ->
+                    feedRestoreItemScrollOffset(
+                        itemOffsetPx = item.offset,
+                        viewportStartPx = listState.layoutInfo.viewportStartOffset
+                    )
+                } ?: offset
                 val headerHeight = headerHeightPx.value
                 val collapseFraction =
                     if (headerHeight > 0f) (-headerOffsetPx.value / headerHeight).coerceIn(0f, 1f)
