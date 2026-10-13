@@ -48,6 +48,7 @@ import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
+import com.example.ui.theme.FeedBackground
 import com.example.update.PlayInAppUpdateCoordinator
 import com.example.util.startActivitySafely
 import com.example.viewmodel.AppDestination
@@ -488,7 +489,28 @@ class MainActivity : ComponentActivity() {
             }
 
             BlinkTheme(darkTheme = uiState.isDarkMode) {
+                // Feed, Reels and Connect already account for the status bar inside
+                // their own chrome. Applying Scaffold's default safeDrawing insets
+                // as well adds a second empty strip above the header (and wastes
+                // height near the bottom navigation). Other screens still need
+                // Scaffold's normal safe-area handling.
+                val homeManagesSystemInsets =
+                    uiState.destination == AppDestination.MAIN &&
+                    uiState.selectedTab == MainTab.HOME &&
+                    uiState.feedSubTab in 0..2
                 Scaffold(
+                    contentWindowInsets = if (homeManagesSystemInsets) {
+                        WindowInsets(0, 0, 0, 0)
+                    } else {
+                        ScaffoldDefaults.contentWindowInsets
+                    },
+                    // Match the area behind the transparent status bar to the feed
+                    // so the clock/camera cutout no longer sits above a separate strip.
+                    containerColor = if (homeManagesSystemInsets) {
+                        FeedBackground
+                    } else {
+                        MaterialTheme.colorScheme.background
+                    },
                     snackbarHost = {
                         SnackbarHost(
                             hostState = snackbarHostState,

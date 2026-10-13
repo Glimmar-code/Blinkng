@@ -1,3 +1,13 @@
+## 2026-10-13 — Remove duplicate Android top and bottom system insets on Home (Testlab)
+
+PARITY-EXCEPTION: android-home-reels-connect-edge-to-edge-safe-insets-20261013
+
+- **Android issue:** The Material3 app-level Scaffold was already reserving the OS status bar and navigation-safe areas while the Home, Reels, and Connect Compose pages also reserved the same insets. This creates a second blank stripe above the Feed header and wastes the viewport near the bottom toolbar.
+- **Android fix:** For these three pages only, let the page itself manage the status/navigation insets exactly once and paint the root status-bar background with the same Feed color. Keep transparent edge-to-edge rendering while preserving the status clock, camera cutout, touch targets, system-gesture navigation and native status shade.
+- **Other pages:** Market, Messages, authentication and other app destinations retain the existing Scaffold safe-area defaults; window bars are **not** globally hidden or made immersive. No posts, ranking, Supabase, chat, storefront, ads or monetization code changes.
+- **Windows equivalent:** The Windows desktop app uses a native window titlebar, side navigation and resizable desktop content without Android OS status/navigation bar insets. The corresponding desktop behavior is already full use of the drawable client area beneath its titlebar; applying Android Compose `WindowInsets` would introduce an artificial blank strip in Windows.
+- **Verification:** Android quality gate, lint, runtime/screenshot checks on different status-bar heights and three-button/gesture navigation, Windows parity/build checks; physical Redmi 15C visual verification is still required before asserting pixel-perfect results.
+
 ## 2026-10-13 — Temporarily pause public BLINK Store (Testlab)
 
 - **Shared policy:** `BlinkStoreAvailability.isPaused` keeps Store temporarily unavailable on Android and Windows while retaining the complete catalog, purchase routes, reaction effects, provider surfaces, collection data, and Supabase contracts for reopening later.
