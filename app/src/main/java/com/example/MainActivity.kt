@@ -569,6 +569,7 @@ fun MainAppContent(
         pageCount = { if (selectedPage in 0..4) 5 else 8 }
     )
     var requestedPage by remember { mutableIntStateOf(selectedPage) }
+    val latestSelectedPage by rememberUpdatedState(selectedPage)
 
     LaunchedEffect(selectedPage) {
         requestedPage = selectedPage
@@ -584,7 +585,9 @@ fun MainAppContent(
     }
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.settledPage }.collectLatest { page ->
-            if (page == requestedPage || page !in 0..4) return@collectLatest
+            if (page == requestedPage || page !in 0..4 ||
+                requestedPage != latestSelectedPage
+            ) return@collectLatest
             requestedPage = page
             when (page) {
                 0 -> { viewModel.setFeedSubTab(0); viewModel.setTab(MainTab.HOME) }
