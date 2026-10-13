@@ -18,7 +18,7 @@ function filePathsRequireStaging(files) {
   return files.some(path =>
     /^supabase\/(?:migrations\/|functions\/|config\.toml$)/.test(path) ||
     /^app\/proguard-rules\.pro$/.test(path) ||
-    /^\.github\/(?:workflows\/(?:signed-release|publish-latest-apk|auto-promote-testlab)\.yml|scripts\/(?:publish_verified_apk|testlab_auto_promotion)\.(?:py|cjs))$/.test(path)
+    /^\.github\/(?:workflows\/(?:signed-release|publish-latest-apk|auto-promote-testlab)\.yml|scripts\/(?:publish_verified_apk|verify_production_apk|wait_release_checks|testlab_auto_promotion)\.(?:py|cjs))$/.test(path)
   );
 }
 
@@ -44,10 +44,14 @@ function requiredChecks(files) {
   );
   if (android) result.add('runtime-smoke');
   if (release) result.add('release-smoke');
+  if (release || files.some(path => /^\.github\/(?:scripts\/.*(?:apk|release_checks).*|workflows\/publish-latest-apk\.yml)$/.test(path))) {
+    result.add('production-apk-24');
+    result.add('production-apk-35');
+  }
   if (web) result.add('web-parity');
   if (domain) result.add('verify');
   if (files.some(path =>
-    /^\.github\/scripts\/.*verified_apk\.py$/.test(path) ||
+    /^\.github\/scripts\/.*(?:apk|release_checks).*\.py$/.test(path) ||
     /^\.github\/workflows\/(?:publish-latest-apk|apk-delivery-check)\.yml$/.test(path)
   )) result.add('integrity');
   return [...result];
@@ -58,7 +62,10 @@ function releaseWorkflows(files) {
   if (files.some(path =>
     /^(?:app\/|shared\/|gradle\/)/.test(path) ||
     /^(?:build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties)$/.test(path)
-  )) toRun.push('signed-release.yml');
+    || /^\.github\/(?:scripts\/.*(?:apk|release_checks).*|workflows\/(?:signed-release|publish-latest-apk)\.yml)$/.test(path)
+  )) toRun.push('android-build-check.yml', 'android-runtime-smoke.yml',
+    'release-smoke-test.yml', 'windows-desktop-check.yml',
+    'supabase-safety-check.yml', 'secret-leak-guard.yml', 'signed-release.yml');
   if (files.some(path =>
     /^web\//.test(path) ||
     /^\.github\/workflows\/deploy-web-preview\.yml$/.test(path) ||

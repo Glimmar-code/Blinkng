@@ -64,7 +64,13 @@ test('Android, web and backend jobs have explicit required gates', () => {
   assert.ok(backend.includes('migration-safety'));
 });
 test('release and website workflows are dispatched for relevant merges', () => {
-  assert.deepEqual(policy.releaseWorkflows(['app/src/main/Foo.kt']), ['signed-release.yml']);
+  const flows = policy.releaseWorkflows(['app/src/main/Foo.kt']);
+  for (const workflow of ['signed-release.yml', 'android-build-check.yml',
+    'android-runtime-smoke.yml', 'release-smoke-test.yml', 'windows-desktop-check.yml',
+    'supabase-safety-check.yml', 'secret-leak-guard.yml']) assert.ok(flows.includes(workflow));
+  assert.ok(policy.requiredChecks(['app/src/main/Foo.kt']).includes('production-apk-24'));
+  assert.ok(policy.requiredChecks(['app/src/main/Foo.kt']).includes('production-apk-35'));
+  assert.ok(policy.releaseWorkflows(['.github/workflows/signed-release.yml']).includes('signed-release.yml'));
   assert.deepEqual(policy.releaseWorkflows(['web/app.js']), ['deploy-web-preview.yml']);
   assert.deepEqual(policy.releaseWorkflows(['README.md']), []);
 });

@@ -4,12 +4,16 @@ on:
   push:
     branches: [main, Testlab, 'Testlab-*']
     paths:
-      - '.github/scripts/*verified_apk.py'
+      - '.github/scripts/*apk*'
+      - '.github/scripts/*release_checks*'
+      - '.github/workflows/signed-release.yml'
       - '.github/workflows/publish-latest-apk.yml'
       - '.github/workflows/apk-delivery-check.yml'
   pull_request:
     paths:
-      - '.github/scripts/*verified_apk.py'
+      - '.github/scripts/*apk*'
+      - '.github/scripts/*release_checks*'
+      - '.github/workflows/signed-release.yml'
       - '.github/workflows/publish-latest-apk.yml'
       - '.github/workflows/apk-delivery-check.yml'
   workflow_dispatch:
@@ -26,4 +30,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Reject damaged APKs and prevent premature publication
-        run: python3 .github/scripts/test_publish_verified_apk.py
+        run: |
+          python3 .github/scripts/test_publish_verified_apk.py
+          python3 .github/scripts/test_wait_release_checks.py
+          python3 .github/scripts/test_production_apk_contract.py
