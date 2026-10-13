@@ -62,6 +62,7 @@ import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.shared.BlinkStoreProductGroup
 import com.blinkng.shared.BlinkStoreProductGroups
 import com.blinkng.shared.BlinkStoreJourneys
+import com.blinkng.shared.BlinkStoreAvailability
 import com.blinkng.shared.BlinkCoinCheckoutOffer
 import com.blinkng.shared.BlinkCoinCheckoutPolicy
 import java.awt.Desktop
@@ -72,6 +73,23 @@ import org.json.JSONObject
 
 @Composable
 fun StoreProScreen(state: DesktopAppState) {
+    // Public catalog and purchases remain installed, but are not mounted during the pause.
+    if (BlinkStoreAvailability.isPaused) {
+        AlertDialog(
+            onDismissRequest = { state.selectedRoute = "home" },
+            title = { Text("BLINK STORE · COMING SOON", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(BlinkStoreAvailability.title, style = MaterialTheme.typography.headlineSmall)
+                    Text(BlinkStoreAvailability.message)
+                    Text(BlinkStoreAvailability.dismissHint, style = MaterialTheme.typography.labelSmall)
+                }
+            },
+            confirmButton = {},
+            dismissButton = {}
+        )
+        return
+    }
     val actions = remember(state.client) { DesktopRpcActions(state.client) }
     var catalog by remember { mutableStateOf<List<DesktopStoreItem>>(emptyList()) }
     var inventory by remember { mutableStateOf<List<DesktopInventoryItem>>(emptyList()) }
