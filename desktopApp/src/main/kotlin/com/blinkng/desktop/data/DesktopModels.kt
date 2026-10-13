@@ -131,6 +131,7 @@ data class DesktopMessage(
     val myReactions: Set<String> = emptySet(),
     val isStarred: Boolean = false,
     val isPinned: Boolean = false,
+    val replyToMessageId: String? = null,
 )
 
 data class DesktopNotification(
