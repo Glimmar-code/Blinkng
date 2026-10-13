@@ -1,6 +1,6 @@
 package com.blinkng.shared
 
-enum class BlinkMessageInbox { PRIMARY, UNREAD, REQUESTS, ARCHIVED }
+enum class BlinkMessageInbox { ALL, PRIMARY, UNREAD, REQUESTS, ARCHIVED }
 
 object BlinkChatInboxPolicy {
     fun matches(
@@ -9,6 +9,7 @@ object BlinkChatInboxPolicy {
         category: String,
         unread: Boolean = false
     ): Boolean = when (inbox) {
+        BlinkMessageInbox.ALL -> !archived
         BlinkMessageInbox.PRIMARY -> !archived && category != "requests"
         BlinkMessageInbox.UNREAD -> !archived && category != "requests" && unread
         BlinkMessageInbox.REQUESTS -> !archived && category == "requests"
