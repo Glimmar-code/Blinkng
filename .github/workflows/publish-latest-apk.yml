@@ -22,7 +22,7 @@ jobs:
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 55
 
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +33,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Block publication until Android install/runtime and mandatory CI pass
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: >-
+          python3 .github/scripts/check_release_gates.py
+          --repository "$RELEASE_REPOSITORY"
+          --commit "$RELEASE_COMMIT"
+          --timeout-seconds 2700
 
       - name: Download signed production artifact
         uses: actions/download-artifact@v4

@@ -16,6 +16,7 @@
   const PARITY_PREF_KEY = 'blink_web_parity_prefs_v1';
   const OAUTH_NEXT_KEY = 'blink_web_oauth_next_v1';
   const APK_URL = 'https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk';
+  const APK_CHECK_URL = `${PREVIEW_BASE}/apk-check.html`;
   const API_TIMEOUT_MS = 20000;
 
   const state = {
@@ -264,7 +265,7 @@
     const profileButton=state.profile?.username
       ? `<button class="btn" data-action="open-app">Open my profile in app</button>`
       : '';
-    return `<div class="side-card"><h3>Blink Web</h3><p class="muted small">Your web session uses the same Blink account and Supabase backend as Android.</p><a class="btn primary download-app" href="${APK_URL}">↓ Download Android app</a>${profileButton}</div><div class="side-card"><h3>Quick links</h3><div class="quick-list"><button class="nav-btn" data-nav="/market">▣ Marketplace</button><button class="nav-btn" data-nav="/connect">◎ Connect Hub</button><button class="nav-btn" data-nav="/games">◇ Games</button><button class="nav-btn" data-nav="/scheduled">◷ Scheduled posts</button><button class="nav-btn" data-nav="/ai">✦ Blink AI</button></div></div>`;
+    return `<div class="side-card"><h3>Blink Web</h3><p class="muted small">Your web session uses the same Blink account and Supabase backend as Android.</p><a class="btn primary download-app" href="${APK_URL}">↓ Download Android app</a><a class="btn" href="${APK_CHECK_URL}">Verify APK</a>${profileButton}</div><div class="side-card"><h3>Quick links</h3><div class="quick-list"><button class="nav-btn" data-nav="/market">▣ Marketplace</button><button class="nav-btn" data-nav="/connect">◎ Connect Hub</button><button class="nav-btn" data-nav="/games">◇ Games</button><button class="nav-btn" data-nav="/scheduled">◷ Scheduled posts</button><button class="nav-btn" data-nav="/ai">✦ Blink AI</button></div></div>`;
   }
   function requireAuth(){ if(isAuthed())return true; navigate('/login'); return false; }
 
@@ -316,7 +317,7 @@
   async function updatePassword(password){ if(password.length<8)throw new Error('Use at least 8 characters.'); await api('/auth/v1/user',{method:'PUT',body:{password}}); }
 
   function renderLanding(){
-    setTitle('Blink'); ROOT.innerHTML=`<div class="auth-wrap"><div style="width:min(100%,1000px)"><div class="hero"><img class="mark hero-mark" src="${LOGO_URL}" alt="BLINK"><h1><span class="gradient-text">Blink</span> everywhere.</h1><p>Browse public profiles, posts and reels without installing anything. Sign in to use your full Blink account on the web.</p><div class="hero-actions"><button class="btn primary" data-nav="${isAuthed()?'/feed':'/login'}">${isAuthed()?'Open feed':'Sign in to Blink'}</button><a class="btn download-app" href="${APK_URL}">↓ Download Android app</a></div><form id="public-search" class="landing-search"><input class="field" name="username" placeholder="Open @username" autocomplete="off"><button class="btn">View profile</button></form></div><div class="feature-grid"><div class="card feature"><b>Public links</b><p>Profiles, posts and reels open directly in Chrome and still use Blink view counting.</p></div><div class="card feature"><b>Full account</b><p>Feed, follows, comments, messages, scheduled posts, market, Connect and games share the same backend.</p></div><div class="card feature"><b>App handoff</b><p>Open the same content in the Android app with deep links whenever Blink is installed.</p></div></div></div></div>`;
+    setTitle('Blink'); ROOT.innerHTML=`<div class="auth-wrap"><div style="width:min(100%,1000px)"><div class="hero"><img class="mark hero-mark" src="${LOGO_URL}" alt="BLINK"><h1><span class="gradient-text">Blink</span> everywhere.</h1><p>Browse public profiles, posts and reels without installing anything. Sign in to use your full Blink account on the web.</p><div class="hero-actions"><button class="btn primary" data-nav="${isAuthed()?'/feed':'/login'}">${isAuthed()?'Open feed':'Sign in to Blink'}</button><a class="btn download-app" href="${APK_URL}">↓ Download Android app</a><a class="btn" href="${APK_CHECK_URL}">Check APK file</a></div><form id="public-search" class="landing-search"><input class="field" name="username" placeholder="Open @username" autocomplete="off"><button class="btn">View profile</button></form></div><div class="feature-grid"><div class="card feature"><b>Public links</b><p>Profiles, posts and reels open directly in Chrome and still use Blink view counting.</p></div><div class="card feature"><b>Full account</b><p>Feed, follows, comments, messages, scheduled posts, market, Connect and games share the same backend.</p></div><div class="card feature"><b>App handoff</b><p>Open the same content in the Android app with deep links whenever Blink is installed.</p></div></div></div></div>`;
     document.querySelector('[data-nav]')?.addEventListener('click',e=>{e.preventDefault();navigate(e.currentTarget.dataset.nav);}); document.getElementById('public-search').onsubmit=e=>{e.preventDefault();const u=new FormData(e.currentTarget).get('username').trim().replace(/^@/,'');if(u)navigate(`/@${encodeURIComponent(u)}`);};
   }
 

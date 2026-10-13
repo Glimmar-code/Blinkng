@@ -1,24 +1,10 @@
 name: Android release smoke test
 
 on:
+  # Every production commit must pass real Android checks before release publication.
   push:
     branches:
       - main
-      - Testlab
-      - 'Testlab-*'
-    paths:
-      - 'app/src/**'
-      - 'shared/src/**'
-      - 'app/build.gradle.kts'
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
-      - 'gradle.properties'
-      - 'gradle/**'
-      - 'app/google-services.json.example'
-      - '.github/scripts/restore_google_services.sh'
-      - 'app/proguard-rules.pro'
-      - '.github/workflows/signed-release.yml'
-      - '.github/workflows/release-smoke-test.yml'
   pull_request:
     branches:
       - main
