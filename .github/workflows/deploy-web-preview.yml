@@ -9,6 +9,7 @@ on:
       - '.github/scripts/restore_google_services.sh'
       - 'scripts/sync_android_launcher_assets.py'
       - 'app/src/main/res/drawable/app_icon.png'
+      - 'scripts/check_github_pages_site.py'
   workflow_dispatch:
 
 permissions:
@@ -30,15 +31,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Validate production domain configuration
+      - name: Validate current GitHub Pages project URL
         shell: bash
         run: |
           set -euo pipefail
-          test "$(tr -d '\r\n' < web/CNAME)" = "www.blink.com.ng"
-          grep -F 'siteUrl: "https://www.blink.com.ng"' web/config.js >/dev/null
-          grep -F 'https://www.blink.com.ng' app/build.gradle.kts >/dev/null
-          grep -F 'https://www.blink.com.ng/' web/index.html >/dev/null
+          test ! -e web/CNAME
           python3 -m json.tool web/manifest.webmanifest >/dev/null
+          python3 scripts/check_github_pages_site.py
 
       - name: Set up Java for Android link verification
         uses: actions/setup-java@v5
@@ -128,7 +127,7 @@ jobs:
           PY
 
           python3 -m json.tool web/.well-known/assetlinks.json >/dev/null
-          echo "Generated verified Android App Links metadata for www.blink.com.ng."
+          echo "Generated verified Android App Links metadata for temporary GitHub Pages hosting."
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
