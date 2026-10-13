@@ -46,8 +46,11 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Unit tests
-        run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
+      - name: Blink Store pause parity regression
+        run: python3 scripts/test_blink_store_pause.py
+
+      - name: Shared and Android unit tests
+        run: gradle :shared:test :app:testDebugUnitTest --stacktrace --no-daemon
 
       - name: Android lint
         shell: bash
