@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Home
@@ -44,7 +45,7 @@ import com.example.ui.theme.FeedBlue
 import com.example.viewmodel.MainTab
 
 private enum class FeedBottomDestination {
-    HOME, CONNECT, LEADERBOARD, MARKET, MESSAGE, STORE
+    HOME, REELS, MARKET, CONNECT, MESSAGE
 }
 
 private data class FeedBottomItem(
@@ -56,11 +57,10 @@ private data class FeedBottomItem(
 
 private val feedBottomItems = listOf(
     FeedBottomItem(FeedBottomDestination.HOME, Icons.Filled.Home, Icons.Outlined.Home, "Home"),
-    FeedBottomItem(FeedBottomDestination.CONNECT, Icons.Filled.People, Icons.Outlined.People, "Connect"),
-    FeedBottomItem(FeedBottomDestination.LEADERBOARD, Icons.Filled.EmojiEvents, Icons.Outlined.EmojiEvents, "Leaderboard"),
+    FeedBottomItem(FeedBottomDestination.REELS, Icons.Filled.VideoLibrary, Icons.Filled.VideoLibrary, "Reels"),
     FeedBottomItem(FeedBottomDestination.MARKET, Icons.Filled.Storefront, Icons.Outlined.Storefront, "Market"),
-    FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Message"),
-    FeedBottomItem(FeedBottomDestination.STORE, Icons.Filled.Apps, Icons.Filled.Apps, "Blink Store")
+    FeedBottomItem(FeedBottomDestination.CONNECT, Icons.Filled.People, Icons.Outlined.People, "Connect"),
+    FeedBottomItem(FeedBottomDestination.MESSAGE, Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, "Messages")
 )
 
 @Composable
@@ -69,7 +69,7 @@ fun FeedBottomBar(
     feedSubTab: Int,
     onHomeClick: () -> Unit,
     onConnectClick: () -> Unit,
-    onLeaderboardClick: () -> Unit,
+    onReelsClick: () -> Unit,
     onMarketClick: () -> Unit,
     onMessageClick: () -> Unit,
     isDark: Boolean,
@@ -77,11 +77,10 @@ fun FeedBottomBar(
     isMenuOpen: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val selectedDestination = when {
         currentTab == MainTab.HOME && feedSubTab == 2 -> FeedBottomDestination.CONNECT
+        currentTab == MainTab.HOME && feedSubTab == 1 -> FeedBottomDestination.REELS
         currentTab == MainTab.HOME -> FeedBottomDestination.HOME
-        currentTab == MainTab.LEADERBOARD -> FeedBottomDestination.LEADERBOARD
         currentTab == MainTab.MARKET -> FeedBottomDestination.MARKET
         currentTab == MainTab.MESSAGES -> FeedBottomDestination.MESSAGE
         else -> null
@@ -113,17 +112,10 @@ fun FeedBottomBar(
                     onClick = {
                         when (item.destination) {
                             FeedBottomDestination.HOME -> onHomeClick()
-                            FeedBottomDestination.CONNECT -> onConnectClick()
-                            FeedBottomDestination.LEADERBOARD -> onLeaderboardClick()
+                            FeedBottomDestination.REELS -> onReelsClick()
                             FeedBottomDestination.MARKET -> onMarketClick()
+                            FeedBottomDestination.CONNECT -> onConnectClick()
                             FeedBottomDestination.MESSAGE -> onMessageClick()
-                            FeedBottomDestination.STORE -> {
-                                context.startActivity(Intent(context, BlinkStoreActivity::class.java))
-                                (context as? Activity)?.overridePendingTransition(
-                                    R.anim.blink_slide_in_right,
-                                    R.anim.blink_stay
-                                )
-                            }
                         }
                     }
                 )
@@ -183,8 +175,8 @@ fun FloatingBottomBar(
         currentTab = currentTab,
         feedSubTab = 0,
         onHomeClick = { onTabSelected(MainTab.HOME) },
-        onConnectClick = { onTabSelected(MainTab.SEARCH) },
-        onLeaderboardClick = { onTabSelected(MainTab.LEADERBOARD) },
+        onConnectClick = { onTabSelected(MainTab.HOME) },
+        onReelsClick = { onTabSelected(MainTab.HOME) },
         onMarketClick = { onTabSelected(MainTab.MARKET) },
         onMessageClick = { onTabSelected(MainTab.MESSAGES) },
         isDark = isDark,
