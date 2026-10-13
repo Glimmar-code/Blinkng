@@ -9,6 +9,16 @@ PARITY-EXCEPTION: android-lazycolumn-collapsing-header-distance-and-offset-20261
 - Windows equivalent: the desktop app uses native Compose desktop scrolling and sidebar navigation without Android's collapsing status-bar header or LazyListState insets; preserve its independent scroll-resume and responsive window behaviour. Feed data, ranking, post views, ads, monetization, credentials and Supabase remain unchanged.
 - Physical Redmi 15C frame profiling and device-specific long-session validation remain outstanding; this code correction is not evidence every one of the earlier 50 audit risks has been eliminated.
 
+## 2026-10-12 — Stable Android Feed tombstones and ranked module positions
+
+PARITY-EXCEPTION: android-frozen-feed-tombstones-and-module-stability-20261012
+
+- **Bug fixed:** Android's deliberately frozen Compose Feed snapshot kept locally deleted, hidden, muted and realtime-deleted posts on screen after ViewModel removed them. Track per-login session-only explicit tombstone IDs in `BlinkUiState`, update optimistic delete + rollback, hide/not-interested and realtime DELETE signals. Apply them to organic rows, inline Reel previews, promoted/boosted rows, and the New Posts counter, while preserving server-ranked order and scroll position. Muted usernames and legacy display-name author references are filtered without modifying server moderation.
+- **UI stability:** Reel-preview / Sponsored / Drop-module mixing seed no longer changes when the first ranked post ID changes. The random placement pattern depends only on account/lane/filter; server ranking remains authoritative and no paid promotion or ad frequency logic changes.
+- **Windows parity:** Windows has its own direct list adapters and desktop account/Feed navigation, not Compose's process-retained `LazyColumn` snapshot. This exception addresses Android-only stale frozen UI rows; Supabase post deletion, muting, ranking, paid delivery and the shared backing data remain identical on Android and Windows.
+- **Validation:** Android unit tests explicitly cover hidden/deleted/muted identities, including unsuccessful-delete rollback; Android quality/lint/release smoke, emulator, Windows parity and security must pass before main merge.
+- **Not claimed:** physical Redmi 15C frame-time benchmark, fully tested all-font-sizes layout, backend user-ID migration, cross-account server content reconciliation, and live-ad fill depend on separate device/server checks and are not represented as complete.
+
 ## 2026-10-12 — Feed audit follow-up: pagination, refresh, native ads, accessibility
 
 PARITY-EXCEPTION: android-compose-feed-pagination-native-ad-touch-20261012
