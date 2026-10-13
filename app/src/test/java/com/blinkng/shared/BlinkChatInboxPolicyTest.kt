@@ -12,6 +12,12 @@ class BlinkChatInboxPolicyTest {
         assertFalse(BlinkChatInboxPolicy.matches(BlinkMessageInbox.UNREAD, false, "requests", unread = true))
     }
 
+    @Test fun allTabIncludesActiveChatsAndRequestsButNotArchivedThreads() {
+        assertTrue(BlinkChatInboxPolicy.matches(BlinkMessageInbox.ALL, false, "primary"))
+        assertTrue(BlinkChatInboxPolicy.matches(BlinkMessageInbox.ALL, false, "requests"))
+        assertFalse(BlinkChatInboxPolicy.matches(BlinkMessageInbox.ALL, true, "primary"))
+    }
+
     @Test fun existingTabsContinueToRespectRequestAndArchiveBuckets() {
         assertTrue(BlinkChatInboxPolicy.matches(BlinkMessageInbox.PRIMARY, false, "primary"))
         assertTrue(BlinkChatInboxPolicy.matches(BlinkMessageInbox.REQUESTS, false, "requests"))
