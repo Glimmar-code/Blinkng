@@ -10,6 +10,10 @@
   const PREF_KEY = 'blink_web_parity_prefs_v1';
   const RECENT_KEY = 'blink_web_recent_accounts_v1';
   const API_TIMEOUT_MS = 20000;
+  // Matches the shared Kotlin BlinkStoreAvailability gate. Restore both together.
+  const BLINK_STORE_PAUSED = true;
+  const STORE_PAUSED_ROUTES = new Set(['/store','/vault','/vip','/gifts']);
+  let storeSoonEscapeHandler = null;
   let refreshPromise = null;
   const PARITY_ROUTES = new Set([
     '/more','/store','/vault','/vip','/boosts','/gifts','/calls','/offline','/drafts','/verification','/analytics','/study','/accounts','/professional','/leaderboard','/seller',
@@ -188,6 +192,7 @@
 
   function isParityRoute(path=currentPath()) { return PARITY_ROUTES.has(path); }
   function go(path) {
+    closeStoreSoonModal();
     const next=typeof path==='string'&&path.startsWith('/')&&!path.startsWith('//')?path:'/';
     if (PARITY_ROUTES.has(next)) { history.pushState({},'',routeHref(next)); renderParity(next); window.scrollTo({top:0,behavior:prefs().reduceMotion?'auto':'smooth'}); }
     else { history.pushState({},'',routeHref(next)); window.dispatchEvent(new PopStateEvent('popstate')); }
@@ -284,7 +289,34 @@
     return `<div class="premium-preview utility" style="${vars}"><div class="premium-avatar">B</div><strong>${esc(p.name)}</strong><small>${esc(p.label)}</small></div>`;
   }
 
+  function closeStoreSoonModal() {
+    document.getElementById('blink-store-soon-modal')?.remove();
+    if (storeSoonEscapeHandler) {
+      window.removeEventListener('keydown', storeSoonEscapeHandler);
+      storeSoonEscapeHandler = null;
+    }
+  }
+
+  function renderStoreComingSoon() {
+    // Keep all existing Store/Vault/VIP/gift code below for the relaunch.
+    // The paused screen makes no catalog, wallet, or purchase network request.
+    closeStoreSoonModal();
+    shell('Blink Store', '<section class="parity-panel" style="max-width:540px;margin:48px auto;text-align:center"><h2>BLINK Store · Coming Soon</h2><p>We are refreshing your store experience.</p></section>');
+    const backdrop = document.createElement('div');
+    backdrop.id = 'blink-store-soon-modal';
+    backdrop.className = 'parity-modal-backdrop';
+    backdrop.innerHTML = '<div class="parity-modal" role="dialog" aria-modal="true" aria-labelledby="blink-store-soon-title" style="max-width:450px;text-align:center"><span class="parity-eyebrow">BLINK STORE · COMING SOON</span><h2 id="blink-store-soon-title">Something better is coming</h2><p>BLINK Store is getting a refresh. New premium items and purchases are temporarily paused. Your Blink Coins and existing collection remain in your account.</p><p class="muted">Tap outside or press Escape to continue</p></div>';
+    const dismiss = () => { closeStoreSoonModal(); go('/feed'); };
+    backdrop.addEventListener('click', event => { if (event.target === backdrop) dismiss(); });
+    storeSoonEscapeHandler = event => { if (event.key === 'Escape') dismiss(); };
+    window.addEventListener('keydown', storeSoonEscapeHandler);
+    document.body.appendChild(backdrop);
+  }
+
+  window.addEventListener('popstate', closeStoreSoonModal);
+
   async function renderStore() {
+    if (BLINK_STORE_PAUSED) { renderStoreComingSoon(); return; }
     if (!authGuard()) return; loading('Blink Store');
     try {
       const s=await storeState(); const catalog=arrayish(s?.catalog||s?.items||[]); const balance=pick(s,'balance','coin_balance','coinBalance')||0; const vip=s?.vip||{};
@@ -611,6 +643,10 @@
 
   function renderParity(path=currentPath()) {
     if (!PARITY_ROUTES.has(path)) return false;
+    if (BLINK_STORE_PAUSED && STORE_PAUSED_ROUTES.has(path)) {
+      renderStoreComingSoon();
+      return true;
+    }
     switch(path){
       case '/more': renderHub(); break;
       case '/store': renderStore(); break;
