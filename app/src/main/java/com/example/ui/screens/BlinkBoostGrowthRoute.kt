@@ -1,5 +1,12 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import com.blinkng.shared.BlinkDesignTokens
@@ -20,6 +27,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import coil.compose.AsyncImage
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Article
@@ -271,20 +285,40 @@ private fun BoostCampaignColumn(
     val draft = remember { BoostDraftStore.value }
 
     val me = myProfile.username.trim().removePrefix("@")
-    val ownPosts = remember(posts, me) {
-        posts.filter {
-            !it.isReel && it.authorUsername.trim().removePrefix("@").equals(me, ignoreCase = true)
+    var ownedContent by remember { mutableStateOf<JSONObject?>(null) }
+    var contentLoading by remember { mutableStateOf(true) }
+    var contentError by remember { mutableStateOf<String?>(null) }
+    val ownContent = remember(posts, reels, me, ownedContent) {
+        val cached = (posts + reels).filter {
+            it.authorUsername.trim().removePrefix("@").equals(me, ignoreCase = true)
         }.distinctBy { it.id }
+        val server = ownedContent?.optJSONArray("posts").objectList().mapNotNull { item ->
+            val id = item.optString("id").takeIf(String::isNotBlank) ?: return@mapNotNull null
+            cached.firstOrNull { it.id == id } ?: FeedPost(
+                id = id,
+                author = myProfile.fullName.ifBlank { me },
+                authorAvatar = "",
+                timeAgo = "Your content",
+                text = item.optString("text"),
+                likes = 0,
+                commentsCount = 0,
+                sharesCount = 0,
+                viewsCount = 0,
+                isReel = item.optString("type").equals("REEL", ignoreCase = true),
+                createdAt = item.optString("created_at"),
+                authorUsername = me,
+            )
+        }.orEmpty()
+        (server + cached).distinctBy { it.id }
     }
-    val ownReels = remember(reels, posts, me) {
-        (reels + posts).filter {
-            it.isReel && it.authorUsername.trim().removePrefix("@").equals(me, ignoreCase = true)
-        }.distinctBy { it.id }
-    }
+    val ownPosts = ownContent.filterNot { it.isReel }
+    val ownReels = ownContent.filter { it.isReel }
     val ownListings = remember(marketItems, me) {
         marketItems.filter { it.sellerUsername.trim().removePrefix("@").equals(me, ignoreCase = true) }
     }
 
+    var setupStep by remember { mutableIntStateOf(0) }
+    val stepNames = listOf("Content", "Audience", "Goal", "Power", "Duration", "Review")
     var targetType by remember { mutableStateOf(draft.targetType) }
     var targetId by remember { mutableStateOf(draft.targetId) }
     var boostPower by remember { mutableIntStateOf(draft.boostPower) }
@@ -323,6 +357,14 @@ private fun BoostCampaignColumn(
     }
 
     LaunchedEffect(refreshNonce) { reloadState() }
+    LaunchedEffect(refreshNonce) {
+        contentLoading = true
+        service.boostableContent()
+            .onSuccess { ownedContent = it; contentError = null }
+            .onFailure { contentError = "Unable to load all your content. Showing cached posts." }
+        contentLoading = false
+    }
+
 
     LaunchedEffect(targetType) {
         if (targetType != lastTargetType) {
@@ -483,229 +525,265 @@ private fun BoostCampaignColumn(
         }
 
         item {
-            SectionTitle(
-                "1. What do you want to boost?",
-                "Choose your content. Listing is the name used for Market posts.",
-            )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(BlinkBoostTargetType.values().toList()) { type ->
-                    FilterChip(
-                        selected = targetType == type,
-                        onClick = { targetType = type },
-                        label = { Text(targetTypeLabel(type)) },
-                        leadingIcon = { Icon(targetTypeIcon(type), null, modifier = Modifier.size(17.dp)) },
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("Step ${setupStep + 1} of 6 · ${stepNames[setupStep]}",
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
-            }
-        }
-
-        when (targetType) {
-            BlinkBoostTargetType.POST -> {
-                if (ownPosts.isEmpty()) {
-                    item { EmptyTargetCard("You do not have a boostable post yet.", "Create a post", onCreateContent) }
-                } else {
-                    items(ownPosts.take(12), key = { "boost-post-" + it.id }) { post ->
-                        SelectablePostTarget(
-                            post = post,
-                            selected = targetId == post.id,
-                            isDark = isDark,
-                            label = "Boost this post",
-                            onSelect = { targetId = post.id },
-                        )
-                    }
-                }
-            }
-            BlinkBoostTargetType.REEL -> {
-                if (ownReels.isEmpty()) {
-                    item { EmptyTargetCard("You do not have a boostable Reel yet.", "Create content", onCreateContent) }
-                } else {
-                    items(ownReels.take(12), key = { "boost-reel-" + it.id }) { reel ->
-                        SelectablePostTarget(
-                            post = reel,
-                            selected = targetId == reel.id,
-                            isDark = isDark,
-                            label = "Boost this Reel",
-                            onSelect = { targetId = reel.id },
-                        )
-                    }
-                }
-            }
-            BlinkBoostTargetType.PROFILE -> {
-                item {
-                    ProfileTargetCard(
-                        profile = myProfile,
-                        selected = targetId == myProfile.id && myProfile.id.isNotBlank(),
-                        onSelect = { targetId = myProfile.id },
-                    )
-                }
-            }
-            BlinkBoostTargetType.LISTING -> {
-                if (ownListings.isEmpty()) {
-                    item { EmptyTargetCard("You do not have an active Listing to boost.") }
-                } else {
-                    items(ownListings.take(12), key = { "boost-listing-" + it.id }) { listing ->
-                        SelectableListingTarget(
-                            listing = listing,
-                            selected = targetId == listing.id,
-                            isDark = isDark,
-                            onSelect = { targetId = listing.id },
-                        )
-                    }
-                }
-            }
-        }
-
-        item {
-            SectionTitle("2. Audience", "Choose your campus or expand across BLINK.")
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(BlinkBoostAudienceScope.values().toList()) { item ->
-                    FilterChip(
-                        selected = audience == item,
-                        onClick = { audience = item },
-                        label = { Text(audienceLabel(item)) },
-                        leadingIcon = {
-                            Icon(
-                                when (item) {
-                                    BlinkBoostAudienceScope.MY_UNIVERSITY -> Icons.Default.School
-                                    BlinkBoostAudienceScope.SELECTED_UNIVERSITY -> Icons.Default.Groups
-                                    BlinkBoostAudienceScope.ALL_CAMPUSES -> Icons.Default.Public
-                                },
-                                null,
-                                modifier = Modifier.size(17.dp),
-                            )
-                        },
-                    )
-                }
-            }
-            if (audience == BlinkBoostAudienceScope.SELECTED_UNIVERSITY) {
-                Box(modifier = Modifier.padding(top = 8.dp)) {
-                    OutlinedButton(onClick = { universityMenuOpen = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            selectedUniversity.ifBlank { "Choose university" },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = universityMenuOpen,
-                        onDismissRequest = { universityMenuOpen = false },
-                    ) {
-                        kNigerianUniversitiesList.forEach { university ->
-                            DropdownMenuItem(
-                                text = { Text(university) },
-                                onClick = {
-                                    selectedUniversity = university
-                                    universityMenuOpen = false
-                                },
-                            )
+                LinearProgressIndicator(
+                    progress = { (setupStep + 1) / 6f },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                AnimatedContent(
+                    targetState = setupStep,
+                    transitionSpec = {
+                        (slideInHorizontally(tween(280)) { if (targetState > initialState) it else -it } +
+                            fadeIn(tween(200))) togetherWith
+                            (slideOutHorizontally(tween(230)) { if (targetState > initialState) -it else it } +
+                                fadeOut(tween(150)))
+                    },
+                    label = "boost-campaign-step",
+                ) { stage ->
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        when (stage) {
+                            0 -> {
+                                SectionTitle("1. What do you want to boost?",
+                                    "Swipe through your posts, Reels and listings, then select a target.")
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(BlinkBoostTargetType.values().toList()) { type ->
+                                        FilterChip(
+                                            selected = targetType == type,
+                                            onClick = { targetType = type },
+                                            label = { Text(targetTypeLabel(type)) },
+                                            leadingIcon = { Icon(targetTypeIcon(type), null, modifier = Modifier.size(17.dp)) },
+                                        )
+                                    }
+                                }
+                                when (targetType) {
+                                    BlinkBoostTargetType.POST -> {
+                                        if (ownPosts.isEmpty()) {
+                                            if (contentLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                            else EmptyTargetCard("No active posts found. Refresh or create a post.", "Create a post", onCreateContent)
+                                        } else {
+                                            val listState = rememberLazyListState()
+                                            LazyRow(
+                                                state = listState,
+                                                flingBehavior = rememberSnapFlingBehavior(listState),
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                                contentPadding = PaddingValues(end = 16.dp),
+                                            ) {
+                                                items(ownPosts.take(80), key = { it.id }) { post ->
+                                                    SelectablePostTarget(
+                                                        post = post,
+                                                        selected = targetId == post.id,
+                                                        isDark = isDark,
+                                                        label = "Boost this post",
+                                                        onSelect = { targetId = post.id; setupStep = 1 },
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    BlinkBoostTargetType.REEL -> {
+                                        if (ownReels.isEmpty()) {
+                                            if (contentLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                            else EmptyTargetCard("No active Reels found. Refresh or create a Reel.", "Create content", onCreateContent)
+                                        } else {
+                                            val listState = rememberLazyListState()
+                                            LazyRow(
+                                                state = listState,
+                                                flingBehavior = rememberSnapFlingBehavior(listState),
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                                contentPadding = PaddingValues(end = 16.dp),
+                                            ) {
+                                                items(ownReels.take(80), key = { it.id }) { reel ->
+                                                    SelectablePostTarget(
+                                                        post = reel,
+                                                        selected = targetId == reel.id,
+                                                        isDark = isDark,
+                                                        label = "Boost this Reel",
+                                                        onSelect = { targetId = reel.id; setupStep = 1 },
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    BlinkBoostTargetType.PROFILE -> {
+                                        ProfileTargetCard(
+                                            profile = myProfile,
+                                            selected = targetId == myProfile.id && myProfile.id.isNotBlank(),
+                                            onSelect = { targetId = myProfile.id; setupStep = 1 },
+                                        )
+                                    }
+                                    BlinkBoostTargetType.LISTING -> {
+                                        if (ownListings.isEmpty()) {
+                                            EmptyTargetCard("You do not have an active Listing to boost.")
+                                        } else {
+                                            val listState = rememberLazyListState()
+                                            LazyRow(
+                                                state = listState,
+                                                flingBehavior = rememberSnapFlingBehavior(listState),
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                                contentPadding = PaddingValues(end = 16.dp),
+                                            ) {
+                                                items(ownListings.take(80), key = { it.id }) { listing ->
+                                                    SelectableListingTarget(
+                                                        listing = listing,
+                                                        selected = targetId == listing.id,
+                                                        isDark = isDark,
+                                                        onSelect = { targetId = listing.id; setupStep = 1 },
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                contentError?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodySmall) }
+                            }
+                            1 -> {
+                                SectionTitle("2. Audience", "Choose your campus or expand across BLINK.")
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(BlinkBoostAudienceScope.values().toList()) { choice ->
+                                        FilterChip(
+                                            selected = audience == choice,
+                                            onClick = { audience = choice },
+                                            label = { Text(audienceLabel(choice)) },
+                                            leadingIcon = {
+                                                Icon(when (choice) {
+                                                    BlinkBoostAudienceScope.MY_UNIVERSITY -> Icons.Default.School
+                                                    BlinkBoostAudienceScope.SELECTED_UNIVERSITY -> Icons.Default.Groups
+                                                    BlinkBoostAudienceScope.ALL_CAMPUSES -> Icons.Default.Public
+                                                }, null, modifier = Modifier.size(17.dp))
+                                            },
+                                        )
+                                    }
+                                }
+                                if (audience == BlinkBoostAudienceScope.SELECTED_UNIVERSITY) {
+                                    Box {
+                                        OutlinedButton(onClick = { universityMenuOpen = true },
+                                            modifier = Modifier.fillMaxWidth()) {
+                                            Text(selectedUniversity.ifBlank { "Choose university" },
+                                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                        DropdownMenu(expanded = universityMenuOpen,
+                                            onDismissRequest = { universityMenuOpen = false }) {
+                                            kNigerianUniversitiesList.forEach { university ->
+                                                DropdownMenuItem(text = { Text(university) }, onClick = {
+                                                    selectedUniversity = university
+                                                    universityMenuOpen = false
+                                                })
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            2 -> {
+                                SectionTitle("3. Goal", "Select what you want this campaign to achieve.")
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(objectivesFor(targetType)) { choice ->
+                                        FilterChip(
+                                            selected = objective == choice,
+                                            onClick = { objective = choice },
+                                            label = { Text(objectiveLabel(choice)) },
+                                        )
+                                    }
+                                }
+                            }
+                            3 -> {
+                                SectionTitle("4. Boost power", "Higher power can improve delivery speed and reach.")
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Slider(
+                                        value = boostPower.toFloat(),
+                                        onValueChange = {
+                                            boostPower = it.toInt().coerceIn(1, 100)
+                                            pendingRequestId = null
+                                        },
+                                        valueRange = 1f..100f,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Text("${boostPower}%", modifier = Modifier.padding(start = 12.dp),
+                                        fontWeight = FontWeight.Black,
+                                        style = MaterialTheme.typography.titleMedium)
+                                }
+                                Text("Quick max budget", style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(listOf(100L, 250L, 500L, 1_000L)) { budget ->
+                                        AssistChip(
+                                            onClick = { applyBudgetPreset(budget) },
+                                            enabled = targetReady && isOnline && !budgetWorking,
+                                            label = { Text(formatter.format(budget) + " coins") },
+                                        )
+                                    }
+                                }
+                            }
+                            4 -> {
+                                SectionTitle("5. Duration", "Longer campaigns include a built-in duration discount.")
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(listOf(1, 3, 7, 14, 30)) { days ->
+                                        FilterChip(
+                                            selected = durationDays == days,
+                                            onClick = { durationDays = days },
+                                            label = { Text(if (days == 1) "1 day" else "${days} days") },
+                                        )
+                                    }
+                                }
+                            }
+                            else -> {
+                                SectionTitle("6. Review", "Review your estimated reach, price and balance.")
+                                CampaignQuoteCard(quote = quote, quoteLoading = quoteLoading,
+                                    balance = balance, formatter = formatter)
+                                if (quote != null && balance != null && balance < quoteCost) {
+                                    OutlinedButton(onClick = onGetCoins, modifier = Modifier.fillMaxWidth()) {
+                                        Text("Get Blink Coins")
+                                    }
+                                }
+                                Button(
+                                    onClick = { confirmStart = true },
+                                    enabled = !working && !quoteLoading && isOnline && quote != null &&
+                                        quoteCost > 0 && (balance ?: -1L) >= quoteCost,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    if (working) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                        Spacer(Modifier.size(8.dp))
+                                    }
+                                    Text(when {
+                                        !isOnline -> "Connect to start Boost"
+                                        quote == null -> "Calculating quote…"
+                                        balance == null -> "Balance unavailable"
+                                        balance < quoteCost -> "Not enough Blink Coins"
+                                        else -> "Start Boost · " + formatter.format(quoteCost) + " coins"
+                                    })
+                                }
+                            }
                         }
                     }
                 }
-            }
-        }
-
-        item {
-            SectionTitle(
-                "3. Goal",
-                "Choose views, likes, comments, saves, any engagement, visits or followers. Results are estimates.",
-            )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(objectivesFor(targetType)) { item ->
-                    FilterChip(
-                        selected = objective == item,
-                        onClick = { objective = item },
-                        label = { Text(objectiveLabel(item)) },
-                    )
-                }
-            }
-        }
-
-        item {
-            SectionTitle("4. Boost power", "Higher power increases delivery speed and estimated reach.")
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Slider(
-                    value = boostPower.toFloat(),
-                    onValueChange = {
-                        boostPower = it.toInt().coerceIn(1, 100)
-                        pendingRequestId = null
-                    },
-                    valueRange = 1f..100f,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    "$boostPower%",
-                    modifier = Modifier.padding(start = 12.dp),
-                    fontWeight = FontWeight.Black,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
-            Text(
-                "Quick max budget",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(listOf(100L, 250L, 500L, 1_000L)) { budget ->
-                    AssistChip(
-                        onClick = { applyBudgetPreset(budget) },
-                        enabled = targetReady && isOnline && !budgetWorking,
-                        label = { Text(formatter.format(budget) + " coins") },
-                    )
-                }
-            }
-        }
-
-        item {
-            SectionTitle("5. Duration", "Longer campaigns receive the built-in duration discount.")
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(listOf(1, 3, 7, 14, 30)) { days ->
-                    FilterChip(
-                        selected = durationDays == days,
-                        onClick = { durationDays = days },
-                        label = { Text(if (days == 1) "1 day" else days.toString() + " days") },
-                    )
-                }
-            }
-        }
-
-        item {
-            CampaignQuoteCard(
-                quote = quote,
-                quoteLoading = quoteLoading,
-                balance = balance,
-                formatter = formatter,
-            )
-        }
-
-        item {
-            Button(
-                onClick = { confirmStart = true },
-                enabled = !working && !quoteLoading && isOnline && quote != null && quoteCost > 0 && (balance ?: -1L) >= quoteCost,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                if (working) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Spacer(Modifier.size(8.dp))
-                }
-                Text(
-                    when {
-                        !isOnline -> "Connect to start Boost"
-                        quote == null -> "Choose a boost target"
-                        balance == null -> "Balance unavailable"
-                        balance < quoteCost -> "Not enough Blink Coins"
-                        else -> "Start Boost • " + formatter.format(quoteCost) + " coins"
-                    },
-                )
-            }
-        }
-
-        if (quote != null && balance != null && balance < quoteCost) {
-            item {
-                OutlinedButton(
-                    onClick = onGetCoins,
+                Row(
                     modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Get Blink Coins")
+                    if (setupStep > 0) {
+                        OutlinedButton(onClick = { setupStep-- }, modifier = Modifier.weight(1f)) {
+                            Text("Back")
+                        }
+                    }
+                    if (setupStep < 5) {
+                        Button(
+                            onClick = { setupStep++ },
+                            enabled = (setupStep != 0 || targetId.isNotBlank()) &&
+                                (setupStep != 1 || audience != BlinkBoostAudienceScope.SELECTED_UNIVERSITY ||
+                                    selectedUniversity.isNotBlank()),
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Continue →") }
+                    }
                 }
             }
         }
@@ -1253,31 +1331,50 @@ private fun SelectablePostTarget(
     label: String,
     onSelect: () -> Unit,
 ) {
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1f else .96f,
+        animationSpec = tween(220),
+        label = "boost-preview-selection",
+    )
     Surface(
+        modifier = Modifier.width(278.dp).graphicsLayer(scaleX = scale, scaleY = scale),
         shape = RoundedCornerShape(18.dp),
         border = BorderStroke(
             if (selected) 2.dp else 1.dp,
             if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
         ),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .3f),
     ) {
         Column {
-            PostCard(
-                post = post,
-                isDark = isDark,
-                onLike = {},
-                onComment = {},
-                onBookmark = {},
-                onRepost = {},
-                onShare = {},
-                onOptionsClick = {},
-                onProfileClick = {},
-                trackExposure = false,
-            )
-            Button(
-                onClick = onSelect,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            ) {
-                Text(if (selected) "Selected" else label)
+            if (post.images.isNotEmpty()) {
+                AsyncImage(
+                    model = post.images.first(),
+                    contentDescription = "Post preview",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(125.dp),
+                )
+            } else if (post.isReel) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(116.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Default.Movie, contentDescription = "Reel",
+                        modifier = Modifier.size(38.dp),
+                        tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(post.text.ifBlank { if (post.isReel) "Your Reel" else "Your post" },
+                    maxLines = 3, overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold)
+                Text("${post.viewsCount} views",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick = onSelect, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (selected) "✓ Selected" else label)
+                }
             }
         }
     }
@@ -1290,17 +1387,35 @@ private fun SelectableListingTarget(
     isDark: Boolean,
     onSelect: () -> Unit,
 ) {
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1f else .96f,
+        animationSpec = tween(220),
+        label = "boost-listing-selection",
+    )
     Surface(
+        modifier = Modifier.width(278.dp).graphicsLayer(scaleX = scale, scaleY = scale),
         shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(
-            if (selected) 2.dp else 1.dp,
-            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-        ),
+        border = BorderStroke(if (selected) 2.dp else 1.dp,
+            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .3f),
     ) {
-        Column(Modifier.padding(8.dp)) {
-            ProductCard(item = listing, onClick = onSelect, isDark = isDark)
-            Button(onClick = onSelect, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                Text(if (selected) "Selected" else "Boost this Listing")
+        Column {
+            if (listing.images.isNotEmpty()) {
+                AsyncImage(
+                    model = listing.images.first(),
+                    contentDescription = "Listing preview",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(125.dp),
+                )
+            }
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(listing.title, maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                Text("₦" + NumberFormat.getIntegerInstance(Locale.US).format(listing.price),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick = onSelect, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (selected) "✓ Selected" else "Boost this Listing")
+                }
             }
         }
     }
