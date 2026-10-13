@@ -160,7 +160,8 @@ fun ConnectSection(
         current?.department,
         followingIds,
         current?.interests,
-        dismissedIds
+        dismissedIds,
+        isLiveDataAvailable
     ) {
         val clean = query.trim()
         val myCampus = current?.university.orEmpty()
@@ -380,7 +381,7 @@ fun ConnectSection(
                                 if (onlinePreview.isNotEmpty()) {
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                     Text(
-                                        "Actually online",
+                                        if (isLiveDataAvailable) "Actually online" else "Previously online",
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -467,7 +468,7 @@ fun ConnectSection(
                                     color = BlinkOnlineGreen.copy(alpha = .13f)
                                 ) {
                                     Text(
-                                        "Active now · ${if (reduceMotion) activeNowCount else displayedOnlineCount}",
+                                        "${if (isLiveDataAvailable) "Active now" else "Presence unavailable"} · ${if (isLiveDataAvailable) (if (reduceMotion) activeNowCount else displayedOnlineCount) else "—"}",
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                         color = BlinkOnlineGreen,
                                         fontSize = 10.5.sp,
@@ -515,6 +516,15 @@ fun ConnectSection(
                                         onClick = { sort = option },
                                         label = { Text(option.label) }
                                     )
+                                }
+                            }
+
+                            if (dismissedIds.isNotEmpty()) {
+                                TextButton(
+                                    onClick = { dismissedIds = emptyList() },
+                                    modifier = Modifier.align(Alignment.End)
+                                ) {
+                                    Text("Restore hidden suggestions (${dismissedIds.size})")
                                 }
                             }
 
