@@ -316,7 +316,7 @@ fun PremiumMessagesScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .graphicsLayer { alpha = .74f }
+                                .graphicsLayer { alpha = if (activeConversation == null) 1f else .74f }
                         ) {
                             PremiumMessagesHome(
                                 conversations = conversations,
