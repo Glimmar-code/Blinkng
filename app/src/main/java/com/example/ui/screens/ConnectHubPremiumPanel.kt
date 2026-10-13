@@ -190,18 +190,18 @@ fun ConnectHubPremiumPanel(
     modifier: Modifier = Modifier,
     discoveryContent: @Composable () -> Unit = {}
 ) {
-    var match by remember { mutableStateOf<Pair<UserProfile, Int>?>(null) }
-    var form by rememberSaveable { mutableStateOf(HubForm.NONE) }
+    var match by remember(current?.id) { mutableStateOf<Pair<UserProfile, Int>?>(null) }
+    var form by rememberSaveable(current?.id) { mutableStateOf(HubForm.NONE) }
     var hubQuery by rememberPersistentTextState(key = "com/example/ui/screens/ConnectHubPremiumPanel.kt:hubQuery:1")
     var isMatching by remember { mutableStateOf(false) }
-    var showMatchSpinDialog by rememberSaveable { mutableStateOf(false) }
-    var matchRemainingCoins by remember { mutableStateOf<Long?>(null) }
-    var matchReasons by remember { mutableStateOf<List<String>>(emptyList()) }
-    var matchError by remember { mutableStateOf<String?>(null) }
-    var savedMatchPreferences by remember { mutableStateOf<MatchSpinPreferences?>(null) }
-    var recentMatches by remember { mutableStateOf<List<Pair<UserProfile, Int>>>(emptyList()) }
-    var challengeTarget by remember { mutableStateOf<UserProfile?>(null) }
-    var showUnifiedInbox by rememberSaveable { mutableStateOf(false) }
+    var showMatchSpinDialog by rememberSaveable(current?.id) { mutableStateOf(false) }
+    var matchRemainingCoins by remember(current?.id) { mutableStateOf<Long?>(null) }
+    var matchReasons by remember(current?.id) { mutableStateOf<List<String>>(emptyList()) }
+    var matchError by remember(current?.id) { mutableStateOf<String?>(null) }
+    var savedMatchPreferences by remember(current?.id) { mutableStateOf<MatchSpinPreferences?>(null) }
+    var recentMatches by remember(current?.id) { mutableStateOf<List<Pair<UserProfile, Int>>>(emptyList()) }
+    var challengeTarget by remember(current?.id) { mutableStateOf<UserProfile?>(null) }
+    var showUnifiedInbox by rememberSaveable(current?.id) { mutableStateOf(false) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     val matchRepository = remember { ConnectHubRepository() }
