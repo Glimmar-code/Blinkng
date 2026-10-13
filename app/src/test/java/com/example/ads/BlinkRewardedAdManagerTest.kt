@@ -21,4 +21,15 @@ class BlinkRewardedAdManagerTest {
         val message = BlinkRewardedAdManager.loadFailureMessage(999)
         assertTrue(message.contains("could not load", ignoreCase = true))
     }
+    @Test
+    fun hungSdkRequestsHaveFiniteRetryTimeout() {
+        assertTrue(BlinkRewardedAdManager.LOAD_TIMEOUT_MS in 5_000L..30_000L)
+        assertTrue(BlinkRewardedAdManager.LOAD_TIMEOUT_MESSAGE.contains("retry", ignoreCase = true))
+    }
+
+    @Test
+    fun staleCachedAdsAreNeverReusedAfterOneHour() {
+        assertTrue(BlinkRewardedAdManager.MAX_AD_AGE_MS < 60 * 60_000L)
+    }
+
 }

@@ -124,7 +124,17 @@ class MainActivity : ComponentActivity() {
 
     private fun showRewardedAdForCoins() {
         if (!BlinkAdsRuntime.canRequestAds.value) {
-            viewModel.rewardedAdUnavailable("Ads are unavailable until your privacy choices are complete.")
+            // UMP may still be refreshing after a cold start or account change.
+            // Re-check consent on a deliberate tap; never request an ad before UMP permits it.
+            adConsentManager.gatherConsent {
+                if (BlinkAdsRuntime.canRequestAds.value && !isFinishing && !isDestroyed) {
+                    showRewardedAdForCoins()
+                } else {
+                    viewModel.rewardedAdUnavailable(
+                        "Ads are unavailable until privacy choices are complete. Check Ad privacy in BLINK settings."
+                    )
+                }
+            }
             return
         }
         if (rewardedAdShowPending) {
@@ -374,6 +384,7 @@ class MainActivity : ComponentActivity() {
         if (viewModel.uiState.value.destination == AppDestination.MAIN) {
             viewModel.refreshIfStale()
             viewModel.verifyPendingPaystackCheckout()
+            viewModel.retryPendingRewardedAdClaim()
             if (BlinkAdsRuntime.canRequestAds.value && !rewardedAdManager.isReady) {
                 rewardedAdManager.load()
             }
@@ -843,6 +854,8 @@ fun MainAppContent(
                     PremiumFeedScreen(
                         posts = uiState.posts,
                         followingPosts = uiState.followingPosts,
+                        hiddenFeedPostIds = uiState.hiddenFeedPostIds,
+                        mutedFeedAuthors = uiState.mutedUsers,
                         reels = uiState.reels,
                         stories = uiState.stories,
                         profiles = uiState.profiles,
