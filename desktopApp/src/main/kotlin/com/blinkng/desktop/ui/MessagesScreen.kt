@@ -1,5 +1,13 @@
 package com.blinkng.desktop.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -89,7 +97,20 @@ fun MessagesScreen(state: DesktopAppState) {
     LaunchedEffect(Unit) { loadConversations() }
     LaunchedEffect(selected?.id) { loadMessages(selected) }
 
-    val active = selected
+    AnimatedContent(
+        targetState = selected,
+        transitionSpec = {
+            (slideInHorizontally(
+                initialOffsetX = { -it },
+                animationSpec = tween(420, easing = FastOutSlowInEasing)
+            ) + fadeIn(tween(260))) togetherWith
+                (slideOutHorizontally(
+                    targetOffsetX = { -it },
+                    animationSpec = tween(390, easing = FastOutSlowInEasing)
+                ) + fadeOut(tween(220)))
+        },
+        label = "desktop_chat_slide"
+    ) { active ->
     if (active == null) {
         Column(modifier = Modifier.fillMaxSize()) {
             Row(
@@ -165,7 +186,7 @@ fun MessagesScreen(state: DesktopAppState) {
                 }
             }
         }
-        return
+        return@AnimatedContent
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -332,5 +353,6 @@ fun MessagesScreen(state: DesktopAppState) {
                 Text("Send")
             }
         }
+    }
     }
 }
