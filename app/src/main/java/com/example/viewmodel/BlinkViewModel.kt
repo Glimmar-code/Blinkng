@@ -73,6 +73,12 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** PostgREST can relay the raw database code or the friendly error mapped by BlinkEconomyService. */
+internal fun isPendingRewardClaimError(message: String): Boolean =
+    message.contains("REWARDED_AD_VERIFICATION_PENDING", ignoreCase = true) ||
+    message.contains("REWARDED_AD_TOO_SOON", ignoreCase = true) ||
+    message.contains("ad reward is not ready yet", ignoreCase = true)
+
 enum class AppDestination { SPLASH, ONBOARDING, SIGN_IN, SIGN_UP, RESET_PASSWORD, PROFILE_SETUP, MAIN }
 
 enum class MainTab(val index: Int, val title: String) { HOME(0, "Home"), SEARCH(1, "Search"), LEADERBOARD(2, "Leaderboard"), MARKET(3, "Market"), MESSAGES(4, "Messages") }
@@ -128,6 +134,9 @@ data class BlinkUiState(
     val isCommentsLoading: Boolean = false,
     val isPostingComment: Boolean = false,
     val mutedUsers: Set<String> = emptySet(),
+    // Explicit local/realtime removals must also hide frozen Compose Feed rows.
+    // This is session-only and cleared by logout to prevent account crossover.
+    val hiddenFeedPostIds: Set<String> = emptySet(),
     val feedSubTab: Int = 0,
     val routedReelId: String? = null,
     val isOnline: Boolean = true,
@@ -226,6 +235,10 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private var marketSort: String = "newest"
     private val prefs = application.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val authPrefs = application.getSharedPreferences(AUTH_PREFS, Context.MODE_PRIVATE)
+    // A Google SSV callback can arrive after the ad closes or the app is backgrounded.
+    // Store only the claim ID, scoped to the signed-in user, never a synthetic reward.
+    private val rewardedAdPrefs = application.getSharedPreferences("blink_rewarded_claim_pending", Context.MODE_PRIVATE)
+    private var rewardedCompletionJob: Job? = null
     private val supabaseService = SupabaseService()
     val authRepository = AuthRepository(application, supabaseService)
     val profileRepository = ProfileRepository(supabaseService)
@@ -1256,36 +1269,83 @@ private suspend fun restoreSupabaseSession() {
         )
     }
 
-    fun completeRewardedAdClaim(claimId: String) {
-        if (claimId.isBlank()) return
+    fun retryPendingRewardedAdClaim() {
+        val userId = _uiState.value.myProfile.id.takeIf { it.isNotBlank() } ?: return
+        if (rewardedCompletionJob?.isActive == true || !_uiState.value.isOnline) return
+        val claimId = rewardedAdPrefs.getString("claim:$userId", null)
+            ?.takeIf { it.isNotBlank() } ?: return
+        val timestamp = rewardedAdPrefs.getLong("started:$userId", 0L)
+        val age = System.currentTimeMillis() - timestamp
+        if (timestamp == 0L || age !in 0..(7 * 24 * 60 * 60_000L)) {
+            clearPendingRewardedAdClaim(userId)
+            return
+        }
+        completeRewardedAdClaim(claimId)
+    }
 
-        viewModelScope.launch {
-            val result = blinkEconomyService.completeRewardedAdClaim(claimId)
-            result.fold(
-                onSuccess = { payload ->
-                    val latest = _uiState.value
-                    val reward = payload.optInt("reward_amount", latest.economyPolicy.rewardedAdBaseCoins)
-                    val bonus = payload.optInt("milestone_bonus", 0)
-                    val adsToday = payload.optInt("ads_today", latest.rewardedAdsToday + 1)
-                    val balance = payload.optLong("balance", latest.blinkCoinBalance + reward)
-                    BlinkWalletStore.publish(balance)
-                    _uiState.value = latest.copy(
-                        blinkCoinBalance = balance,
-                        rewardedAdsToday = adsToday.coerceIn(0, latest.economyPolicy.rewardedAdDailyLimit),
-                        rewardedCoinsToday = latest.rewardedCoinsToday + reward
-                    )
-                    persistExtendedCache()
-                    showToast(
-                        if (bonus > 0) "+$reward Blink Coins • +$bonus milestone bonus"
-                        else "+$reward Blink Coins"
-                    )
-                },
-                onFailure = { error ->
-                    Log.w(TAG, "Rewarded ad coin credit failed", error)
-                    showToast(error.message ?: "Your ad finished, but the coin reward could not be credited. Please try again.")
-                    refreshProfileRewards()
-                }
-            )
+    private fun clearPendingRewardedAdClaim(userId: String) {
+        rewardedAdPrefs.edit()
+            .remove("claim:$userId")
+            .remove("started:$userId")
+            .apply()
+    }
+
+    fun completeRewardedAdClaim(claimId: String) {
+        if (claimId.isBlank() || rewardedCompletionJob?.isActive == true) return
+        val userId = _uiState.value.myProfile.id.takeIf { it.isNotBlank() } ?: return
+        if (rewardedAdPrefs.getString("claim:$userId", null) != claimId) {
+            rewardedAdPrefs.edit()
+                .putString("claim:$userId", claimId)
+                .putLong("started:$userId", System.currentTimeMillis())
+                .apply()
+        }
+        rewardedCompletionJob = viewModelScope.launch {
+            // Google server-side verification often arrives shortly after the client reward
+            // callback. Recheck without minting any coins locally; the RPC stays authoritative.
+            repeat(8) { attempt ->
+                val result = blinkEconomyService.completeRewardedAdClaim(claimId)
+                result.fold(
+                    onSuccess = { payload ->
+                        clearPendingRewardedAdClaim(userId)
+                        val latest = _uiState.value
+                        if (latest.myProfile.id != userId) return@launch
+                        val reward = payload.optInt("reward_amount", latest.economyPolicy.rewardedAdBaseCoins)
+                        val bonus = payload.optInt("milestone_bonus", 0)
+                        val adsToday = payload.optInt("ads_today", latest.rewardedAdsToday + 1)
+                        val balance = payload.optLong("balance", latest.blinkCoinBalance + reward)
+                        BlinkWalletStore.publish(balance)
+                        _uiState.value = latest.copy(
+                            blinkCoinBalance = balance,
+                            rewardedAdsToday = adsToday.coerceIn(0, latest.economyPolicy.rewardedAdDailyLimit),
+                            rewardedCoinsToday = latest.rewardedCoinsToday + reward
+                        )
+                        persistExtendedCache()
+                        showToast(
+                            if (bonus > 0) "+$reward Blink Coins • +$bonus milestone bonus"
+                            else "+$reward Blink Coins"
+                        )
+                        return@launch
+                    },
+                    onFailure = { error ->
+                        val detail = error.message.orEmpty()
+                        if (isPendingRewardClaimError(detail)) {
+                            if (attempt < 7) {
+                                delay(2_500L)
+                            } else {
+                                showToast("Ad completed. Your coin reward is awaiting Google verification; BLINK will check again.")
+                            }
+                        } else {
+                            Log.w(TAG, "Rewarded ad coin credit failed", error)
+                            if (detail.contains("REWARDED_AD_CLAIM_EXPIRED", ignoreCase = true) ||
+                                detail.contains("REWARDED_AD_DAILY_LIMIT", ignoreCase = true)
+                            ) clearPendingRewardedAdClaim(userId)
+                            showToast(error.message ?: "Coin credit could not be confirmed. BLINK will check again.")
+                            refreshProfileRewards()
+                            return@launch
+                        }
+                    }
+                )
+            }
         }
     }
 
@@ -3470,6 +3530,7 @@ private suspend fun restoreSupabaseSession() {
             profilePostsByUserId = state.profilePostsByUserId.mapValues { it.value.filterNot { post -> post.id == postId } },
             myLikedPosts = state.myLikedPosts.filterNot { it.id == postId },
             mySavedPosts = state.mySavedPosts.filterNot { it.id == postId },
+            hiddenFeedPostIds = state.hiddenFeedPostIds + postId,
             activePostOptionsPost = null
         )
         persistCurrentFeed()
@@ -3485,7 +3546,8 @@ private suspend fun restoreSupabaseSession() {
                     reels = reelsBefore,
                     profilePostsByUserId = state.profilePostsByUserId,
                     myLikedPosts = state.myLikedPosts,
-                    mySavedPosts = state.mySavedPosts
+                    mySavedPosts = state.mySavedPosts,
+                    hiddenFeedPostIds = _uiState.value.hiddenFeedPostIds - postId
                 )
                 persistCurrentFeed()
                 showToast("Delete failed. Only the owner can delete this content.")
@@ -3502,7 +3564,8 @@ private suspend fun restoreSupabaseSession() {
             posts = state.posts.filterNot { it.id == postId },
             followingPosts = state.followingPosts.filterNot { it.id == postId },
             reels = state.reels.filterNot { it.id == postId },
-            discoverPosts = state.discoverPosts.filterNot { it.id == postId }
+            discoverPosts = state.discoverPosts.filterNot { it.id == postId },
+            hiddenFeedPostIds = state.hiddenFeedPostIds + postId
         )
         persistCurrentFeed()
         showToast(
@@ -4786,7 +4849,8 @@ private suspend fun restoreSupabaseSession() {
                     _uiState.value = current.copy(
                         posts = current.posts.filterNot { it.id == event.postId },
                         followingPosts = current.followingPosts.filterNot { it.id == event.postId },
-                        reels = current.reels.filterNot { it.id == event.postId }
+                        reels = current.reels.filterNot { it.id == event.postId },
+                        hiddenFeedPostIds = current.hiddenFeedPostIds + event.postId
                     )
                     persistCurrentFeed()
                     return@launch

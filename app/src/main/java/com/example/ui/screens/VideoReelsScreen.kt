@@ -339,6 +339,15 @@ private fun ReelsContent(
     var unavailableSponsoredSlots by remember(resumeUserKey, selectedTab) {
         mutableStateOf(emptySet<Int>())
     }
+    var sponsoredRequestRevision by remember(resumeUserKey, selectedTab) { mutableIntStateOf(0) }
+    // Retry exhausted native ad inventory only after an intentional Reel refresh.
+    // Do not reinsert a failed black page while the user is scrolling.
+    LaunchedEffect(isRefreshing) {
+        if (isRefreshing) {
+            unavailableSponsoredSlots = emptySet()
+            sponsoredRequestRevision++
+        }
+    }
     LaunchedEffect(selectedTab) { onFollowingSelectionChanged(selectedTab == "Following") }
     var reelsMuted by rememberSaveable(resumeUserKey) {
         mutableStateOf(resumePrefs.getBoolean("reels_muted:$resumeUserKey", false))
@@ -608,6 +617,7 @@ private fun ReelsContent(
                         BlinkSponsoredNativeAd(
                             adUnitId = BuildConfig.ADMOB_REELS_NATIVE_AD_UNIT_ID,
                             placement = BlinkNativeAdPlacement.REEL,
+                            requestKey = sponsoredRequestRevision,
                             onUnavailable = {
                                 unavailableSponsoredSlots = unavailableSponsoredSlots + item.slot
                             },
