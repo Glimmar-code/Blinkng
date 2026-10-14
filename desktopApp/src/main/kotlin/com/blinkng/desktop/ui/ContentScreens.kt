@@ -1017,7 +1017,7 @@ fun GamesScreen(state: DesktopAppState) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("BLINK LIFE · TESTLAB", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "Playable local city playground: three jobs, a fictional wallet, movement and room decoration. " +
+                        "Interactive 3D city preview with a rotatable camera, three jobs, fictional cash and room decoration. " +
                             "No real-money transactions or BLINK Coin rewards.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
