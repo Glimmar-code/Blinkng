@@ -256,6 +256,11 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     // CHAT_CACHE_RECONCILIATION_V1: stale async snapshots must never write after newer ones.
     private val conversationCacheRevision = java.util.concurrent.atomic.AtomicLong(0L)
     private val messageOutboxMutex = Mutex()
+    // Prevent repeated taps from racing optimistic updates with old server responses.
+    // Locks are per post so interactions on unrelated posts remain responsive.
+    private val pendingLikePostIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val pendingBookmarkPostIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val pendingRepostPostIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val activeOutboxIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val pendingReplyTargets = java.util.concurrent.ConcurrentHashMap<String, String>()
     private var syncJob: Job? = null
@@ -3342,6 +3347,7 @@ private suspend fun restoreSupabaseSession() {
         val state = _uiState.value
         val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
+        if (!pendingLikePostIds.add(postId)) return
         val nextLiked = !target.isLiked
         val nextCount = (target.likes + if (nextLiked) 1 else -1).coerceAtLeast(0)
         fun update(items: List<FeedPost>, liked: Boolean, count: Int): List<FeedPost> =
@@ -3353,7 +3359,9 @@ private suspend fun restoreSupabaseSession() {
             reels = update(state.reels, nextLiked, nextCount),
             discoverPosts = update(state.discoverPosts, nextLiked, nextCount),
             profilePostsByUserId = state.profilePostsByUserId.mapValues { update(it.value, nextLiked, nextCount) },
-            myLikedPosts = update((state.myLikedPosts + target).distinctBy { it.id }, nextLiked, nextCount),
+            myLikedPosts = syncInteractionCollection(
+                state.myLikedPosts, target, nextLiked
+            ) { it.copy(isLiked = nextLiked, likes = nextCount) },
             mySavedPosts = update(state.mySavedPosts, nextLiked, nextCount)
         )
         persistCurrentFeed()
@@ -3380,18 +3388,23 @@ private suspend fun restoreSupabaseSession() {
                     reels = update(latest.reels, target.isLiked, target.likes),
                     discoverPosts = update(latest.discoverPosts, target.isLiked, target.likes),
                     profilePostsByUserId = latest.profilePostsByUserId.mapValues { update(it.value, target.isLiked, target.likes) },
-                    myLikedPosts = update(latest.myLikedPosts, target.isLiked, target.likes),
+                    myLikedPosts = syncInteractionCollection(
+                        latest.myLikedPosts, target, target.isLiked
+                    ) { it.copy(isLiked = target.isLiked, likes = target.likes) },
                     mySavedPosts = update(latest.mySavedPosts, target.isLiked, target.likes)
                 )
                 persistCurrentFeed()
                 showToast("Failed to update like.")
             }
+        }.invokeOnCompletion {
+            pendingLikePostIds.remove(postId)
         }
     }
     fun toggleRepost(postId: String) {
         val state = _uiState.value
         val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
+        if (!pendingRepostPostIds.add(postId)) return
         val optimisticReposted = !target.isRepostedByMe
         val optimisticCount = (target.repostsCount + if (optimisticReposted) 1 else -1).coerceAtLeast(0)
 
@@ -3448,12 +3461,15 @@ private suspend fun restoreSupabaseSession() {
                 mySavedPosts = update(latest.mySavedPosts, serverReposted, serverCount)
             )
             persistCurrentFeed()
+        }.invokeOnCompletion {
+            pendingRepostPostIds.remove(postId)
         }
     }
     fun toggleBookmark(postId: String) {
         val state = _uiState.value
         val target = (state.posts + state.followingPosts + state.reels + state.discoverPosts + profileSurfacePosts(state))
             .firstOrNull { it.id == postId } ?: return
+        if (!pendingBookmarkPostIds.add(postId)) return
         val next = !target.isBookmarked
         fun update(items: List<FeedPost>, value: Boolean): List<FeedPost> =
             items.map { if (it.id == postId) it.copy(isBookmarked = value) else it }
@@ -3465,7 +3481,9 @@ private suspend fun restoreSupabaseSession() {
             discoverPosts = update(state.discoverPosts, next),
             profilePostsByUserId = state.profilePostsByUserId.mapValues { update(it.value, next) },
             myLikedPosts = update(state.myLikedPosts, next),
-            mySavedPosts = update((state.mySavedPosts + target).distinctBy { it.id }, next)
+            mySavedPosts = syncInteractionCollection(
+                state.mySavedPosts, target, next
+            ) { it.copy(isBookmarked = next) }
         )
         persistCurrentFeed()
 
@@ -3479,11 +3497,15 @@ private suspend fun restoreSupabaseSession() {
                     discoverPosts = update(latest.discoverPosts, target.isBookmarked),
                     profilePostsByUserId = latest.profilePostsByUserId.mapValues { update(it.value, target.isBookmarked) },
                     myLikedPosts = update(latest.myLikedPosts, target.isBookmarked),
-                    mySavedPosts = update(latest.mySavedPosts, target.isBookmarked)
+                    mySavedPosts = syncInteractionCollection(
+                        latest.mySavedPosts, target, target.isBookmarked
+                    ) { it.copy(isBookmarked = target.isBookmarked) }
                 )
                 persistCurrentFeed()
                 showToast("Failed to update bookmark.")
             }
+        }.invokeOnCompletion {
+            pendingBookmarkPostIds.remove(postId)
         }
     }
     fun sharePost(postId: String) {

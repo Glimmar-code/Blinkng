@@ -21,6 +21,6 @@ internal object PostImageAspectRatioCache {
     @Synchronized
     fun put(url: String, ratio: Float) {
         if (url.isBlank() || !ratio.isFinite()) return
-        ratios[url] = ratio.coerceIn(0.72f, 1.91f)
+        ratios[url] = ratio.coerceIn(0.50f, 1.91f)
     }
 }

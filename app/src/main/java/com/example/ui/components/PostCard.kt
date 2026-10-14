@@ -149,6 +149,7 @@ fun PostCard(
     onDelete: () -> Unit = {},
     authorName: String = post.author,
     authorUsername: String = post.authorUsername.ifBlank { post.author },
+    authorAvatar: String = post.authorAvatar,
     authorVerificationBadge: VerificationBadge = when {
         post.verificationBadge != VerificationBadge.NONE -> post.verificationBadge
         post.isVerified -> VerificationBadge.BLUE
@@ -157,6 +158,7 @@ fun PostCard(
     hasActiveStory: Boolean = false,
     authorProfileId: String = "",
     isFollowingAuthor: Boolean = false,
+    isFollowMutationPending: Boolean = false,
     onFollowAuthor: (String) -> Unit = {},
     onUnfollowAuthor: (String) -> Unit = {},
     onMessageAuthor: () -> Unit = {},
@@ -308,7 +310,7 @@ fun PostCard(
                             .clickable(role = Role.Button) { onProfileClick(profileTarget) }
                     ) {
                         AsyncImage(
-                            model = post.authorAvatar,
+                            model = authorAvatar,
                             error = painterResource(R.drawable.ic_default_profile),
                             fallback = painterResource(R.drawable.ic_default_profile),
                             contentDescription = "$resolvedAuthorName profile picture",
@@ -344,7 +346,7 @@ fun PostCard(
                             color = primaryText,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
                                 .weight(1f, fill = false)
@@ -372,18 +374,11 @@ fun PostCard(
                             knownVip = if (post.authorIsVip) true else null,
                             modifier = Modifier.padding(start = 4.dp)
                         )
-                        if (post.timeAgo.isNotBlank()) {
-                            Spacer(Modifier.weight(1f))
-                            Text(
-                                text = post.timeAgo,
-                                color = secondaryText,
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         if (resolvedAuthorUsername.isNotBlank()) {
                             Text(
                                 text = "@$resolvedAuthorUsername",
@@ -391,7 +386,18 @@ fun PostCard(
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.clickable { onProfileClick(profileTarget) }
+                                modifier = Modifier
+                                    .weight(1f, fill = false)
+                                    .clickable { onProfileClick(profileTarget) }
+                            )
+                        }
+                        if (post.timeAgo.isNotBlank()) {
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                text = post.timeAgo,
+                                color = secondaryText,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1
                             )
                         }
                         // Avoid showing redundant "Everyone", "Post" and "Live" labels.
@@ -416,6 +422,29 @@ fun PostCard(
                         }
                     }
 
+                    // Compact, always-visible follow control on X-style Home cards.
+                    // The old gate hid following entirely on the main feed.
+                    if (xFeedStyle && !isAuthor && authorProfileId.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            border = BorderStroke(1.dp, socialBlue.copy(alpha = 0.6f)),
+                            color = socialBlue.copy(alpha = 0.12f),
+                            modifier = Modifier
+                                .padding(top = 5.dp)
+                                .clickable(enabled = !isFollowMutationPending) {
+                                    if (isFollowingAuthor) onUnfollowAuthor(authorProfileId)
+                                    else onFollowAuthor(authorProfileId)
+                                }
+                        ) {
+                            Text(
+                                text = if (isFollowMutationPending) "Updating…" else if (isFollowingAuthor) "Following" else "+ Follow",
+                                color = socialBlue,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
                     if (!xFeedStyle && !isAuthor && authorProfileId.isNotBlank()) {
                         Spacer(Modifier.size(6.dp))
                         ProfileFollowInteractButton(
@@ -559,7 +588,7 @@ fun PostCard(
                         NaturalAspectPostImage(
                             imageUrl = displayImages.first(),
                             contentDescription = post.altText?.takeIf(String::isNotBlank) ?: "Post image",
-                            cropToFrame = xFeedStyle,
+                            cropToFrame = false,
                             deferAspectChanges = isFeedScrolling,
                             onClick = {
                                 imagePage = 0
@@ -569,6 +598,7 @@ fun PostCard(
                     } else {
                         val mediaState = rememberLazyListState()
                         val mediaFlingBehavior = rememberSnapFlingBehavior(mediaState)
+                        Column {
                         LazyRow(
                             state = mediaState,
                             modifier = Modifier.fillMaxWidth(),
@@ -582,7 +612,7 @@ fun PostCard(
                                     imageUrl = image,
                                     contentDescription = "Post image ${index + 1} of ${displayImages.size}",
                                     modifier = Modifier.fillParentMaxWidth(),
-                                    cropToFrame = xFeedStyle,
+                                    cropToFrame = false,
                                     deferAspectChanges = isFeedScrolling,
                                     onClick = {
                                         imagePage = index
@@ -591,19 +621,24 @@ fun PostCard(
                                 )
                             }
                         }
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(8.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            color = Color.Black.copy(alpha = 0.62f)
+                        // Place the counter *below* the photograph instead of over
+                        // its corner, so no part of the uploaded image is covered.
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp, end = 8.dp, bottom = 2.dp),
+                            horizontalArrangement = Arrangement.End
                         ) {
-                            Text(
-                                text = "${mediaState.firstVisibleItemIndex + 1}/${displayImages.size}",
-                                color = Color.White,
-                                style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant
+                            ) {
+                                Text(
+                                    text = "${mediaState.firstVisibleItemIndex + 1}/${displayImages.size}",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
                         }
                     }
                 }
@@ -989,16 +1024,22 @@ private fun NaturalAspectPostImage(
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
-    // Reuse measured ratios across recycled feed cards. While the finger is
-    // moving, defer first-load ratio changes so the viewport never shifts.
-    // Use a stable frame throughout this card's composition lifetime.
-    // Image completion updates the bounded cache for future card compositions,
-    // never the currently visible row height (which would jump the viewport).
-    // Fixed 4:5 previews on the X-style feed cannot jump in height when
-    // their decoded dimensions change. Fullscreen still displays the original.
-    val imageAspectRatio = remember(imageUrl, cropToFrame) {
-        if (cropToFrame) 4f / 5f
-        else PostImageAspectRatioCache.get(imageUrl) ?: 4f / 5f
+    // Show the original image ratio without changing card height mid-scroll.
+    // Keep a small ratio-only cache; never keep decoded bitmaps in Compose state.
+    var imageAspectRatio by remember(imageUrl, cropToFrame) {
+        mutableFloatStateOf(
+            if (cropToFrame) 4f / 5f
+            else PostImageAspectRatioCache.get(imageUrl) ?: 4f / 5f
+        )
+    }
+    var pendingImageAspectRatio by remember(imageUrl) { mutableStateOf<Float?>(null) }
+    LaunchedEffect(deferAspectChanges, cropToFrame, pendingImageAspectRatio) {
+        if (!deferAspectChanges && !cropToFrame) {
+            pendingImageAspectRatio?.let { ratio ->
+                imageAspectRatio = ratio
+                pendingImageAspectRatio = null
+            }
+        }
     }
     var isLoading by remember(imageUrl) { mutableStateOf(true) }
     var loadFailed by remember(imageUrl) { mutableStateOf(false) }
@@ -1014,7 +1055,7 @@ private fun NaturalAspectPostImage(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(imageAspectRatio.coerceIn(0.72f, 1.91f))
+            .aspectRatio(imageAspectRatio.coerceIn(0.50f, 1.91f))
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f))
             .clickable(enabled = !loadFailed, onClick = onClick),
@@ -1035,8 +1076,11 @@ private fun NaturalAspectPostImage(
                 val width = drawable.intrinsicWidth
                 val height = drawable.intrinsicHeight
                 if (width > 0 && height > 0) {
-                    val ratio = (width.toFloat() / height.toFloat()).coerceIn(0.72f, 1.91f)
+                    val ratio = (width.toFloat() / height.toFloat()).coerceIn(0.50f, 1.91f)
                     PostImageAspectRatioCache.put(imageUrl, ratio)
+                    if (!cropToFrame && ratio != imageAspectRatio) {
+                        pendingImageAspectRatio = ratio
+                    }
                 }
             },
             onError = {

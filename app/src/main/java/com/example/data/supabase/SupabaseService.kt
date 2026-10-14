@@ -3999,6 +3999,8 @@ suspend fun uploadPostMedia(
             id = obj.cleanString("id"),
             author = author,
             authorUsername = authorUsername.ifBlank { obj.cleanString("author").removePrefix("@").trim() },
+            authorProfileId = obj.cleanString("user_id").ifBlank { obj.cleanString("author_id") }
+                .ifBlank { obj.cleanString("creator_id") },
             authorAvatar = obj.cleanString("author_avatar").ifBlank { obj.cleanString("avatar_url") },
             facultyTag = obj.cleanString("faculty_tag").ifBlank { obj.cleanString("faculty") },
             isVerified = isVerified,

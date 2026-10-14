@@ -10,6 +10,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.VerticalPager
@@ -40,6 +41,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -92,7 +96,7 @@ import kotlinx.coroutines.launch
  *  - Animated skeleton loading state, cross-faded against the empty and content states
  *  - Subtle scale + fade page transitions while swiping between reels
  *  - Double-tap-to-like with a floating multi-heart burst animation
- *  - Tap-to-mute with a fading volume hint overlay
+ *  - Tap-to-pause, hold-to-fast-forward, separate sound control
  *  - Live buffering spinner and a bottom video progress bar
  *  - Animated action counts, an expandable caption, and an animated tab indicator
  *
@@ -877,19 +881,21 @@ private fun ReelPage(
     val reelUsername = reel.authorUsername.trim().removePrefix("@").ifBlank {
         reel.author.trim().removePrefix("@")
     }
-    val authorProfile = remember(reel.id, profiles) {
-        profiles.firstOrNull { it.username.trim().removePrefix("@").equals(reelUsername, true) }
-            ?: profiles.firstOrNull { it.fullName.trim().equals(reel.author.trim(), true) }
+    val profilesById = remember(profiles) {
+        profiles.filter { it.id.isNotBlank() }.associateBy { it.id.trim() }
     }
-    val authorId = authorProfile?.id.orEmpty()
+    val profilesByHandle = remember(profiles) {
+        profiles.filter { it.username.isNotBlank() }.associateBy {
+            it.username.trim().removePrefix("@").lowercase()
+        }
+    }
+    val authorProfile = remember(reel.id, profilesById, profilesByHandle) {
+        findFeedAuthorProfile(reel, profilesById, profilesByHandle)
+    }
+    val authorId = resolvedFeedAuthorId(reel, authorProfile)
     val authorName = authorProfile?.fullName?.takeIf { it.isNotBlank() } ?: reel.author
-    val authorAvatar = authorProfile?.avatarUrl?.takeIf { it.isNotBlank() } ?: reel.authorAvatar
-    val authorVerificationBadge = when {
-        authorProfile?.verificationBadge != null && authorProfile.verificationBadge != VerificationBadge.NONE -> authorProfile.verificationBadge
-        reel.verificationBadge != VerificationBadge.NONE -> reel.verificationBadge
-        reel.isVerified -> VerificationBadge.BLUE
-        else -> VerificationBadge.NONE
-    }
+    val authorAvatar = resolvedFeedAuthorAvatar(reel, authorProfile)
+    val authorVerificationBadge = resolvedFeedAuthorBadge(reel, authorProfile)
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val interactionRepository = remember { UserInteractionRepository() }
     val reelRecommendationService = remember { ReelRecommendationService() }
@@ -900,6 +906,7 @@ private fun ReelPage(
 
     var burstTrigger by remember(reel.id) { mutableStateOf(0) }
     var isPausedByUser by remember(reel.id) { mutableStateOf(false) }
+    var isFastForwarding by remember(reel.id) { mutableStateOf(false) }
     var showPlaybackHint by remember(reel.id) { mutableStateOf(false) }
     var showMuteHint by remember(reel.id) { mutableStateOf(false) }
     var isBuffering by remember(reel.id) { mutableStateOf(false) }
@@ -924,6 +931,7 @@ private fun ReelPage(
     LaunchedEffect(isActive) {
         if (!isActive) {
             isPausedByUser = false
+            isFastForwarding = false
             showPlaybackHint = false
         }
     }
@@ -951,6 +959,15 @@ private fun ReelPage(
             }
             .pointerInput(reel.id) {
                 detectTapGestures(
+                    onPress = {
+                        tryAwaitRelease()
+                        isFastForwarding = false
+                    },
+                    onLongPress = {
+                        if (isActive && !isPausedByUser && !isInteractionOverlayOpen) {
+                            isFastForwarding = true
+                        }
+                    },
                     onDoubleTap = {
                         if (!reel.isLiked) onLike(reel.id)
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -987,8 +1004,14 @@ private fun ReelPage(
         if (!url.isNullOrBlank() && (isActive || shouldPreload)) {
             ReelVideo(
                 url = url,
-                isActive = isActive && !isPausedByUser && !isInteractionOverlayOpen,
+                isActive = shouldPlayReel(
+                    selected = isActive,
+                    foreground = true,
+                    pausedByUser = isPausedByUser,
+                    overlayOpen = isInteractionOverlayOpen
+                ),
                 isMuted = isMuted,
+                fastForward = isFastForwarding,
                 initialPositionMs = initialPositionMs,
                 seekToFraction = seekToFraction,
                 onSeekConsumed = { seekToFraction = null },
@@ -1085,47 +1108,42 @@ private fun ReelPage(
             isPaused = isPausedByUser,
             modifier = Modifier.align(Alignment.Center)
         )
+        AnimatedVisibility(
+            visible = isFastForwarding && isActive,
+            enter = fadeIn(tween(120)),
+            exit = fadeOut(tween(120)),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            Surface(color = Color.Black.copy(alpha = .6f), shape = RoundedCornerShape(16.dp)) {
+                Text("2× Fast forward", color = Color.White, modifier = Modifier.padding(12.dp))
+            }
+        }
 
         Column(
             Modifier
                 .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
-                .padding(end = 10.dp, bottom = 34.dp)
+                // Main tab bar is 56dp plus the Android gesture inset.
+                // Keep all four actions out of the navigation tap region.
+                .padding(end = 10.dp, bottom = 92.dp)
                 .entranceEffect(delayMillis = 60),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            ReelAction(
-                icon = Icons.Default.Visibility,
-                text = formatNumber(displayedViewsCount),
-                tint = Color.White.copy(alpha = .9f),
-                contentDescription = "Views"
-            ) {}
-            ReelAction(
-                icon = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                text = if (isMuted) "Muted" else "Sound",
-                tint = Color.White,
-                contentDescription = if (isMuted) "Unmute reel" else "Mute reel"
-            ) {
-                onToggleMuted()
-                showMuteHint = true
-            }
             ReelAction(
                 icon = if (reel.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                 text = if (reel.hideLikes && !isAuthor) "Like" else formatNumber(reel.likes),
                 tint = if (reel.isLiked) BlinkPink else Color.White,
                 contentDescription = if (reel.isLiked) "Unlike" else "Like"
             ) { onLike(reel.id) }
-            if (reel.allowComments) {
-                ReelAction(
-                    icon = Icons.Default.ChatBubble,
-                    text = formatNumber(reel.commentsCount),
-                    tint = Color.White,
-                    contentDescription = "Comments"
-                ) { onComment(reel.id) }
-            }
+            ReelAction(
+                icon = Icons.Default.ChatBubble,
+                text = if (reel.allowComments) formatNumber(reel.commentsCount) else "Off",
+                tint = if (reel.allowComments) Color.White else Color.White.copy(alpha = .5f),
+                contentDescription = if (reel.allowComments) "Comments" else "Comments disabled"
+            ) { if (reel.allowComments) onComment(reel.id) }
             ReelAction(
                 icon = if (reel.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                text = "Save",
+                text = if (reel.isBookmarked) "Saved" else "Save",
                 tint = Color.White,
                 contentDescription = if (reel.isBookmarked) "Remove from saved" else "Save"
             ) { onBookmark(reel.id) }
@@ -1135,14 +1153,30 @@ private fun ReelPage(
                 tint = Color.White,
                 contentDescription = "Share"
             ) { onShare(reel.id) }
-            ReelAction(
-                icon = Icons.Default.MoreHoriz,
-                text = "More",
-                tint = Color.White,
-                contentDescription = "More reel actions"
-            ) { onOpenOptions(reel) }
-            Spacer(Modifier.height(10.dp))
-            StaticDisc(authorAvatar)
+        }
+
+        // Sound and moderation options remain accessible in the top toolbar,
+        // separately from the four requested right-side engagement actions.
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 56.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = {
+                onToggleMuted()
+                showMuteHint = true
+            }) {
+                Icon(
+                    if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                    contentDescription = if (isMuted) "Unmute reel" else "Mute reel",
+                    tint = Color.White
+                )
+            }
+            IconButton(onClick = { onOpenOptions(reel) }) {
+                Icon(Icons.Default.MoreHoriz, contentDescription = "More reel actions", tint = Color.White)
+            }
         }
 
         Column(
@@ -1150,7 +1184,7 @@ private fun ReelPage(
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(start = 15.dp, end = 88.dp, bottom = 22.dp)
+                .padding(start = 15.dp, end = 88.dp, bottom = 108.dp)
                 .entranceEffect(delayMillis = 120)
         ) {
             Row(
@@ -1174,8 +1208,10 @@ private fun ReelPage(
                     color = Color.White,
                     fontWeight = FontWeight.Black,
                     fontSize = 14.sp,
-                    maxLines = 1,
-                    modifier = Modifier.clickable { onProfileClick(reelUsername) }
+                    maxLines = 2,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .clickable { onProfileClick(reelUsername) }
                 )
                 if (authorVerificationBadge != VerificationBadge.NONE) {
                     Spacer(Modifier.width(4.dp))
@@ -1239,7 +1275,10 @@ private fun ReelPage(
         VideoProgressBar(
             progress = progress,
             onSeek = { fraction -> seekToFraction = fraction },
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 62.dp, start = 10.dp, end = 10.dp)
         )
     }
 }
@@ -1425,7 +1464,11 @@ private fun ExpandableCaption(text: String) {
             text = if (expanded) text else text.take(collapsedThreshold).trimEnd() + "…",
             color = Color.White,
             fontSize = 13.sp,
-            maxLines = if (expanded) Int.MAX_VALUE else 4
+            maxLines = if (expanded) Int.MAX_VALUE else 4,
+            // Expanded captions cannot take over the entire video. Keep the
+            // seek rail, navigation and engagement actions reachable.
+            modifier = if (expanded) Modifier.heightIn(max = 180.dp)
+                .verticalScroll(rememberScrollState()) else Modifier
         )
         Text(
             text = if (expanded) "Show less" else "more",
@@ -1450,32 +1493,44 @@ private fun VideoProgressBar(
         animationSpec = tween(120, easing = LinearEasing),
         label = "videoProgress"
     )
+    val latestOnSeek by rememberUpdatedState(onSeek)
     var widthPx by remember { mutableIntStateOf(1) }
+    fun seekAt(x: Float) = latestOnSeek(reelSeekFraction(x, widthPx))
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(12.dp)
+            .height(28.dp)
             .onSizeChanged { widthPx = it.width.coerceAtLeast(1) }
             .pointerInput(widthPx) {
-                detectTapGestures { offset ->
-                    onSeek((offset.x / widthPx.toFloat()).coerceIn(0f, 1f))
-                }
-            },
+                detectDragGestures(
+                    onDragStart = { seekAt(it.x) },
+                    onDrag = { change, _ ->
+                        seekAt(change.position.x)
+                        change.consume()
+                    }
+                )
+            }
+            .pointerInput(widthPx) {
+                detectTapGestures { seekAt(it.x) }
+            }
+            .semantics { contentDescription = "Video seek bar. Tap or drag to seek." },
         contentAlignment = Alignment.CenterStart
     ) {
         Box(
-            Modifier
-                .fillMaxWidth()
-                .height(2.dp)
-                .background(Color.White.copy(alpha = .25f))
+            Modifier.fillMaxWidth().height(4.dp).clip(CircleShape)
+                .background(Color.White.copy(alpha = .4f))
         ) {
             Box(
-                Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(animatedProgress)
+                Modifier.fillMaxHeight().fillMaxWidth(animatedProgress)
                     .background(Color.White)
             )
+        }
+        Box(
+            Modifier.fillMaxWidth(animatedProgress).height(16.dp),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            Box(Modifier.size(12.dp).background(Color.White, CircleShape))
         }
     }
 }
@@ -1504,7 +1559,7 @@ private fun ReelAction(
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(vertical = 6.dp)
+        modifier = Modifier.widthIn(min = 58.dp).padding(vertical = 6.dp)
     ) {
         IconButton(
             onClick = { pressed = true; onClick() },
@@ -1748,6 +1803,7 @@ private fun ReelVideo(
     url: String,
     isActive: Boolean,
     isMuted: Boolean,
+    fastForward: Boolean = false,
     initialPositionMs: Long = 0L,
     seekToFraction: Float? = null,
     onSeekConsumed: () -> Unit = {},
@@ -1758,6 +1814,23 @@ private fun ReelVideo(
     onSessionEnd: (ReelPlaybackSession) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var appForeground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val listener = LifecycleEventObserver { _, _ ->
+            appForeground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        }
+        lifecycleOwner.lifecycle.addObserver(listener)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(listener) }
+    }
+    val playbackAllowed = shouldPlayReel(
+        selected = isActive,
+        foreground = appForeground,
+        pausedByUser = false,
+        overlayOpen = false
+    )
     var error by remember(url) { mutableStateOf<String?>(null) }
     var watchedMs by remember(url) { mutableLongStateOf(0L) }
     var knownDurationMs by remember(url) { mutableLongStateOf(0L) }
@@ -1833,9 +1906,9 @@ private fun ReelVideo(
         sessionWasActive = false
     }
 
-    LaunchedEffect(isActive, player, initialPositionMs) {
-        player.playWhenReady = isActive
-        if (isActive) {
+    LaunchedEffect(playbackAllowed, player, initialPositionMs) {
+        player.playWhenReady = playbackAllowed
+        if (playbackAllowed) {
             sessionWasActive = true
             if (initialPositionMs > 0L) {
                 player.seekTo(initialPositionMs)
@@ -1851,18 +1924,31 @@ private fun ReelVideo(
     LaunchedEffect(isMuted, player) {
         player.volume = if (isMuted) 0f else 1f
     }
+    LaunchedEffect(fastForward, playbackAllowed, player) {
+        player.setPlaybackSpeed(reelSpeedForHold(fastForward, playbackAllowed))
+    }
 
     LaunchedEffect(seekToFraction, player) {
         val fraction = seekToFraction ?: return@LaunchedEffect
-        val duration = player.duration
-        if (duration > 0L) {
-            player.seekTo((duration * fraction.coerceIn(0f, 1f)).toLong())
+        // The duration may arrive after the seek gesture; do not discard it immediately.
+        repeat(40) {
+            val duration = player.duration
+            if (duration > 0L) {
+                player.seekTo((duration * fraction.coerceIn(0f, 1f)).toLong())
+                currentOnSeekConsumed()
+                return@LaunchedEffect
+            }
+            if (error != null) {
+                currentOnSeekConsumed()
+                return@LaunchedEffect
+            }
+            delay(100)
         }
         currentOnSeekConsumed()
     }
 
-    LaunchedEffect(error, isActive, player) {
-        if (error != null && isActive && autoRetryCount < 2) {
+    LaunchedEffect(error, playbackAllowed, player) {
+        if (error != null && playbackAllowed && autoRetryCount < 2) {
             delay(600L * (autoRetryCount + 1))
             autoRetryCount += 1
             error = null
@@ -1871,9 +1957,9 @@ private fun ReelVideo(
         }
     }
 
-    LaunchedEffect(player, isActive) {
+    LaunchedEffect(player, playbackAllowed) {
         var lastTickMs = android.os.SystemClock.elapsedRealtime()
-        while (isActive) {
+        while (playbackAllowed) {
             val nowMs = android.os.SystemClock.elapsedRealtime()
             if (player.isPlaying) {
                 watchedMs += (nowMs - lastTickMs).coerceIn(0L, 1_000L)
@@ -1916,11 +2002,14 @@ private fun ReelVideo(
                 PlayerView(ctx).apply {
                     useController = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    keepScreenOn = true
+                    keepScreenOn = playbackAllowed
                     this.player = player
                 }
             },
-            update = { it.player = player },
+            update = {
+                it.player = player
+                it.keepScreenOn = playbackAllowed
+            },
             modifier = Modifier.fillMaxSize()
         )
         if (error != null) {

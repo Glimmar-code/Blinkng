@@ -87,6 +87,8 @@ data class FeedPost(
     val adCta: String? = null,
     val createdAt: String = "",
     val authorUsername: String = "",
+    /** Public author UUID from the server; needed for Follow when the profile list is partial. */
+    val authorProfileId: String = "",
     val textStyle: String? = null
 )
 

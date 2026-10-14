@@ -91,6 +91,7 @@ import com.example.data.models.FeedPost
 import com.example.data.models.LeaderboardUser
 import com.example.data.models.Story
 import com.example.data.models.UserProfile
+import com.example.data.models.VerificationBadge
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.FollowStateStore
 import com.example.performance.FeedScrollPerformanceMonitor
@@ -625,6 +626,36 @@ private fun PremiumHomeFeed(
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val uiScope = rememberCoroutineScope()
+    val feedFollowedIds by FollowStateStore.followingIds.collectAsState()
+    // The Home feed must hydrate follows independently. Previously only Reels
+    // called refresh(), leaving Home to show '+ Follow' for existing follows.
+    LaunchedEffect(resumeUserKey) { FollowStateStore.refresh() }
+    val authorProfilesById = remember(profiles) {
+        profiles.filter { it.id.isNotBlank() }.associateBy { it.id.trim() }
+    }
+    val authorProfilesByHandle = remember(profiles) {
+        profiles.filter { it.username.isNotBlank() }.associateBy {
+            it.username.trim().removePrefix("@").lowercase()
+        }
+    }
+    fun authorProfileFor(post: FeedPost): UserProfile? =
+        findFeedAuthorProfile(post, authorProfilesById, authorProfilesByHandle)
+
+    // All cards for the same creator observe one in-flight follow request.
+    // This prevents double taps from submitting Follow then Unfollow before
+    // the optimistic server mutation has finished reconciling.
+    var pendingAuthorFollowIds by remember(resumeUserKey) { mutableStateOf<Set<String>>(emptySet()) }
+    fun requestAuthorFollow(id: String, shouldFollow: Boolean) {
+        if (id.isBlank() || id in pendingAuthorFollowIds) return
+        pendingAuthorFollowIds = pendingAuthorFollowIds + id
+        uiScope.launch {
+            try {
+                FollowStateStore.setFollowing(id, shouldFollow)
+            } finally {
+                pendingAuthorFollowIds = pendingAuthorFollowIds - id
+            }
+        }
+    }
     val resumePrefs = remember(context) {
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
@@ -1544,6 +1575,7 @@ private fun PremiumHomeFeed(
                                     when (val row = homeRows[index]) {
                                         is PremiumHomeRow.PostRow -> {
                                             val post = row.post
+                                            val profile = authorProfileFor(post)
                                             PremiumPostEntrance(index = row.sourceIndex, reduceMotion = reduceMotion) {
                                                 PostCard(
                                                     post = post,
@@ -1563,6 +1595,15 @@ private fun PremiumHomeFeed(
                                                                     post.authorUsername.trim().removePrefix("@").lowercase() == currentUserKey
                                                             ),
                                                     onDelete = { onDeletePost(post.id) },
+                                                    authorName = profile?.fullName?.takeIf { it.isNotBlank() } ?: post.author,
+                                                    authorUsername = profile?.username?.takeIf { it.isNotBlank() } ?: post.authorUsername,
+                                                    authorVerificationBadge = resolvedFeedAuthorBadge(post, profile),
+                                                    authorAvatar = resolvedFeedAuthorAvatar(post, profile),
+                                                    authorProfileId = resolvedFeedAuthorId(post, profile),
+                                                    isFollowingAuthor = resolvedFeedAuthorId(post, profile) in feedFollowedIds,
+                                                    isFollowMutationPending = resolvedFeedAuthorId(post, profile) in pendingAuthorFollowIds,
+                                                    onFollowAuthor = { id -> requestAuthorFollow(id, true) },
+                                                    onUnfollowAuthor = { id -> requestAuthorFollow(id, false) },
                                                     xFeedStyle = true,
                                                     isFeedScrolling = listState.isScrollInProgress
                                                 )
@@ -1572,6 +1613,7 @@ private fun PremiumHomeFeed(
                                         is PremiumHomeRow.BoostedPostRow -> {
                                             val placement = row.placement
                                             val post = placement.post
+                                            val profile = authorProfileFor(post)
                                             PostCard(
                                                 post = post,
                                                 isDark = isDark,
@@ -1582,7 +1624,17 @@ private fun PremiumHomeFeed(
                                                 onShare = { onSharePost(post.id) },
                                                 onOptionsClick = { onOptionsClick(post) },
                                                 onProfileClick = onProfileClick,
-                                                isAuthor = false,
+                                                isAuthor = currentUserKey.isNotBlank() &&
+                                                    post.authorUsername.trim().removePrefix("@").equals(currentUserKey, ignoreCase = true),
+                                                authorName = profile?.fullName?.takeIf { it.isNotBlank() } ?: post.author,
+                                                authorUsername = profile?.username?.takeIf { it.isNotBlank() } ?: post.authorUsername,
+                                                authorVerificationBadge = resolvedFeedAuthorBadge(post, profile),
+                                                authorAvatar = resolvedFeedAuthorAvatar(post, profile),
+                                                authorProfileId = resolvedFeedAuthorId(post, profile),
+                                                isFollowingAuthor = resolvedFeedAuthorId(post, profile) in feedFollowedIds,
+                                                    isFollowMutationPending = resolvedFeedAuthorId(post, profile) in pendingAuthorFollowIds,
+                                                onFollowAuthor = { id -> requestAuthorFollow(id, true) },
+                                                onUnfollowAuthor = { id -> requestAuthorFollow(id, false) },
                                                 trackExposure = false,
                                                 xFeedStyle = true,
                                                 isFeedScrolling = listState.isScrollInProgress
