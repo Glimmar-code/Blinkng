@@ -137,7 +137,7 @@ fun MarketScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 18.dp, end = 18.dp, top = 44.dp, bottom = 8.dp)
+                    .padding(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 8.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
