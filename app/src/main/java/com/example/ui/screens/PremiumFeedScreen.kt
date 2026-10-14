@@ -91,6 +91,7 @@ import com.example.data.models.FeedPost
 import com.example.data.models.LeaderboardUser
 import com.example.data.models.Story
 import com.example.data.models.UserProfile
+import com.example.data.models.VerificationBadge
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.FollowStateStore
 import com.example.performance.FeedScrollPerformanceMonitor
@@ -625,6 +626,15 @@ private fun PremiumHomeFeed(
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val uiScope = rememberCoroutineScope()
+    val feedFollowedIds by FollowStateStore.followingIds.collectAsState()
+    val authorProfilesByHandle = remember(profiles) {
+        profiles.filter { it.username.isNotBlank() }.associateBy {
+            it.username.trim().removePrefix("@").lowercase()
+        }
+    }
+    fun authorProfileFor(post: FeedPost): UserProfile? =
+        authorProfilesByHandle[post.authorUsername.trim().removePrefix("@").lowercase()]
+            ?: authorProfilesByHandle[post.author.trim().removePrefix("@").lowercase()]
     val resumePrefs = remember(context) {
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
@@ -1544,6 +1554,7 @@ private fun PremiumHomeFeed(
                                     when (val row = homeRows[index]) {
                                         is PremiumHomeRow.PostRow -> {
                                             val post = row.post
+                                            val profile = authorProfileFor(post)
                                             PremiumPostEntrance(index = row.sourceIndex, reduceMotion = reduceMotion) {
                                                 PostCard(
                                                     post = post,
@@ -1563,6 +1574,15 @@ private fun PremiumHomeFeed(
                                                                     post.authorUsername.trim().removePrefix("@").lowercase() == currentUserKey
                                                             ),
                                                     onDelete = { onDeletePost(post.id) },
+                                                    authorName = profile?.fullName?.takeIf { it.isNotBlank() } ?: post.author,
+                                                    authorUsername = profile?.username?.takeIf { it.isNotBlank() } ?: post.authorUsername,
+                                                    authorVerificationBadge = profile?.verificationBadge?.takeUnless { it == VerificationBadge.NONE }
+                                                        ?: post.verificationBadge.takeUnless { it == VerificationBadge.NONE }
+                                                        ?: if (post.isVerified) VerificationBadge.BLUE else VerificationBadge.NONE,
+                                                    authorProfileId = profile?.id.orEmpty(),
+                                                    isFollowingAuthor = profile?.id?.let { it in feedFollowedIds } ?: false,
+                                                    onFollowAuthor = { id -> uiScope.launch { FollowStateStore.setFollowing(id, true) } },
+                                                    onUnfollowAuthor = { id -> uiScope.launch { FollowStateStore.setFollowing(id, false) } },
                                                     xFeedStyle = true,
                                                     isFeedScrolling = listState.isScrollInProgress
                                                 )
@@ -1572,6 +1592,7 @@ private fun PremiumHomeFeed(
                                         is PremiumHomeRow.BoostedPostRow -> {
                                             val placement = row.placement
                                             val post = placement.post
+                                            val profile = authorProfileFor(post)
                                             PostCard(
                                                 post = post,
                                                 isDark = isDark,
@@ -1582,7 +1603,17 @@ private fun PremiumHomeFeed(
                                                 onShare = { onSharePost(post.id) },
                                                 onOptionsClick = { onOptionsClick(post) },
                                                 onProfileClick = onProfileClick,
-                                                isAuthor = false,
+                                                isAuthor = currentUserKey.isNotBlank() &&
+                                                    post.authorUsername.trim().removePrefix("@").equals(currentUserKey, ignoreCase = true),
+                                                authorName = profile?.fullName?.takeIf { it.isNotBlank() } ?: post.author,
+                                                authorUsername = profile?.username?.takeIf { it.isNotBlank() } ?: post.authorUsername,
+                                                authorVerificationBadge = profile?.verificationBadge?.takeUnless { it == VerificationBadge.NONE }
+                                                    ?: post.verificationBadge.takeUnless { it == VerificationBadge.NONE }
+                                                    ?: if (post.isVerified) VerificationBadge.BLUE else VerificationBadge.NONE,
+                                                authorProfileId = profile?.id.orEmpty(),
+                                                isFollowingAuthor = profile?.id?.let { it in feedFollowedIds } ?: false,
+                                                onFollowAuthor = { id -> uiScope.launch { FollowStateStore.setFollowing(id, true) } },
+                                                onUnfollowAuthor = { id -> uiScope.launch { FollowStateStore.setFollowing(id, false) } },
                                                 trackExposure = false,
                                                 xFeedStyle = true,
                                                 isFeedScrolling = listState.isScrollInProgress
