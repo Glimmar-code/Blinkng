@@ -151,16 +151,36 @@ fun AppMenuSheet(
     val settingsSearchQuery = if ("Settings and privacy".contains(menuQuery.trim(), ignoreCase = true)) "" else menuQuery
     val campusSearchQuery = if ("Campus & tools".contains(menuQuery.trim(), ignoreCase = true)) "" else menuQuery
     val accountSearchQuery = if ("Account and support".contains(menuQuery.trim(), ignoreCase = true)) "" else menuQuery
-    val menuSearchIndex = listOf(
-        "profile", "switch to admin", "activity", "mentions", "leaderboard", "campus ranking",
-        "marketplace", "browse campus listings", "list an item", "seller hub",
-        "settings and privacy", "appearance", "theme", "calls", "notification", "call history",
-        "ad privacy choices", "privacy and dm", "blocked accounts", "login security",
-        "data and storage", "cache and account data", "campus and tools", "scheduled posts",
-        "study and group center", "verification", "orders and wishlist",
-        "account and support", "edit profile", "switch account", "about blink",
-        "log out", "delete account"
-    )
+    val menuSearchIndex = buildList {
+        addAll(listOf(
+            "Profile view profile",
+            "Activity mentions and notifications",
+            "Leaderboard campus ranking and points",
+            "Marketplace browse campus listings",
+            "List an item create a marketplace listing",
+            "Seller hub seller verification and tools",
+            "Settings and privacy appearance light dark theme",
+            "Calls & notification sounds ringtones message sounds vibration Android call alerts",
+            "Call history missed incoming outgoing Blink calls",
+            "Privacy & DM settings private account and messaging controls",
+            "Safety & blocked accounts block unblock and report users",
+            "Login & account security session and security controls",
+            "Data & storage cache and account data",
+            "Campus & tools",
+            "Scheduled posts manage posts queued for later",
+            "Study & group center group chats and study tools",
+            "Campus verification manage your verification",
+            "Orders & wishlist saved market items and order status",
+            "Account and support",
+            "Edit profile edit your campus profile",
+            "Switch account use a saved account",
+            "About Blink about this app",
+            "Log out end this device session",
+            "Delete account permanent account deletion"
+        ))
+        if (adminModeAvailable) add("Switch to Admin Account open Blink administration")
+        if (showAdPrivacyOptions) add("Ad privacy choices manage consent choices used for advertising")
+    }
 
     LaunchedEffect(profile.id) {
         adminModeAvailable = adminService.fetchCapability().getOrNull()?.isAdmin == true
@@ -226,7 +246,7 @@ fun AppMenuSheet(
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp)
             )
-            if (menuQuery.isBlank()) ProfileHeaderCard(profile) {
+            if (MenuSearch.matches(menuQuery, "profile", profile.fullName, profile.username)) ProfileHeaderCard(profile) {
                 onDismiss()
                 onViewProfile()
             }
@@ -265,7 +285,9 @@ fun AppMenuSheet(
                 expanded = menuQuery.isNotBlank() || "Settings and privacy" in expandedSections,
                 onToggle = { toggle("Settings and privacy") }
             ) {
-                ThemeToggleRow(isDark = isDark, onToggleTheme = onToggleTheme)
+                if (MenuSearch.matches(settingsSearchQuery, "appearance", "theme light dark")) {
+                    ThemeToggleRow(isDark = isDark, onToggleTheme = onToggleTheme)
+                }
                 SearchableMenuItemRow(settingsSearchQuery, 
                     Icons.Outlined.Notifications,
                     "Calls & notification sounds",
