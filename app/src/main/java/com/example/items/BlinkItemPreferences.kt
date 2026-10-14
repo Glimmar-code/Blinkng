@@ -30,6 +30,7 @@ object BlinkItemPreferences {
     private const val STEP_SENSOR_LAST_RAW = "step_sensor_last_raw"
     private const val STEP_SENSOR_OFFSET = "step_sensor_offset"
     private const val LAST_WEATHER_ALERT_ID = "last_weather_alert_id"
+    private const val NOTIFIED_WEATHER_ALERT_IDS = "notified_weather_alert_ids"
     private const val LAST_RAIN_EVENT = "last_rain_event"
 
     private fun prefs(context: Context) =
@@ -88,6 +89,10 @@ object BlinkItemPreferences {
             .apply()
     }
 
+    fun clearWeatherLocation(context: Context) {
+        prefs(context).edit().remove(LAST_LATITUDE).remove(LAST_LONGITUDE).apply()
+    }
+
     fun weatherLocation(context: Context): Pair<Double, Double>? {
         val p = prefs(context)
         if (!p.contains(LAST_LATITUDE) || !p.contains(LAST_LONGITUDE)) return null
@@ -118,6 +123,10 @@ object BlinkItemPreferences {
     fun lastStepDate(context: Context): String = prefs(context).safeString(LAST_STEP_DATE, "").orEmpty()
 
     fun lastStepCount(context: Context): Long = prefs(context).safeLong(LAST_STEP_COUNT, 0L)
+
+    fun todayStepCount(context: Context): Long = BlinkItemsPolicy.currentDaySteps(
+        lastStepDate(context), java.time.LocalDate.now().toString(), lastStepCount(context)
+    )
 
     fun lastStepMilestone(context: Context): Int = prefs(context).safeInt(LAST_STEP_MILESTONE, 0)
 
@@ -200,6 +209,26 @@ object BlinkItemPreferences {
 
     fun setLastWeatherAlertId(context: Context, id: String) {
         prefs(context).edit().putString(LAST_WEATHER_ALERT_ID, id).apply()
+    }
+
+    fun wasWeatherAlertNotified(context: Context, id: String): Boolean {
+        if (id.isBlank()) return true
+        if (id == lastWeatherAlertId(context)) return true
+        return runCatching {
+            prefs(context).getStringSet(NOTIFIED_WEATHER_ALERT_IDS, emptySet())?.contains(id) == true
+        }.getOrDefault(false)
+    }
+
+    fun markWeatherAlertNotified(context: Context, id: String) {
+        if (id.isBlank()) return
+        val p = prefs(context)
+        val previous = runCatching {
+            p.getStringSet(NOTIFIED_WEATHER_ALERT_IDS, emptySet()).orEmpty().toList()
+        }.getOrDefault(emptyList())
+        p.edit()
+            .putStringSet(NOTIFIED_WEATHER_ALERT_IDS, (previous.filterNot { it == id } + id).takeLast(128).toSet())
+            .putString(LAST_WEATHER_ALERT_ID, id)
+            .apply()
     }
 
     fun lastRainEvent(context: Context): Long = prefs(context).safeLong(LAST_RAIN_EVENT, 0L)
