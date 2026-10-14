@@ -80,6 +80,7 @@ import com.blinkng.desktop.data.DesktopStoreItem
 import com.blinkng.desktop.data.DesktopUserSettings
 import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import com.blinkng.shared.BlinkCoinPack
+import com.blinkng.shared.BlinkLifePrototype
 import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
@@ -997,6 +998,7 @@ fun ProfileScreen(state: DesktopAppState) {
 
 @Composable
 fun GamesScreen(state: DesktopAppState) {
+    var blinkLifeOpen by remember { mutableStateOf(false) }
     var challenges by remember { mutableStateOf<Int?>(null) }
     var coins by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(Unit) {
@@ -1004,8 +1006,25 @@ fun GamesScreen(state: DesktopAppState) {
         challenges = summary.first
         coins = summary.second
     }
+    if (blinkLifeOpen) {
+        BlinkLifePrototype(onExit = { blinkLifeOpen = false })
+        return
+    }
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { ScreenHeader("Games", "Challenges, rewards and Blink Coins") }
+        item {
+            Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
+                Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("BLINK LIFE · TESTLAB", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Interactive 3D city preview with a rotatable camera, three jobs, fictional cash and room decoration. " +
+                            "No real-money transactions or BLINK Coin rewards.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(onClick = { blinkLifeOpen = true }) { Text("Enter BLINK LIFE playground") }
+                }
+            }
+        }
         item {
             Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 2.dp) {
                 Row(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(42.dp)) {
