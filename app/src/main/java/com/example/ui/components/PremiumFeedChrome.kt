@@ -109,10 +109,10 @@ fun FeedTopBar(
             .background(MaterialTheme.colorScheme.surface)
             .then(if (reserveStatusBar) Modifier.statusBarsPadding() else Modifier)
     ) {
-        val horizontalPadding = if (maxWidth >= 600.dp) 20.dp else 14.dp
+        val horizontalPadding = if (maxWidth >= 600.dp) 20.dp else 10.dp
         // Reserve proper 48dp minimum targets for all four toolbar buttons.
         // On narrow devices collapse the decorative title, not the actions.
-        val showHomeTitle = maxWidth >= 380.dp
+        val showHomeTitle = maxWidth >= 350.dp
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -459,7 +459,8 @@ private fun FeedTabLabel(label: String, selected: Boolean, modifier: Modifier, o
     )
     Box(
         modifier.fillMaxHeight().clickable(role = Role.Tab, onClick = onClick)
-            .semantics { this.selected = selected },
+            .semantics { this.selected = selected }
+            .testTag(if (label == "For You") "feed_tab_for_you" else "feed_tab_following"),
         contentAlignment = Alignment.Center
     ) {
         Text(label, color = labelColor, fontSize = 14.sp, lineHeight = 17.sp,
