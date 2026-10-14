@@ -41,6 +41,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -882,7 +885,7 @@ private fun ReelPage(
         profiles.firstOrNull { it.username.trim().removePrefix("@").equals(reelUsername, true) }
             ?: profiles.firstOrNull { it.fullName.trim().equals(reel.author.trim(), true) }
     }
-    val authorId = authorProfile?.id.orEmpty()
+    val authorId = authorProfile?.id?.takeIf { it.isNotBlank() } ?: reel.authorProfileId
     val authorName = authorProfile?.fullName?.takeIf { it.isNotBlank() } ?: reel.author
     val authorAvatar = authorProfile?.avatarUrl?.takeIf { it.isNotBlank() } ?: reel.authorAvatar
     val authorVerificationBadge = when {
@@ -959,7 +962,9 @@ private fun ReelPage(
                         isFastForwarding = false
                     },
                     onLongPress = {
-                        if (isActive) isFastForwarding = true
+                        if (isActive && !isPausedByUser && !isInteractionOverlayOpen) {
+                            isFastForwarding = true
+                        }
                     },
                     onDoubleTap = {
                         if (!reel.isLiked) onLike(reel.id)
@@ -997,7 +1002,12 @@ private fun ReelPage(
         if (!url.isNullOrBlank() && (isActive || shouldPreload)) {
             ReelVideo(
                 url = url,
-                isActive = isActive && !isPausedByUser && !isInteractionOverlayOpen,
+                isActive = shouldPlayReel(
+                    selected = isActive,
+                    foreground = true,
+                    pausedByUser = isPausedByUser,
+                    overlayOpen = isInteractionOverlayOpen
+                ),
                 isMuted = isMuted,
                 fastForward = isFastForwarding,
                 initialPositionMs = initialPositionMs,
@@ -1479,7 +1489,7 @@ private fun VideoProgressBar(
     )
     val latestOnSeek by rememberUpdatedState(onSeek)
     var widthPx by remember { mutableIntStateOf(1) }
-    fun seekAt(x: Float) = latestOnSeek((x / widthPx.toFloat()).coerceIn(0f, 1f))
+    fun seekAt(x: Float) = latestOnSeek(reelSeekFraction(x, widthPx))
 
     Box(
         modifier = modifier
@@ -1798,6 +1808,23 @@ private fun ReelVideo(
     onSessionEnd: (ReelPlaybackSession) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var appForeground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        val listener = LifecycleEventObserver { _, _ ->
+            appForeground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        }
+        lifecycleOwner.lifecycle.addObserver(listener)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(listener) }
+    }
+    val playbackAllowed = shouldPlayReel(
+        selected = isActive,
+        foreground = appForeground,
+        pausedByUser = false,
+        overlayOpen = false
+    )
     var error by remember(url) { mutableStateOf<String?>(null) }
     var watchedMs by remember(url) { mutableLongStateOf(0L) }
     var knownDurationMs by remember(url) { mutableLongStateOf(0L) }
@@ -1873,9 +1900,9 @@ private fun ReelVideo(
         sessionWasActive = false
     }
 
-    LaunchedEffect(isActive, player, initialPositionMs) {
-        player.playWhenReady = isActive
-        if (isActive) {
+    LaunchedEffect(playbackAllowed, player, initialPositionMs) {
+        player.playWhenReady = playbackAllowed
+        if (playbackAllowed) {
             sessionWasActive = true
             if (initialPositionMs > 0L) {
                 player.seekTo(initialPositionMs)
@@ -1891,21 +1918,31 @@ private fun ReelVideo(
     LaunchedEffect(isMuted, player) {
         player.volume = if (isMuted) 0f else 1f
     }
-    LaunchedEffect(fastForward, player) {
-        player.setPlaybackSpeed(if (fastForward) 2f else 1f)
+    LaunchedEffect(fastForward, playbackAllowed, player) {
+        player.setPlaybackSpeed(reelSpeedForHold(fastForward, playbackAllowed))
     }
 
     LaunchedEffect(seekToFraction, player) {
         val fraction = seekToFraction ?: return@LaunchedEffect
-        val duration = player.duration
-        if (duration > 0L) {
-            player.seekTo((duration * fraction.coerceIn(0f, 1f)).toLong())
+        // The duration may arrive after the seek gesture; do not discard it immediately.
+        repeat(40) {
+            val duration = player.duration
+            if (duration > 0L) {
+                player.seekTo((duration * fraction.coerceIn(0f, 1f)).toLong())
+                currentOnSeekConsumed()
+                return@LaunchedEffect
+            }
+            if (error != null) {
+                currentOnSeekConsumed()
+                return@LaunchedEffect
+            }
+            delay(100)
         }
         currentOnSeekConsumed()
     }
 
-    LaunchedEffect(error, isActive, player) {
-        if (error != null && isActive && autoRetryCount < 2) {
+    LaunchedEffect(error, playbackAllowed, player) {
+        if (error != null && playbackAllowed && autoRetryCount < 2) {
             delay(600L * (autoRetryCount + 1))
             autoRetryCount += 1
             error = null
@@ -1914,9 +1951,9 @@ private fun ReelVideo(
         }
     }
 
-    LaunchedEffect(player, isActive) {
+    LaunchedEffect(player, playbackAllowed) {
         var lastTickMs = android.os.SystemClock.elapsedRealtime()
-        while (isActive) {
+        while (playbackAllowed) {
             val nowMs = android.os.SystemClock.elapsedRealtime()
             if (player.isPlaying) {
                 watchedMs += (nowMs - lastTickMs).coerceIn(0L, 1_000L)

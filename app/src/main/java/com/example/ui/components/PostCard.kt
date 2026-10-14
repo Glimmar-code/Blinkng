@@ -1016,16 +1016,22 @@ private fun NaturalAspectPostImage(
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
-    // Reuse measured ratios across recycled feed cards. While the finger is
-    // moving, defer first-load ratio changes so the viewport never shifts.
-    // Use a stable frame throughout this card's composition lifetime.
-    // Image completion updates the bounded cache for future card compositions,
-    // never the currently visible row height (which would jump the viewport).
-    // Fixed 4:5 previews on the X-style feed cannot jump in height when
-    // their decoded dimensions change. Fullscreen still displays the original.
-    val imageAspectRatio = remember(imageUrl, cropToFrame) {
-        if (cropToFrame) 4f / 5f
-        else PostImageAspectRatioCache.get(imageUrl) ?: 4f / 5f
+    // Show the original image ratio without changing card height mid-scroll.
+    // Keep a small ratio-only cache; never keep decoded bitmaps in Compose state.
+    var imageAspectRatio by remember(imageUrl, cropToFrame) {
+        mutableFloatStateOf(
+            if (cropToFrame) 4f / 5f
+            else PostImageAspectRatioCache.get(imageUrl) ?: 4f / 5f
+        )
+    }
+    var pendingImageAspectRatio by remember(imageUrl) { mutableStateOf<Float?>(null) }
+    LaunchedEffect(deferAspectChanges, cropToFrame, pendingImageAspectRatio) {
+        if (!deferAspectChanges && !cropToFrame) {
+            pendingImageAspectRatio?.let { ratio ->
+                imageAspectRatio = ratio
+                pendingImageAspectRatio = null
+            }
+        }
     }
     var isLoading by remember(imageUrl) { mutableStateOf(true) }
     var loadFailed by remember(imageUrl) { mutableStateOf(false) }
@@ -1041,7 +1047,7 @@ private fun NaturalAspectPostImage(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(imageAspectRatio.coerceIn(0.72f, 1.91f))
+            .aspectRatio(imageAspectRatio.coerceIn(0.50f, 1.91f))
             .clip(RoundedCornerShape(14.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f))
             .clickable(enabled = !loadFailed, onClick = onClick),
@@ -1062,8 +1068,11 @@ private fun NaturalAspectPostImage(
                 val width = drawable.intrinsicWidth
                 val height = drawable.intrinsicHeight
                 if (width > 0 && height > 0) {
-                    val ratio = (width.toFloat() / height.toFloat()).coerceIn(0.72f, 1.91f)
+                    val ratio = (width.toFloat() / height.toFloat()).coerceIn(0.50f, 1.91f)
                     PostImageAspectRatioCache.put(imageUrl, ratio)
+                    if (!cropToFrame && ratio != imageAspectRatio) {
+                        pendingImageAspectRatio = ratio
+                    }
                 }
             },
             onError = {

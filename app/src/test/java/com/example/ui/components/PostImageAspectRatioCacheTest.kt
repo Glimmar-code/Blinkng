@@ -24,6 +24,15 @@ class PostImageAspectRatioCacheTest {
     }
 
     @Test
+    fun retainsTallPortraitImageRatio() {
+        val url = "aspect-test://portrait"
+        PostImageAspectRatioCache.put(url, 0.51f)
+        assertEquals(0.51f, PostImageAspectRatioCache.get(url)!!, 0.0001f)
+        PostImageAspectRatioCache.put(url, 0.1f)
+        assertEquals(0.50f, PostImageAspectRatioCache.get(url)!!, 0.0001f)
+    }
+
+    @Test
     fun evictsOldRatiosToBoundMemory() {
         val first = "aspect-test://eviction-first"
         PostImageAspectRatioCache.put(first, 0.9f)

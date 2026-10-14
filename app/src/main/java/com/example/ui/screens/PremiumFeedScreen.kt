@@ -1579,7 +1579,7 @@ private fun PremiumHomeFeed(
                                                     authorVerificationBadge = profile?.verificationBadge?.takeUnless { it == VerificationBadge.NONE }
                                                         ?: post.verificationBadge.takeUnless { it == VerificationBadge.NONE }
                                                         ?: if (post.isVerified) VerificationBadge.BLUE else VerificationBadge.NONE,
-                                                    authorProfileId = profile?.id.orEmpty(),
+                                                    authorProfileId = profile?.id?.takeIf { it.isNotBlank() } ?: post.authorProfileId,
                                                     isFollowingAuthor = profile?.id?.let { it in feedFollowedIds } ?: false,
                                                     onFollowAuthor = { id -> uiScope.launch { FollowStateStore.setFollowing(id, true) } },
                                                     onUnfollowAuthor = { id -> uiScope.launch { FollowStateStore.setFollowing(id, false) } },
@@ -1610,7 +1610,7 @@ private fun PremiumHomeFeed(
                                                 authorVerificationBadge = profile?.verificationBadge?.takeUnless { it == VerificationBadge.NONE }
                                                     ?: post.verificationBadge.takeUnless { it == VerificationBadge.NONE }
                                                     ?: if (post.isVerified) VerificationBadge.BLUE else VerificationBadge.NONE,
-                                                authorProfileId = profile?.id.orEmpty(),
+                                                authorProfileId = profile?.id?.takeIf { it.isNotBlank() } ?: post.authorProfileId,
                                                 isFollowingAuthor = profile?.id?.let { it in feedFollowedIds } ?: false,
                                                 onFollowAuthor = { id -> uiScope.launch { FollowStateStore.setFollowing(id, true) } },
                                                 onUnfollowAuthor = { id -> uiScope.launch { FollowStateStore.setFollowing(id, false) } },
