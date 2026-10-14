@@ -226,10 +226,10 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
             "FCM message received from=${message.from} type=$type dataKeys=${data.keys.joinToString()} hasNotification=${message.notification != null}"
         )
 
-        // A token can have a pending FCM packet while the phone signs out of account A and
-        // signs into account B. New server payloads include recipient_id so such a packet can
-        // never surface in the wrong account. Old payloads remain backward compatible.
-        if (!NotificationPreferenceStore.isIntendedForCurrentAccount(this, data["recipient_id"])) {
+        // Modern BLINK dispatchers always specify recipient_id. Without it a delayed
+        // packet could expose account A's private alert after switching to account B.
+        if (data["recipient_id"].isNullOrBlank() ||
+            !NotificationPreferenceStore.isIntendedForCurrentAccount(this, data["recipient_id"])) {
             Log.w(TAG, "Ignored push intended for a different Blink account.")
             return
         }

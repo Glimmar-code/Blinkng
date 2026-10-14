@@ -29,7 +29,6 @@ object InstantChatNotification {
     const val EXTRA_SENDER_AVATAR = "blink_direct_reply_sender_avatar"
 
     private const val ACTION_DIRECT_REPLY = "com.example.notification.ACTION_DIRECT_REPLY"
-    private const val MESSAGE_ID_BASE = 1000
     private const val GROUP_KEY_MESSAGES = "blink_group_messages"
 
     fun show(
@@ -46,7 +45,7 @@ object InstantChatNotification {
         BlinkNotificationHelper.createNotificationChannels(context)
 
         val stableConversationKey = conversationId.ifBlank { senderUsername }
-        val notificationId = MESSAGE_ID_BASE + positiveHash(stableConversationKey) % 700
+        val notificationId = NotificationIdentity.conversationId(stableConversationKey)
         val sender = Person.Builder()
             .setName(senderName.ifBlank { senderUsername.ifBlank { "Blink user" } })
             .setKey(senderUsername.ifBlank { stableConversationKey })
