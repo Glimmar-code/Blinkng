@@ -38,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           timeout 120s godot --headless --path game3d --editor --quit 2>&1 | tee /tmp/godot-import.log
-          if grep -Ei 'SCRIPT ERROR|Parse Error|ERROR: Failed' /tmp/godot-import.log; then
+          if grep -Ei '(^ERROR:|^SCRIPT ERROR:|Parse Error)' /tmp/godot-import.log; then
             echo 'Godot import failed.'
             exit 1
           fi
@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           timeout 60s godot --headless --path game3d --script res://tests/smoke.gd 2>&1 | tee /tmp/godot-tests.log
-          if grep -Ei 'SCRIPT ERROR|Parse Error|ERROR: Failed' /tmp/godot-tests.log; then
+          if grep -Ei '(^ERROR:|^SCRIPT ERROR:|Parse Error)' /tmp/godot-tests.log; then
             echo 'Godot scene smoke tests failed.'
             exit 1
           fi
