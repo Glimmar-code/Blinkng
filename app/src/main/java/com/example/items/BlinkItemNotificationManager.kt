@@ -23,6 +23,7 @@ import java.time.LocalDate
 object BlinkItemNotificationManager {
     private const val GROUP_ITEMS = "blink_items_group"
     const val CHANNEL_STEPS = "blink_items_steps"
+    const val CHANNEL_STEP_ONGOING = "blink_items_ongoing_steps"
     const val CHANNEL_WEATHER = "blink_items_weather"
     const val CHANNEL_LOCATION = "blink_items_location"
 
@@ -47,6 +48,16 @@ object BlinkItemNotificationManager {
                     description = "Step goals and milestone encouragement from BLINK Items"
                     group = GROUP_ITEMS
                     setShowBadge(false)
+                },
+                NotificationChannel(
+                    CHANNEL_STEP_ONGOING,
+                    "Ongoing step counter",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Optional offline step counter shown while tracking is on"
+                    group = GROUP_ITEMS
+                    setShowBadge(false)
+                    enableVibration(false)
                 },
                 NotificationChannel(
                     CHANNEL_WEATHER,
