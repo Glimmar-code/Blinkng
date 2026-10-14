@@ -99,6 +99,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import com.blinkng.shared.MenuSearch
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -259,7 +260,7 @@ fun AppMenuSheet(
 
             MenuSection(
                 query = menuQuery,
-                searchTerms = "appearance dark light theme calls notifications call history privacy blocked DM login account security data storage ad consent",
+                searchTerms = "appearance dark light theme calls notifications sounds call history privacy blocked DM login account security data storage cache ad consent ringtones messages",
                 title = "Settings and privacy",
                 expanded = menuQuery.isNotBlank() || "Settings and privacy" in expandedSections,
                 onToggle = { toggle("Settings and privacy") }
@@ -307,7 +308,7 @@ fun AppMenuSheet(
 
             MenuSection(
                 query = menuQuery,
-                searchTerms = "scheduled posts study group center campus verification orders wishlist",
+                searchTerms = "scheduled posts queued study group center campus verification orders wishlist saved items",
                 title = "Campus & tools",
                 expanded = menuQuery.isNotBlank() || "Campus & tools" in expandedSections,
                 onToggle = { toggle("Campus & tools") }
@@ -333,7 +334,7 @@ fun AppMenuSheet(
 
             MenuSection(
                 query = menuQuery,
-                searchTerms = "edit profile switch account about blink log out delete account",
+                searchTerms = "edit profile switch account about blink log out delete account end device session saved account",
                 title = "Account and support",
                 expanded = menuQuery.isNotBlank() || "Account and support" in expandedSections,
                 onToggle = { toggle("Account and support") }
@@ -367,7 +368,7 @@ fun AppMenuSheet(
                     openProfessional("account")
                 }
             }
-            if (menuQuery.isNotBlank() && menuSearchIndex.none { it.contains(menuQuery.trim(), ignoreCase = true) }) {
+            if (menuQuery.isNotBlank() && menuSearchIndex.none { MenuSearch.matches(menuQuery, it) }) {
                 Text(
                     "No matching menu items",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -444,6 +445,15 @@ private fun ProfileHeaderCard(profile: UserProfile, onClick: () -> Unit) {
                 maxLines = 1, overflow = TextOverflow.Ellipsis
             )
         }
+        if (profile.verificationBadge != VerificationBadge.NONE) {
+            Icon(
+                Icons.Outlined.Verified,
+                contentDescription = "Verified account",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.width(6.dp))
+        }
         Icon(
             Icons.AutoMirrored.Filled.ArrowForwardIos,
             contentDescription = "Open profile",
@@ -467,7 +477,7 @@ private fun MenuSection(
         MenuMotion.chevron,
         label = "menuChevron"
     )
-    if (query.isBlank() || title.contains(query.trim(), true) || searchTerms.contains(query.trim(), true)) {
+    if (MenuSearch.matches(query, title, searchTerms)) {
         Column {
         Row(
             modifier = Modifier
@@ -549,7 +559,7 @@ private fun SearchableMenuItemRow(
     titleColor: Color = Color.Unspecified,
     onClick: () -> Unit
 ) {
-    if (query.isBlank() || title.contains(query.trim(), true) || subtitle.contains(query.trim(), true)) {
+    if (MenuSearch.matches(query, title, subtitle)) {
         MenuItemRow(icon, title, subtitle, trailingText, iconColor, titleColor, onClick)
     }
 }
