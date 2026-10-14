@@ -1069,7 +1069,7 @@ private fun BlinkLiveLocationItem(
         if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true && pendingStart) {
             pendingStart = false
             startShare()
-        } else if (!granted) {
+        } else {
             pendingStart = false
             message = "Precise location is required only while you actively share Live Location."
         }
