@@ -656,15 +656,18 @@ fun PostCard(
                             enabled = post.allowComments,
                             onClick = onComment
                         )
-                        if (!isAuthor) {
-                            PremiumPostAction(
-                                icon = Icons.Default.Repeat,
-                                value = if (showSecondaryCounts && post.repostsCount > 0) formatNumber(post.repostsCount) else null,
-                                tint = repostTint,
-                                description = if (post.isRepostedByMe) "Undo repost · ${post.repostsCount} reposts" else "Repost · ${post.repostsCount} reposts",
-                                onClick = onRepost
-                            )
-                        }
+                        // Keep the six-icon rail stable even on the author's own
+                        // posts. Reposting oneself remains disabled by policy.
+                        PremiumPostAction(
+                            icon = Icons.Default.Repeat,
+                            value = if (showSecondaryCounts && post.repostsCount > 0) formatNumber(post.repostsCount) else null,
+                            tint = if (isAuthor) secondaryText.copy(alpha = 0.6f) else repostTint,
+                            description = if (isAuthor) "${post.repostsCount} reposts · Reposting your own post unavailable"
+                                else if (post.isRepostedByMe) "Undo repost · ${post.repostsCount} reposts"
+                                else "Repost · ${post.repostsCount} reposts",
+                            enabled = !isAuthor,
+                            onClick = onRepost
+                        )
                         PremiumPostAction(
                             icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                             value = null,
