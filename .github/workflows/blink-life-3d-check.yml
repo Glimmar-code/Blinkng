@@ -33,6 +33,11 @@ jobs:
           unzip -q /tmp/godot.zip -d /tmp/blink-godot
           sudo install -m 0755 /tmp/blink-godot/Godot_v4.3-stable_linux.x86_64 /usr/local/bin/godot
           godot --version
+      - name: Install software OpenGL test display
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri mesa-utils
       - name: Import project and parse all scripts
         shell: bash
         run: |
@@ -46,7 +51,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          timeout 60s godot --headless --path game3d --script res://tests/smoke.gd 2>&1 | tee /tmp/godot-tests.log
+          # Use the actual OpenGL Compatibility renderer. Godot 4.3's
+          # dummy headless renderer reports false null-mesh errors for MeshInstance3D.
+          timeout 90s xvfb-run -a --server-args="-screen 0 1280x720x24" godot \
+            --rendering-driver opengl3 --path game3d --script res://tests/smoke.gd 2>&1 | tee /tmp/godot-tests.log
           if grep -Ei '(^ERROR:|^SCRIPT ERROR:|Parse Error)' /tmp/godot-tests.log; then
             echo 'Godot scene smoke tests failed.'
             exit 1
