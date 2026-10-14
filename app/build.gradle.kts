@@ -174,6 +174,9 @@ android {
   compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
   buildFeatures { compose = true; buildConfig = true }
   sourceSets.getByName("main").kotlin.srcDir("../shared/src/main/kotlin")
+  // Godot 4.3 reads the native game project directly from APK assets root.
+  // Keep this project source path linked to game3d; never ship a separate APK.
+  sourceSets.getByName("main").assets.srcDir("../game3d")
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo { includeInApk = false; includeInBundle = true }
 }
@@ -190,6 +193,8 @@ dependencies {
   implementation(platform(libs.androidx.compose.bom))
   implementation(libs.androidx.activity.compose)
   implementation("androidx.fragment:fragment-ktx:1.8.5")
+  // Full 3D Godot Android AAR with native arm64/armeabi-v7a binaries.
+  implementation("org.godotengine:godot:4.3.0.stable")
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.compose.material3)
