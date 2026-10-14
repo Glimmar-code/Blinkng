@@ -1041,6 +1041,22 @@ fun NotificationsScreen(state: DesktopAppState) {
                 TextButton(onClick = { newestFirst = !newestFirst }) {
                     Text(if (newestFirst) "Newest first" else "Oldest first")
                 }
+                TextButton(onClick = {
+                    scope.launch {
+                        val unread = notifications.filterNot { it.isRead }
+                        for (item in unread) {
+                            runCatching { state.client.markNotificationRead(item.id) }
+                                .onSuccess {
+                                    notifications = notifications.map { row ->
+                                        if (row.id == item.id) row.copy(isRead = true) else row
+                                    }
+                                }
+                                .onFailure { loadError = true }
+                        }
+                    }
+                }) {
+                    Text("Read all")
+                }
                 TextButton(onClick = { scope.launch { reload() } }) { Text("Refresh") }
             }
         }

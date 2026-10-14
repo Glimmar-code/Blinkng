@@ -11,6 +11,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
 import com.example.MainActivity
+import com.example.data.supabase.SupabaseService
 
 /**
  * Fast path for direct-message notifications.
@@ -51,11 +52,22 @@ object InstantChatNotification {
             .setKey(senderUsername.ifBlank { stableConversationKey })
             .build()
         val me = Person.Builder().setName("You").setKey("blink_self").build()
+        val accountId = runCatching { SupabaseService().getCurrentUserId().orEmpty() }.getOrDefault("")
+        val previews = NotificationMessageHistory.append(
+            userId = accountId,
+            conversationKey = stableConversationKey,
+            messageId = messageId,
+            text = messageText
+        )
 
+        // Show a short conversation history without disk-caching private previews or
+        // blocking FCM's time-limited handler with a network/avatar request.
         val messagingStyle = NotificationCompat.MessagingStyle(me)
-            .addMessage(messageText, System.currentTimeMillis(), sender)
             .setConversationTitle(sender.name)
             .setGroupConversation(false)
+        previews.forEach { entry ->
+            messagingStyle.addMessage(entry.text, entry.timestampMillis, sender)
+        }
 
         val contentIntent = buildChatPendingIntent(
             context = context,

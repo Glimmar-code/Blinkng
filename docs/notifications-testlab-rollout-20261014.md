@@ -8,6 +8,8 @@ The October 14 upgrade is incremental. Do not promote to `main` without verified
 - Recovery retries produce a failure status rather than a false success.
 - Offline unread-message recovery respects timed conversation mutes.
 - Wide, stable conversation notification ID namespace reduces collision risk.
+- Android chat notifications show up to 5 recent same-conversation previews, held only in bounded in-memory per-account state.
+- Windows inbox supports marking unread notifications read without discarding server state.
 - FCM packets with no recipient identity are rejected to avoid cross-account leakage.
 - Notification page supports reels, stories, and rewards filters, newest/oldest sorting, and neutral black/white accents.
 
