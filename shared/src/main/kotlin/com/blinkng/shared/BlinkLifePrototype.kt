@@ -25,7 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,12 +45,12 @@ fun BlinkLifePrototype(
     onExit: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var x by rememberSaveable { mutableIntStateOf(3) }
-    var y by rememberSaveable { mutableIntStateOf(2) }
-    var cash by rememberSaveable { mutableIntStateOf(500) }
-    var completedJobs by rememberSaveable { mutableIntStateOf(0) }
-    var ownsPlant by rememberSaveable { mutableStateOf(false) }
-    var notice by rememberSaveable { mutableStateOf("Walk to the café, tech hub or delivery depot to try a job.") }
+    var x by remember { mutableIntStateOf(3) }
+    var y by remember { mutableIntStateOf(2) }
+    var cash by remember { mutableIntStateOf(500) }
+    var completedJobs by remember { mutableIntStateOf(0) }
+    var ownsPlant by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf("Walk to the café, tech hub or delivery depot to try a job.") }
 
     val state = BlinkLifeState(x, y, cash, completedJobs, ownsPlant)
     val place = BlinkLifeRules.placeAt(x, y)
