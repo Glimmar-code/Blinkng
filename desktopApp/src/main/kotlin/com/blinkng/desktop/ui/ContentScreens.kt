@@ -959,25 +959,127 @@ fun SearchScreen(state: DesktopAppState) {
 fun NotificationsScreen(state: DesktopAppState) {
     var notifications by remember { mutableStateOf<List<DesktopNotification>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("All") }
+    var unreadOnly by remember { mutableStateOf(false) }
+    var newestFirst by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
 
     suspend fun reload() {
         loading = true
-        notifications = runCatching { state.client.fetchNotifications() }.getOrDefault(emptyList())
+        runCatching { state.client.fetchNotifications() }
+            .onSuccess { notifications = it; loadError = false }
+            .onFailure { loadError = true } // Preserve last known good activity on offline errors.
         loading = false
     }
-    LaunchedEffect(Unit) { reload() }
 
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    // Never reuse another signed-in user's notification cache.
+    LaunchedEffect(state.profile?.id) {
+        notifications = emptyList()
+        query = ""
+        category = "All"
+        reload()
+    }
+
+    val visible = remember(notifications, query, category, unreadOnly, newestFirst) {
+        val filtered = notifications.filter { item ->
+            val type = item.type.lowercase()
+            val target = item.targetType.orEmpty().lowercase()
+            val text = item.text.lowercase()
+            val matchesCategory = when (category) {
+                "Mentions" -> "mention" in type || "mention" in text
+                "Comments" -> "comment" in type || "reply" in type || "comment" in text || "replied" in text
+                "Follows" -> "follow" in type || "follow" in text
+                "Market" -> "market" in type || "market" in target || "order" in type
+                "Reels" -> "reel" in type || "reel" in target || "reel" in text
+                "Stories" -> "story" in type || "story" in target || "story" in text
+                "Rewards" -> "coin" in type || "reward" in type || "coin" in text || "reward" in text
+                "BLINK" -> type in setOf("system", "admin", "security") || target == "notification"
+                else -> true
+            }
+            val matchesSearch = query.isBlank() ||
+                item.text.contains(query, ignoreCase = true) ||
+                item.subText.orEmpty().contains(query, ignoreCase = true)
+            matchesCategory && matchesSearch && (!unreadOnly || !item.isRead)
+        }
+        if (newestFirst) filtered.sortedByDescending { it.createdAt }
+        else filtered.sortedBy { it.createdAt }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         item { ScreenHeader("Notifications", "Activity, messages and official updates") }
+        item {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Search notifications") },
+                singleLine = true
+            )
+        }
+        item {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(listOf("All", "Mentions", "Comments", "Follows", "Market", "Reels", "Stories", "Rewards", "BLINK")) { option ->
+                    FilterChip(
+                        selected = category == option,
+                        onClick = { category = option },
+                        label = { Text(option) }
+                    )
+                }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { unreadOnly = !unreadOnly }) {
+                    Text(if (unreadOnly) "Show all" else "Unread only")
+                }
+                TextButton(onClick = { newestFirst = !newestFirst }) {
+                    Text(if (newestFirst) "Newest first" else "Oldest first")
+                }
+                TextButton(onClick = {
+                    scope.launch {
+                        val unread = notifications.filterNot { it.isRead }
+                        for (item in unread) {
+                            runCatching { state.client.markNotificationRead(item.id) }
+                                .onSuccess {
+                                    notifications = notifications.map { row ->
+                                        if (row.id == item.id) row.copy(isRead = true) else row
+                                    }
+                                }
+                                .onFailure { loadError = true }
+                        }
+                    }
+                }) {
+                    Text("Read all")
+                }
+                TextButton(onClick = { scope.launch { reload() } }) { Text("Refresh") }
+            }
+        }
         if (loading) item { LoadingRow() }
-        if (!loading && notifications.isEmpty()) item { EmptyState("You're all caught up.") }
-        items(notifications, key = { it.id }) { item ->
+        if (loadError) item {
+            Text(
+                "Couldn't refresh notifications. Showing the last available activity.",
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+        if (!loading && visible.isEmpty()) item {
+            EmptyState(if (query.isNotBlank() || unreadOnly || category != "All") "No matching notifications." else "You're all caught up.")
+        }
+        items(visible, key = { it.id }) { item ->
             Surface(
                 modifier = Modifier.fillMaxWidth().clickable {
                     if (!item.isRead) scope.launch {
                         runCatching { state.client.markNotificationRead(item.id) }
-                        notifications = notifications.map { if (it.id == item.id) it.copy(isRead = true) else it }
+                            .onSuccess {
+                                notifications = notifications.map { row ->
+                                    if (row.id == item.id) row.copy(isRead = true) else row
+                                }
+                            }
                     }
                 },
                 shape = RoundedCornerShape(16.dp),
@@ -986,14 +1088,12 @@ fun NotificationsScreen(state: DesktopAppState) {
                 Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier.size(10.dp).clip(CircleShape).background(
-                            if (item.isRead) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.primary,
+                            if (item.isRead) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.onSurface,
                         ),
                     )
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(item.text, fontWeight = if (item.isRead) FontWeight.Normal else FontWeight.Bold)
-                        }
+                        Text(item.text, fontWeight = if (item.isRead) FontWeight.Normal else FontWeight.Bold)
                         item.subText?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         Text(formatTime(item.createdAt), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
