@@ -881,19 +881,21 @@ private fun ReelPage(
     val reelUsername = reel.authorUsername.trim().removePrefix("@").ifBlank {
         reel.author.trim().removePrefix("@")
     }
-    val authorProfile = remember(reel.id, profiles) {
-        profiles.firstOrNull { it.username.trim().removePrefix("@").equals(reelUsername, true) }
-            ?: profiles.firstOrNull { it.fullName.trim().equals(reel.author.trim(), true) }
+    val profilesById = remember(profiles) {
+        profiles.filter { it.id.isNotBlank() }.associateBy { it.id.trim() }
     }
-    val authorId = authorProfile?.id?.takeIf { it.isNotBlank() } ?: reel.authorProfileId
+    val profilesByHandle = remember(profiles) {
+        profiles.filter { it.username.isNotBlank() }.associateBy {
+            it.username.trim().removePrefix("@").lowercase()
+        }
+    }
+    val authorProfile = remember(reel.id, profilesById, profilesByHandle) {
+        findFeedAuthorProfile(reel, profilesById, profilesByHandle)
+    }
+    val authorId = resolvedFeedAuthorId(reel, authorProfile)
     val authorName = authorProfile?.fullName?.takeIf { it.isNotBlank() } ?: reel.author
-    val authorAvatar = authorProfile?.avatarUrl?.takeIf { it.isNotBlank() } ?: reel.authorAvatar
-    val authorVerificationBadge = when {
-        authorProfile?.verificationBadge != null && authorProfile.verificationBadge != VerificationBadge.NONE -> authorProfile.verificationBadge
-        reel.verificationBadge != VerificationBadge.NONE -> reel.verificationBadge
-        reel.isVerified -> VerificationBadge.BLUE
-        else -> VerificationBadge.NONE
-    }
+    val authorAvatar = resolvedFeedAuthorAvatar(reel, authorProfile)
+    val authorVerificationBadge = resolvedFeedAuthorBadge(reel, authorProfile)
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val interactionRepository = remember { UserInteractionRepository() }
     val reelRecommendationService = remember { ReelRecommendationService() }
@@ -1996,11 +1998,14 @@ private fun ReelVideo(
                 PlayerView(ctx).apply {
                     useController = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    keepScreenOn = true
+                    keepScreenOn = playbackAllowed
                     this.player = player
                 }
             },
-            update = { it.player = player },
+            update = {
+                it.player = player
+                it.keepScreenOn = playbackAllowed
+            },
             modifier = Modifier.fillMaxSize()
         )
         if (error != null) {

@@ -151,3 +151,12 @@ Check a real Android 15 handset: tap/double-tap/hold/seek, app background/lock, 
 - Never credit views, clicks, coins or rewards from a client-only assumption.
 - Never merge an unrelated historical Testlab branch wholesale into main.
 
+
+## Focused identity and interaction hardening (follow-up, 2026-10-14)
+- A server-provided post creator UUID now takes precedence over a username and is never overridden by a same-name profile.
+- Feed and Reels use the same verified badge policy: when a current profile is loaded, its current NONE/BLUE/GOLD status is authoritative, including when a badge has been revoked.
+- Profile avatars shown in Feed cards now prefer the resolved profile's up-to-date avatar URL instead of the stale post snapshot.
+- Following state uses the resolved author UUID even if the profile directory is incomplete; concurrent Follow/Unfollow taps are disabled while a server operation is in flight.
+- Video PlayerView no longer holds the screen awake when explicitly paused or backgrounded.
+- Added identity regression tests covering duplicate names, mismatched IDs, badge revocation, avatar and Follow fallback.
+- All changes are **staged** until the new commit's CI and real-device review. Passing earlier CI does not validate a new commit.

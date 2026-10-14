@@ -627,14 +627,32 @@ private fun PremiumHomeFeed(
     val imageLoader = context.imageLoader
     val uiScope = rememberCoroutineScope()
     val feedFollowedIds by FollowStateStore.followingIds.collectAsState()
+    val authorProfilesById = remember(profiles) {
+        profiles.filter { it.id.isNotBlank() }.associateBy { it.id.trim() }
+    }
     val authorProfilesByHandle = remember(profiles) {
         profiles.filter { it.username.isNotBlank() }.associateBy {
             it.username.trim().removePrefix("@").lowercase()
         }
     }
     fun authorProfileFor(post: FeedPost): UserProfile? =
-        authorProfilesByHandle[post.authorUsername.trim().removePrefix("@").lowercase()]
-            ?: authorProfilesByHandle[post.author.trim().removePrefix("@").lowercase()]
+        findFeedAuthorProfile(post, authorProfilesById, authorProfilesByHandle)
+
+    // All cards for the same creator observe one in-flight follow request.
+    // This prevents double taps from submitting Follow then Unfollow before
+    // the optimistic server mutation has finished reconciling.
+    var pendingAuthorFollowIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    fun requestAuthorFollow(id: String, shouldFollow: Boolean) {
+        if (id.isBlank() || id in pendingAuthorFollowIds) return
+        pendingAuthorFollowIds = pendingAuthorFollowIds + id
+        uiScope.launch {
+            try {
+                FollowStateStore.setFollowing(id, shouldFollow)
+            } finally {
+                pendingAuthorFollowIds = pendingAuthorFollowIds - id
+            }
+        }
+    }
     val resumePrefs = remember(context) {
         context.getSharedPreferences("blink_resume_positions", android.content.Context.MODE_PRIVATE)
     }
@@ -1576,13 +1594,13 @@ private fun PremiumHomeFeed(
                                                     onDelete = { onDeletePost(post.id) },
                                                     authorName = profile?.fullName?.takeIf { it.isNotBlank() } ?: post.author,
                                                     authorUsername = profile?.username?.takeIf { it.isNotBlank() } ?: post.authorUsername,
-                                                    authorVerificationBadge = profile?.verificationBadge?.takeUnless { it == VerificationBadge.NONE }
-                                                        ?: post.verificationBadge.takeUnless { it == VerificationBadge.NONE }
-                                                        ?: if (post.isVerified) VerificationBadge.BLUE else VerificationBadge.NONE,
-                                                    authorProfileId = profile?.id?.takeIf { it.isNotBlank() } ?: post.authorProfileId,
-                                                    isFollowingAuthor = profile?.id?.let { it in feedFollowedIds } ?: false,
-                                                    onFollowAuthor = { id -> uiScope.launch { FollowStateStore.setFollowing(id, true) } },
-                                                    onUnfollowAuthor = { id -> uiScope.launch { FollowStateStore.setFollowing(id, false) } },
+                                                    authorVerificationBadge = resolvedFeedAuthorBadge(post, profile),
+                                                    authorAvatar = resolvedFeedAuthorAvatar(post, profile),
+                                                    authorProfileId = resolvedFeedAuthorId(post, profile),
+                                                    isFollowingAuthor = resolvedFeedAuthorId(post, profile) in feedFollowedIds,
+                                                    isFollowMutationPending = resolvedFeedAuthorId(post, profile) in pendingAuthorFollowIds,
+                                                    onFollowAuthor = { id -> requestAuthorFollow(id, true) },
+                                                    onUnfollowAuthor = { id -> requestAuthorFollow(id, false) },
                                                     xFeedStyle = true,
                                                     isFeedScrolling = listState.isScrollInProgress
                                                 )
@@ -1607,13 +1625,13 @@ private fun PremiumHomeFeed(
                                                     post.authorUsername.trim().removePrefix("@").equals(currentUserKey, ignoreCase = true),
                                                 authorName = profile?.fullName?.takeIf { it.isNotBlank() } ?: post.author,
                                                 authorUsername = profile?.username?.takeIf { it.isNotBlank() } ?: post.authorUsername,
-                                                authorVerificationBadge = profile?.verificationBadge?.takeUnless { it == VerificationBadge.NONE }
-                                                    ?: post.verificationBadge.takeUnless { it == VerificationBadge.NONE }
-                                                    ?: if (post.isVerified) VerificationBadge.BLUE else VerificationBadge.NONE,
-                                                authorProfileId = profile?.id?.takeIf { it.isNotBlank() } ?: post.authorProfileId,
-                                                isFollowingAuthor = profile?.id?.let { it in feedFollowedIds } ?: false,
-                                                onFollowAuthor = { id -> uiScope.launch { FollowStateStore.setFollowing(id, true) } },
-                                                onUnfollowAuthor = { id -> uiScope.launch { FollowStateStore.setFollowing(id, false) } },
+                                                authorVerificationBadge = resolvedFeedAuthorBadge(post, profile),
+                                                authorAvatar = resolvedFeedAuthorAvatar(post, profile),
+                                                authorProfileId = resolvedFeedAuthorId(post, profile),
+                                                isFollowingAuthor = resolvedFeedAuthorId(post, profile) in feedFollowedIds,
+                                                    isFollowMutationPending = resolvedFeedAuthorId(post, profile) in pendingAuthorFollowIds,
+                                                onFollowAuthor = { id -> requestAuthorFollow(id, true) },
+                                                onUnfollowAuthor = { id -> requestAuthorFollow(id, false) },
                                                 trackExposure = false,
                                                 xFeedStyle = true,
                                                 isFeedScrolling = listState.isScrollInProgress

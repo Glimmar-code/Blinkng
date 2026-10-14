@@ -149,6 +149,7 @@ fun PostCard(
     onDelete: () -> Unit = {},
     authorName: String = post.author,
     authorUsername: String = post.authorUsername.ifBlank { post.author },
+    authorAvatar: String = post.authorAvatar,
     authorVerificationBadge: VerificationBadge = when {
         post.verificationBadge != VerificationBadge.NONE -> post.verificationBadge
         post.isVerified -> VerificationBadge.BLUE
@@ -157,6 +158,7 @@ fun PostCard(
     hasActiveStory: Boolean = false,
     authorProfileId: String = "",
     isFollowingAuthor: Boolean = false,
+    isFollowMutationPending: Boolean = false,
     onFollowAuthor: (String) -> Unit = {},
     onUnfollowAuthor: (String) -> Unit = {},
     onMessageAuthor: () -> Unit = {},
@@ -308,7 +310,7 @@ fun PostCard(
                             .clickable(role = Role.Button) { onProfileClick(profileTarget) }
                     ) {
                         AsyncImage(
-                            model = post.authorAvatar,
+                            model = authorAvatar,
                             error = painterResource(R.drawable.ic_default_profile),
                             fallback = painterResource(R.drawable.ic_default_profile),
                             contentDescription = "$resolvedAuthorName profile picture",
@@ -429,13 +431,13 @@ fun PostCard(
                             color = socialBlue.copy(alpha = 0.12f),
                             modifier = Modifier
                                 .padding(top = 5.dp)
-                                .clickable {
+                                .clickable(enabled = !isFollowMutationPending) {
                                     if (isFollowingAuthor) onUnfollowAuthor(authorProfileId)
                                     else onFollowAuthor(authorProfileId)
                                 }
                         ) {
                             Text(
-                                text = if (isFollowingAuthor) "Following" else "+ Follow",
+                                text = if (isFollowMutationPending) "Updating…" else if (isFollowingAuthor) "Following" else "+ Follow",
                                 color = socialBlue,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.SemiBold,
