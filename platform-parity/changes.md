@@ -1,3 +1,9 @@
+## 2026-10-13 — Seamless Android top edge / full-height feed
+
+- **Android:** The authenticated main scaffold no longer reserves a second full status-bar inset above the feed. Feed, reels, messages, search and connect retain their individual top safe-area padding; Market and Leaderboard reserve it explicitly. Bottom and horizontal safe insets remain in the scaffold to protect the five-tab navigation and cutouts. The feed header no longer paints a purple/blue glow into the top strip. System status icons remain visible; this is edge-to-edge content, not immersive/hide-system-bars mode.
+- **PARITY-EXCEPTION: android-system-bars-edge-to-edge** — Windows platform exception: Android status/navigation bars and gesture-inset APIs do not exist on Windows. Desktop already sizes content to its window and retains native title-bar / window-resizing affordances; no desktop UI or backend change is applicable.
+- **Checks before production:** Android compile, lint and tests; Windows parity/build; device verification on Android 15 with display cutout and gesture navigation (feed at rest + collapsed header, Reels, Market, Connect, Messages, keyboard, dark/light mode). Stage in Testlab first, and do not promote to main until these checks pass.
+
 ## 2026-10-13 — Five-page gesture navigation and chat direction parity
 
 - **Shared:** `BlinkSwipeNavigation` defines the canonical Feed → Reels → Market → Connect → Messages ordering, bounds and interactive scale/opacity motion. No backend, Supabase, messaging transport, moderation, coins or schema changes.

@@ -174,7 +174,7 @@ fun LeaderboardScreen(
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().statusBarsPadding(),
         contentPadding = PaddingValues(bottom = 110.dp)
     ) {
         item(key = "leaderboard_header", contentType = "header") {

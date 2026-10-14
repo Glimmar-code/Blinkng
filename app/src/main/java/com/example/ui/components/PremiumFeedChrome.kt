@@ -96,22 +96,6 @@ fun FeedTopBar(
         modifier = modifier
             .fillMaxWidth()
             .background(FeedBackground)
-            .drawBehind {
-                drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(FeedPurple.copy(alpha = 0.16f), Color.Transparent),
-                        center = Offset(size.width * 0.22f, 0f),
-                        radius = size.width * 0.72f
-                    )
-                )
-                drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(FeedBlue.copy(alpha = 0.11f), Color.Transparent),
-                        center = Offset(size.width * 0.84f, 0f),
-                        radius = size.width * 0.58f
-                    )
-                )
-            }
             .statusBarsPadding()
     ) {
         val horizontalPadding = if (maxWidth >= 600.dp) 20.dp else 14.dp
