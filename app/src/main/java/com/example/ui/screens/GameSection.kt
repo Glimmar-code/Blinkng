@@ -472,7 +472,7 @@ fun GameSection(
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("BLINK LIFE · TESTLAB", fontWeight = FontWeight.Black, fontSize = 16.sp)
                             Text(
-                                "Explore a little city, complete three jobs and decorate your room. " +
+                                "Explore a 3D neighbourhood, rotate the camera, complete three jobs and decorate your room. " +
                                     "Local fictional Game Cash only; no real money or BLINK Coin rewards.",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
