@@ -94,6 +94,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.R
+import com.example.BlinkLife3DActivity
 import com.blinkng.shared.BlinkLifePrototype
 import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
@@ -470,15 +471,20 @@ fun GameSection(
                         color = MaterialTheme.colorScheme.surface
                     ) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("BLINK LIFE · TESTLAB", fontWeight = FontWeight.Black, fontSize = 16.sp)
+                            Text("BLINK LIFE · NATIVE 3D", fontWeight = FontWeight.Black, fontSize = 16.sp)
                             Text(
-                                "Explore a 3D neighbourhood, rotate the camera, complete three jobs and decorate your room. " +
-                                    "Local fictional Game Cash only; no real money or BLINK Coin rewards.",
+                                "Walk freely in the native 3D city, rotate the camera, work and shop. " +
+                                    "Fictional Game Cash only; no real money or BLINK Coin rewards.",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Button(onClick = { blinkLifeOpen = true }) {
-                                Text("Enter BLINK LIFE playground")
+                            Button(onClick = {
+                                context.startActivity(Intent(context, BlinkLife3DActivity::class.java))
+                            }) {
+                                Text("Play BLINK LIFE 3D")
+                            }
+                            TextButton(onClick = { blinkLifeOpen = true }) {
+                                Text("Open lightweight 3D preview instead")
                             }
                         }
                     }
