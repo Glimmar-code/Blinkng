@@ -50,6 +50,27 @@ class BlinkItemsPolicyTest {
     }
 
     @Test
+    fun yesterdayStepSnapshotNeverShowsAsToday() {
+        assertEquals(0L, BlinkItemsPolicy.currentDaySteps("2026-10-13", "2026-10-14", 7_200L))
+        assertEquals(7_200L, BlinkItemsPolicy.currentDaySteps("2026-10-14", "2026-10-14", 7_200L))
+        assertEquals(0L, BlinkItemsPolicy.currentDaySteps("2026-10-14", "2026-10-14", -1L))
+    }
+
+    @Test
+    fun milestonesAboveCustomGoalDoNotClaimGoalRepeatedly() {
+        assertTrue(BlinkItemsPolicy.isGoalMilestone(3_000, 3_000))
+        assertTrue(!BlinkItemsPolicy.isGoalMilestone(5_000, 3_000))
+        assertEquals("Great progress", BlinkItemsPolicy.stepMessage(5_000, 3_000).first)
+    }
+
+    @Test
+    fun expiredWeatherAlertsAreNotActive() {
+        assertTrue(!BlinkItemsPolicy.isActiveWeatherAlert(1_000L, 1_001L))
+        assertTrue(BlinkItemsPolicy.isActiveWeatherAlert(2_000L, 1_001L))
+        assertTrue(BlinkItemsPolicy.isActiveWeatherAlert(0L, 1_001L))
+    }
+
+    @Test
     fun officialWeatherSeveritySortsAboveMinorAlerts() {
         val severe = BlinkItemsPolicy.weatherPriority("severe", "expected")
         val minor = BlinkItemsPolicy.weatherPriority("minor", "immediate")
