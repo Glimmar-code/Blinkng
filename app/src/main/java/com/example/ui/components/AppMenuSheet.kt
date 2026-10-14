@@ -43,6 +43,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
@@ -63,6 +66,10 @@ import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.SwitchAccount
 import androidx.compose.material.icons.outlined.Verified
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -91,6 +98,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -107,8 +115,8 @@ import kotlinx.coroutines.delay
 
 private object MenuMotion {
     val chevron = spring<Float>(
-        dampingRatio = Spring.DampingRatioMediumBouncy,
-        stiffness = Spring.StiffnessLow
+        dampingRatio = Spring.DampingRatioNoBouncy,
+        stiffness = Spring.StiffnessMedium
     )
 }
 
@@ -136,6 +144,9 @@ fun AppMenuSheet(
     val adminService = remember { AdminSupabaseService() }
     var adminModeAvailable by remember(profile.id) { mutableStateOf(false) }
     var expandedSections by rememberSaveable { mutableStateOf(setOf("Campus & tools")) }
+    var menuQuery by rememberSaveable { mutableStateOf("") }
+    var showLogoutConfirmation by rememberSaveable { mutableStateOf(false) }
+    var showAboutDialog by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(profile.id) {
         adminModeAvailable = adminService.fetchCapability().getOrNull()?.isAdmin == true
@@ -161,8 +172,8 @@ fun AppMenuSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
-        dragHandle = null,
-        shape = RoundedCornerShape(0.dp),
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         modifier = Modifier.testTag("app_menu_sheet")
     ) {
         Column(
@@ -171,7 +182,37 @@ fun AppMenuSheet(
                 .padding(bottom = 28.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            ProfileHeaderCard(profile) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Menu", modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = onDismiss, modifier = Modifier.testTag("menu_close")) {
+                    Icon(Icons.Default.Close, contentDescription = "Close menu")
+                }
+            }
+            OutlinedTextField(
+                value = menuQuery,
+                onValueChange = { menuQuery = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
+                    .testTag("menu_search"),
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                placeholder = { Text("Search menu") },
+                trailingIcon = {
+                    if (menuQuery.isNotEmpty()) {
+                        IconButton(onClick = { menuQuery = "" }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp)
+            )
+            if (menuQuery.isBlank()) ProfileHeaderCard(profile) {
                 onDismiss()
                 onViewProfile()
             }
@@ -286,7 +327,7 @@ fun AppMenuSheet(
                     context.startActivity(Intent(context, AccountSwitcherActivity::class.java))
                 }
                 MenuItemRow(Icons.Outlined.Info, "About Blink", "About this app") {
-                    onShowToast("Blink • Student community, Connect Hub, Games and Marketplace")
+                    showAboutDialog = true
                 }
                 MenuItemRow(
                     Icons.AutoMirrored.Filled.Logout,
@@ -295,7 +336,7 @@ fun AppMenuSheet(
                     iconColor = MaterialTheme.colorScheme.error,
                     titleColor = MaterialTheme.colorScheme.error
                 ) {
-                    onDismiss(); onLogout()
+                    showLogoutConfirmation = true
                 }
                 MenuItemRow(
                     Icons.Outlined.DeleteForever,
@@ -309,6 +350,29 @@ fun AppMenuSheet(
             }
         }
     }
+    if (showLogoutConfirmation) AlertDialog(
+        onDismissRequest = { showLogoutConfirmation = false },
+        title = { Text("Log out of BLINK?") },
+        text = { Text("You can sign in again at any time.") },
+        confirmButton = {
+            TextButton(onClick = {
+                showLogoutConfirmation = false
+                onDismiss()
+                onLogout()
+            }) { Text("Log out") }
+        },
+        dismissButton = {
+            TextButton(onClick = { showLogoutConfirmation = false }) { Text("Cancel") }
+        }
+    )
+    if (showAboutDialog) AlertDialog(
+        onDismissRequest = { showAboutDialog = false },
+        title = { Text("About BLINK") },
+        text = { Text("BLINK connects campus communities through posts, reels, games, messaging and marketplace.") },
+        confirmButton = {
+            TextButton(onClick = { showAboutDialog = false }) { Text("Close") }
+        }
+    )
 }
 
 @Composable
@@ -344,12 +408,14 @@ private fun ProfileHeaderCard(profile: UserProfile, onClick: () -> Unit) {
                 profile.fullName.ifBlank { profile.username },
                 fontWeight = FontWeight.Bold,
                 fontSize = 17.sp,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1, overflow = TextOverflow.Ellipsis
             )
             Text(
                 "@${profile.username}",
                 fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1, overflow = TextOverflow.Ellipsis
             )
         }
         Icon(
@@ -437,7 +503,7 @@ private fun ThemeToggleRow(isDark: Boolean, onToggleTheme: () -> Unit) {
         Switch(
             checked = isDark,
             onCheckedChange = { onToggleTheme() },
-            colors = SwitchDefaults.colors(checkedTrackColor = BlinkPink)
+            colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.onSurface, checkedThumbColor = MaterialTheme.colorScheme.surface)
         )
     }
 }
