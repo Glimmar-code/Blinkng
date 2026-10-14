@@ -20,6 +20,10 @@ object BlinkItemsPolicy {
 
     fun isGoalMilestone(milestone: Int, goal: Int): Boolean = milestone == goal
 
+    fun stepProgressPercent(steps: Long, goal: Int): Int =
+        ((steps.coerceAtLeast(0L).toDouble() * 100.0) / goal.coerceAtLeast(1))
+            .coerceIn(0.0, 100.0).toInt()
+
     fun isActiveWeatherAlert(endEpochSeconds: Long, nowEpochSeconds: Long): Boolean =
         endEpochSeconds <= 0L || endEpochSeconds > nowEpochSeconds
 
