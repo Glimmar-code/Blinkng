@@ -35,6 +35,25 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
         private const val TAG = "BlinkFCM"
         private const val PUSH_PREFS = "blink_push"
         private const val TOKEN_KEY = "fcm_token"
+        private const val REGISTERED_TOKEN = "registered_token"
+        private const val REGISTERED_ACCOUNT = "registered_account"
+
+        /**
+         * True only when Supabase most recently accepted this token for this account.
+         * This is not proof the phone can currently receive packets through its OS settings.
+         */
+        fun isRegisteredForCurrentAccount(context: Context): Boolean {
+            val prefs = context.applicationContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+            val token = prefs.safeString(TOKEN_KEY, "").orEmpty()
+            val account = runCatching {
+                SupabaseService.initialize(context.applicationContext)
+                SupabaseService().getCurrentUserId().orEmpty()
+            }.getOrDefault("")
+            return token.isNotBlank() &&
+                account.isNotBlank() &&
+                prefs.safeString(REGISTERED_TOKEN, "").orEmpty() == token &&
+                prefs.safeString(REGISTERED_ACCOUNT, "").orEmpty() == account
+        }
 
         /**
          * Fetches the current FCM token, stores it locally, registers it with Supabase,
@@ -112,6 +131,9 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 response.use {
                     if (!it.isSuccessful) {
                         Log.w(TAG, "FCM token unregister failed: ${it.code}")
+                    } else {
+                        appContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+                            .edit().remove(REGISTERED_TOKEN).remove(REGISTERED_ACCOUNT).apply()
                     }
                     it.isSuccessful
                 }
@@ -145,7 +167,7 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                 // FCM callbacks can arrive hours after the last foreground session check.
                 // Restore/rotate the Supabase JWT before registering the device token.
                 if (!service.restoreSession()) return
-                service.getCurrentUserId() ?: return
+                val currentUid = service.getCurrentUserId() ?: return
                 var accessToken = SupabaseService.accessToken() ?: return
 
                 val client = OkHttpClient.Builder()
@@ -179,6 +201,11 @@ class BlinkFirebaseMessagingService : FirebaseMessagingService() {
                     if (!it.isSuccessful) {
                         Log.w(TAG, "FCM token sync failed: ${it.code} ${responseBody.take(240)}")
                     } else {
+                        appContext.getSharedPreferences(PUSH_PREFS, Context.MODE_PRIVATE)
+                            .edit()
+                            .putString(REGISTERED_TOKEN, token)
+                            .putString(REGISTERED_ACCOUNT, currentUid)
+                            .apply()
                         Log.d(TAG, "FCM token registered with Supabase.")
                         NotificationPreferenceStore.refreshFromServerAsync(appContext)
                     }
