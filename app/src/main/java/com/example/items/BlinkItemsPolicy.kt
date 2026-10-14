@@ -15,8 +15,16 @@ object BlinkItemsPolicy {
         return candidates.lastOrNull { it > lastNotifiedMilestone && steps >= it }
     }
 
+    fun currentDaySteps(snapshotDay: String, today: String, steps: Long): Long =
+        if (snapshotDay == today) steps.coerceAtLeast(0L) else 0L
+
+    fun isGoalMilestone(milestone: Int, goal: Int): Boolean = milestone == goal
+
+    fun isActiveWeatherAlert(endEpochSeconds: Long, nowEpochSeconds: Long): Boolean =
+        endEpochSeconds <= 0L || endEpochSeconds > nowEpochSeconds
+
     fun stepMessage(milestone: Int, goal: Int): Pair<String, String> = when {
-        milestone >= goal -> "Goal reached!" to "You reached ${formatSteps(milestone)} steps today. Great work."
+        isGoalMilestone(milestone, goal) -> "Goal reached!" to "You reached ${formatSteps(milestone)} steps today. Great work."
         milestone >= 7_500 -> "Almost there" to "${formatSteps(milestone)} steps today. Keep it going."
         milestone >= 5_000 -> "Great progress" to "${formatSteps(milestone)} steps today. You're making strong progress."
         milestone >= 3_000 -> "Good progress" to "You've reached ${formatSteps(milestone)} steps today."
