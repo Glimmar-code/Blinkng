@@ -598,6 +598,7 @@ fun PostCard(
                     } else {
                         val mediaState = rememberLazyListState()
                         val mediaFlingBehavior = rememberSnapFlingBehavior(mediaState)
+                        Column {
                         LazyRow(
                             state = mediaState,
                             modifier = Modifier.fillMaxWidth(),
@@ -620,19 +621,24 @@ fun PostCard(
                                 )
                             }
                         }
-                        Surface(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(8.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            color = Color.Black.copy(alpha = 0.62f)
+                        // Place the counter *below* the photograph instead of over
+                        // its corner, so no part of the uploaded image is covered.
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp, end = 8.dp, bottom = 2.dp),
+                            horizontalArrangement = Arrangement.End
                         ) {
-                            Text(
-                                text = "${mediaState.firstVisibleItemIndex + 1}/${displayImages.size}",
-                                color = Color.White,
-                                style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant
+                            ) {
+                                Text(
+                                    text = "${mediaState.firstVisibleItemIndex + 1}/${displayImages.size}",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
                         }
                     }
                 }

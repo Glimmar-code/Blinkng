@@ -166,3 +166,15 @@ Check a real Android 15 handset: tap/double-tap/hold/seek, app background/lock, 
 - The global Follow StateFlow clears if no authenticated token is available; a prior user's Follow state isn't displayed while signed out.
 - The in-flight Follow action set is keyed to the current Home account.
 - These are **staged fixes**, not a claim of verified multi-account device behavior.
+
+## Confirmed interaction and layout defects addressed in this batch (2026-10-14)
+The following defects were **verified from current source**, then patched on Testlab:
+- **#21 / #22:** Rapid Like taps could launch several optimistic requests, allowing older failures to revert a later state. Added per-post in-flight guards and cleanup after the server call.
+- **#23 / #39 / #73:** Unsave left the post in `mySavedPosts`; unliking similarly retained posts in `myLikedPosts`. Corrected membership lists and added rollback/repeated-item unit tests.
+- **#29:** Repeated Repost taps could race remote reconciliation. Added per-post in-flight guard.
+- **#9:** Photo carousel counter covered an image corner. Moved it below the media.
+- **#63:** Expanded Reel captions could occupy unlimited height. Constrained them to a scrollable 180dp region.
+- **#69:** Right-side metric width could shift; reserved a consistent width per action.
+- **#73:** Bookmark rail always read "Save" even if saved. Saved now displays when applicable.
+
+**Status semantics:** These rows are `Patch staged; CI/device verify`, not `PASS`. Other 100-point hypotheses remain pending reproduction or regression testing. No database policies, algorithms, rewards, or production release logic were changed.

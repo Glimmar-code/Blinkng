@@ -1143,7 +1143,7 @@ private fun ReelPage(
             ) { if (reel.allowComments) onComment(reel.id) }
             ReelAction(
                 icon = if (reel.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                text = "Save",
+                text = if (reel.isBookmarked) "Saved" else "Save",
                 tint = Color.White,
                 contentDescription = if (reel.isBookmarked) "Remove from saved" else "Save"
             ) { onBookmark(reel.id) }
@@ -1464,7 +1464,11 @@ private fun ExpandableCaption(text: String) {
             text = if (expanded) text else text.take(collapsedThreshold).trimEnd() + "…",
             color = Color.White,
             fontSize = 13.sp,
-            maxLines = if (expanded) Int.MAX_VALUE else 4
+            maxLines = if (expanded) Int.MAX_VALUE else 4,
+            // Expanded captions cannot take over the entire video. Keep the
+            // seek rail, navigation and engagement actions reachable.
+            modifier = if (expanded) Modifier.heightIn(max = 180.dp)
+                .verticalScroll(rememberScrollState()) else Modifier
         )
         Text(
             text = if (expanded) "Show less" else "more",
@@ -1555,7 +1559,7 @@ private fun ReelAction(
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(vertical = 6.dp)
+        modifier = Modifier.widthIn(min = 58.dp).padding(vertical = 6.dp)
     ) {
         IconButton(
             onClick = { pressed = true; onClick() },
