@@ -377,7 +377,7 @@ private fun FeedUtilityAction(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (muted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else FeedTextPrimary,
+            tint = if (muted) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else Color(0xFF3266B4),
             modifier = Modifier.size(20.dp)
         )
         Spacer(Modifier.height(2.dp))
