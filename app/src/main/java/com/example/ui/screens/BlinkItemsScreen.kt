@@ -991,28 +991,37 @@ private fun BlinkLiveLocationItem(
                 )
             }
 
-            ContextCompat.startForegroundService(
-                context,
-                Intent(context, BlinkLiveLocationService::class.java).apply {
-                    action = BlinkLiveLocationService.ACTION_START
-                    putExtra(BlinkLiveLocationService.EXTRA_SESSION_ID, session.id)
-                    putExtra(BlinkLiveLocationService.EXTRA_EXPIRES_AT, session.expiresAt)
-                }
-            )
+            val started = runCatching {
+                ContextCompat.startForegroundService(
+                    context,
+                    Intent(context, BlinkLiveLocationService::class.java).apply {
+                        action = BlinkLiveLocationService.ACTION_START
+                        putExtra(BlinkLiveLocationService.EXTRA_SESSION_ID, session.id)
+                        putExtra(BlinkLiveLocationService.EXTRA_EXPIRES_AT, session.expiresAt)
+                    }
+                )
+            }
+            if (started.isFailure) {
+                repository.stopSession(session.id)
+                loading = false
+                message = "Unable to launch live tracking. Please check location permissions and retry."
+                refreshLocations()
+                return@launch
+            }
             currentSession = BlinkMyLiveLocationSession(
                 id = session.id,
                 expiresAt = session.expiresAt,
                 recipientCount = selectedIds.size
             )
             loading = false
-            message = "Live Location is sharing only with the selected people."
+            message = "Sharing requested for the selected people. Stop sharing at any time."
         }
     }
 
     val finePermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted && pendingStart) {
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true && pendingStart) {
             pendingStart = false
             startShare()
         } else if (!granted) {
@@ -1025,7 +1034,7 @@ private fun BlinkLiveLocationItem(
         FollowStateStore.refresh()
         refreshLocations()
         while (true) {
-            delay(8_000L)
+            delay(if (currentSession != null || sharedLocations.isNotEmpty()) 8_000L else 30_000L)
             sharedLocations = repository.activeLocationsSharedWithMe().getOrDefault(sharedLocations)
             currentSession = repository.currentSession().getOrNull()
         }
@@ -1033,7 +1042,7 @@ private fun BlinkLiveLocationItem(
 
     LaunchedEffect(pendingStart) {
         if (pendingStart && !BlinkLocationClient.hasFinePermission(context)) {
-            finePermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            finePermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
         }
     }
 
@@ -1096,15 +1105,28 @@ private fun BlinkLiveLocationItem(
                             )
                             Spacer(Modifier.height(8.dp))
                             OutlinedButton(
+                                enabled = !loading,
                                 onClick = {
-                                    val id = session.id
-                                    currentSession = null
-                                    context.startService(
-                                        Intent(context, BlinkLiveLocationService::class.java).apply {
-                                            action = BlinkLiveLocationService.ACTION_STOP
-                                            putExtra(BlinkLiveLocationService.EXTRA_SESSION_ID, id)
+                                    loading = true
+                                    scope.launch {
+                                        val stopped = repository.stopSession(session.id)
+                                        if (stopped.getOrDefault(false)) {
+                                            runCatching {
+                                                context.startService(
+                                                    Intent(context, BlinkLiveLocationService::class.java).apply {
+                                                        action = BlinkLiveLocationService.ACTION_STOP
+                                                        putExtra(BlinkLiveLocationService.EXTRA_SESSION_ID, session.id)
+                                                    }
+                                                )
+                                            }
+                                            currentSession = null
+                                            message = "Live Location sharing stopped."
+                                        } else {
+                                            message = stopped.exceptionOrNull()?.message
+                                                ?: "Cannot confirm sharing stopped. Check your connection and retry."
                                         }
-                                    )
+                                        loading = false
+                                    }
                                 }
                             ) {
                                 Text("Stop sharing")
@@ -1290,7 +1312,7 @@ private fun BlinkSharedLocationRow(shared: BlinkSharedLocation) {
                     fontWeight = FontWeight.Medium
                 )
                 Text(
-                    "Updated ${formatUpdated(shared.updatedAt)}",
+                    "Updated ${formatUpdated(shared.updatedAt)} • Accuracy ${shared.accuracyMeters.coerceAtLeast(0f).roundToInt()}m",
                     color = FeedTextSecondary,
                     style = MaterialTheme.typography.bodySmall
                 )
