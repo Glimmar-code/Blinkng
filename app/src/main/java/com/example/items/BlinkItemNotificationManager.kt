@@ -87,7 +87,7 @@ object BlinkItemNotificationManager {
             goal = goal
         ) ?: return
 
-        val isGoal = milestone >= goal
+        val isGoal = BlinkItemsPolicy.isGoalMilestone(milestone, goal)
         if (isGoal && !BlinkItemPreferences.stepGoalEnabled(context)) return
         if (!isGoal && !BlinkItemPreferences.stepMilestonesEnabled(context)) return
 
@@ -117,12 +117,14 @@ object BlinkItemNotificationManager {
         if (!BlinkItemPreferences.weatherEnabled(context)) return
 
         if (BlinkItemPreferences.severeAlertsEnabled(context)) {
+            val now = System.currentTimeMillis() / 1_000L
             val newest = snapshot.alerts
-                .filter { it.id.isNotBlank() && it.id != BlinkItemPreferences.lastWeatherAlertId(context) }
+                .filter { it.id.isNotBlank() && !BlinkItemPreferences.wasWeatherAlertNotified(context, it.id) }
+                .filter { BlinkItemsPolicy.isActiveWeatherAlert(it.endsAtEpochSeconds, now) }
                 .maxByOrNull { BlinkItemsPolicy.weatherPriority(it.severity, it.urgency) }
 
             if (newest != null) {
-                BlinkItemPreferences.setLastWeatherAlertId(context, newest.id)
+                BlinkItemPreferences.markWeatherAlertNotified(context, newest.id)
                 val title = if (newest.isOfficial) {
                     "Official weather alert • ${newest.title}"
                 } else {
