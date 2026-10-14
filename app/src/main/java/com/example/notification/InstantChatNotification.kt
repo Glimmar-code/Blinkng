@@ -11,6 +11,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
 import com.example.MainActivity
+import com.example.data.supabase.SupabaseService
 
 /**
  * Fast path for direct-message notifications.
@@ -29,7 +30,6 @@ object InstantChatNotification {
     const val EXTRA_SENDER_AVATAR = "blink_direct_reply_sender_avatar"
 
     private const val ACTION_DIRECT_REPLY = "com.example.notification.ACTION_DIRECT_REPLY"
-    private const val MESSAGE_ID_BASE = 1000
     private const val GROUP_KEY_MESSAGES = "blink_group_messages"
 
     fun show(
@@ -46,17 +46,28 @@ object InstantChatNotification {
         BlinkNotificationHelper.createNotificationChannels(context)
 
         val stableConversationKey = conversationId.ifBlank { senderUsername }
-        val notificationId = MESSAGE_ID_BASE + positiveHash(stableConversationKey) % 700
+        val notificationId = NotificationIdentity.conversationId(stableConversationKey)
         val sender = Person.Builder()
             .setName(senderName.ifBlank { senderUsername.ifBlank { "Blink user" } })
             .setKey(senderUsername.ifBlank { stableConversationKey })
             .build()
         val me = Person.Builder().setName("You").setKey("blink_self").build()
+        val accountId = runCatching { SupabaseService().getCurrentUserId().orEmpty() }.getOrDefault("")
+        val previews = NotificationMessageHistory.append(
+            userId = accountId,
+            conversationKey = stableConversationKey,
+            messageId = messageId,
+            text = messageText
+        )
 
+        // Show a short conversation history without disk-caching private previews or
+        // blocking FCM's time-limited handler with a network/avatar request.
         val messagingStyle = NotificationCompat.MessagingStyle(me)
-            .addMessage(messageText, System.currentTimeMillis(), sender)
             .setConversationTitle(sender.name)
             .setGroupConversation(false)
+        previews.forEach { entry ->
+            messagingStyle.addMessage(entry.text, entry.timestampMillis, sender)
+        }
 
         val contentIntent = buildChatPendingIntent(
             context = context,
