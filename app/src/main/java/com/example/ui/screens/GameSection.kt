@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import com.example.data.local.rememberPersistentTextState
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
@@ -93,6 +94,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.R
+import com.blinkng.shared.BlinkLifePrototype
 import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.GameDashboard
@@ -156,6 +158,7 @@ fun GameSection(
     val repository = remember { GameRepository() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    var blinkLifeOpen by rememberSaveable { mutableStateOf(false) }
 
     var selectedModeName by rememberSaveable { mutableStateOf(ChallengeGameType.GENERAL_KNOWLEDGE.name) }
     val selectedMode = remember(selectedModeName) {
@@ -395,6 +398,12 @@ fun GameSection(
         )
     }
 
+    BackHandler(enabled = blinkLifeOpen) { blinkLifeOpen = false }
+    if (blinkLifeOpen) {
+        BlinkLifePrototype(onExit = { blinkLifeOpen = false }, modifier = modifier)
+        return
+    }
+
     LazyColumn(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(bottom = 120.dp)
@@ -449,6 +458,30 @@ fun GameSection(
                         enabled = !isLoadingRound && round == null,
                         onPlay = { startRound(daily = true) }
                     )
+                }
+
+                item { Spacer(Modifier.height(14.dp)) }
+
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("BLINK LIFE · TESTLAB", fontWeight = FontWeight.Black, fontSize = 16.sp)
+                            Text(
+                                "Explore a little city, complete three jobs and decorate your room. " +
+                                    "Local fictional Game Cash only; no real money or BLINK Coin rewards.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(onClick = { blinkLifeOpen = true }) {
+                                Text("Enter BLINK LIFE playground")
+                            }
+                        }
+                    }
                 }
 
                 item { Spacer(Modifier.height(14.dp)) }
