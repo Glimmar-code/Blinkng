@@ -6,7 +6,7 @@ Status: experimental; **not a production release**. Built to be reviewed via a f
 
 Open BLINK > Games > **BLINK LIFE · TESTLAB** on Android or Windows.
 
-**3D requirement:** This is now an isometric 3D world prototype built from depth-sorted, projected X/Y/Z meshes with an orbitable camera. It is **not yet** a full hardware-accelerated 3D engine with first-person movement, physics, or free-roam driving. A real 3D engine integration will be needed before production-scale free-roam gameplay.
+**3D requirement:** The embedded Android/Windows proof-of-concept currently uses projected X/Y/Z meshes and an orbitable camera. A separate native Godot 4 project has now also been added under `game3d/` with a real perspective 3D scene, free-roam character physics, collidable buildings and touch/keyboard controls. The Godot runtime is **not yet embedded into the Android APK or Windows installer**, and its scene still needs a real Godot build/run smoke test. See `game3d/README.md`.
 
 - Shared original 3D city playground with six named places, cuboid buildings, low-poly trees, and a three-dimensional avatar.
 - Camera rotation with 45-degree orbit controls to view the city from different angles.
