@@ -8,6 +8,14 @@ PARITY-EXCEPTION: android-home-reference-layout-20261014
 - **Windows equivalent:** Windows retains the same user actions and shared data semantics, with a desktop-native feed/window/sidebar. A mobile status inset, top-row icon sizing and bottom phone tab bar are intentionally Android-only presentation details.
 - **Release checks:** Stage on a main-based Testlab-prefixed integration branch because the legacy Testlab branch diverged significantly from current main. Require Android build/lint/runtime, Windows desktop parity, Light/Dark screenshots and physical Redmi 15C inspection before promoting to main. Do not claim that manual device checks passed unless performed.
 
+## 2026-10-14 — Finish full-height Android page chrome without top black gaps
+
+PARITY-EXCEPTION: android-search-messages-system-status-insets-20261014
+
+- **Android (forward-ported onto current main):** Preserve the already-merged Home, Reels and Connect fullscreen fix from PR #270 rather than copying the stale Testlab MainActivity and risking the newer navigation/boost/ads code. Messages and Search already render their own `statusBarsPadding()` and therefore no longer consume a second top inset in the activity Scaffold. Unlike Home, these routes retain bottom and horizontal safeDrawing insets. Market continues using the activity's single safe-area inset, but its decorative 44dp header gap is reduced to 12dp. The current main feed header already removes the purple/blue glow, so no duplicate header changes are needed.
+- **Windows:** Only Android status/navigation system insets and Material3 phone-specific screen spacing change. Windows already uses its OS title bar and full client surface; no corresponding code change is relevant.
+- **Validation:** Android compile, lint, tests, signed-release smoke and Windows parity/build CI required before merging into main. On-device Redmi 15C screenshot/gesture/cutout checks are still required before claiming physical pixel-perfect behavior.
+
 ## 2026-10-13 — Remove duplicate Android top and bottom system insets on Home (Testlab)
 
 PARITY-EXCEPTION: android-home-reels-connect-edge-to-edge-safe-insets-20261013

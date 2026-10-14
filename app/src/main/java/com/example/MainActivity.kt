@@ -493,8 +493,7 @@ class MainActivity : ComponentActivity() {
             }
 
             BlinkTheme(darkTheme = uiState.isDarkMode) {
-                // The chosen in-app theme may differ from Android's system theme.
-                // Keep status/navigation icons legible without adding a second inset.
+                // Keep system icons readable when the selected app theme differs from Android's.
                 SideEffect {
                     WindowCompat.getInsetsController(window, window.decorView).apply {
                         isAppearanceLightStatusBars = !uiState.isDarkMode
@@ -505,11 +504,20 @@ class MainActivity : ComponentActivity() {
                     uiState.destination == AppDestination.MAIN &&
                     uiState.selectedTab == MainTab.HOME &&
                     uiState.feedSubTab in 0..2
+                // Messages and Search already apply statusBarsPadding in their
+                // own top chrome. Consuming a second status inset in Scaffold
+                // creates the same black/empty band fixed on Home. Preserve
+                // the bottom and side gesture/cutout insets for these routes.
+                val routeManagesTopInset =
+                    uiState.destination == AppDestination.MAIN &&
+                    uiState.selectedTab in setOf(MainTab.MESSAGES, MainTab.SEARCH)
                 Scaffold(
-                    contentWindowInsets = if (homeManagesSystemInsets) {
-                        WindowInsets(0, 0, 0, 0)
-                    } else {
-                        ScaffoldDefaults.contentWindowInsets
+                    contentWindowInsets = when {
+                        homeManagesSystemInsets -> WindowInsets(0, 0, 0, 0)
+                        routeManagesTopInset -> WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
+                        )
+                        else -> ScaffoldDefaults.contentWindowInsets
                     },
                     containerColor = if (homeManagesSystemInsets) {
                         MaterialTheme.colorScheme.background
