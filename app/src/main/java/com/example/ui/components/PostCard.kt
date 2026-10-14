@@ -179,7 +179,9 @@ fun PostCard(
     }
     val profileTarget = resolvedAuthorUsername.ifBlank { post.author }
     val displayedViewsCount = rememberDelayedContentViewCount(post.id, post.viewsCount)
-    val surfaceColor = if (xFeedStyle && isDark) Color.Black else if (isDark) FeedCardSurface else LightSurface
+    val surfaceColor = if (xFeedStyle) {
+        if (isDark) Color(0xFF17191D) else Color.White
+    } else if (isDark) FeedCardSurface else LightSurface
     val primaryText = if (isDark) FeedTextPrimary else LightTextPrimary
     val secondaryText = if (isDark) FeedTextSecondary else LightTextSecondary
     val dividerColor = if (isDark) FeedBorder else LightBorder
@@ -224,14 +226,14 @@ fun PostCard(
             .then(exposureModifier)
             .fillMaxWidth()
             .padding(
-                horizontal = if (xFeedStyle) 0.dp else 12.dp,
-                vertical = if (xFeedStyle) 0.dp else 6.dp
+                horizontal = if (xFeedStyle) 10.dp else 12.dp,
+                vertical = 6.dp
             ),
-        shape = RoundedCornerShape(if (xFeedStyle) 0.dp else 16.dp),
+        shape = RoundedCornerShape(if (xFeedStyle) 18.dp else 16.dp),
         color = surfaceColor,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-        border = if (xFeedStyle) null else BorderStroke(1.dp, dividerColor.copy(alpha = 0.72f))
+        shadowElevation = if (xFeedStyle && !isDark) 3.dp else 0.dp,
+        border = BorderStroke(1.dp, dividerColor.copy(alpha = if (xFeedStyle && isDark) 0.76f else 0.52f))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             if (post.isSponsored) {
@@ -614,12 +616,12 @@ fun PostCard(
                     // Redmi-class phones have six actions competing for a narrow
                     // metric rail. Always prioritize visible views and likes; show
                     // extra counts only where each touch target has enough width.
-                    val showCoreCounts = maxWidth >= 340.dp
-                    val showSecondaryCounts = maxWidth >= 450.dp
+                    val showCoreCounts = maxWidth >= 300.dp
+                    val showSecondaryCounts = maxWidth >= 350.dp
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 64.dp, end = 6.dp, bottom = 4.dp),
+                            .padding(start = 52.dp, end = 5.dp, bottom = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -654,15 +656,18 @@ fun PostCard(
                             enabled = post.allowComments,
                             onClick = onComment
                         )
-                        if (!isAuthor) {
-                            PremiumPostAction(
-                                icon = Icons.Default.Repeat,
-                                value = if (showSecondaryCounts && post.repostsCount > 0) formatNumber(post.repostsCount) else null,
-                                tint = repostTint,
-                                description = if (post.isRepostedByMe) "Undo repost · ${post.repostsCount} reposts" else "Repost · ${post.repostsCount} reposts",
-                                onClick = onRepost
-                            )
-                        }
+                        // Keep the six-icon rail stable even on the author's own
+                        // posts. Reposting oneself remains disabled by policy.
+                        PremiumPostAction(
+                            icon = Icons.Default.Repeat,
+                            value = if (showSecondaryCounts && post.repostsCount > 0) formatNumber(post.repostsCount) else null,
+                            tint = if (isAuthor) secondaryText.copy(alpha = 0.6f) else repostTint,
+                            description = if (isAuthor) "${post.repostsCount} reposts · Reposting your own post unavailable"
+                                else if (post.isRepostedByMe) "Undo repost · ${post.repostsCount} reposts"
+                                else "Repost · ${post.repostsCount} reposts",
+                            enabled = !isAuthor,
+                            onClick = onRepost
+                        )
                         PremiumPostAction(
                             icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                             value = null,
@@ -679,7 +684,7 @@ fun PostCard(
                         )
                     }
                 }
-                HorizontalDivider(color = dividerColor.copy(alpha = 0.65f))
+                // Floating reference cards have no full-width bottom separator.
             } else {
                 Row(
                     modifier = Modifier
@@ -892,13 +897,13 @@ private fun RowScope.ReadOnlyMetricAction(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = FeedTextSecondary,
-                modifier = Modifier.size(21.dp)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(4.dp))
             Text(
                 text = value,
-                color = FeedTextSecondary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall,
                 maxLines = 1
             )
@@ -950,14 +955,14 @@ private fun RowScope.PremiumPostAction(
                 contentDescription = null,
                 tint = tint,
                 modifier = Modifier
-                    .size(21.dp)
+                    .size(20.dp)
                     .graphicsLayer {
                         scaleX = iconScale
                         scaleY = iconScale
                     }
             )
             if (!value.isNullOrBlank()) {
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(2.dp))
                 Text(
                     text = value,
                     color = tint,

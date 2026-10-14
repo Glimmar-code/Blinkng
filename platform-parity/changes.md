@@ -1,3 +1,13 @@
+## 2026-10-14 — Home Feed reference-card layout and Light/Dark staging
+
+PARITY-EXCEPTION: android-home-reference-layout-20261014
+
+- **Android:** Preserve the screenshot's Home visual hierarchy: profile/Home/actions header, Rank–Game–Boost–Drops–muted Store shortcuts, blue rounded For You/Following selector, compact refresh/filter actions, white/charcoal elevated post cards, and the existing five-destination bottom bar/floating Create control.
+- **Light and Dark:** Feed surfaces and text use active Material semantic colors rather than dark-only constants; post cards receive white or charcoal surfaces, subtle appropriate borders/shadows, and correctly themed metric icons. Android status/navigation icons follow the app's chosen theme, not only the system theme.
+- **User-facing semantics unchanged:** For You/Following data, posts, authenticated interactions, qualified views, follows, ads, Boost, Drops, Store pause, pagination, refresh, moderation and Supabase contracts remain intact. No schema migration or production data update.
+- **Windows equivalent:** Windows retains the same user actions and shared data semantics, with a desktop-native feed/window/sidebar. A mobile status inset, top-row icon sizing and bottom phone tab bar are intentionally Android-only presentation details.
+- **Release checks:** Stage on a main-based Testlab-prefixed integration branch because the legacy Testlab branch diverged significantly from current main. Require Android build/lint/runtime, Windows desktop parity, Light/Dark screenshots and physical Redmi 15C inspection before promoting to main. Do not claim that manual device checks passed unless performed.
+
 ## 2026-10-14 — Finish full-height Android page chrome without top black gaps
 
 PARITY-EXCEPTION: android-search-messages-system-status-insets-20261014

@@ -109,12 +109,7 @@ import com.example.ui.components.PostCard
 import com.example.ui.components.PremiumPullRefreshIndicator
 import com.example.ui.components.shimmerBackground
 import com.example.ui.theme.FeedBackground
-import com.example.ui.theme.FeedBorder
 import com.example.ui.theme.FeedCardSurface
-import com.example.ui.theme.FeedElevatedSurface
-import com.example.ui.theme.FeedPurple
-import com.example.ui.theme.FeedTextPrimary
-import com.example.ui.theme.FeedTextSecondary
 import com.example.util.safeInt
 import com.example.util.safeString
 import coil.imageLoader
@@ -413,6 +408,7 @@ fun PremiumFeedScreen(
             currentUsername = currentUsername,
             userAvatar = userAvatar,
             resumeUserKey = resumeUserKey,
+            isDark = isDark,
             laneIndex = feedLane,
             followedAuthorKeys = followedAuthorKeys,
             hiddenFeedPostIds = hiddenFeedPostIds,
@@ -579,6 +575,7 @@ private fun PremiumHomeFeed(
     currentUsername: String,
     userAvatar: String,
     resumeUserKey: String,
+    isDark: Boolean,
     laneIndex: Int,
     followedAuthorKeys: Set<String>,
     hiddenFeedPostIds: Set<String>,
@@ -624,6 +621,7 @@ private fun PremiumHomeFeed(
     onReelClick: () -> Unit,
     onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
 ) {
+    val homeBackground = if (isDark) Color(0xFF08090B) else Color(0xFFF5F6FA)
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val uiScope = rememberCoroutineScope()
@@ -1354,7 +1352,7 @@ private fun PremiumHomeFeed(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(FeedBackground)
+                .background(homeBackground)
                 .nestedScroll(scrollConnection)
         ) {
             Column(
@@ -1364,7 +1362,7 @@ private fun PremiumHomeFeed(
             ) {
                 // The system status inset never scrolls out from under the clock
                 // or camera cutout. Only Home actions and utility controls collapse.
-                Spacer(Modifier.fillMaxWidth().background(FeedBackground).statusBarsPadding())
+                Spacer(Modifier.fillMaxWidth().background(homeBackground).statusBarsPadding())
                 ScrollLinkedFeedHeader(
                     offsetPx = headerOffsetPx,
                     onMeasuredHeight = { measuredHeight ->
@@ -1411,7 +1409,7 @@ private fun PremiumHomeFeed(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(FeedBackground)
+                        .background(homeBackground)
                 ) {
                     FeedTabs(
                         selectedIndex = laneIndex,
@@ -1425,7 +1423,7 @@ private fun PremiumHomeFeed(
                         DropdownMenu(
                             expanded = filterMenuVisible,
                             onDismissRequest = { filterMenuVisible = false },
-                            modifier = Modifier.background(FeedElevatedSurface)
+                            modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                         ) {
                             PremiumFilterItem("All posts", Icons.Default.Tune, filter == PremiumFeedFilter.ALL) {
                                 filter = PremiumFeedFilter.ALL
@@ -1442,7 +1440,7 @@ private fun PremiumHomeFeed(
                         }
                     }
                 }
-                HorizontalDivider(color = FeedBorder.copy(alpha = 0.72f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
 
                 Box(
                     modifier = Modifier
@@ -1549,7 +1547,7 @@ private fun PremiumHomeFeed(
                                             PremiumPostEntrance(index = row.sourceIndex, reduceMotion = reduceMotion) {
                                                 PostCard(
                                                     post = post,
-                                                    isDark = true,
+                                                    isDark = isDark,
                                                     onLike = { onLikePost(post.id) },
                                                     onComment = { onCommentPost(post.id) },
                                                     onBookmark = { onBookmarkPost(post.id) },
@@ -1576,7 +1574,7 @@ private fun PremiumHomeFeed(
                                             val post = placement.post
                                             PostCard(
                                                 post = post,
-                                                isDark = true,
+                                                isDark = isDark,
                                                 onLike = { onLikePost(post.id) },
                                                 onComment = { onCommentPost(post.id) },
                                                 onBookmark = { onBookmarkPost(post.id) },
@@ -1643,7 +1641,7 @@ private fun PremiumHomeFeed(
                                         ) {
                                             CircularProgressIndicator(
                                                 modifier = Modifier.size(24.dp),
-                                                color = FeedPurple,
+                                                color = MaterialTheme.colorScheme.primary,
                                                 strokeWidth = 2.dp
                                             )
                                         }
@@ -1694,7 +1692,7 @@ private fun PremiumHomeFeed(
                     PremiumPullRefreshIndicator(
                         state = pullState,
                         isRefreshing = isRefreshing,
-                        darkSurface = true,
+                        darkSurface = isDark,
                         modifier = Modifier.align(Alignment.TopCenter)
                     )
                 }
@@ -1728,8 +1726,8 @@ private fun PremiumNewPostsPill(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(22.dp),
-        color = FeedElevatedSurface,
-        border = BorderStroke(1.dp, FeedBorder.copy(alpha = 0.85f)),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.85f)),
         shadowElevation = 8.dp
     ) {
         Row(
@@ -1740,12 +1738,12 @@ private fun PremiumNewPostsPill(
             Icon(
                 imageVector = Icons.Default.Refresh,
                 contentDescription = null,
-                tint = FeedPurple,
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(18.dp)
             )
             Text(
                 text = if (count == 1) "1 new post" else "$count new posts",
-                color = FeedTextPrimary,
+                color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
@@ -1777,7 +1775,7 @@ private fun PremiumGameHost(
     Box(
         Modifier
             .fillMaxSize()
-            .background(FeedBackground)
+            .background(MaterialTheme.colorScheme.background)
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onHorizontalDrag = { change, amount ->
@@ -1834,7 +1832,7 @@ private fun PremiumConnectHost(
     Box(
         Modifier
             .fillMaxSize()
-            .background(FeedBackground)
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
     ) {
         ConnectSection(
@@ -1964,7 +1962,7 @@ private fun PremiumFilterItem(
         text = {
             Text(
                 text = label,
-                color = if (selected) FeedTextPrimary else FeedTextSecondary,
+                color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium
             )
         },
@@ -1972,7 +1970,7 @@ private fun PremiumFilterItem(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = if (selected) FeedPurple else FeedTextSecondary
+                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
             )
         },
         onClick = onClick
@@ -1981,12 +1979,12 @@ private fun PremiumFilterItem(
 
 @Composable
 private fun PremiumFeedSkeleton() {
-    val base = FeedElevatedSurface
-    val highlight = Color.White.copy(alpha = 0.08f)
+    val base = MaterialTheme.colorScheme.surfaceVariant
+    val highlight = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(0.dp),
-        color = Color.Black
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2031,7 +2029,7 @@ private fun PremiumFeedSkeleton() {
                     .shimmerBackground(RoundedCornerShape(14.dp), base, highlight)
             )
             Spacer(Modifier.height(12.dp))
-            HorizontalDivider(color = FeedBorder.copy(alpha = 0.65f))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
         }
     }
 }
@@ -2046,7 +2044,7 @@ private fun PremiumFeedRefreshNotice(message: String, onRetry: () -> Unit) {
     ) {
         Text(
             text = message,
-            color = FeedTextSecondary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.weight(1f),
             maxLines = 2
@@ -2073,11 +2071,11 @@ private fun PremiumEmptyFeed(
             .padding(horizontal = 30.dp, vertical = 58.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Surface(shape = CircleShape, color = FeedPurple.copy(alpha = 0.13f)) {
+        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f)) {
             Icon(
                 imageVector = if (isFiltered) Icons.Default.Tune else Icons.Default.Image,
                 contentDescription = null,
-                tint = FeedPurple,
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(16.dp).size(30.dp)
             )
         }
@@ -2088,7 +2086,7 @@ private fun PremiumEmptyFeed(
                 isFollowingLane -> "No posts from people you follow yet"
                 else -> if (offlineNoCache) "Your feed is ready for something new" else "No posts to show right now"
             },
-            color = FeedTextPrimary,
+            color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleMedium
         )
         Spacer(Modifier.height(5.dp))
@@ -2098,13 +2096,13 @@ private fun PremiumEmptyFeed(
                 isFollowingLane -> "Follow people from Discover or profiles; their ranked posts will appear here."
                 else -> if (offlineNoCache) "You're offline and there are no saved posts on this device." else "Pull to refresh for the latest posts."
             },
-            color = FeedTextSecondary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium
         )
         Spacer(Modifier.height(14.dp))
         if (!isFollowingLane || isFiltered) {
             TextButton(onClick = if (isFiltered) onClearFilter else onCreatePost) {
-                Text(if (isFiltered) "Show all posts" else "Create Post", color = FeedPurple)
+                Text(if (isFiltered) "Show all posts" else "Create Post", color = MaterialTheme.colorScheme.primary)
             }
         }
     }
