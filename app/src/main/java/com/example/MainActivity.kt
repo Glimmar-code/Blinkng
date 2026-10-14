@@ -77,7 +77,7 @@ class MainActivity : ComponentActivity() {
         }
         if (!rewardedAdManager.isReady) {
             rewardedAdManager.load()
-            viewModel.rewardedAdUnavailable("The rewarded ad is still loading. Try again in a moment.")
+            viewModel.rewardedAdUnavailable(rewardedAdManager.loadFailureMessage ?: "The rewarded ad is still loading. Try again in a moment.")
             return
         }
 
