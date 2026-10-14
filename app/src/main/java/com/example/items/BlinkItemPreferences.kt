@@ -10,6 +10,7 @@ object BlinkItemPreferences {
     private const val PREFS = "blink_items"
 
     private const val STEPS_ENABLED = "steps_enabled"
+    private const val STEP_NOTIFICATION_ENABLED = "step_notification_enabled"
     private const val WEATHER_ENABLED = "weather_enabled"
     private const val STEP_MILESTONES_ENABLED = "step_milestones_enabled"
     private const val STEP_GOAL_ENABLED = "step_goal_enabled"
@@ -40,6 +41,13 @@ object BlinkItemPreferences {
 
     fun setStepsEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(STEPS_ENABLED, enabled).apply()
+    }
+
+    fun stepNotificationEnabled(context: Context): Boolean =
+        prefs(context).safeBoolean(STEP_NOTIFICATION_ENABLED, false)
+
+    fun setStepNotificationEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(STEP_NOTIFICATION_ENABLED, enabled).apply()
     }
 
     fun weatherEnabled(context: Context): Boolean = prefs(context).safeBoolean(WEATHER_ENABLED, false)
