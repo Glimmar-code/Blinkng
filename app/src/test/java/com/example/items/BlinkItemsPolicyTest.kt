@@ -64,6 +64,15 @@ class BlinkItemsPolicyTest {
     }
 
     @Test
+    fun stepProgressIsBoundedAndWorksOffline() {
+        assertEquals(0, BlinkItemsPolicy.stepProgressPercent(0L, 10_000))
+        assertEquals(57, BlinkItemsPolicy.stepProgressPercent(5_700L, 10_000))
+        assertEquals(100, BlinkItemsPolicy.stepProgressPercent(12_000L, 10_000))
+        assertEquals(0, BlinkItemsPolicy.stepProgressPercent(-500L, 10_000))
+        assertEquals(100, BlinkItemsPolicy.stepProgressPercent(Long.MAX_VALUE, 1_000))
+    }
+
+    @Test
     fun expiredWeatherAlertsAreNotActive() {
         assertTrue(!BlinkItemsPolicy.isActiveWeatherAlert(1_000L, 1_001L))
         assertTrue(BlinkItemsPolicy.isActiveWeatherAlert(2_000L, 1_001L))
