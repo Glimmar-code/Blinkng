@@ -147,6 +147,19 @@ fun AppMenuSheet(
     var menuQuery by rememberSaveable { mutableStateOf("") }
     var showLogoutConfirmation by rememberSaveable { mutableStateOf(false) }
     var showAboutDialog by rememberSaveable { mutableStateOf(false) }
+    val settingsSearchQuery = if ("Settings and privacy".contains(menuQuery.trim(), ignoreCase = true)) "" else menuQuery
+    val campusSearchQuery = if ("Campus & tools".contains(menuQuery.trim(), ignoreCase = true)) "" else menuQuery
+    val accountSearchQuery = if ("Account and support".contains(menuQuery.trim(), ignoreCase = true)) "" else menuQuery
+    val menuSearchIndex = listOf(
+        "profile", "switch to admin", "activity", "mentions", "leaderboard", "campus ranking",
+        "marketplace", "browse campus listings", "list an item", "seller hub",
+        "settings and privacy", "appearance", "theme", "calls", "notification", "call history",
+        "ad privacy choices", "privacy and dm", "blocked accounts", "login security",
+        "data and storage", "cache and account data", "campus and tools", "scheduled posts",
+        "study and group center", "verification", "orders and wishlist",
+        "account and support", "edit profile", "switch account", "about blink",
+        "log out", "delete account"
+    )
 
     LaunchedEffect(profile.id) {
         adminModeAvailable = adminService.fetchCapability().getOrNull()?.isAdmin == true
@@ -218,7 +231,7 @@ fun AppMenuSheet(
             }
 
             if (adminModeAvailable) {
-                MenuItemRow(
+                SearchableMenuItemRow(menuQuery, 
                     Icons.Outlined.Security,
                     "Switch to Admin Account",
                     "Open Blink administration"
@@ -228,29 +241,31 @@ fun AppMenuSheet(
                 }
             }
 
-            MenuItemRow(Icons.Outlined.Notifications, "Activity", "Mentions and notifications") {
+            SearchableMenuItemRow(menuQuery, Icons.Outlined.Notifications, "Activity", "Mentions and notifications") {
                 onDismiss(); onOpenActivity()
             }
-            MenuItemRow(Icons.Outlined.EmojiEvents, "Leaderboard", "Campus ranking and points") {
+            SearchableMenuItemRow(menuQuery, Icons.Outlined.EmojiEvents, "Leaderboard", "Campus ranking and points") {
                 onDismiss(); onOpenLeaderboard()
             }
-            MenuItemRow(Icons.Outlined.Storefront, "Marketplace", "Browse campus listings") {
+            SearchableMenuItemRow(menuQuery, Icons.Outlined.Storefront, "Marketplace", "Browse campus listings") {
                 onDismiss(); onOpenMarket()
             }
-            MenuItemRow(Icons.Outlined.AddShoppingCart, "List an item", "Create a marketplace listing") {
+            SearchableMenuItemRow(menuQuery, Icons.Outlined.AddShoppingCart, "List an item", "Create a marketplace listing") {
                 onDismiss(); onOpenPostItem()
             }
-            MenuItemRow(Icons.Outlined.AccountBalanceWallet, "Seller hub", "Seller verification and tools") {
+            SearchableMenuItemRow(menuQuery, Icons.Outlined.AccountBalanceWallet, "Seller hub", "Seller verification and tools") {
                 onDismiss(); onOpenBecomeSeller()
             }
 
             MenuSection(
+                query = menuQuery,
+                searchTerms = "appearance dark light theme calls notifications call history privacy blocked DM login account security data storage ad consent",
                 title = "Settings and privacy",
-                expanded = "Settings and privacy" in expandedSections,
+                expanded = menuQuery.isNotBlank() || "Settings and privacy" in expandedSections,
                 onToggle = { toggle("Settings and privacy") }
             ) {
                 ThemeToggleRow(isDark = isDark, onToggleTheme = onToggleTheme)
-                MenuItemRow(
+                SearchableMenuItemRow(settingsSearchQuery, 
                     Icons.Outlined.Notifications,
                     "Calls & notification sounds",
                     "Ringtones, message sounds, vibration and Android call alerts"
@@ -258,7 +273,7 @@ fun AppMenuSheet(
                     onDismiss()
                     context.startActivity(Intent(context, NotificationAndCallSettingsActivity::class.java))
                 }
-                MenuItemRow(
+                SearchableMenuItemRow(settingsSearchQuery, 
                     Icons.Outlined.Notifications,
                     "Call history",
                     "Missed, incoming and outgoing Blink calls"
@@ -267,7 +282,7 @@ fun AppMenuSheet(
                     context.startActivity(Intent(context, CallHistoryActivity::class.java))
                 }
                 if (showAdPrivacyOptions) {
-                    MenuItemRow(
+                    SearchableMenuItemRow(settingsSearchQuery, 
                         Icons.Outlined.Security,
                         "Ad privacy choices",
                         "Manage consent choices used for advertising"
@@ -276,32 +291,34 @@ fun AppMenuSheet(
                         onAdPrivacyOptions()
                     }
                 }
-                MenuItemRow(Icons.Outlined.Lock, "Privacy & DM settings", "Private account and messaging controls") {
+                SearchableMenuItemRow(settingsSearchQuery, Icons.Outlined.Lock, "Privacy & DM settings", "Private account and messaging controls") {
                     openProfessional("privacy")
                 }
-                MenuItemRow(Icons.Outlined.Block, "Safety & blocked accounts", "Block, unblock and report users") {
+                SearchableMenuItemRow(settingsSearchQuery, Icons.Outlined.Block, "Safety & blocked accounts", "Block, unblock and report users") {
                     openProfessional("safety")
                 }
-                MenuItemRow(Icons.Outlined.Security, "Login & account security", "Session and security controls") {
+                SearchableMenuItemRow(settingsSearchQuery, Icons.Outlined.Security, "Login & account security", "Session and security controls") {
                     openProfessional("account")
                 }
-                MenuItemRow(Icons.Outlined.Storage, "Data & storage", "Cache and account data") {
+                SearchableMenuItemRow(settingsSearchQuery, Icons.Outlined.Storage, "Data & storage", "Cache and account data") {
                     openProfessional("account")
                 }
             }
 
             MenuSection(
+                query = menuQuery,
+                searchTerms = "scheduled posts study group center campus verification orders wishlist",
                 title = "Campus & tools",
-                expanded = "Campus & tools" in expandedSections,
+                expanded = menuQuery.isNotBlank() || "Campus & tools" in expandedSections,
                 onToggle = { toggle("Campus & tools") }
             ) {
-                MenuItemRow(Icons.Outlined.Schedule, "Scheduled posts", "Manage posts queued for later") {
+                SearchableMenuItemRow(campusSearchQuery, Icons.Outlined.Schedule, "Scheduled posts", "Manage posts queued for later") {
                     openProfessional("scheduled")
                 }
-                MenuItemRow(Icons.Outlined.Groups, "Study & group center", "Group chats and study tools") {
+                SearchableMenuItemRow(campusSearchQuery, Icons.Outlined.Groups, "Study & group center", "Group chats and study tools") {
                     openProfessional("groups")
                 }
-                MenuItemRow(
+                SearchableMenuItemRow(campusSearchQuery, 
                     Icons.Outlined.Verified,
                     "Campus verification",
                     "Manage your verification",
@@ -309,27 +326,29 @@ fun AppMenuSheet(
                 ) {
                     onDismiss(); onViewProfile()
                 }
-                MenuItemRow(Icons.Outlined.ShoppingBag, "Orders & wishlist", "Saved market items and order status") {
+                SearchableMenuItemRow(campusSearchQuery, Icons.Outlined.ShoppingBag, "Orders & wishlist", "Saved market items and order status") {
                     openProfessional("market")
                 }
             }
 
             MenuSection(
+                query = menuQuery,
+                searchTerms = "edit profile switch account about blink log out delete account",
                 title = "Account and support",
-                expanded = "Account and support" in expandedSections,
+                expanded = menuQuery.isNotBlank() || "Account and support" in expandedSections,
                 onToggle = { toggle("Account and support") }
             ) {
-                MenuItemRow(Icons.Outlined.Edit, "Edit profile", "Edit your campus profile") {
+                SearchableMenuItemRow(accountSearchQuery, Icons.Outlined.Edit, "Edit profile", "Edit your campus profile") {
                     onDismiss(); onEditProfile()
                 }
-                MenuItemRow(Icons.Outlined.SwitchAccount, "Switch account", "Use a saved account") {
+                SearchableMenuItemRow(accountSearchQuery, Icons.Outlined.SwitchAccount, "Switch account", "Use a saved account") {
                     onDismiss()
                     context.startActivity(Intent(context, AccountSwitcherActivity::class.java))
                 }
-                MenuItemRow(Icons.Outlined.Info, "About Blink", "About this app") {
+                SearchableMenuItemRow(accountSearchQuery, Icons.Outlined.Info, "About Blink", "About this app") {
                     showAboutDialog = true
                 }
-                MenuItemRow(
+                SearchableMenuItemRow(accountSearchQuery, 
                     Icons.AutoMirrored.Filled.Logout,
                     "Log out",
                     "End this device session",
@@ -338,7 +357,7 @@ fun AppMenuSheet(
                 ) {
                     showLogoutConfirmation = true
                 }
-                MenuItemRow(
+                SearchableMenuItemRow(accountSearchQuery, 
                     Icons.Outlined.DeleteForever,
                     "Delete account",
                     "Permanent account deletion",
@@ -347,6 +366,13 @@ fun AppMenuSheet(
                 ) {
                     openProfessional("account")
                 }
+            }
+            if (menuQuery.isNotBlank() && menuSearchIndex.none { it.contains(menuQuery.trim(), ignoreCase = true) }) {
+                Text(
+                    "No matching menu items",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(24.dp).testTag("menu_no_results")
+                )
             }
         }
     }
@@ -429,6 +455,8 @@ private fun ProfileHeaderCard(profile: UserProfile, onClick: () -> Unit) {
 
 @Composable
 private fun MenuSection(
+    query: String,
+    searchTerms: String,
     title: String,
     expanded: Boolean,
     onToggle: () -> Unit,
@@ -439,7 +467,8 @@ private fun MenuSection(
         MenuMotion.chevron,
         label = "menuChevron"
     )
-    Column {
+    if (query.isBlank() || title.contains(query.trim(), true) || searchTerms.contains(query.trim(), true)) {
+        Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -473,6 +502,7 @@ private fun MenuSection(
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f)
         ) {
             Spacer(Modifier.size(1.dp))
+        }
         }
     }
 }
@@ -509,12 +539,28 @@ private fun ThemeToggleRow(isDark: Boolean, onToggleTheme: () -> Unit) {
 }
 
 @Composable
+private fun SearchableMenuItemRow(
+    query: String,
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    trailingText: String? = null,
+    iconColor: Color = Color.Unspecified,
+    titleColor: Color = Color.Unspecified,
+    onClick: () -> Unit
+) {
+    if (query.isBlank() || title.contains(query.trim(), true) || subtitle.contains(query.trim(), true)) {
+        MenuItemRow(icon, title, subtitle, trailingText, iconColor, titleColor, onClick)
+    }
+}
+
+@Composable
 private fun MenuItemRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
     trailingText: String? = null,
-    iconColor: Color = BlinkPink,
+    iconColor: Color = Color.Unspecified,
     titleColor: Color = Color.Unspecified,
     onClick: () -> Unit
 ) {
@@ -528,17 +574,26 @@ private fun MenuItemRow(
         Icon(
             icon,
             contentDescription = null,
-            tint = if (titleColor == MaterialTheme.colorScheme.error) titleColor else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(28.dp)
+            tint = if (iconColor != Color.Unspecified) iconColor else if (titleColor != Color.Unspecified) titleColor else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(24.dp)
         )
         Spacer(Modifier.width(18.dp))
-        Text(
-            title,
-            modifier = Modifier.weight(1f),
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 16.sp,
-            color = if (titleColor == Color.Unspecified) MaterialTheme.colorScheme.onSurface else titleColor
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp,
+                color = if (titleColor == Color.Unspecified) MaterialTheme.colorScheme.onSurface else titleColor,
+                maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                subtitle,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2, overflow = TextOverflow.Ellipsis
+            )
+        }
         if (trailingText != null) {
             Text(
                 trailingText,
