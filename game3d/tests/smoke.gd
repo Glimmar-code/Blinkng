@@ -71,6 +71,12 @@ func _run() -> void:
         world.call("_interact")
         _assert_true(int(world.get("game_cash")) == 370, "Purchasing a second time must not charge again")
 
+    # Give the 3D meshes and physics resources time to leave the scene tree
+    # before stopping the headless runtime.
+    world.queue_free()
+    await process_frame
+    await process_frame
+
     if failed:
         quit(1)
     else:
