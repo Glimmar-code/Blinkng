@@ -497,11 +497,20 @@ class MainActivity : ComponentActivity() {
                     uiState.destination == AppDestination.MAIN &&
                     uiState.selectedTab == MainTab.HOME &&
                     uiState.feedSubTab in 0..2
+                // Messages and Search already apply statusBarsPadding in their
+                // own top chrome. Consuming a second status inset in Scaffold
+                // creates the same black/empty band fixed on Home. Preserve
+                // the bottom and side gesture/cutout insets for these routes.
+                val routeManagesTopInset =
+                    uiState.destination == AppDestination.MAIN &&
+                    uiState.selectedTab in setOf(MainTab.MESSAGES, MainTab.SEARCH)
                 Scaffold(
-                    contentWindowInsets = if (homeManagesSystemInsets) {
-                        WindowInsets(0, 0, 0, 0)
-                    } else {
-                        ScaffoldDefaults.contentWindowInsets
+                    contentWindowInsets = when {
+                        homeManagesSystemInsets -> WindowInsets(0, 0, 0, 0)
+                        routeManagesTopInset -> WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal
+                        )
+                        else -> ScaffoldDefaults.contentWindowInsets
                     },
                     containerColor = if (homeManagesSystemInsets) {
                         FeedBackground
