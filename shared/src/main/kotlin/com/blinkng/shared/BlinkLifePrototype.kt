@@ -2,9 +2,7 @@ package com.blinkng.shared
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +22,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,10 +31,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.abs
 
 /**
- * Shared Compose UI for the Android + Windows BLINK LIFE phase-one playground.
+ * Shared Compose UI for the Android + Windows BLINK LIFE 3D phase-one playground.
  *
  * Deliberately session-local: no simulated money is written to live BLINK accounts,
  * and no real-money or BLINK Coin payments are available from this prototype.
@@ -50,6 +48,7 @@ fun BlinkLifePrototype(
     var cash by remember { mutableIntStateOf(500) }
     var completedJobs by remember { mutableIntStateOf(0) }
     var ownsPlant by remember { mutableStateOf(false) }
+    var cameraYaw by remember { mutableFloatStateOf(45f) }
     var notice by remember { mutableStateOf("Walk to the café, tech hub or delivery depot to try a job.") }
 
     val state = BlinkLifeState(x, y, cash, completedJobs, ownsPlant)
@@ -119,53 +118,34 @@ fun BlinkLifePrototype(
             }
         }
 
-        Text("Explore the neighbourhood", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text("Explore the 3D neighbourhood", fontWeight = FontWeight.Bold, fontSize = 16.sp)
         Surface(
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
-            Column(Modifier.fillMaxWidth().padding(6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                repeat(BlinkLifeRules.ROWS) { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                        repeat(BlinkLifeRules.COLUMNS) { col ->
-                            val current = x == col && y == row
-                            val tilePlace = BlinkLifeRules.placeAt(col, row)
-                            val adjacent = abs(x - col) + abs(y - row) == 1
-                            val tileColor = when {
-                                current -> MaterialTheme.colorScheme.primary
-                                tilePlace != null -> MaterialTheme.colorScheme.surfaceVariant
-                                else -> MaterialTheme.colorScheme.surface
-                            }
-                            Surface(
-                                modifier = Modifier.weight(1f).height(44.dp).clickable(
-                                    enabled = adjacent,
-                                    onClick = { walk(col - x, row - y) }
-                                ),
-                                shape = RoundedCornerShape(6.dp),
-                                color = tileColor,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        when {
-                                            current -> "●"
-                                            tilePlace != null -> tilePlace.symbol
-                                            else -> "·"
-                                        },
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (current) MaterialTheme.colorScheme.onPrimary
-                                            else MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
+            Column(Modifier.fillMaxWidth().padding(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                BlinkLifeWorld3D(state = state, cameraYawDegrees = cameraYaw)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("3D world • orbit camera", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        OutlinedButton(onClick = { cameraYaw = (cameraYaw + 315f) % 360f }) {
+                            Text("↶ Rotate", fontSize = 11.sp)
+                        }
+                        OutlinedButton(onClick = { cameraYaw = (cameraYaw + 45f) % 360f }) {
+                            Text("Rotate ↷", fontSize = 11.sp)
                         }
                     }
                 }
             }
         }
-        Text("● You   U Campus   C Café   T Tech   M Market   D Delivery   H Hostel", fontSize = 11.sp)
+        Text("Campus · Café · Tech Hub · Market · Delivery · Hostel", fontSize = 11.sp)
         Text("Current location: ${place?.label ?: "City street"}", fontWeight = FontWeight.SemiBold)
+        Text("Walk using the arrows below. Rotate the 3D camera independently.", fontSize = 12.sp)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             OutlinedButton(onClick = { walk(0, -1) }, enabled = y > 0, modifier = Modifier.weight(1f)) { Text("↑") }
             OutlinedButton(onClick = { walk(-1, 0) }, enabled = x > 0, modifier = Modifier.weight(1f)) { Text("←") }
