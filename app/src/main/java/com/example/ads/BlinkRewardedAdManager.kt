@@ -27,6 +27,10 @@ class BlinkRewardedAdManager(
 
     private var rewardedAd: RewardedAd? = null
     private var loading = false
+    private var lastLoadFailure: String? = null
+
+    val loadFailureMessage: String?
+        get() = lastLoadFailure
 
     val isReady: Boolean
         get() = BlinkAdsRuntime.canRequestAds.value && rewardedAd != null
@@ -42,6 +46,7 @@ class BlinkRewardedAdManager(
             object : RewardedAdLoadCallback() {
                 override fun onAdLoaded(ad: RewardedAd) {
                     loading = false
+                    lastLoadFailure = null
                     rewardedAd = ad
                     BlinkAdAnalytics.loaded(activity, "coin_reward", "rewarded")
                     Log.d(TAG, "Rewarded ad loaded")
@@ -50,8 +55,9 @@ class BlinkRewardedAdManager(
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     loading = false
                     rewardedAd = null
+                    lastLoadFailure = "Ad failed to load (code ${error.code}, domain ${error.domain}). ${error.message}"
                     BlinkAdAnalytics.failed(activity, "coin_reward", "rewarded", error.code)
-                    Log.w(TAG, "Rewarded ad failed to load: ${error.code} ${error.message}")
+                    Log.w(TAG, "Rewarded ad failed to load: ${error.code} ${error.domain} ${error.message}; response=${error.responseInfo}")
                 }
             }
         )
@@ -71,7 +77,7 @@ class BlinkRewardedAdManager(
         val ad = rewardedAd
         if (ad == null) {
             load()
-            onUnavailable("The rewarded ad is still loading. Try again in a moment.")
+            onUnavailable(lastLoadFailure ?: "The rewarded ad is still loading. Try again in a moment.")
             return
         }
 
