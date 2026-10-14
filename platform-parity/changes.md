@@ -1,3 +1,11 @@
+## 2026-10-14 — BLINK LIFE experimental city playground
+
+- **Shared:** `BlinkLifeRules` defines six city locations, orthogonal movement, three local work tasks, and a fictional Game Cash market purchase. `BlinkLifePrototype` implements the same actual playable Compose experience for Android and Windows.
+- **Android:** Adds a dedicated BLINK LIFE card within the existing Games > Play section; entering/exiting the playground retains existing games and Android Back handling.
+- **Windows:** Adds a matching BLINK LIFE entry to the existing Games surface and renders the shared playground.
+- **Safety:** The preview is session-only and labelled clearly. No new backend, payment, Supabase wallet, BLINK Coin, leaderboard or account-data writes. Fictional Game Cash is not withdrawable, transferable, or redeemable.
+- **Release gate:** Build/test both clients, validate controls on physical Android devices and Windows, verify normal game modes are unaffected. Feature branch targets `Testlab`; do not promote to `main` while checks are unverified.
+
 ## 2026-10-13 — Seamless Android top edge / full-height feed
 
 - **Android:** The authenticated main scaffold no longer reserves a second full status-bar inset above the feed. Feed, reels, messages, search and connect retain their individual top safe-area padding; Market and Leaderboard reserve it explicitly. Bottom and horizontal safe insets remain in the scaffold to protect the five-tab navigation and cutouts. The feed header no longer paints a purple/blue glow into the top strip. System status icons remain visible; this is edge-to-edge content, not immersive/hide-system-bars mode.
