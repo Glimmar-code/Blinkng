@@ -36,7 +36,12 @@ object FollowStateStore {
 
     suspend fun refresh(): Set<String> = withContext(Dispatchers.IO) {
         val token = SupabaseService.accessToken().orEmpty()
-        if (token.isBlank()) return@withContext _followingIds.value
+        if (token.isBlank()) {
+            // Never leak a previous signed-in account's Follow state to the
+            // signed-out Home screen or a different account.
+            _followingIds.value = emptySet()
+            return@withContext emptySet()
+        }
 
         val request = Request.Builder()
             .url("$baseUrl/rest/v1/rpc/get_my_following_ids")

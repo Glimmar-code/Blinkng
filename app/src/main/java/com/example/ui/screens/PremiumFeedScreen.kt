@@ -627,6 +627,9 @@ private fun PremiumHomeFeed(
     val imageLoader = context.imageLoader
     val uiScope = rememberCoroutineScope()
     val feedFollowedIds by FollowStateStore.followingIds.collectAsState()
+    // The Home feed must hydrate follows independently. Previously only Reels
+    // called refresh(), leaving Home to show '+ Follow' for existing follows.
+    LaunchedEffect(resumeUserKey) { FollowStateStore.refresh() }
     val authorProfilesById = remember(profiles) {
         profiles.filter { it.id.isNotBlank() }.associateBy { it.id.trim() }
     }
@@ -641,7 +644,7 @@ private fun PremiumHomeFeed(
     // All cards for the same creator observe one in-flight follow request.
     // This prevents double taps from submitting Follow then Unfollow before
     // the optimistic server mutation has finished reconciling.
-    var pendingAuthorFollowIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingAuthorFollowIds by remember(resumeUserKey) { mutableStateOf<Set<String>>(emptySet()) }
     fun requestAuthorFollow(id: String, shouldFollow: Boolean) {
         if (id.isBlank() || id in pendingAuthorFollowIds) return
         pendingAuthorFollowIds = pendingAuthorFollowIds + id

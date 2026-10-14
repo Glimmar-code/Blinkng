@@ -160,3 +160,9 @@ Check a real Android 15 handset: tap/double-tap/hold/seek, app background/lock, 
 - Video PlayerView no longer holds the screen awake when explicitly paused or backgrounded.
 - Added identity regression tests covering duplicate names, mismatched IDs, badge revocation, avatar and Follow fallback.
 - All changes are **staged** until the new commit's CI and real-device review. Passing earlier CI does not validate a new commit.
+
+### Follow state hydration and account-switch safety
+- Home independently refreshes the authenticated user's following IDs, so previously followed creators no longer appear incorrectly as `+ Follow` just because Reels hasn't been opened.
+- The global Follow StateFlow clears if no authenticated token is available; a prior user's Follow state isn't displayed while signed out.
+- The in-flight Follow action set is keyed to the current Home account.
+- These are **staged fixes**, not a claim of verified multi-account device behavior.
