@@ -9,6 +9,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.core.view.WindowCompat
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
@@ -51,7 +52,6 @@ import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
-import com.example.ui.theme.FeedBackground
 import com.example.update.PlayInAppUpdateCoordinator
 import com.example.util.startActivitySafely
 import com.example.viewmodel.AppDestination
@@ -493,6 +493,14 @@ class MainActivity : ComponentActivity() {
             }
 
             BlinkTheme(darkTheme = uiState.isDarkMode) {
+                // The chosen in-app theme may differ from Android's system theme.
+                // Keep status/navigation icons legible without adding a second inset.
+                SideEffect {
+                    WindowCompat.getInsetsController(window, window.decorView).apply {
+                        isAppearanceLightStatusBars = !uiState.isDarkMode
+                        isAppearanceLightNavigationBars = !uiState.isDarkMode
+                    }
+                }
                 val homeManagesSystemInsets =
                     uiState.destination == AppDestination.MAIN &&
                     uiState.selectedTab == MainTab.HOME &&
@@ -504,7 +512,7 @@ class MainActivity : ComponentActivity() {
                         ScaffoldDefaults.contentWindowInsets
                     },
                     containerColor = if (homeManagesSystemInsets) {
-                        FeedBackground
+                        MaterialTheme.colorScheme.background
                     } else {
                         MaterialTheme.colorScheme.background
                     },
