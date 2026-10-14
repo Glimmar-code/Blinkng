@@ -52,6 +52,17 @@ jobs:
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 
+      - name: Verify native BLINK LIFE 3D resources are in APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          unzip -Z1 "$APK" > contents.txt
+          grep -Fx "assets/project.godot" contents.txt
+          grep -Fx "assets/scenes/main.tscn" contents.txt
+          grep -Fx "assets/scripts/world.gd" contents.txt
+          grep -E "lib/arm64-v8a/.*godot.*[.]so" contents.txt
+          echo "Native 3D scene and Godot engine present in APK"
       - name: Build debug App Bundle
         run: gradle :app:bundleDebug --stacktrace --no-daemon
 

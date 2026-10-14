@@ -1,3 +1,10 @@
+## 2026-10-14 — BLINK LIFE native Godot Android host (Testlab staging)
+
+- **Android:** The existing Game page now starts `BlinkLife3DActivity`, which extends Godot 4.3's supported Android host and loads `game3d/project.godot` plus its real 3D scene from APK assets. The native engine runs in the private `:blinklife3d` process to protect the regular Compose social app from engine JNI interaction. Back returns to the existing app; the shared 3D projected preview is available separately as a fallback.
+- **Windows:** The existing desktop Game page retains the shared 3D projected preview. Native `game3d/` gameplay source is cross-platform Godot, but the standalone native Godot Windows executable is not yet bundled into the Windows app installer.
+- **PARITY-EXCEPTION: blink-life-3d-native-host-staging** — Godot's Android `GodotActivity` is platform-specific and does not run on Windows; the closest Windows equivalent at this stage is its existing shared 3D projected preview and runnable Godot source project. A production release must include native Windows Godot packaging before claiming full platform parity.
+- **Checks:** Android compiler/test, debug APK packaging inspection, release signing smoke, Godot engine import + scene smoke, Windows desktop build, and real Android device launch/exit/movement checks. Do not promote to main until physically verified.
+
 ## 2026-10-14 — BLINK LIFE experimental 3D city playground
 
 - **Shared:** `BlinkLifeRules` defines six city locations, orthogonal movement, three local work tasks, and a fictional Game Cash market purchase. `BlinkLifeWorld3D` projects real X/Y/Z cuboid world geometry with depth ordering and an orbiting camera; `BlinkLifePrototype` embeds the shared renderer and gameplay on Android and Windows.

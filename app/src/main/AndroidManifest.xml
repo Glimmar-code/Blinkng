@@ -19,6 +19,14 @@
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-9152580730716304~4430294008" />
+        <!-- Native 3D engine is deliberately isolated from BLINK social/WebRTC JNI libraries. -->
+        <activity
+            android:name=".BlinkLife3DActivity"
+            android:exported="false"
+            android:process=":blinklife3d"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:theme="@style/Theme.MyApplication" />
         <activity android:name=".BlinkStoreActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".ProfessionalCenterActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".AdminControlCenterActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />

@@ -1,0 +1,65 @@
+name: BLINK LIFE Android 3D launch smoke
+
+on:
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'game3d/**'
+      - '.github/workflows/blink-life-android-device-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-godot-launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build BLINK APK with native Godot
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+      - name: Enable KVM for emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Launch BLINK LIFE 3D on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_4
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            set -e
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb logcat -c
+            adb shell run-as com.aistudio.blink.appvtwo /system/bin/am start -n com.aistudio.blink.appvtwo/com.example.BlinkLife3DActivity
+            COUNT=0
+            while ! adb shell pidof com.aistudio.blink.appvtwo:blinklife3d >/dev/null; do
+              COUNT=$((COUNT + 1))
+              if [ "$COUNT" -ge 30 ]; then
+                adb logcat -d -v brief | tail -n 160
+                echo 'Native Godot Activity did not start'
+                exit 1
+              fi
+              sleep 1
+            done
+            sleep 12
+            if ! adb shell pidof com.aistudio.blink.appvtwo:blinklife3d >/dev/null; then
+              adb logcat -d -v brief | tail -n 200
+              echo 'Native Godot game process crashed or exited'
+              exit 1
+            fi
+            if adb logcat -d -v brief | grep -E 'FATAL EXCEPTION|Failed to load Godot|Error loading project|Cannot open resource pack'; then
+              echo 'Godot 3D runtime crashed or failed to load assets'
+              exit 1
+            fi
+            echo 'Godot 3D Android Activity remained alive with native engine'
