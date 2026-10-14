@@ -1,0 +1,53 @@
+name: BLINK LIFE native 3D Godot smoke
+
+on:
+  pull_request:
+    paths:
+      - 'game3d/**'
+      - '.github/workflows/blink-life-3d-check.yml'
+  push:
+    branches: [Testlab, main]
+    paths:
+      - 'game3d/**'
+      - '.github/workflows/blink-life-3d-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  godot3d:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v4
+      - name: Install pinned Godot 4.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            -o /tmp/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip
+          mkdir -p /tmp/blink-godot
+          unzip -q /tmp/godot.zip -d /tmp/blink-godot
+          sudo install -m 0755 /tmp/blink-godot/Godot_v4.3-stable_linux.x86_64 /usr/local/bin/godot
+          godot --version
+      - name: Import project and parse all scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 120s godot --headless --path game3d --editor --quit 2>&1 | tee /tmp/godot-import.log
+          if grep -Ei 'SCRIPT ERROR|Parse Error|ERROR: Failed' /tmp/godot-import.log; then
+            echo 'Godot import failed.'
+            exit 1
+          fi
+      - name: Run native 3D interactive scene smoke tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 60s godot --headless --path game3d --script res://tests/smoke.gd 2>&1 | tee /tmp/godot-tests.log
+          if grep -Ei 'SCRIPT ERROR|Parse Error|ERROR: Failed' /tmp/godot-tests.log; then
+            echo 'Godot scene smoke tests failed.'
+            exit 1
+          fi
