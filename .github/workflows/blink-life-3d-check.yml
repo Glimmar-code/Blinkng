@@ -54,7 +54,7 @@ jobs:
           # Use the actual OpenGL Compatibility renderer. Godot 4.3's
           # dummy headless renderer reports false null-mesh errors for MeshInstance3D.
           timeout 90s xvfb-run -a --server-args="-screen 0 1280x720x24" godot \
-            --rendering-driver opengl3 --path game3d --script res://tests/smoke.gd 2>&1 | tee /tmp/godot-tests.log
+            --rendering-driver opengl3 --audio-driver Dummy --path game3d --script res://tests/smoke.gd 2>&1 | tee /tmp/godot-tests.log
           if grep -Ei '(^ERROR:|^SCRIPT ERROR:|Parse Error)' /tmp/godot-tests.log; then
             echo 'Godot scene smoke tests failed.'
             exit 1
