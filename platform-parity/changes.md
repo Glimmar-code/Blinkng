@@ -4,6 +4,7 @@
 - **Android:** Adds a dedicated BLINK LIFE card within the existing Games > Play section; entering/exiting the playground retains existing games and Android Back handling.
 - **Windows:** Adds a matching BLINK LIFE entry to the existing Games surface and renders the shared playground.
 - **3D scope:** This initial low-poly software-projected isometric scene is 3D, not the previous flat 2D grid. Production-scale first/third-person 3D physics, driving, and multiplayer will require a proper accelerated game runtime and asset pipeline.
+- **Native 3D project:** The new `game3d/` Godot source provides a physics-based free-roam 3D scene for future Android and Windows exports. It is a separate **unbundled experimental engine project**; the host-app entry currently still shows the shared 3D-projected preview. Neither Android APK nor Windows installer may claim native Godot gameplay until their distinct embed/export checks pass.
 - **Safety:** The preview is session-only and labelled clearly. No new backend, payment, Supabase wallet, BLINK Coin, leaderboard or account-data writes. Fictional Game Cash is not withdrawable, transferable, or redeemable.
 - **Release gate:** Build/test both clients, validate controls on physical Android devices and Windows, verify normal game modes are unaffected. Feature branch targets `Testlab`; do not promote to `main` while checks are unverified.
 
