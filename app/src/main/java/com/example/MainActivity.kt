@@ -51,6 +51,7 @@ import com.example.sharing.ShareContentType
 import com.example.sharing.ShareLinkManager
 import com.example.ui.screens.*
 import com.example.ui.theme.BlinkTheme
+import com.example.ui.theme.FeedBackground
 import com.example.update.PlayInAppUpdateCoordinator
 import com.example.util.startActivitySafely
 import com.example.viewmodel.AppDestination
@@ -492,7 +493,21 @@ class MainActivity : ComponentActivity() {
             }
 
             BlinkTheme(darkTheme = uiState.isDarkMode) {
+                val homeManagesSystemInsets =
+                    uiState.destination == AppDestination.MAIN &&
+                    uiState.selectedTab == MainTab.HOME &&
+                    uiState.feedSubTab in 0..2
                 Scaffold(
+                    contentWindowInsets = if (homeManagesSystemInsets) {
+                        WindowInsets(0, 0, 0, 0)
+                    } else {
+                        ScaffoldDefaults.contentWindowInsets
+                    },
+                    containerColor = if (homeManagesSystemInsets) {
+                        FeedBackground
+                    } else {
+                        MaterialTheme.colorScheme.background
+                    },
                     snackbarHost = {
                         SnackbarHost(
                             hostState = snackbarHostState,
