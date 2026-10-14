@@ -1,8 +1,9 @@
-## 2026-10-14 — BLINK LIFE experimental city playground
+## 2026-10-14 — BLINK LIFE experimental 3D city playground
 
-- **Shared:** `BlinkLifeRules` defines six city locations, orthogonal movement, three local work tasks, and a fictional Game Cash market purchase. `BlinkLifePrototype` implements the same actual playable Compose experience for Android and Windows.
+- **Shared:** `BlinkLifeRules` defines six city locations, orthogonal movement, three local work tasks, and a fictional Game Cash market purchase. `BlinkLifeWorld3D` projects real X/Y/Z cuboid world geometry with depth ordering and an orbiting camera; `BlinkLifePrototype` embeds the shared renderer and gameplay on Android and Windows.
 - **Android:** Adds a dedicated BLINK LIFE card within the existing Games > Play section; entering/exiting the playground retains existing games and Android Back handling.
 - **Windows:** Adds a matching BLINK LIFE entry to the existing Games surface and renders the shared playground.
+- **3D scope:** This initial low-poly software-projected isometric scene is 3D, not the previous flat 2D grid. Production-scale first/third-person 3D physics, driving, and multiplayer will require a proper accelerated game runtime and asset pipeline.
 - **Safety:** The preview is session-only and labelled clearly. No new backend, payment, Supabase wallet, BLINK Coin, leaderboard or account-data writes. Fictional Game Cash is not withdrawable, transferable, or redeemable.
 - **Release gate:** Build/test both clients, validate controls on physical Android devices and Windows, verify normal game modes are unaffected. Feature branch targets `Testlab`; do not promote to `main` while checks are unverified.
 
