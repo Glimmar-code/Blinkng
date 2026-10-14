@@ -23,7 +23,7 @@ These are **100 hypotheses/acceptance checks**, **not** 100 independently reprod
 | 6 | Feed layout | Inconsistent image height | Patch staged; verify |
 | 7 | Feed layout | Extreme portrait image letterboxing | Patch staged; verify |
 | 8 | Feed layout | Broken multiple-image carousel | Patch staged; verify |
-| 9 | Feed layout | Carousel counter obstructs picture | Open: audit required |
+| 9 | Feed layout | Carousel counter obstructs picture | Patch staged; CI/device verify |
 | 10 | Feed layout | Stretched profile avatar | Patch staged; verify |
 | 11 | Feed layout | Post text overflows | Open: audit required |
 | 12 | Feed layout | Hashtag wraps incorrectly | Open: audit required |
@@ -35,15 +35,15 @@ These are **100 hypotheses/acceptance checks**, **not** 100 independently reprod
 | 18 | Feed layout | Light contrast insufficient | Patch staged; verify |
 | 19 | Feed layout | Post borders too thick | Open: audit required |
 | 20 | Feed layout | Typography differs between cards | Patch staged; verify |
-| 21 | Feed interactions | Duplicate Like requests | Open: audit required |
-| 22 | Feed interactions | Like count desynchronises | Open: audit required |
-| 23 | Feed interactions | Bookmark resets after refresh | Open: audit required |
-| 24 | Feed interactions | Follow not updating | Patch staged; verify |
-| 25 | Feed interactions | Unfollow requires repeated attempts | Open: audit required |
+| 21 | Feed interactions | Duplicate Like requests | Confirmed code defect; patch staged |
+| 22 | Feed interactions | Like count desynchronises | Confirmed code defect; patch staged |
+| 23 | Feed interactions | Bookmark resets after refresh | Confirmed code defect; patch staged |
+| 24 | Feed interactions | Follow not updating | Confirmed race; patch staged |
+| 25 | Feed interactions | Unfollow requires repeated attempts | Follow race hardening staged; device verify |
 | 26 | Feed interactions | Comment count stale | Open: audit required |
 | 27 | Feed interactions | Deleted comments remain | Open: audit required |
 | 28 | Feed interactions | Share link incorrect | Open: audit required |
-| 29 | Feed interactions | Duplicate repost entry | Open: audit required |
+| 29 | Feed interactions | Duplicate repost entry | Confirmed race; patch staged |
 | 30 | Feed interactions | Post menu mispositioned | Open: audit required |
 | 31 | Feed interactions | Report submission fails | Open: audit required |
 | 32 | Feed interactions | Blocked creator persists in feed | Open: audit required |
@@ -53,8 +53,8 @@ These are **100 hypotheses/acceptance checks**, **not** 100 independently reprod
 | 36 | Feed interactions | Refresh omits new posts | Open: audit required |
 | 37 | Feed interactions | Following feed includes unrelated authors | Open: audit required |
 | 38 | Feed interactions | Pagination duplicates posts | Open: audit required |
-| 39 | Feed interactions | Bookmarks differ across devices | Open: audit required |
-| 40 | Feed interactions | Private posts visible to wrong audience | Open: audit required |
+| 39 | Feed interactions | Bookmarks differ across devices | Selected-post state patch staged; cross-device verify |
+| 40 | Feed interactions | Private posts visible to wrong audience | Backend access-control gap identified; security migration needed |
 | 41 | Feed performance | Long scrolling becomes janky | Open: audit required |
 | 42 | Feed performance | Images redownload on scroll back | Open: audit required |
 | 43 | Feed performance | Image decoder memory increases | Open: audit required |
@@ -77,17 +77,17 @@ These are **100 hypotheses/acceptance checks**, **not** 100 independently reprod
 | 60 | Feed performance | Feed pagination stops early | Open: audit required |
 | 61 | Reels layout | Caption overlaps engagement rail | Patch staged; verify |
 | 62 | Reels layout | Caption covers too much video | Patch staged; verify |
-| 63 | Reels layout | Expanded caption blocks navigation | Open: audit required |
+| 63 | Reels layout | Expanded caption blocks navigation | Patch staged; device verify |
 | 64 | Reels layout | Creator name overlaps Follow | Patch staged; verify |
 | 65 | Reels layout | Badge shifts on long names | Patch staged; verify |
 | 66 | Reels layout | Caption invisible over bright clip | Patch staged; verify |
 | 67 | Reels layout | Icons blend into video | Patch staged; verify |
 | 68 | Reels layout | Action icons have inconsistent sizes | Patch staged; verify |
-| 69 | Reels layout | Counters jump in width | Patch staged; verify |
+| 69 | Reels layout | Counters jump in width | Patch staged; device verify |
 | 70 | Reels layout | Like animation delayed | Open: audit required |
 | 71 | Reels layout | Comment sheet blocks navigation | Open: audit required |
 | 72 | Reels layout | Share sheet opens behind overlay | Open: audit required |
-| 73 | Reels layout | Saved icon stale | Open: audit required |
+| 73 | Reels layout | Saved icon stale | Confirmed UI defect; patch staged |
 | 74 | Reels layout | Video stretches to wrong ratio | Patch staged; verify |
 | 75 | Reels layout | Landscape has excessive dead space | Open: audit required |
 | 76 | Reels layout | Low resolution preview | Open: audit required |
@@ -178,3 +178,18 @@ The following defects were **verified from current source**, then patched on Tes
 - **#73:** Bookmark rail always read "Save" even if saved. Saved now displays when applicable.
 
 **Status semantics:** These rows are `Patch staged; CI/device verify`, not `PASS`. Other 100-point hypotheses remain pending reproduction or regression testing. No database policies, algorithms, rewards, or production release logic were changed.
+
+
+## Live Supabase read-only backend audit (2026-10-14)
+Production SQL was **not modified**. The authenticated SELECT policy on `public.feed_posts` currently allows every active row or an owner's row, without considering `audience`, following relationships, blocks or university restrictions. The current active-post audience aggregate was **57 Everyone posts, 0 other audiences**. This does not establish any currently exposed restricted-audience posts, but future restricted posts could be directly read through the REST API. **Issue #40 is still open.**
+
+Rollout conditions:
+1. Inventory audience values, share endpoints and feed RPCs, including `get_ranked_feed_page`, `get_feed_page`, `get_following_feed` and search.
+2. Develop a fail-closed audience visibility predicate based on trusted ownership and relationships; do not trust user-editable JWT metadata.
+3. Test as the owner, follower, non-follower, blocked user, signed-out visitor, and applicable campus member.
+4. Apply the same policy to all API functions that return posts, including SECURITY DEFINER functions. Release only after security review and role-based integration testing.
+
+`feed_posts`, `profiles`, `post_likes`, `post_bookmarks`, `post_reposts` and `follows` all have RLS enabled. Other SECURITY DEFINER advisor warnings require careful function-by-function review, not blanket privilege revocation.
+
+## Follow concurrency fix (staged)
+`FollowStateStore` now serializes follow/unfollow and refresh operations and rejects stale responses following a session switch; its refresh flow no longer recursively acquires a mutation lock. Added session policy tests. Real-device multi-account behavior remains unverified.

@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -34,15 +35,23 @@ object FollowStateStore {
     private val _followingIds = MutableStateFlow<Set<String>>(emptySet())
     val followingIds: StateFlow<Set<String>> = _followingIds.asStateFlow()
 
-    suspend fun refresh(): Set<String> = withContext(Dispatchers.IO) {
-        val token = SupabaseService.accessToken().orEmpty()
-        if (token.isBlank()) {
-            // Never leak a previous signed-in account's Follow state to the
-            // signed-out Home screen or a different account.
-            _followingIds.value = emptySet()
-            return@withContext emptySet()
-        }
+    /**
+     * All read/write operations share one lock. Without it, a delayed refresh
+     * or a failed Follow RPC could overwrite a newer optimistic user action.
+     */
+    private val operationMutex = kotlinx.coroutines.sync.Mutex()
+    private var sessionToken: String = ""
 
+    private fun activateSession(token: String) {
+        if (sessionToken != token) {
+            sessionToken = token
+            // Avoid showing the previous account's relationships while the
+            // current user's list is being fetched.
+            _followingIds.value = emptySet()
+        }
+    }
+
+    private fun fetchLatestLocked(token: String): Set<String> {
         val request = Request.Builder()
             .url("$baseUrl/rest/v1/rpc/get_my_following_ids")
             .header("apikey", SupabaseConfig.anonKey)
@@ -51,51 +60,82 @@ object FollowStateStore {
             .post("{}".toRequestBody(jsonMediaType))
             .build()
 
-        runCatching {
+        return runCatching {
             client.newCall(request).execute().use { response ->
                 val raw = response.body?.string().orEmpty()
                 if (!response.isSuccessful) error("Follow state refresh failed (${response.code})")
                 val parsed = parseIds(raw)
-                _followingIds.value = parsed
-                parsed
+                val currentToken = SupabaseService.accessToken().orEmpty()
+                if (!isCurrentFollowSession(token, currentToken)) {
+                    activateSession(currentToken)
+                    emptySet()
+                } else {
+                    _followingIds.value = parsed
+                    parsed
+                }
             }
-        }.getOrElse { _followingIds.value }
+        }.getOrElse {
+            if (isCurrentFollowSession(token, SupabaseService.accessToken().orEmpty())) {
+                _followingIds.value
+            } else {
+                activateSession(SupabaseService.accessToken().orEmpty())
+                emptySet()
+            }
+        }
+    }
+
+    suspend fun refresh(): Set<String> = withContext(Dispatchers.IO) {
+        operationMutex.withLock {
+            val token = SupabaseService.accessToken().orEmpty()
+            activateSession(token)
+            if (token.isBlank()) emptySet() else fetchLatestLocked(token)
+        }
     }
 
     suspend fun setFollowing(profileId: String, shouldFollow: Boolean): Boolean = withContext(Dispatchers.IO) {
-        val cleanId = profileId.trim()
-        val token = SupabaseService.accessToken().orEmpty()
-        if (cleanId.isBlank() || token.isBlank()) return@withContext false
+        operationMutex.withLock {
+            val cleanId = profileId.trim()
+            val token = SupabaseService.accessToken().orEmpty()
+            activateSession(token)
+            if (cleanId.isBlank() || token.isBlank()) return@withLock false
 
-        val before = _followingIds.value
-        _followingIds.value = if (shouldFollow) before + cleanId else before - cleanId
+            val before = _followingIds.value
+            _followingIds.value = if (shouldFollow) before + cleanId else before - cleanId
 
-        val functionName = if (shouldFollow) "follow_user" else "unfollow_user"
-        val body = JSONObject().put("p_following_id", cleanId).toString()
-        val request = Request.Builder()
-            .url("$baseUrl/rest/v1/rpc/$functionName")
-            .header("apikey", SupabaseConfig.anonKey)
-            .header("Authorization", "Bearer $token")
-            .header("Accept", "application/json")
-            .post(body.toRequestBody(jsonMediaType))
-            .build()
+            val functionName = if (shouldFollow) "follow_user" else "unfollow_user"
+            val body = JSONObject().put("p_following_id", cleanId).toString()
+            val request = Request.Builder()
+                .url("$baseUrl/rest/v1/rpc/$functionName")
+                .header("apikey", SupabaseConfig.anonKey)
+                .header("Authorization", "Bearer $token")
+                .header("Accept", "application/json")
+                .post(body.toRequestBody(jsonMediaType))
+                .build()
 
-        val saved = runCatching {
-            client.newCall(request).execute().use { response ->
-                response.body?.close()
-                response.isSuccessful
+            val saved = runCatching {
+                client.newCall(request).execute().use { response ->
+                    response.body?.close()
+                    response.isSuccessful
+                }
+            }.getOrDefault(false)
+
+            val currentToken = SupabaseService.accessToken().orEmpty()
+            if (!isCurrentFollowSession(token, currentToken)) {
+                // The user signed out or switched accounts before the response.
+                // Never apply that old account's result to the new account.
+                activateSession(currentToken)
+                return@withLock false
             }
-        }.getOrDefault(false)
+            if (!saved) {
+                _followingIds.value = before
+                return@withLock false
+            }
 
-        if (!saved) {
-            _followingIds.value = before
-            return@withContext false
+            // Reconcile only while still in the same session; avoid deadlocking
+            // by using the private locked variant instead of calling refresh().
+            fetchLatestLocked(token)
+            true
         }
-
-        // Reconcile with the database so duplicate taps, RLS and cross-device
-        // changes cannot leave the local button in the wrong state.
-        refresh()
-        true
     }
 
     fun isFollowing(profileId: String): Boolean = profileId.isNotBlank() && profileId in _followingIds.value
