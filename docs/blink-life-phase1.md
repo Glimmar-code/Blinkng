@@ -6,8 +6,11 @@ Status: experimental; **not a production release**. Built to be reviewed via a f
 
 Open BLINK > Games > **BLINK LIFE · TESTLAB** on Android or Windows.
 
-- Shared, original 7×5 city playground with six named places.
-- Move the player one tile at a time with arrow buttons, or select an adjacent map tile.
+**3D requirement:** This is now an isometric 3D world prototype built from depth-sorted, projected X/Y/Z meshes with an orbitable camera. It is **not yet** a full hardware-accelerated 3D engine with first-person movement, physics, or free-roam driving. A real 3D engine integration will be needed before production-scale free-roam gameplay.
+
+- Shared original 3D city playground with six named places, cuboid buildings, low-poly trees, and a three-dimensional avatar.
+- Camera rotation with 45-degree orbit controls to view the city from different angles.
+- Move the 3D avatar one tile at a time using direction buttons.
 - Travel to the café, tech hub, or delivery depot; answer an interactive task for fictional Game Cash.
 - Visit the market to buy one desk plant; view ownership at the hostel.
 - See local session balance, completed tasks, and status messages.
@@ -22,7 +25,7 @@ Do not use this client-only state for production rewards, competitive rankings, 
 
 ## Next implementation slices
 
-1. Replace the rectangular prototype world with original illustrated campus/city tiles and accessible animated walking.
+1. Replace the 3D-projected prototype with a hardware-accelerated 3D game runtime (e.g. Godot/Unity) for physically navigable scenes, collision/physics, terrain, animated avatars, and mobile controls. Keep Android/Windows integration tested and provide a package-size budget.
 2. Add authenticated per-account character creation and persistence through versioned Supabase migrations, preview RLS policies, and server-owned transactions.
 3. Build diverse mission/job mechanics with replay protection, balanced payouts and meaningful feedback.
 4. Introduce inventory, interiors and businesses with server-authoritative ownership and economy rules.
