@@ -52,45 +52,17 @@ jobs:
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 
-      - name: Verify real BLINK LIFE 3D is inside the APK
+      - name: Verify native BLINK LIFE 3D resources are in APK
         shell: bash
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
-          unzip -Z1 "$APK" > "$RUNNER_TEMP/blink-contents.txt"
-          for game_file in \
-            "assets/project.godot" \
-            "assets/scenes/main.tscn" \
-            "assets/scripts/world.gd"; do
-            if ! grep -Fx "$game_file" "$RUNNER_TEMP/blink-contents.txt"; then
-              echo "::error::BLINK LIFE 3D game asset missing: $game_file"
-              exit 1
-            fi
-          done
-          if ! grep -Eq '^lib/arm64-v8a/.*godot.*\.so
-
-      - name: Upload debug App Bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: blinkng-debug-aab-${{ github.sha }}
-          path: app/build/outputs/bundle/debug/app-debug.aab
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload latest debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: blinkng-debug-${{ github.sha }}
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
- "$RUNNER_TEMP/blink-contents.txt"; then
-            echo "::error::Godot arm64 native engine library missing"
-            exit 1
-          fi
-          echo "Native Godot engine and 3D game scene are packaged in this APK."
-
+          unzip -Z1 "$APK" > contents.txt
+          grep -Fx "assets/project.godot" contents.txt
+          grep -Fx "assets/scenes/main.tscn" contents.txt
+          grep -Fx "assets/scripts/world.gd" contents.txt
+          grep -E "lib/arm64-v8a/.*godot.*[.]so" contents.txt
+          echo "Native 3D scene and Godot engine present in APK"
       - name: Build debug App Bundle
         run: gradle :app:bundleDebug --stacktrace --no-daemon
 
