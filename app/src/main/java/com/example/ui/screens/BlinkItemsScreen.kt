@@ -88,6 +88,7 @@ import com.example.items.BlinkLocationClient
 import com.example.items.BlinkMyLiveLocationSession
 import com.example.items.BlinkSharedLocation
 import com.example.items.BlinkStepRepository
+import com.example.items.BlinkStepNotificationService
 import com.example.items.BlinkWeatherRepository
 import com.example.items.BlinkWeatherSnapshot
 import com.example.ui.theme.FeedBackground
@@ -245,6 +246,7 @@ private fun BlinkItemsHome(
                     onToggle = {
                         if (!it) {
                             BlinkItemPreferences.setStepsEnabled(context, false)
+                            BlinkStepNotificationService.stop(context)
                             stepsEnabled = false
                         } else {
                             onSteps()
@@ -480,10 +482,24 @@ private fun BlinkStepsItem() {
     var message by remember { mutableStateOf<String?>(null) }
     var milestones by remember { mutableStateOf(BlinkItemPreferences.stepMilestonesEnabled(context)) }
     var goalAlerts by remember { mutableStateOf(BlinkItemPreferences.stepGoalEnabled(context)) }
+    var ongoingSteps by remember { mutableStateOf(BlinkItemPreferences.stepNotificationEnabled(context)) }
 
     val stepNotificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
+
+    val ongoingPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val result = BlinkStepNotificationService.start(context)
+            ongoingSteps = result.isSuccess
+            message = result.exceptionOrNull()?.message
+        } else {
+            ongoingSteps = false
+            message = "Allow BLINK notifications to show your steps in the notification panel."
+        }
+    }
 
     fun requestStepNotificationsIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -497,6 +513,7 @@ private fun BlinkStepsItem() {
     fun refresh() {
         if (!enabled) return
         loading = true
+        ongoingSteps = BlinkItemPreferences.stepNotificationEnabled(context)
         message = null
         scope.launch {
             val result = repository.readTodaySteps()
@@ -625,6 +642,8 @@ private fun BlinkStepsItem() {
                 onCheckedChange = { turnOn ->
                     if (!turnOn) {
                         BlinkItemPreferences.setStepsEnabled(context, false)
+                        BlinkStepNotificationService.stop(context)
+                        ongoingSteps = false
                         enabled = false
                     } else if (!repository.isAvailable()) {
                         message = "This device does not provide a hardware step counter."
@@ -637,6 +656,32 @@ private fun BlinkStepsItem() {
                         } else {
                             activityPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
                         }
+                    }
+                }
+            )
+        }
+        item {
+            BlinkSettingSwitch(
+                title = "Steps in notification panel",
+                subtitle = "Optional • updates offline using your phone sensor. Usually stays after Clear all; Android may still let you dismiss it.",
+                checked = enabled && ongoingSteps,
+                onCheckedChange = { turnOn ->
+                    if (!turnOn) {
+                        BlinkStepNotificationService.stop(context)
+                        ongoingSteps = false
+                        message = null
+                    } else if (!enabled || !repository.hasReadPermission() || !repository.isAvailable()) {
+                        message = "Enable Steps and physical activity permission first."
+                    } else if (
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                            android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                        ongoingPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        val result = BlinkStepNotificationService.start(context)
+                        ongoingSteps = result.isSuccess
+                        message = result.exceptionOrNull()?.message
                     }
                 }
             )
