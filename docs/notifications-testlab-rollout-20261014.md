@@ -21,7 +21,7 @@ The October 14 upgrade is incremental. Do not promote to `main` without verified
 - Muted messages never produce recovery banners.
 - Notifications open correct post/reel/profile/market destination.
 - Dark and light modes remain readable; notification sorting and filters work.
-- Cross-platform Windows/web and Supabase account preferences checked.
+- Windows desktop inbox filters, sorting, offline fallback and safe account switch checked; web/Supabase preferences verified.
 
 ## Not yet implemented
 Archive/undo, configurable digests and intelligent prioritization, rich

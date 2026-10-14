@@ -1,3 +1,12 @@
+## 2026-10-14 — Notification reliability and premium inbox on Android and Windows (Testlab)
+
+PARITY-EXCEPTION: android-os-fcm-notification-delivery-20261014
+
+- **Android & Windows:** Both notification inboxes now support Reels, Stories and Rewards categories, newest/oldest sorting, monochrome unread accents, existing read actions, and preserved last-good activity on refresh failures (Windows). Their content remains fetched from authenticated server-owned notifications.
+- **Android-specific delivery:** WorkManager recovery, FCM recipient-ID binding, Android system notification IDs, OS permission prompts, token registration health and repair are Android/Firebase platform integrations. Windows continues to use its authenticated desktop Supabase inbox; it does not create or use Android FCM tokens or Android notification channels.
+- **Windows equivalent:** Native desktop inbox filters/search/unread sorting, safe account switch invalidation and server-backed marking read. No synthetic push-delivery claims; Windows continues to show server-originated activity when the inbox refreshes.
+- **Safety and rollout:** No production database schema updates or live notification preferences were changed. Require Android tests/lint/runtime/release smoke, Windows compile/parity, and manual FCM + account-switch + light/dark testing before main promotion. This implements a subset of the previously proposed 50 improvements, not all.
+
 ## 2026-10-14 — Home Feed reference-card layout and Light/Dark staging
 
 PARITY-EXCEPTION: android-home-reference-layout-20261014
