@@ -34,6 +34,7 @@ class BlinkStepNotificationService : Service(), SensorEventListener {
     companion object {
         private const val ACTION_START = "com.example.items.START_STEP_NOTIFICATION"
         private const val ACTION_STOP = "com.example.items.STOP_STEP_NOTIFICATION"
+        private const val ACTION_DISMISS = "com.example.items.DISMISS_STEP_NOTIFICATION"
         private const val NOTIFICATION_ID = 63_002
         private const val NOTIFICATION_UPDATE_INTERVAL_MS = 30_000L
         private const val DAILY_RECHECK_INTERVAL_MS = 60_000L
@@ -54,15 +55,13 @@ class BlinkStepNotificationService : Service(), SensorEventListener {
                 BlinkItemPreferences.setStepNotificationEnabled(context, false)
                 throw error
             }
+            Unit
         }
 
         fun stop(context: Context) {
             BlinkItemPreferences.setStepNotificationEnabled(context, false)
-            runCatching {
-                context.startService(
-                    Intent(context, BlinkStepNotificationService::class.java).setAction(ACTION_STOP)
-                )
-            }
+            // No background service launch is needed to stop a foreground service.
+            context.stopService(Intent(context, BlinkStepNotificationService::class.java))
         }
     }
 
@@ -194,10 +193,16 @@ class BlinkStepNotificationService : Service(), SensorEventListener {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val turnOff = PendingIntent.getService(
+        val turnOff = PendingIntent.getBroadcast(
             this,
             NOTIFICATION_ID + 1,
-            Intent(this, BlinkStepNotificationService::class.java).setAction(ACTION_STOP),
+            Intent(this, BlinkStepNotificationControlsReceiver::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val dismissed = PendingIntent.getBroadcast(
+            this,
+            NOTIFICATION_ID + 2,
+            Intent(this, BlinkStepNotificationControlsReceiver::class.java).setAction(ACTION_DISMISS),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, BlinkItemNotificationManager.CHANNEL_STEP_ONGOING)
@@ -206,6 +211,7 @@ class BlinkStepNotificationService : Service(), SensorEventListener {
             .setContentText("$formatted / $goalText steps • $progress% of goal")
             .setProgress(100, progress, false)
             .setContentIntent(open)
+            .setDeleteIntent(dismissed)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
