@@ -8,6 +8,14 @@ PARITY-EXCEPTION: android-home-reels-connect-edge-to-edge-safe-insets-20261013
 - **Windows equivalent:** The Windows desktop app uses a native window titlebar, side navigation and resizable desktop content without Android OS status/navigation bar insets. The corresponding desktop behavior is already full use of the drawable client area beneath its titlebar; applying Android Compose `WindowInsets` would introduce an artificial blank strip in Windows.
 - **Verification:** Android quality gate, lint, runtime/screenshot checks on different status-bar heights and three-button/gesture navigation, Windows parity/build checks; physical Redmi 15C visual verification is still required before asserting pixel-perfect results.
 
+## 2026-10-13 — Premium swipe navigation production port
+
+- Staged and validated through Testlab pull request #265; ported selectively onto the newer production code instead of merging older Testlab dependencies into main.
+- Shared: canonical Feed → Reels → Market → Connect → Messages order and bounded animation scale/opacity contract.
+- Android: finger-driven horizontal pager with depth transitions; protects composer, modal, chat and feed overlays from page swipes. Direct-only Search/Leaderboard/Game routes remain accessible. Swipe a chat left to close; swipe an individual message right to reply; chats enter from the left.
+- Windows: Alt+Left/Right moves between equivalent primary routes, and chat content enters/exits from the left; messaging data contracts are unchanged.
+- Production requirements: all Android/Windows compile, unit, release smoke, domain and Supabase gates green on the main-target PR before merge. No database/schema/coins/auth changes.
+
 ## 2026-10-13 — Temporarily pause public BLINK Store (Testlab)
 
 - **Shared policy:** `BlinkStoreAvailability.isPaused` keeps Store temporarily unavailable on Android and Windows while retaining the complete catalog, purchase routes, reaction effects, provider surfaces, collection data, and Supabase contracts for reopening later.

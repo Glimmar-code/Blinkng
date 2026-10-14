@@ -12,6 +12,9 @@ import androidx.activity.viewModels
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material3.*
@@ -55,6 +58,7 @@ import com.example.viewmodel.AppDestination
 import com.example.viewmodel.BlinkViewModel
 import com.example.viewmodel.MainTab
 import com.blinkng.shared.BlinkStoreAvailability
+import com.blinkng.shared.BlinkSwipeNavigation
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
@@ -489,11 +493,6 @@ class MainActivity : ComponentActivity() {
             }
 
             BlinkTheme(darkTheme = uiState.isDarkMode) {
-                // Feed, Reels and Connect already account for the status bar inside
-                // their own chrome. Applying Scaffold's default safeDrawing insets
-                // as well adds a second empty strip above the header (and wastes
-                // height near the bottom navigation). Other screens still need
-                // Scaffold's normal safe-area handling.
                 val homeManagesSystemInsets =
                     uiState.destination == AppDestination.MAIN &&
                     uiState.selectedTab == MainTab.HOME &&
@@ -504,8 +503,6 @@ class MainActivity : ComponentActivity() {
                     } else {
                         ScaffoldDefaults.contentWindowInsets
                     },
-                    // Match the area behind the transparent status bar to the feed
-                    // so the clock/camera cutout no longer sits above a separate strip.
                     containerColor = if (homeManagesSystemInsets) {
                         FeedBackground
                     } else {
@@ -751,7 +748,7 @@ fun MainAppContent(
         )
     }
 
-    LaunchedEffect(uiState.selectedTab) {
+    LaunchedEffect(uiState.selectedTab, uiState.feedSubTab) {
         isBottomBarVisibleByScroll = true
     }
 
@@ -797,89 +794,83 @@ fun MainAppContent(
         }
     }
 
-    // A non-consuming gesture observer lets normal vertical feed scrolling,
-    // gallery swipes, search inputs and overlays keep priority over page changes.
-    val mainPageSwipeEnabled =
-        feedUtilitySheet == null &&
-        uiState.viewingProduct == null &&
-        uiState.viewingProfile == null &&
-        uiState.activeConversationPartner == null &&
-        uiState.activeCommentsPostId == null &&
-        uiState.activePostOptionsPost == null &&
-        !uiState.isMenuOpen &&
-        !uiState.isGetVerifiedOpen &&
-        !uiState.isBecomeSellerOpen &&
-        !uiState.isConversationFullScreen &&
-        !uiState.showSellerCongratulationsDialog &&
-        !uiState.isCreatePostOpen &&
-        !uiState.isCreateStoryOpen &&
-        !uiState.isPostItemOpen &&
-        !uiState.isEditProfileOpen &&
-        !uiState.isActivityOpen &&
-        uiState.deepLinkedPost == null &&
-        uiState.activeViewingStory == null &&
-        (uiState.selectedTab != MainTab.HOME || uiState.feedSubTab != 1)
+    // Follow the canonical five-page sequence. Extra routes are direct-access only.
+    val selectedPage = when (uiState.selectedTab) {
+        MainTab.HOME -> when (uiState.feedSubTab) { 1 -> 1; 2 -> 3; 3 -> 7; else -> 0 }
+        MainTab.MARKET -> 2
+        MainTab.MESSAGES -> 4
+        MainTab.SEARCH -> 5
+        MainTab.LEADERBOARD -> 6
+    }
+    val pagerState = rememberPagerState(
+        initialPage = selectedPage,
+        pageCount = { if (selectedPage in 0..4) 5 else 8 }
+    )
+    var requestedPage by remember { mutableIntStateOf(selectedPage) }
+    val latestSelectedPage by rememberUpdatedState(selectedPage)
     val reducePageMotion = com.example.performance.rememberBlinkReduceMotion()
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Main Tab Content; real content remains mounted during a short transition.
-        androidx.compose.animation.AnimatedContent(
-            targetState = uiState.selectedTab,
-            modifier = Modifier
-                .fillMaxSize()
-                .blinkHorizontalPageSwipe(
-                    enabled = mainPageSwipeEnabled,
-                    onSwipeLeft = {
-                        when {
-                            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 0 ->
-                                viewModel.setFeedSubTab(1)
-                            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 2 ->
-                                viewModel.setTab(MainTab.MARKET)
-                            uiState.selectedTab == MainTab.MARKET ->
-                                viewModel.setTab(MainTab.MESSAGES)
-                        }
-                    },
-                    onSwipeRight = {
-                        when {
-                            uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 2 ->
-                                viewModel.setFeedSubTab(1)
-                            uiState.selectedTab == MainTab.MARKET -> {
-                                viewModel.setTab(MainTab.HOME)
-                                viewModel.setFeedSubTab(2)
-                            }
-                            uiState.selectedTab == MainTab.MESSAGES ->
-                                viewModel.setTab(MainTab.MARKET)
-                        }
-                    }
-                ),
-            label = "TabAnimatedContent",
-            transitionSpec = {
-                val forward = targetState.index > initialState.index
-                val direction = if (forward) 1 else -1
-                val duration = if (reducePageMotion) 0 else 225
-                (
-                    androidx.compose.animation.slideInHorizontally(
-                        initialOffsetX = { direction * it },
-                        animationSpec = tween(duration)
-                    ) +
-                    androidx.compose.animation.scaleIn(
-                        initialScale = 0.96f,
-                        animationSpec = tween(duration)
-                    ) +
-                    androidx.compose.animation.fadeIn(animationSpec = tween(duration))
-                ) togetherWith (
-                    androidx.compose.animation.slideOutHorizontally(
-                        targetOffsetX = { -direction * it / 4 },
-                        animationSpec = tween(duration)
-                    ) +
-                    androidx.compose.animation.scaleOut(
-                        targetScale = 0.96f,
-                        animationSpec = tween(duration)
-                    ) +
-                    androidx.compose.animation.fadeOut(animationSpec = tween(duration))
-                )
+    LaunchedEffect(selectedPage) {
+        requestedPage = selectedPage
+        if (pagerState.currentPage != selectedPage) {
+            if (pagerState.currentPage in 0..4 && selectedPage in 0..4 &&
+                kotlin.math.abs(pagerState.currentPage - selectedPage) == 1
+            ) {
+                pagerState.animateScrollToPage(selectedPage)
+            } else {
+                pagerState.scrollToPage(selectedPage)
             }
-        ) { tab ->
+        }
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collectLatest { page ->
+            if (page == requestedPage || page !in 0..4 ||
+                requestedPage != latestSelectedPage
+            ) return@collectLatest
+            requestedPage = page
+            when (page) {
+                0 -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(0) }
+                1 -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(1) }
+                2 -> viewModel.setTab(MainTab.MARKET)
+                3 -> { viewModel.setTab(MainTab.HOME); viewModel.setFeedSubTab(2) }
+                4 -> viewModel.setTab(MainTab.MESSAGES)
+            }
+        }
+    }
+
+    val mainPageSwipeEnabled = feedUtilitySheet == null &&
+        uiState.viewingProduct == null && uiState.viewingProfile == null &&
+        uiState.activeConversationPartner == null && uiState.activeCommentsPostId == null &&
+        uiState.activePostOptionsPost == null && !uiState.isMenuOpen &&
+        !uiState.isGetVerifiedOpen && !uiState.isBecomeSellerOpen &&
+        !uiState.isConversationFullScreen && !uiState.showSellerCongratulationsDialog &&
+        !uiState.isCreatePostOpen && !uiState.isCreateStoryOpen &&
+        !uiState.isPostItemOpen && !uiState.isEditProfileOpen &&
+        !uiState.isActivityOpen && uiState.deepLinkedPost == null &&
+        uiState.activeViewingStory == null &&
+        !(uiState.selectedTab == MainTab.HOME && uiState.feedSubTab == 3)
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = mainPageSwipeEnabled && pagerState.currentPage in 0..4
+        ) { page ->
+            val tab = when (page) {
+                2 -> MainTab.MARKET
+                4 -> MainTab.MESSAGES
+                5 -> MainTab.SEARCH
+                6 -> MainTab.LEADERBOARD
+                else -> MainTab.HOME
+            }
+            val pageDistance = (pagerState.currentPage - page) +
+                pagerState.currentPageOffsetFraction
+            Box(modifier = Modifier.fillMaxSize().graphicsLayer {
+                val scale = if (reducePageMotion) 1f else BlinkSwipeNavigation.scale(pageDistance)
+                scaleX = scale
+                scaleY = scale
+                alpha = if (reducePageMotion) 1f else BlinkSwipeNavigation.alpha(pageDistance)
+            }) {
             when (tab) {
                 MainTab.HOME -> {
                     PremiumFeedScreen(
@@ -896,7 +887,7 @@ fun MainAppContent(
                         connectHubActions = connectHubActions,
                         currentUsername = uiState.myProfile.username,
                         userAvatar = uiState.myProfile.avatarUrl,
-                        currentSubTab = uiState.feedSubTab,
+                        currentSubTab = when (page) { 1 -> 1; 3 -> 2; 7 -> 3; else -> 0 },
                         routedReelId = uiState.routedReelId,
                         onSubTabChanged = { viewModel.setFeedSubTab(it) },
                         isDark = uiState.isDarkMode,
@@ -1120,6 +1111,7 @@ fun MainAppContent(
                     )
                 }
             }
+        }
         }
 
         feedUtilitySheet?.let { utility ->
@@ -1759,8 +1751,8 @@ fun MainAppContent(
         // Sub-screen Overlays: Chat Conversation
         AnimatedVisibility(
             visible = uiState.isConversationFullScreen && uiState.activeConversationPartner != null && uiState.selectedTab != MainTab.MESSAGES,
-            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+            enter = fadeIn(tween(180)),
+            exit = slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(390)) + fadeOut(tween(220))
         ) {
             val convo = uiState.conversations.find { it.partnerUsername == uiState.activeConversationPartner }
             if (convo != null) {
