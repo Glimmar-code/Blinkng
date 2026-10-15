@@ -1564,6 +1564,7 @@ fun MainAppContent(
                         viewModel.updateMarketListingStatus(listing, status)
                     },
                     onDeleteListing = { viewModel.deleteMarketListing(it) },
+                    isSubmittingOrder = uiState.isRequestingMarketOrder,
                     isDark = uiState.isDarkMode
                 )
             }
