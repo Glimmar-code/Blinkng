@@ -162,6 +162,7 @@ fun BlinkBoostGrowthRoute(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
     onOpenPost: (FeedPost) -> Unit,
     onProfileClick: (String) -> Unit,
     onListingClick: (MarketItem) -> Unit,
@@ -233,6 +234,7 @@ fun BlinkBoostGrowthRoute(
                 onLikePost = onLikePost,
                 onCommentPost = onCommentPost,
                 onBookmarkPost = onBookmarkPost,
+                onVotePoll = onVotePoll,
                 onOpenPost = onOpenPost,
                 onProfileClick = onProfileClick,
                 onListingClick = onListingClick,
@@ -953,6 +955,7 @@ private fun EarnRankPointsColumn(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
     onOpenPost: (FeedPost) -> Unit,
     onProfileClick: (String) -> Unit,
     onListingClick: (MarketItem) -> Unit,
@@ -1109,12 +1112,16 @@ private fun EarnRankPointsColumn(
                                 completeMission(mission, "like") {
                                     localPost = post.copy(isLiked = true, likes = post.likes + if (post.isLiked) 0 else 1)
                                 }
+                            } else {
+                                onLikePost(post.id)
                             }
                         },
                         onComment = {
                             if ("comment" in available) {
                                 commentText = ""
                                 commentMission = mission
+                            } else {
+                                onCommentPost(post.id)
                             }
                         },
                         onBookmark = {
@@ -1122,8 +1129,11 @@ private fun EarnRankPointsColumn(
                                 completeMission(mission, "save") {
                                     localPost = post.copy(isBookmarked = true)
                                 }
+                            } else {
+                                onBookmarkPost(post.id)
                             }
                         },
+                        onVotePoll = onVotePoll,
                         onShare = {
                             ShareLinkManager.share(
                                 context = context,
@@ -1138,10 +1148,13 @@ private fun EarnRankPointsColumn(
                         authorUsername = mission.ownerUsername,
                         authorProfileId = mission.ownerId,
                         isFollowingAuthor = mission.ownerId in followingIds,
-                        onFollowAuthor = {
+                        onFollowAuthor = { id ->
                             if ("follow" in available) completeMission(mission, "follow")
+                            else scope.launch { FollowStateStore.setFollowing(id, true) }
                         },
-                        onUnfollowAuthor = {},
+                        onUnfollowAuthor = { id ->
+                            scope.launch { FollowStateStore.setFollowing(id, false) }
+                        },
                         trackExposure = false,
                     )
                 }

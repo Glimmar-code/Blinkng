@@ -1327,6 +1327,7 @@ fun MainAppContent(
                             onLikePost = { viewModel.togglePostLike(it) },
                             onCommentPost = { viewModel.openCommentsForPost(it) },
                             onBookmarkPost = { viewModel.toggleBookmark(it) },
+                            onVotePoll = { postId, optionId -> viewModel.votePoll(postId, optionId) },
                             onOpenPost = { post -> dismissUtility { viewModel.openSearchPost(post) } },
                             onProfileClick = { username ->
                                 dismissUtility { viewModel.openProfile(username) }
