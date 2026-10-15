@@ -201,7 +201,8 @@ fun ConnectHubPremiumPanel(
     var matchRemainingCoins by remember(current?.id) { mutableStateOf<Long?>(null) }
     var matchReasons by remember(current?.id) { mutableStateOf<List<String>>(emptyList()) }
     var matchError by remember(current?.id) { mutableStateOf<String?>(null) }
-    val preferencesStore = remember(LocalContext.current) { ConnectMatchPreferencesStore(LocalContext.current) }
+    val localContext = LocalContext.current
+    val preferencesStore = remember(localContext) { ConnectMatchPreferencesStore(localContext) }
     var savedMatchPreferences by remember(current?.id) {
         mutableStateOf(preferencesStore.load(current?.id))
     }
