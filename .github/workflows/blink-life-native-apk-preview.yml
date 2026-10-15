@@ -2,14 +2,14 @@ name: BLINK LIFE native Android APK preview
 
 on:
   pull_request:
-    branches: [Testlab]
+    branches: [Testlab, main]
     paths:
       - 'game3d/**'
       - 'app/src/**'
       - 'app/build.gradle.kts'
       - '.github/workflows/blink-life-native-apk-preview.yml'
   push:
-    branches: [Testlab]
+    branches: [Testlab, main]
     paths:
       - 'game3d/**'
       - 'app/src/**'
