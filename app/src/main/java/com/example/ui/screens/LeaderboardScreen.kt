@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonList
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import com.blinkng.shared.BlinkDesignTokens
@@ -68,7 +70,8 @@ fun LeaderboardScreen(
     isLiveDataAvailable: Boolean = true,
     activityPulsePolicy: BlinkActivityPulsePolicy = BlinkActivityPulseDefaults.policy,
     onActivityPulseEvent: (surface: String, eventType: String, realCount: Int, displayedValue: Int?, metadata: Map<String, String>) -> Unit = { _, _, _, _, _ -> },
-    onRefresh: () -> Unit = {}
+    onRefresh: () -> Unit = {},
+    isLoading: Boolean = false
 ) {
     val context = LocalContext.current
     var scope by remember { mutableStateOf(LeaderboardScope.WORLD) }
@@ -443,7 +446,11 @@ fun LeaderboardScreen(
             )
         }
 
-        if (visibleTopTwenty.isEmpty()) {
+        if (isLoading && topTwenty.isEmpty()) {
+            item(key = "leaderboard_skeleton", contentType = "skeleton") {
+                BlinkSkeletonList(modifier = Modifier.padding(16.dp), rows = 6)
+            }
+        } else if (visibleTopTwenty.isEmpty()) {
             item(key = "leaderboard_empty", contentType = "empty") {
                 Box(
                     Modifier.fillMaxWidth().padding(50.dp),
