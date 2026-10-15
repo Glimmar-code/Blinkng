@@ -1025,6 +1025,10 @@ fun GamesScreen(state: DesktopAppState) {
                             "Fictional Game Cash only; no real money or BLINK Coin rewards.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Text(
+                        "Native 3D is never preloaded; Godot starts only when you select Play.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Button(onClick = {
                         if (!BlinkLifeNativeLauncher.launch()) blinkLifeOpen = true
                     }) { Text("Play BLINK LIFE 3D") }
