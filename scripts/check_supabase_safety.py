@@ -29,7 +29,7 @@ def git(*args: str) -> str:
 
 def fetch_ref(ref: str) -> None:
     try:
-        git("fetch", "origin", ref, "--depth=1")
+        git("fetch", "--no-tags", "origin", f"+refs/heads/{ref}:refs/remotes/origin/{ref}")
     except subprocess.CalledProcessError:
         # checkout uses fetch-depth: 0 in CI, so the remote ref may already be present.
         pass
