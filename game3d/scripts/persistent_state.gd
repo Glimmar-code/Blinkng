@@ -6,14 +6,17 @@ extends RefCounted
 const SAVE_FILE := "user://blink_life_houses_v1.json"
 const TEMP_FILE := "user://blink_life_houses_v1.json.tmp"
 
+var save_file: String = SAVE_FILE
+var temp_file: String = TEMP_FILE
+
 var records: Dictionary = {}
 
 
 func load_from_disk() -> void:
     records.clear()
-    if not FileAccess.file_exists(SAVE_FILE):
+    if not FileAccess.file_exists(save_file):
         return
-    var file := FileAccess.open(SAVE_FILE, FileAccess.READ)
+    var file := FileAccess.open(save_file, FileAccess.READ)
     if file == null:
         push_error("BLINK LIFE: cannot read dedicated-server house file")
         return
@@ -81,7 +84,7 @@ func update_profile(account_id: String, profile: Dictionary) -> bool:
 
 
 func save_to_disk() -> bool:
-    var file := FileAccess.open(TEMP_FILE, FileAccess.WRITE)
+    var file := FileAccess.open(temp_file, FileAccess.WRITE)
     if file == null:
         push_error("BLINK LIFE: could not open safe temporary house save")
         return false
@@ -89,8 +92,8 @@ func save_to_disk() -> bool:
     file.flush()
     file.close()
     var result := DirAccess.rename_absolute(
-        ProjectSettings.globalize_path(TEMP_FILE),
-        ProjectSettings.globalize_path(SAVE_FILE)
+        ProjectSettings.globalize_path(temp_file),
+        ProjectSettings.globalize_path(save_file)
     )
     if result != OK:
         push_error("BLINK LIFE: could not commit house save")
