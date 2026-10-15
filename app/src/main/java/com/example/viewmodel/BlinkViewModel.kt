@@ -2948,12 +2948,41 @@ private suspend fun restoreSupabaseSession() {
                 val normalized = updated.copy(username = cleanUsername, fullName = cleanName)
                 if (profileRepository.updateProfile(normalized)) {
                     val authoritative = profileRepository.fetchCurrent(normalized.username) ?: normalized
-                    _uiState.value = _uiState.value.copy(myProfile = authoritative, isEditProfileOpen = false, viewingProfile = if (_uiState.value.viewingProfile?.username?.equals(authoritative.username, true) == true) authoritative else _uiState.value.viewingProfile)
-                    saveLocalProfile(authoritative); persistProfile(authoritative); updateLocalAuthorData(authoritative); showToast("✅ Profile saved successfully.")
+                    onProfilePersisted(authoritative)
+                    showToast("✅ Profile saved successfully.")
                 } else showToast("❌ Failed to update profile.")
             } catch (e: Exception) { Log.e(TAG, "updateProfile error", e); showToast("❌ Failed to update profile: ${e.message}") }
         }
     }
+    /**
+     * Called only after EditProfileScreen has received successful confirmation from Supabase.
+     * Never POST/PATCH this profile again: that used to create duplicate requests.
+     */
+    fun onProfilePersisted(updated: UserProfile) {
+        val old = _uiState.value.myProfile
+        if (old.id.isNotBlank() && updated.id != old.id) {
+            Log.w(TAG, "Rejected persisted profile for a different signed-in account")
+            return
+        }
+        // Update cached author metadata while the former display name and username
+        // are still known, then switch the account's public identity.
+        updateLocalAuthorData(updated)
+        val state = _uiState.value
+        _uiState.value = state.copy(
+            myProfile = updated,
+            viewingProfile = if (state.viewingProfile?.id == updated.id ||
+                state.viewingProfile?.username?.equals(old.username, ignoreCase = true) == true
+            ) updated else state.viewingProfile,
+            profiles = listOf(updated) + state.profiles.filterNot {
+                it.id == updated.id || it.username.equals(old.username, ignoreCase = true)
+            },
+            isEditProfileOpen = false
+        )
+        saveLocalProfile(updated)
+        persistProfile(updated)
+        persistCurrentFeed()
+    }
+
     fun updateMyProfile(updated: UserProfile) = updateProfile(updated)
 
     private fun updateLocalAuthorData(profile: UserProfile) {
