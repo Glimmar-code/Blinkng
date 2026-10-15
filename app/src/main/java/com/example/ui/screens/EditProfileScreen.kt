@@ -2398,32 +2398,12 @@ private fun validateProfileEditInputs(
     twitter: String,
     instagram: String,
     featuredLink: String
-): String? {
-    val handle = username.trim().lowercase().removePrefix("@")
-    if (!handle.matches(Regex("^[a-z0-9][a-z0-9._-]{1,29}$"))) {
-        return "Username must contain 2–30 letters, numbers, dots, dashes or underscores."
-    }
-    if (fullName.trim().length !in 2..60 || fullName.trim().equals("Blink User", ignoreCase = true)) {
-        return "Display name must contain 2–60 characters."
-    }
-    if (email.isNotBlank() && !android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) {
-        return "Enter a valid email address."
-    }
-    val phonePattern = Regex("^\\+?[0-9()\\s-]{7,20}$")
-    if (phone.isNotBlank() && !phone.trim().matches(phonePattern)) return "Enter a valid phone number."
-    if (whatsapp.isNotBlank() && !whatsapp.trim().matches(phonePattern)) return "Enter a valid WhatsApp number."
-    if (graduationYear.isNotBlank()) {
-        val year = graduationYear.trim().toIntOrNull() ?: return "Graduation year must be a number."
-        if (year !in 1990..2150) return "Enter a valid graduation year."
-    }
-    for (link in listOf(website, linkedin, twitter, instagram, featuredLink)) {
-        val value = link.trim()
-        if (value.isNotEmpty() && (value.contains(Regex("\\s")) ||
-                    value.startsWith("javascript:", ignoreCase = true) ||
-                    value.startsWith("file:", ignoreCase = true) ||
-                    value.startsWith("intent:", ignoreCase = true))) {
-            return "Enter a valid public website or social link."
-        }
-    }
-    return null
-}
+): String? = com.blinkng.shared.ProfileEditValidation.validate(
+    fullName = fullName,
+    username = username,
+    email = email,
+    phone = phone,
+    whatsapp = whatsapp,
+    graduationYear = graduationYear,
+    links = listOf(website, linkedin, twitter, instagram, featuredLink)
+)
