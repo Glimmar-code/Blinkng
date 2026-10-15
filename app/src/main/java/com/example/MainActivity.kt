@@ -899,6 +899,7 @@ fun MainAppContent(
                         reels = uiState.reels,
                         stories = uiState.stories,
                         profiles = uiState.profiles,
+                        currentUserProfile = uiState.myProfile,
                         leaderboardUsers = uiState.gameLeaderboardUsers,
                         connectHub = uiState.connectHub,
                         isConnectHubLoading = uiState.isConnectHubLoading,
