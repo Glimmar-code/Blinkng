@@ -174,6 +174,7 @@ data class MarketItem(
     val sellerUsername: String,
     val sellerAvatar: String,
     val sellerName: String,
+    val sellerId: String = "",
     val sellerPhone: String = "",
     val sellerWhatsapp: String = "",
     val sellerIsVerified: Boolean = false,
