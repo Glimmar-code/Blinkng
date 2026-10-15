@@ -7,6 +7,27 @@ PARITY-EXCEPTION: android-os-fcm-notification-delivery-20261014
 - **Windows equivalent:** Native desktop inbox filters/search/unread sorting, safe account switch invalidation and server-backed marking read. No synthetic push-delivery claims; Windows continues to show server-originated activity when the inbox refreshes.
 - **Safety and rollout:** No production database schema updates or live notification preferences were changed. Require Android tests/lint/runtime/release smoke, Windows compile/parity, and manual FCM + account-switch + light/dark testing before main promotion. This implements a subset of the previously proposed 50 improvements, not all.
 
+## 2026-10-14 — Optional offline steps notification (Testlab)
+
+PARITY-EXCEPTION: android-offline-foreground-steps-20261014
+
+- **Android:** Users who explicitly enable Steps can opt in to an ongoing, silent, private step-count notification with current daily count/goal/progress, calculated entirely from the device TYPE_STEP_COUNTER sensor with no network. It uses a properly declared `health` foreground service, `FOREGROUND_SERVICE_HEALTH` and granted ACTIVITY_RECOGNITION on supported devices. Android 13+ notification permission is requested separately when needed.
+- **User control:** The notification offers **Turn off**, its dismiss receiver stops tracking if Android permits the notification to be swiped away, and switching off Steps also stops the service. No automatic resurrection after a user opts out. It is designed to survive Clear all where Android permits, but Android 14+ can allow manual dismissal, notification permission removal, Task Manager stop, and battery-policy shutdown; BLINK cannot force a genuinely non-removable notification.
+- **Device behavior:** Low-power sensor events update a locally saved daily estimate; notification updates are throttled and midnight is rechecked. A guarded boot/app-update receiver attempts to restart tracking only when users previously enabled it, and only when Android/OEM foreground-service policies allow. No GPS, Supabase, network traffic, wake locks, or device-admin privileges.
+- **Windows equivalent:** A sensor-driven Android notification-shade foreground service is not meaningful on Windows. Desktop retains the existing account/backend semantics; no new shared data or feature-specific billing changes.
+- **Release gates:** Android unit/lint/build/runtime, Windows parity/build and physical Android 15 testing (offline, midnight, permission denial, Clear all, manual swipe, stop action, reboot and OEM battery restrictions). No guarantee of Android-level non-dismissability.
+
+## 2026-10-14 — Items privacy, Steps and Weather reliability (Testlab)
+
+PARITY-EXCEPTION: android-items-sensor-gps-foreground-20261014
+
+- **Android Steps:** Hide an old daily step cache after midnight, allow a configurable local daily goal (1,000–100,000) with a progress indicator, and avoid claiming the same low custom goal again for every later built-in milestone. Phone step sensors and Android activity recognition are Android-only; data remains local and estimated.
+- **Android Weather:** Mark cached forecast freshness and do not use stored weather coordinates after Weather is turned off or Android location permission is revoked. Clear the saved Weather location when disabled. Persist a bounded set of weather alert IDs to avoid ping-pong duplicate warnings when several active alerts are returned, and ignore expired official notices. Existing weather backend and API contracts are unchanged.
+- **Android Live Location:** Request coarse and precise permissions together for Android 12+, handle foreground-service startup failures by attempting to revoke the server session, confirm server-side session stop before claiming success, reduce idle location-list polling, and show location accuracy/freshness only within approved recipient view. No public map, publicly visible location, new permission, or schema migration.
+- **Windows equivalent:** Android sensor/foreground-service/runtime-permission flows are not available in the Windows client; its desktop experience does not silently start GPS or steps collection. These patches do not alter shared Supabase location session RPC signatures or weather API models, so existing Windows account/backend behavior remains compatible. A future desktop Items/Weather surface requires a separate native implementation and privacy review.
+- **UI:** The Android-only Items panel gains monochrome surfaces, clearer status labels and removal of a blank Live Location placeholder. Android-only layout and phone-specific controls do not map to Windows window chrome.
+- **Verification:** This branch was created from current `main` because legacy `Testlab` has diverged. Require green Android unit/lint/assemble/runtime, Windows parity/build, and a real Android 15 device validation before promotion. A CI pass does not validate production weather delivery or GPS permissions without device/backend checks.
+
 ## 2026-10-14 — Home Feed reference-card layout and Light/Dark staging
 
 PARITY-EXCEPTION: android-home-reference-layout-20261014

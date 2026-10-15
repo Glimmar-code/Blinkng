@@ -14,6 +14,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +42,8 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -70,6 +73,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -84,12 +88,12 @@ import com.example.items.BlinkLocationClient
 import com.example.items.BlinkMyLiveLocationSession
 import com.example.items.BlinkSharedLocation
 import com.example.items.BlinkStepRepository
+import com.example.items.BlinkStepNotificationService
 import com.example.items.BlinkWeatherRepository
 import com.example.items.BlinkWeatherSnapshot
 import com.example.ui.theme.FeedBackground
 import com.example.ui.theme.FeedBorder
 import com.example.ui.theme.FeedElevatedSurface
-import com.example.ui.theme.FeedPurple
 import com.example.ui.theme.FeedTextPrimary
 import com.example.ui.theme.FeedTextSecondary
 import kotlinx.coroutines.delay
@@ -196,7 +200,7 @@ private fun BlinkItemsHome(
     val context = LocalContext.current
     var stepsEnabled by remember { mutableStateOf(BlinkItemPreferences.stepsEnabled(context)) }
     var weatherEnabled by remember { mutableStateOf(BlinkItemPreferences.weatherEnabled(context)) }
-    var steps by remember { mutableLongStateOf(BlinkItemPreferences.lastStepCount(context)) }
+    var steps by remember { mutableLongStateOf(BlinkItemPreferences.todayStepCount(context)) }
     var weather by remember { mutableStateOf(BlinkWeatherRepository(context).cached()) }
     var session by remember { mutableStateOf<BlinkMyLiveLocationSession?>(null) }
 
@@ -228,7 +232,7 @@ private fun BlinkItemsHome(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            BlinkItemsGroupLabel("TODAY (2)")
+            BlinkItemsGroupLabel("TODAY")
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -242,6 +246,7 @@ private fun BlinkItemsHome(
                     onToggle = {
                         if (!it) {
                             BlinkItemPreferences.setStepsEnabled(context, false)
+                            BlinkStepNotificationService.stop(context)
                             stepsEnabled = false
                         } else {
                             onSteps()
@@ -263,6 +268,7 @@ private fun BlinkItemsHome(
                     onToggle = {
                         if (!it) {
                             BlinkItemPreferences.setWeatherEnabled(context, false)
+                            BlinkItemPreferences.clearWeatherLocation(context)
                             weatherEnabled = false
                         } else {
                             onWeather()
@@ -275,7 +281,7 @@ private fun BlinkItemsHome(
         }
 
         item {
-            BlinkItemsGroupLabel("CONNECT (1)")
+            BlinkItemsGroupLabel("CONNECT")
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -290,7 +296,6 @@ private fun BlinkItemsHome(
                     onClick = onLocation,
                     modifier = Modifier.weight(1f)
                 )
-                Spacer(Modifier.weight(1f))
             }
         }
 
@@ -332,7 +337,7 @@ private fun BlinkCompactItemTile(
         shape = RoundedCornerShape(18.dp),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (enabled) FeedPurple.copy(alpha = 0.42f) else FeedBorder
+            if (enabled) FeedTextPrimary.copy(alpha = 0.42f) else FeedBorder
         ),
         modifier = modifier
             .heightIn(min = 132.dp)
@@ -350,7 +355,7 @@ private fun BlinkCompactItemTile(
                     modifier = Modifier
                         .size(38.dp)
                         .background(
-                            if (enabled) FeedPurple.copy(alpha = 0.16f) else FeedBackground,
+                            if (enabled) FeedTextPrimary.copy(alpha = 0.16f) else FeedBackground,
                             RoundedCornerShape(12.dp)
                         ),
                     contentAlignment = Alignment.Center
@@ -413,7 +418,7 @@ private fun BlinkItemTile(
         shape = RoundedCornerShape(18.dp),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (enabled) FeedPurple.copy(alpha = 0.42f) else FeedBorder
+            if (enabled) FeedTextPrimary.copy(alpha = 0.42f) else FeedBorder
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -427,7 +432,7 @@ private fun BlinkItemTile(
                 modifier = Modifier
                     .size(44.dp)
                     .background(
-                        if (enabled) FeedPurple.copy(alpha = 0.16f) else FeedBackground,
+                        if (enabled) FeedTextPrimary.copy(alpha = 0.16f) else FeedBackground,
                         RoundedCornerShape(13.dp)
                     ),
                 contentAlignment = Alignment.Center
@@ -469,15 +474,32 @@ private fun BlinkStepsItem() {
     val repository = remember(context) { BlinkStepRepository(context) }
 
     var enabled by remember { mutableStateOf(BlinkItemPreferences.stepsEnabled(context)) }
-    var steps by remember { mutableLongStateOf(BlinkItemPreferences.lastStepCount(context)) }
+    var steps by remember { mutableLongStateOf(BlinkItemPreferences.todayStepCount(context)) }
+    var dailyGoal by remember { mutableStateOf(BlinkItemPreferences.dailyStepGoal(context)) }
+    var editingGoal by remember { mutableStateOf(false) }
+    var goalInput by remember { mutableStateOf(dailyGoal.toString()) }
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var milestones by remember { mutableStateOf(BlinkItemPreferences.stepMilestonesEnabled(context)) }
     var goalAlerts by remember { mutableStateOf(BlinkItemPreferences.stepGoalEnabled(context)) }
+    var ongoingSteps by remember { mutableStateOf(BlinkItemPreferences.stepNotificationEnabled(context)) }
 
     val stepNotificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
+
+    val ongoingPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val result = BlinkStepNotificationService.start(context)
+            ongoingSteps = result.isSuccess
+            message = result.exceptionOrNull()?.message
+        } else {
+            ongoingSteps = false
+            message = "Allow BLINK notifications to show your steps in the notification panel."
+        }
+    }
 
     fun requestStepNotificationsIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -491,6 +513,7 @@ private fun BlinkStepsItem() {
     fun refresh() {
         if (!enabled) return
         loading = true
+        ongoingSteps = BlinkItemPreferences.stepNotificationEnabled(context)
         message = null
         scope.launch {
             val result = repository.readTodaySteps()
@@ -527,6 +550,35 @@ private fun BlinkStepsItem() {
         if (enabled && repository.isAvailable() && repository.hasReadPermission()) refresh()
     }
 
+    if (editingGoal) {
+        val proposed = goalInput.toIntOrNull()
+        AlertDialog(
+            onDismissRequest = { editingGoal = false },
+            title = { Text("Daily step goal") },
+            text = {
+                OutlinedTextField(
+                    value = goalInput,
+                    onValueChange = { goalInput = it.filter(Char::isDigit).take(6) },
+                    label = { Text("1,000–100,000 steps") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = proposed != null && proposed in 1_000..100_000,
+                    onClick = {
+                        val goal = proposed ?: return@TextButton
+                        dailyGoal = goal
+                        BlinkItemPreferences.setDailyStepGoal(context, goal)
+                        editingGoal = false
+                    }
+                ) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { editingGoal = false }) { Text("Cancel") } }
+        )
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -545,7 +597,7 @@ private fun BlinkStepsItem() {
                     Icon(
                         Icons.Default.DirectionsWalk,
                         contentDescription = null,
-                        tint = FeedPurple,
+                        tint = FeedTextPrimary,
                         modifier = Modifier.size(36.dp)
                     )
                     Spacer(Modifier.height(8.dp))
@@ -556,11 +608,27 @@ private fun BlinkStepsItem() {
                         fontWeight = FontWeight.Bold
                     )
                     Text("steps today", color = FeedTextSecondary)
+                    Spacer(Modifier.height(12.dp))
+                    LinearProgressIndicator(
+                        progress = { (steps.toFloat() / dailyGoal).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = FeedTextPrimary,
+                        trackColor = FeedBorder
+                    )
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "Goal: %,d".format(BlinkItemPreferences.dailyStepGoal(context)),
+                        "Goal: %,d".format(dailyGoal),
                         color = FeedTextSecondary,
                         style = MaterialTheme.typography.bodySmall
+                    )
+                    TextButton(onClick = {
+                        goalInput = dailyGoal.toString()
+                        editingGoal = true
+                    }) { Text("Change daily goal") }
+                    Text(
+                        "Counts are estimates from your phone sensor and may start from zero when first enabled.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = FeedTextSecondary
                     )
                 }
             }
@@ -574,6 +642,8 @@ private fun BlinkStepsItem() {
                 onCheckedChange = { turnOn ->
                     if (!turnOn) {
                         BlinkItemPreferences.setStepsEnabled(context, false)
+                        BlinkStepNotificationService.stop(context)
+                        ongoingSteps = false
                         enabled = false
                     } else if (!repository.isAvailable()) {
                         message = "This device does not provide a hardware step counter."
@@ -586,6 +656,32 @@ private fun BlinkStepsItem() {
                         } else {
                             activityPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
                         }
+                    }
+                }
+            )
+        }
+        item {
+            BlinkSettingSwitch(
+                title = "Steps in notification panel",
+                subtitle = "Optional • updates offline using your phone sensor. Usually stays after Clear all; Android may still let you dismiss it.",
+                checked = enabled && ongoingSteps,
+                onCheckedChange = { turnOn ->
+                    if (!turnOn) {
+                        BlinkStepNotificationService.stop(context)
+                        ongoingSteps = false
+                        message = null
+                    } else if (!enabled || !repository.hasReadPermission() || !repository.isAvailable()) {
+                        message = "Enable Steps and physical activity permission first."
+                    } else if (
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                            android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) {
+                        ongoingPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        val result = BlinkStepNotificationService.start(context)
+                        ongoingSteps = result.isSuccess
+                        message = result.exceptionOrNull()?.message
                     }
                 }
             )
@@ -726,6 +822,20 @@ private fun BlinkWeatherItem() {
                     )
                     Text(snapshot?.condition ?: "Turn on Weather to load conditions", color = FeedTextSecondary)
                     snapshot?.let {
+                        Spacer(Modifier.height(8.dp))
+                        val lastFetched = BlinkItemPreferences.lastWeatherFetchMillis(context)
+                        val ageMinutes = ((System.currentTimeMillis() - lastFetched).coerceAtLeast(0L) / 60_000L)
+                        Text(
+                            when {
+                                lastFetched <= 0L -> "Forecast update time unknown"
+                                ageMinutes < 1L -> "Updated just now"
+                                ageMinutes < 60L -> "Updated ${ageMinutes}m ago"
+                                ageMinutes < 1_440L -> "Updated ${ageMinutes / 60L}h ago • cached"
+                                else -> "Forecast may be outdated • refresh recommended"
+                            },
+                            color = FeedTextSecondary,
+                            style = MaterialTheme.typography.labelSmall
+                        )
                         Spacer(Modifier.height(12.dp))
                         Text(
                             "Feels like ${it.feelsLikeC.roundToInt()}°C • Humidity ${it.humidityPercent}% • Wind ${it.windKph.roundToInt()} km/h",
@@ -758,6 +868,7 @@ private fun BlinkWeatherItem() {
                 onCheckedChange = { turnOn ->
                     if (!turnOn) {
                         BlinkItemPreferences.setWeatherEnabled(context, false)
+                            BlinkItemPreferences.clearWeatherLocation(context)
                         enabled = false
                     } else if (BlinkLocationClient.hasCoarsePermission(context)) {
                         BlinkItemPreferences.setWeatherEnabled(context, true)
@@ -796,7 +907,7 @@ private fun BlinkWeatherItem() {
         snapshot?.alerts?.takeIf { it.isNotEmpty() }?.let { alerts ->
             item {
                 Text(
-                    "ACTIVE OFFICIAL ALERTS",
+                    "ACTIVE WEATHER ALERTS",
                     color = FeedTextSecondary,
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.labelMedium
@@ -806,7 +917,7 @@ private fun BlinkWeatherItem() {
                 Surface(
                     color = FeedElevatedSurface,
                     shape = RoundedCornerShape(16.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, FeedPurple.copy(alpha = 0.35f))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, FeedTextPrimary.copy(alpha = 0.35f))
                 ) {
                     Column(Modifier.padding(14.dp)) {
                         Text(
@@ -826,7 +937,7 @@ private fun BlinkWeatherItem() {
                         }
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "Source: ${alert.source}",
+                            "${if (alert.isOfficial) "Official source" else "Source"}: ${alert.source}",
                             color = FeedTextSecondary,
                             style = MaterialTheme.typography.labelSmall
                         )
@@ -925,31 +1036,40 @@ private fun BlinkLiveLocationItem(
                 )
             }
 
-            ContextCompat.startForegroundService(
-                context,
-                Intent(context, BlinkLiveLocationService::class.java).apply {
-                    action = BlinkLiveLocationService.ACTION_START
-                    putExtra(BlinkLiveLocationService.EXTRA_SESSION_ID, session.id)
-                    putExtra(BlinkLiveLocationService.EXTRA_EXPIRES_AT, session.expiresAt)
-                }
-            )
+            val started = runCatching {
+                ContextCompat.startForegroundService(
+                    context,
+                    Intent(context, BlinkLiveLocationService::class.java).apply {
+                        action = BlinkLiveLocationService.ACTION_START
+                        putExtra(BlinkLiveLocationService.EXTRA_SESSION_ID, session.id)
+                        putExtra(BlinkLiveLocationService.EXTRA_EXPIRES_AT, session.expiresAt)
+                    }
+                )
+            }
+            if (started.isFailure) {
+                repository.stopSession(session.id)
+                loading = false
+                message = "Unable to launch live tracking. Please check location permissions and retry."
+                refreshLocations()
+                return@launch
+            }
             currentSession = BlinkMyLiveLocationSession(
                 id = session.id,
                 expiresAt = session.expiresAt,
                 recipientCount = selectedIds.size
             )
             loading = false
-            message = "Live Location is sharing only with the selected people."
+            message = "Sharing requested for the selected people. Stop sharing at any time."
         }
     }
 
     val finePermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted && pendingStart) {
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true && pendingStart) {
             pendingStart = false
             startShare()
-        } else if (!granted) {
+        } else {
             pendingStart = false
             message = "Precise location is required only while you actively share Live Location."
         }
@@ -959,7 +1079,7 @@ private fun BlinkLiveLocationItem(
         FollowStateStore.refresh()
         refreshLocations()
         while (true) {
-            delay(8_000L)
+            delay(if (currentSession != null || sharedLocations.isNotEmpty()) 8_000L else 30_000L)
             sharedLocations = repository.activeLocationsSharedWithMe().getOrDefault(sharedLocations)
             currentSession = repository.currentSession().getOrNull()
         }
@@ -967,7 +1087,7 @@ private fun BlinkLiveLocationItem(
 
     LaunchedEffect(pendingStart) {
         if (pendingStart && !BlinkLocationClient.hasFinePermission(context)) {
-            finePermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            finePermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
         }
     }
 
@@ -982,7 +1102,7 @@ private fun BlinkLiveLocationItem(
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.LocationOn, contentDescription = null, tint = FeedPurple)
+                Icon(Icons.Default.LocationOn, contentDescription = null, tint = FeedTextPrimary)
                 Spacer(Modifier.width(10.dp))
                 Column {
                     Text(
@@ -1008,9 +1128,9 @@ private fun BlinkLiveLocationItem(
             currentSession?.let { session ->
                 item {
                     Surface(
-                        color = FeedPurple.copy(alpha = 0.12f),
+                        color = FeedTextPrimary.copy(alpha = 0.12f),
                         shape = RoundedCornerShape(16.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, FeedPurple.copy(alpha = 0.4f))
+                        border = androidx.compose.foundation.BorderStroke(1.dp, FeedTextPrimary.copy(alpha = 0.4f))
                     ) {
                         Column(Modifier.fillMaxWidth().padding(14.dp)) {
                             Text(
@@ -1030,15 +1150,28 @@ private fun BlinkLiveLocationItem(
                             )
                             Spacer(Modifier.height(8.dp))
                             OutlinedButton(
+                                enabled = !loading,
                                 onClick = {
-                                    val id = session.id
-                                    currentSession = null
-                                    context.startService(
-                                        Intent(context, BlinkLiveLocationService::class.java).apply {
-                                            action = BlinkLiveLocationService.ACTION_STOP
-                                            putExtra(BlinkLiveLocationService.EXTRA_SESSION_ID, id)
+                                    loading = true
+                                    scope.launch {
+                                        val stopped = repository.stopSession(session.id)
+                                        if (stopped.getOrDefault(false)) {
+                                            runCatching {
+                                                context.startService(
+                                                    Intent(context, BlinkLiveLocationService::class.java).apply {
+                                                        action = BlinkLiveLocationService.ACTION_STOP
+                                                        putExtra(BlinkLiveLocationService.EXTRA_SESSION_ID, session.id)
+                                                    }
+                                                )
+                                            }
+                                            currentSession = null
+                                            message = "Live Location sharing stopped."
+                                        } else {
+                                            message = stopped.exceptionOrNull()?.message
+                                                ?: "Cannot confirm sharing stopped. Check your connection and retry."
                                         }
-                                    )
+                                        loading = false
+                                    }
                                 }
                             ) {
                                 Text("Stop sharing")
@@ -1215,7 +1348,7 @@ private fun BlinkSharedLocationRow(shared: BlinkSharedLocation) {
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.LocationOn, contentDescription = null, tint = FeedPurple)
+            Icon(Icons.Default.LocationOn, contentDescription = null, tint = FeedTextPrimary)
             Spacer(Modifier.width(9.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -1224,7 +1357,7 @@ private fun BlinkSharedLocationRow(shared: BlinkSharedLocation) {
                     fontWeight = FontWeight.Medium
                 )
                 Text(
-                    "Updated ${formatUpdated(shared.updatedAt)}",
+                    "Updated ${formatUpdated(shared.updatedAt)} • Accuracy ${shared.accuracyMeters.coerceAtLeast(0f).roundToInt()}m",
                     color = FeedTextSecondary,
                     style = MaterialTheme.typography.bodySmall
                 )

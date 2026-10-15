@@ -28,7 +28,9 @@ class BlinkItemsSyncWorker(
             }
         }
 
-        if (BlinkItemPreferences.weatherEnabled(applicationContext)) {
+        if (BlinkItemPreferences.weatherEnabled(applicationContext) &&
+            BlinkLocationClient.hasCoarsePermission(applicationContext)
+        ) {
             val location = BlinkItemPreferences.weatherLocation(applicationContext)
             if (location != null) {
                 runCatching {
