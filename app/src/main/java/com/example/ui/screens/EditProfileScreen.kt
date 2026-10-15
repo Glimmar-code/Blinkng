@@ -1030,11 +1030,12 @@ fun EditProfileScreen(
                                 it
                         },
                         label =
-                            "Email",
+                            "Sign-in email (managed in Account Security)",
                         icon =
                             Icons.Default.Email,
                         keyboardType =
-                            KeyboardType.Email
+                            KeyboardType.Email,
+                        readOnly = true
                     )
 
                     ProfileField(
@@ -1765,7 +1766,8 @@ private fun ProfileField(
     modifier: Modifier = Modifier,
     keyboardType: KeyboardType = KeyboardType.Text,
     minLines: Int = 1,
-    singleLine: Boolean = true
+    singleLine: Boolean = true,
+    readOnly: Boolean = false
 ) {
 
     OutlinedTextField(
@@ -1798,6 +1800,7 @@ private fun ProfileField(
             minLines,
         singleLine =
             singleLine,
+        readOnly = readOnly,
         shape =
             RoundedCornerShape(
                 14.dp
