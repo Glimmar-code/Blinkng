@@ -1113,20 +1113,86 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var price by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("Other") }
     var error by remember { mutableStateOf<String?>(null) }
+    var marketError by remember { mutableStateOf<String?>(null) }
+    var marketQuery by remember { mutableStateOf("") }
+    var marketCategory by remember { mutableStateOf("All Categories") }
+    var marketSort by remember { mutableStateOf("newest") }
+    var minPriceText by remember { mutableStateOf("") }
+    var maxPriceText by remember { mutableStateOf("") }
+    var refreshRevision by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
-    suspend fun reload() {
+    LaunchedEffect(state.client, marketQuery, marketCategory, marketSort, minPriceText, maxPriceText, refreshRevision) {
+        val min = minPriceText.toLongOrNull()
+        val max = maxPriceText.toLongOrNull()
+        if (min != null && max != null && min > max) {
+            marketError = "Minimum price cannot exceed maximum price."
+            loading = false
+            return@LaunchedEffect
+        }
+        delay(350)
         loading = true
-        itemsList = runCatching { state.client.fetchMarketplace() }.getOrDefault(emptyList())
+        marketError = null
+        runCatching {
+            state.client.fetchMarketplace(
+                query = marketQuery,
+                category = marketCategory,
+                sort = marketSort,
+                minPrice = min,
+                maxPrice = max
+            )
+        }.onSuccess { itemsList = it }
+            .onFailure { marketError = it.message ?: "Unable to load Market listings." }
         loading = false
     }
-    LaunchedEffect(Unit) { reload() }
 
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 ScreenHeader("Marketplace", "Real campus listings")
                 Button(onClick = { showCreate = !showCreate }) { Text(if (showCreate) "Close" else "Sell item") }
+            }
+        }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = marketQuery,
+                    onValueChange = { marketQuery = it.take(80) },
+                    label = { Text("Search Marketplace") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = minPriceText,
+                        onValueChange = { minPriceText = it.filter(Char::isDigit).take(12) },
+                        label = { Text("Min ₦") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = maxPriceText,
+                        onValueChange = { maxPriceText = it.filter(Char::isDigit).take(12) },
+                        label = { Text("Max ₦") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                }
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(listOf("All Categories", "Phones & Tablets", "Laptops & Computers", "Electronics", "Books & Study Materials", "Food & Groceries")) { option ->
+                        FilterChip(
+                            selected = marketCategory == option,
+                            onClick = { marketCategory = option },
+                            label = { Text(option) }
+                        )
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("newest" to "Newest", "price_low" to "Lowest price", "price_high" to "Highest price").forEach { (code, label) ->
+                        FilterChip(selected = marketSort == code, onClick = { marketSort = code }, label = { Text(label) })
+                    }
+                    OutlinedButton(onClick = { refreshRevision++ }) { Text("Refresh") }
+                }
             }
         }
         if (showCreate) {
@@ -1143,7 +1209,7 @@ fun MarketplaceScreen(state: DesktopAppState) {
                         Button(onClick = {
                             scope.launch {
                                 runCatching { state.client.createMarketplaceItem(title, description, price.toLongOrNull() ?: 0L, category) }
-                                    .onSuccess { title = ""; description = ""; price = ""; showCreate = false; reload() }
+                                    .onSuccess { title = ""; description = ""; price = ""; showCreate = false; refreshRevision++ }
                                     .onFailure { error = it.message }
                             }
                         }, enabled = title.isNotBlank() && price.isNotBlank()) { Text("Publish listing") }
@@ -1151,7 +1217,13 @@ fun MarketplaceScreen(state: DesktopAppState) {
                 }
             }
         }
+        marketError?.let { message ->
+            item { InlineError(message) }
+        }
         if (loading) item { LoadingRow() }
+        if (!loading && itemsList.isEmpty() && marketError == null) {
+            item { Text("No Market listings match your search.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
         items(itemsList, key = { it.id }) { market ->
             Surface(shape = RoundedCornerShape(18.dp), tonalElevation = if (market.isFeatured) 3.dp else 1.dp) {
                 Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
