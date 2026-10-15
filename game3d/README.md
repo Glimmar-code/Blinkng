@@ -1,3 +1,5 @@
+> **PRODUCTION NOTE — 15 October 2026:** The `main` branch contains these Godot 3D **source files and automated engine smoke tests only**. Its Android APK and Windows desktop app are **not wired to launch this project**, and no Internet multiplayer server or game-login Edge Function is deployed by this change. The Android/Windows native host from Testlab PR #283 is deliberately excluded to avoid overwriting newer `main` features. This is an inactive source promotion, not a playable production release. Never interpret the Testlab packaging description below as a description of the `main` APK. Physical device and security checks are still required before live integration.
+
 # BLINK LIFE — Native 3D Game (Experimental)
 
 This is the **real 3D engine source** for BLINK LIFE, built in Godot 4 with the mobile-friendly **Compatibility** renderer.
