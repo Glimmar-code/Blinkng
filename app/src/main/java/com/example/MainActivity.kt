@@ -715,6 +715,9 @@ fun MainAppContent(
             refresh = { viewModel.refreshConnectHub() },
             refreshStudents = { viewModel.refreshConnectStudents() },
             searchStudents = { query -> viewModel.searchConnectStudents(query) },
+            submitHubForm = { kind, a, b, c, d, e, onResult ->
+                viewModel.submitConnectForm(kind, a, b, c, d, e, onResult)
+            },
             publishRoommate = { title, description, location, minBudget, maxBudget ->
                 viewModel.publishRoommateProfile(title, description, location, minBudget, maxBudget)
             },
