@@ -48,7 +48,7 @@ def verify_web_pack(archive_path, expected):
         if not {"index.html", "index.js", "index.wasm", "index.pck"} <= set(names):
             raise ValueError("Game pack missing required Godot Web files")
         allowed = {".html", ".js", ".wasm", ".pck", ".png", ".ico", ".svg", ".webp", ".json"}
-        if (any(i.is_dir() or "/" in i.filename or "\\\\" in i.filename or
+        if (any(i.is_dir() or "/" in i.filename or "\\" in i.filename or
                 i.filename.startswith(".") or Path(i.filename).suffix.lower() not in allowed
                 for i in entries) or sum(max(0, i.file_size) for i in entries) > 320 * 1024 * 1024):
             raise ValueError("Invalid game pack entries")
