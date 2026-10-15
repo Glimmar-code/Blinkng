@@ -404,6 +404,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (::rewardedAdManager.isInitialized) rewardedAdManager.close()
         stopBugShakeListener()
         playInAppUpdateCoordinator.close()
         super.onDestroy()

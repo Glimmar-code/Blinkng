@@ -5,6 +5,14 @@
 - **Compatibility:** This ports only game-related files from the Testlab PR into the latest main, without reverting main's hundreds of newer feed, messages, ads, notifications, call, payment or signing improvements.
 - **Release caveats:** Real-device validation still required, host not deployed, no encrypted UDP or production voice/text moderation. UI explicitly labels Preview. Existing General Study remains available.
 
+## 2026-10-15 — Promote tested ad fixes from Testlab PR #284
+
+- Reconciles #284 with main's newer one-tap rewarded loading, timeout, cache expiry, consent gating and Reels failed-slot removal.
+- Rewarded: cancels requests/callback references when the Activity is destroyed, refuses loads/shows on a closed host, and includes SDK error code/domain in failures. Native: preserves disposal guards, adds detailed diagnostics, and retries mounted Feed slots at most twice with 30/60-second backoff. Reels continue retrying on explicit refresh to avoid reinserting blank pages mid-scroll.
+- Shared-first assessment: only Android SDK/Activity/Compose adapters change; coin amounts, backend contracts and server verification remain unchanged.
+- PARITY-EXCEPTION: android-admob-lifecycle — Windows cannot use the Android Mobile Ads SDK. Windows retains its existing monetization behavior; both clients retain the same economy rules. Windows build/parity checks remain required.
+- Regression tests exercise timeout/retry, stale callbacks, host closure, and consent without production application startup. Live inventory and device video playback are separate from CI validation.
+
 ## 2026-10-14 — Notification reliability and premium inbox on Android and Windows (Testlab)
 
 PARITY-EXCEPTION: android-os-fcm-notification-delivery-20261014
