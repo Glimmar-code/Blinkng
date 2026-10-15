@@ -66,6 +66,9 @@ fun ConnectDirectoryDetailDialog(
         mutableStateOf<List<DirectoryConnectApplication>>(emptyList())
     }
     var loading by remember(category.slug) { mutableStateOf(true) }
+    var loadingMore by remember(category.slug) { mutableStateOf(false) }
+    var hasMore by remember(category.slug) { mutableStateOf(false) }
+    val pageSize = 40
     var error by remember(category.slug) { mutableStateOf<String?>(null) }
     var submitting by remember { mutableStateOf(false) }
     var showCreate by remember { mutableStateOf(false) }
@@ -77,17 +80,38 @@ fun ConnectDirectoryDetailDialog(
     LaunchedEffect(category.slug, refreshKey, currentUserId) {
         loading = true
         error = null
-        runCatching {
-            val fetched = repository.listings(category.slug)
-            val inbox = repository.applicationsForOwnListings(fetched, currentUserId)
-            fetched to inbox
-        }.onSuccess { (fetched, inbox) ->
-            listings = fetched
-            applications = inbox
-        }.onFailure { exception ->
-            error = exception.message ?: "Could not load this category."
-        }
+        runCatching { repository.listings(category.slug, limit = pageSize) }
+            .onSuccess { fetched ->
+                listings = fetched
+                hasMore = fetched.size == pageSize
+                // Keep the browse results usable if the private application inbox fails.
+                runCatching { repository.applicationsForOwnListings(category.slug, currentUserId) }
+                    .onSuccess { applications = it }
+                    .onFailure { exception ->
+                        error = exception.message ?: "Could not load requests to your listings."
+                    }
+            }
+            .onFailure { exception ->
+                error = exception.message ?: "Could not load this category."
+            }
         loading = false
+    }
+
+    fun loadMore() {
+        if (loading || loadingMore || !hasMore) return
+        loadingMore = true
+        error = null
+        scope.launch {
+            runCatching {
+                repository.listings(category.slug, offset = listings.size, limit = pageSize)
+            }.onSuccess { next ->
+                listings = (listings + next).distinctBy { it.id }
+                hasMore = next.size == pageSize
+            }.onFailure { exception ->
+                error = exception.message ?: "Could not load more listings."
+            }
+            loadingMore = false
+        }
     }
 
     fun submit(action: suspend () -> Unit, onSuccess: () -> Unit) {
@@ -108,7 +132,7 @@ fun ConnectDirectoryDetailDialog(
     }
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!submitting) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
@@ -129,12 +153,12 @@ fun ConnectDirectoryDetailDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    TextButton(onClick = onDismiss) { Text("Close") }
+                    TextButton(onClick = onDismiss, enabled = !submitting) { Text("Close") }
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     Button(
-                        onClick = { showCreate = true },
+                        onClick = { error = null; showCreate = true },
                         enabled = currentUserId.isNotBlank()
                     ) { Text("Create listing") }
                     OutlinedButton(onClick = { refreshKey += 1 }, enabled = !loading) {
@@ -160,7 +184,7 @@ fun ConnectDirectoryDetailDialog(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        if (listings.isEmpty()) {
+                        if (listings.isEmpty() && error == null) {
                             item {
                                 Text(
                                     "No listings in ${category.title} yet. Be the first to create one.",
@@ -205,6 +229,7 @@ fun ConnectDirectoryDetailDialog(
                                         } else {
                                             Button(
                                                 onClick = {
+                                                    error = null
                                                     applicationTarget = listing
                                                     applicationMessage = "Hi, I'm interested in ${listing.title}."
                                                 },
@@ -226,6 +251,16 @@ fun ConnectDirectoryDetailDialog(
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+                        if (hasMore) {
+                            item(key = "directory_load_more") {
+                                OutlinedButton(
+                                    onClick = { loadMore() },
+                                    enabled = !loading && !loadingMore
+                                ) {
+                                    Text(if (loadingMore) "Loading more…" else "Load more listings")
                                 }
                             }
                         }
@@ -287,6 +322,9 @@ fun ConnectDirectoryDetailDialog(
             title = { Text("Post in ${category.title}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (error != null) {
+                        Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
                     OutlinedTextField(
                         value = title,
                         onValueChange = { title = it.take(90) },
@@ -330,13 +368,18 @@ fun ConnectDirectoryDetailDialog(
             onDismissRequest = { if (!submitting) applicationTarget = null },
             title = { Text("Request to connect") },
             text = {
-                OutlinedTextField(
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (error != null) {
+                        Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                    OutlinedTextField(
                     value = applicationMessage,
                     onValueChange = { applicationMessage = it.take(500) },
                     label = { Text("Your message") },
                     minLines = 2,
                     maxLines = 5
-                )
+                    )
+                }
             },
             confirmButton = {
                 Button(
