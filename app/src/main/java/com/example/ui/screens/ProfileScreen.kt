@@ -35,6 +35,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -1525,12 +1526,13 @@ fun ProfileScreen(
                 onProfileClick(username)
             },
             onFollowToggle = { item, desired ->
-                overlayScope.launch {
-                    val saved = FollowStateStore.setFollowing(item.id, desired)
-                    if (!saved) {
-                        Toast.makeText(context, "Unable to update follow", Toast.LENGTH_SHORT).show()
-                    }
+                val saved = FollowStateStore.setFollowing(item.id, desired)
+                if (!saved) {
+                    Toast.makeText(context, "Unable to update follow", Toast.LENGTH_SHORT).show()
+                } else {
+                    onRefreshProfile()
                 }
+                saved
             }
         )
     }
@@ -2345,18 +2347,10 @@ private fun CircleToolbarButton(
     onClick: () -> Unit,
     testTag: String = ""
 ) {
-    var pressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.88f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "toolbarBtnScale"
-    )
-
     IconButton(
         onClick = onClick,
         modifier = Modifier
             .size(40.dp)
-            .scale(scale)
             .background(Color.Black.copy(alpha = 0.45f), CircleShape)
             .testTag(testTag)
     ) {
@@ -2368,12 +2362,6 @@ private fun CircleToolbarButton(
         )
     }
 
-    LaunchedEffect(pressed) {
-        if (pressed) {
-            delay(120)
-            pressed = false
-        }
-    }
 }
 
 @Composable
