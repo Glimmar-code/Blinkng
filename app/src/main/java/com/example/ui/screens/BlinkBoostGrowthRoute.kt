@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonList
+import com.example.ui.components.BlinkSkeletonTargetRow
+import com.example.ui.components.BlinkSkeletonMetricStrip
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -566,7 +570,7 @@ private fun BoostCampaignColumn(
                                 when (targetType) {
                                     BlinkBoostTargetType.POST -> {
                                         if (ownPosts.isEmpty()) {
-                                            if (contentLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                            if (contentLoading) BlinkSkeletonTargetRow()
                                             else EmptyTargetCard("No active posts found. Refresh or create a post.", "Create a post", onCreateContent)
                                         } else {
                                             val listState = rememberLazyListState()
@@ -590,7 +594,7 @@ private fun BoostCampaignColumn(
                                     }
                                     BlinkBoostTargetType.REEL -> {
                                         if (ownReels.isEmpty()) {
-                                            if (contentLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                            if (contentLoading) BlinkSkeletonTargetRow()
                                             else EmptyTargetCard("No active Reels found. Refresh or create a Reel.", "Create content", onCreateContent)
                                         } else {
                                             val listState = rememberLazyListState()
@@ -1055,9 +1059,7 @@ private fun EarnRankPointsColumn(
 
         if (loading) {
             item {
-                Box(Modifier.fillMaxWidth().padding(28.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
+                BlinkSkeletonList(modifier = Modifier.fillMaxWidth().padding(16.dp), rows = 4)
             }
         }
 
@@ -1463,7 +1465,7 @@ private fun CampaignQuoteCard(
             Text("Campaign estimate", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
             when {
                 quoteLoading -> {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    BlinkSkeletonMetricStrip()
                     Text("Calculating from server pricing…", style = MaterialTheme.typography.bodySmall)
                 }
                 quote == null -> Text(

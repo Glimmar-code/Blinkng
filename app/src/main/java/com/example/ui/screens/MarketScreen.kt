@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonMarketRow
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -425,23 +427,8 @@ fun MarketScreen(
         }
 
         if (isLoading && items.isEmpty()) {
-            items(4) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                ) {
-                    repeat(2) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(220.dp)
-                        ) {}
-                    }
-                }
+            items(4, key = { "market_skeleton_$it" }) {
+                BlinkSkeletonMarketRow()
             }
         } else if (visibleItems.isEmpty()) {
             item {

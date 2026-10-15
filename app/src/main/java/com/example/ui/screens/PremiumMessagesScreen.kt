@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonChatHistory
+
 import android.Manifest
 import com.example.data.local.PersistentTextDraftStore
 import com.example.data.local.rememberPersistentTextState
@@ -1754,9 +1756,7 @@ private fun PremiumChatDetail(
 
             if (visibleMessages.isEmpty()) {
                 if (isLoadingMessages) {
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        Text("Loading messages…", color = palette.textSecondary, fontSize = 12.sp)
-                    }
+                    BlinkSkeletonChatHistory(modifier = Modifier.weight(1f), rows = 6)
                 } else if (conversation.messages.isNotEmpty()) {
                     Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                         Text("No messages match your filters", color = palette.textSecondary, fontSize = 12.sp)
@@ -1777,13 +1777,7 @@ private fun PremiumChatDetail(
                 ) {
                     if (isLoadingOlder) {
                         item(key = "message_history_loading") {
-                            Text(
-                                "Loading earlier messages…",
-                                color = palette.textSecondary,
-                                fontSize = 10.sp,
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                                textAlign = TextAlign.Center
-                            )
+                            BlinkSkeletonChatHistory(modifier = Modifier.fillMaxWidth(), rows = 2)
                         }
                     }
 

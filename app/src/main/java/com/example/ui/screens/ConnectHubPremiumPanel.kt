@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonList
+
 import com.example.data.local.rememberPersistentTextState
 import com.example.R
 import androidx.compose.ui.res.painterResource
@@ -504,18 +506,9 @@ fun ConnectHubPremiumPanel(
                         shape = RoundedCornerShape(18.dp)
                     )
 
-                    if (isLoading) {
+                    if (isLoading && profiles.isEmpty()) {
                         Spacer(Modifier.height(10.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(42.dp)
-                                .shimmerBackground(
-                                    shape = RoundedCornerShape(16.dp),
-                                    baseColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f),
-                                    highlightColor = MaterialTheme.colorScheme.surface.copy(alpha = .95f)
-                                )
-                        )
+                        BlinkSkeletonList(modifier = Modifier.fillMaxWidth(), rows = 3)
                     }
 
                     Spacer(Modifier.height(14.dp))
