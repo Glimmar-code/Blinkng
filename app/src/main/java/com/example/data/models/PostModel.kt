@@ -174,7 +174,6 @@ data class MarketItem(
     val sellerUsername: String,
     val sellerAvatar: String,
     val sellerName: String,
-    val sellerId: String = "",
     val sellerPhone: String = "",
     val sellerWhatsapp: String = "",
     val sellerIsVerified: Boolean = false,
@@ -199,7 +198,8 @@ data class MarketItem(
     val viewsCount: Long = 0L,
     val savesCount: Long = 0L,
     val isSaved: Boolean = false,
-    val createdAt: String = ""
+    val createdAt: String = "",
+    val sellerId: String = ""
 )
 
 data class LeaderboardUser(
