@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,103 +65,103 @@ fun EditProfileScreen(
             ProfileRepository()
         }
 
-    var fullName by remember {
+    var fullName by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.fullName
         )
     }
 
-    var username by remember {
+    var username by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.username
         )
     }
 
-    var avatarUrl by remember {
+    var avatarUrl by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.avatarUrl
         )
     }
 
-    var coverUrl by remember {
+    var coverUrl by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.coverPhotoUrl
         )
     }
 
-    var headline by remember {
+    var headline by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.professionalHeadline
         )
     }
 
-    var jobTitle by remember {
+    var jobTitle by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.currentJobTitle
         )
     }
 
-    var bio by remember {
+    var bio by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.bio
         )
     }
 
-    var university by remember {
+    var university by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.university
         )
     }
 
-    var faculty by remember {
+    var faculty by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.faculty
         )
     }
 
-    var department by remember {
+    var department by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.department
         )
     }
 
-    var courseOfStudy by remember {
+    var courseOfStudy by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.courseOfStudy
         )
     }
 
-    var academicLevel by remember {
+    var academicLevel by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.academicLevel
         )
     }
 
-    var graduationYear by remember {
+    var graduationYear by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.graduationYear
         )
     }
 
-    var relationshipStatus by remember {
+    var relationshipStatus by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.relationshipStatus.ifBlank { "Private" }
         )
     }
 
-    var email by remember {
+    var email by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.email.value
         )
     }
 
-    var phone by remember {
+    var phone by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.phone.value
         )
     }
 
-    var whatsapp by remember {
+    var whatsapp by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.whatsapp.value
         )
@@ -182,37 +183,37 @@ fun EditProfileScreen(
         mutableStateOf(profile.presenceVisibility)
     }
 
-    var website by remember {
+    var website by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.links.website
         )
     }
 
-    var linkedin by remember {
+    var linkedin by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.links.linkedin
         )
     }
 
-    var twitter by remember {
+    var twitter by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.links.twitter
         )
     }
 
-    var instagram by remember {
+    var instagram by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.links.instagram
         )
     }
 
-    var featuredLink by remember {
+    var featuredLink by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.links.featuredLink
         )
     }
 
-    var featuredLinkLabel by remember {
+    var featuredLinkLabel by rememberSaveable(profile.id) {
         mutableStateOf(
             profile.links.featuredLinkLabel
         )
@@ -778,16 +779,13 @@ fun EditProfileScreen(
                 ) {
 
                     CoverEditor(
-                        currentUrl =
-                            coverUrl,
-                        pendingUri =
-                            selectedCoverUri,
-                        onPick =
-                            {
-                                coverPicker.launch(
-                                    "image/*"
-                                )
-                            }
+                        currentUrl = coverUrl,
+                        pendingUri = selectedCoverUri,
+                        onPick = { coverPicker.launch("image/*") },
+                        onRemove = {
+                            coverUrl = ""
+                            selectedCoverUri = null
+                        }
                     )
 
                     Spacer(
@@ -798,16 +796,13 @@ fun EditProfileScreen(
                     )
 
                     AvatarEditor(
-                        currentUrl =
-                            avatarUrl,
-                        pendingUri =
-                            selectedAvatarUri,
-                        onPick =
-                            {
-                                avatarPicker.launch(
-                                    "image/*"
-                                )
-                            }
+                        currentUrl = avatarUrl,
+                        pendingUri = selectedAvatarUri,
+                        onPick = { avatarPicker.launch("image/*") },
+                        onRemove = {
+                            avatarUrl = ""
+                            selectedAvatarUri = null
+                        }
                     )
                 }
             }
@@ -2156,7 +2151,8 @@ private fun UniversityPickerDialog(
 private fun CoverEditor(
     currentUrl: String,
     pendingUri: Uri?,
-    onPick: () -> Unit
+    onPick: () -> Unit,
+    onRemove: () -> Unit
 ) {
 
     val model =
@@ -2241,13 +2237,18 @@ private fun CoverEditor(
 
             Text(
                 "Change cover photo",
-                color =
-                    Color.White,
-                fontSize =
-                    11.sp,
-                fontWeight =
-                    FontWeight.Bold
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
             )
+        }
+        if (model.isNotBlank()) {
+            TextButton(
+                onClick = onRemove,
+                modifier = Modifier.align(Alignment.BottomEnd)
+            ) {
+                Text("Remove cover", color = Color.White)
+            }
         }
     }
 }
@@ -2256,7 +2257,8 @@ private fun CoverEditor(
 private fun AvatarEditor(
     currentUrl: String,
     pendingUri: Uri?,
-    onPick: () -> Unit
+    onPick: () -> Unit,
+    onRemove: () -> Unit
 ) {
 
     Row(
@@ -2365,15 +2367,15 @@ private fun AvatarEditor(
                     )
             )
 
-            OutlinedButton(
-                onClick =
-                    onPick
-            ) {
-                Text(
-                    "Choose image",
-                    fontSize =
-                        10.sp
-                )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onPick) {
+                    Text("Choose image", fontSize = 10.sp)
+                }
+                if (model.isNotBlank()) {
+                    TextButton(onClick = onRemove) {
+                        Text("Remove", fontSize = 10.sp)
+                    }
+                }
             }
         }
     }
