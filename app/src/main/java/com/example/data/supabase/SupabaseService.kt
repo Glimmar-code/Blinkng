@@ -1683,8 +1683,13 @@ fun getCurrentUserId(): String? {
                 firstRaw.contains("PGRST204", ignoreCase = true)
             ) {
                 val (legacySaved, legacyRaw) = send(profileBody(includePrivacy = false))
-                if (legacySaved) return@withContext true
-                Log.e(TAG, "PROFILE_UPDATE legacy fallback failed body=$legacyRaw")
+                if (legacySaved) {
+                    // Older databases cannot save requested privacy settings.
+                    // Never claim a successful edit when contact visibility wasn't persisted.
+                    Log.e(TAG, "PROFILE_UPDATE refused partial save: missing privacy fields")
+                } else {
+                    Log.e(TAG, "PROFILE_UPDATE legacy fallback failed body=$legacyRaw")
+                }
                 return@withContext false
             }
 
@@ -5128,7 +5133,8 @@ suspend fun uploadPostMedia(
     suspend fun fetchProfileConnections(
         profileId: String,
         kind: ProfileConnectionKind,
-        limit: Int = 100
+        limit: Int = 100,
+        throwOnError: Boolean = false
     ): List<UserProfile> = withContext(Dispatchers.IO) {
         if (!isValidUuid(profileId)) return@withContext emptyList()
         try {
@@ -5142,7 +5148,10 @@ suspend fun uploadPostMedia(
                     .build()
             ).use { response ->
                 val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) return@withContext emptyList()
+                if (!response.isSuccessful) {
+                    if (throwOnError) throw IllegalStateException("Cannot load followers right now.")
+                    return@withContext emptyList()
+                }
                 val array = JSONArray(if (raw.isBlank()) "[]" else raw)
                 buildList {
                     for (i in 0 until array.length()) {
@@ -5153,6 +5162,7 @@ suspend fun uploadPostMedia(
             }
         } catch (e: Exception) {
             Log.w(TAG, "fetchProfileConnections failed", e)
+            if (throwOnError) throw e
             emptyList()
         }
     }
