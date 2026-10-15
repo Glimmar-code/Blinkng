@@ -3,6 +3,7 @@ package com.example.ui.screens
 import com.example.ui.components.BlinkSkeletonList
 
 import com.example.data.local.rememberPersistentTextState
+import com.example.data.local.ConnectMatchPreferencesStore
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedContent
@@ -97,6 +98,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -152,6 +154,7 @@ data class ConnectHubActions(
     val respondRequest: (String, String, Boolean) -> Unit = { _, _, _ -> },
     val submitChallengeScore: (String, Int) -> Unit = { _, _ -> },
     val recordGameResult: (String, Int) -> Unit = { _, _ -> },
+    val onMatchSpinCoinsUpdated: (Long) -> Unit = {},
     // Optimistic "follow" action used from the browse and applicant cards below.
     // Wire this to your real follow endpoint; the UI updates immediately either way.
     val followUser: (String) -> Unit = {}
@@ -192,13 +195,16 @@ fun ConnectHubPremiumPanel(
 ) {
     var match by remember(current?.id) { mutableStateOf<Pair<UserProfile, Int>?>(null) }
     var form by rememberSaveable(current?.id) { mutableStateOf(HubForm.NONE) }
-    var hubQuery by rememberPersistentTextState(key = "com/example/ui/screens/ConnectHubPremiumPanel.kt:hubQuery:1")
+    var hubQuery by rememberPersistentTextState(key = "connect:hub:query:${current?.id.orEmpty()}")
     var isMatching by remember { mutableStateOf(false) }
     var showMatchSpinDialog by rememberSaveable(current?.id) { mutableStateOf(false) }
     var matchRemainingCoins by remember(current?.id) { mutableStateOf<Long?>(null) }
     var matchReasons by remember(current?.id) { mutableStateOf<List<String>>(emptyList()) }
     var matchError by remember(current?.id) { mutableStateOf<String?>(null) }
-    var savedMatchPreferences by remember(current?.id) { mutableStateOf<MatchSpinPreferences?>(null) }
+    val preferencesStore = remember(LocalContext.current) { ConnectMatchPreferencesStore(LocalContext.current) }
+    var savedMatchPreferences by remember(current?.id) {
+        mutableStateOf(preferencesStore.load(current?.id))
+    }
     var recentMatches by remember(current?.id) { mutableStateOf<List<Pair<UserProfile, Int>>>(emptyList()) }
     var challengeTarget by remember(current?.id) { mutableStateOf<UserProfile?>(null) }
     var showUnifiedInbox by rememberSaveable(current?.id) { mutableStateOf(false) }
@@ -208,10 +214,12 @@ fun ConnectHubPremiumPanel(
         .coerceIn(420, 760).dp
     val matchRepository = remember { ConnectHubRepository() }
     val categoryCatalogRepository = remember { ConnectCategoryCatalogRepository() }
-    var directoryCategories by remember { mutableStateOf(ConnectCategoryCatalogRepository.defaultCategories()) }
+    var directoryCategories by remember(current?.id) {
+        mutableStateOf(ConnectCategoryCatalogRepository.defaultCategories())
+    }
     var selectedDirectoryCategory by remember { mutableStateOf<ConnectDirectoryCategory?>(null) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(current?.id) {
         directoryCategories = categoryCatalogRepository.fetchCategories()
     }
 
@@ -326,8 +334,12 @@ fun ConnectHubPremiumPanel(
         hub.housingAgents.any { it.userId == current?.id && it.verified }
     }
 
-    val pendingInboxCount = remember(hub.requests, incomingChallenges) {
-        hub.requests.count {
+    val inboxRequests = remember(hub.requests) {
+        // Game requests also arrive in gameChallenges. Never display or count the same challenge twice.
+        hub.requests.filterNot { it.kind.equals("game", ignoreCase = true) }
+    }
+    val pendingInboxCount = remember(inboxRequests, incomingChallenges) {
+        inboxRequests.count {
             it.direction.equals("incoming", true) && it.status.equals("pending", true)
         } + incomingChallenges.size
     }
@@ -832,9 +844,9 @@ fun ConnectHubPremiumPanel(
                                         body = agent.bio,
                                         avatarUrl = owner?.avatarUrl.orEmpty(),
                                         online = owner?.onlineNow == true,
-                                        primaryLabel = "Chat",
-                                        onPrimary = {
-                                            owner?.let { onMessageUser(it.username, it.fullName, it.avatarUrl) }
+                                        primaryLabel = if (owner != null) "Chat" else null,
+                                        onPrimary = owner?.let { o ->
+                                            { onMessageUser(o.username, o.fullName, o.avatarUrl) }
                                         },
                                         isFollowing = owner != null && owner.id in followingIds,
                                         onFollow = owner?.let { o -> { toggleFollow(o.id) } },
@@ -883,8 +895,8 @@ fun ConnectHubPremiumPanel(
                                             }
                                         } else null,
                                         isFollowing = student != null && student.id in followingIds,
-                                        onFollow = student?.let { s -> { toggleFollow(s.id) } },
-                                        onMessage = student?.let { s -> { onMessageUser(s.username, s.fullName, s.avatarUrl) } },
+                                        onFollow = student?.takeIf { it.id != current?.id }?.let { s -> { toggleFollow(s.id) } },
+                                        onMessage = student?.takeIf { it.id != current?.id }?.let { s -> { onMessageUser(s.username, s.fullName, s.avatarUrl) } },
                                         onOpen = student?.let { s -> { onProfileClick(s.username) } }
                                     )
                                 }
@@ -963,7 +975,7 @@ fun ConnectHubPremiumPanel(
 
     if (showUnifiedInbox) {
         UnifiedConnectInboxDialog(
-            requests = hub.requests,
+            requests = inboxRequests,
             challenges = hub.gameChallenges,
             currentUserId = current?.id.orEmpty(),
             profiles = profiles,
@@ -1022,7 +1034,11 @@ fun ConnectHubPremiumPanel(
             profiles = profiles,
             isSubmitting = isMatching,
             initialPreferences = savedMatchPreferences,
-            onSavePreferences = { savedMatchPreferences = it },
+            onSavePreferences = {
+                savedMatchPreferences = it
+                preferencesStore.save(current?.id, it)
+                showMatchSpinDialog = false
+            },
             onDismiss = { showMatchSpinDialog = false },
             onSpin = { preferences ->
                 showMatchSpinDialog = false
@@ -1053,7 +1069,9 @@ fun ConnectHubPremiumPanel(
                             recentMatches = (listOf(scoredMatch) + recentMatches.filterNot { it.first.id == candidate.userId })
                                 .take(5)
                             savedMatchPreferences = preferences
+                            preferencesStore.save(current?.id, preferences)
                             matchRemainingCoins = result.remainingCoins
+                            actions.onMatchSpinCoinsUpdated(result.remainingCoins)
                             val intentReason = preferences.connectionIntent
                                 ?.takeIf { it.isNotBlank() && !it.equals("Any", ignoreCase = true) }
                                 ?.let { "Good fit for $it" }
@@ -1863,17 +1881,17 @@ private fun ConnectForYouSummary(
         ),
         ConnectQuickPick(
             title = "Study",
-            detail = "${hub.readingMates.size} reading mates",
+            detail = "${hub.readingMates.size} recent reading mates",
             onClick = { onOpenCategory(ConnectCategory.READING) }
         ),
         ConnectQuickPick(
             title = "Housing",
-            detail = "${hub.roommates.size + hub.housingRequests.size} active needs",
+            detail = "${hub.roommates.size + hub.housingRequests.size} recent needs",
             onClick = { onOpenCategory(ConnectCategory.HOUSING) }
         ),
         ConnectQuickPick(
             title = "Guidance",
-            detail = "${hub.mentors.size} mentors available",
+            detail = "${hub.mentors.size} recent mentor listings",
             onClick = { onOpenCategory(ConnectCategory.MENTOR) }
         )
     )
@@ -2084,7 +2102,7 @@ private fun CategoryTabBar(
     onOpenDirectory: (ConnectDirectoryCategory) -> Unit
 ) {
     val visibleDirectory = remember(directoryCategories) {
-        directoryCategories.sortedBy { it.displayOrder }.take(20)
+        directoryCategories.sortedBy { it.displayOrder }
     }
     var selectedSlug by rememberSaveable(visibleDirectory) {
         mutableStateOf(visibleDirectory.firstOrNull()?.slug.orEmpty())
