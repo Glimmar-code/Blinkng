@@ -36,3 +36,12 @@ Open the `game3d/` folder as a project in **Godot 4 (Compatibility renderer)** a
 ## Economy and safety
 
 The native prototype's **GC** balance is fiction, exists only for its local session, and cannot be exchanged, sold, redeemed, transferred or withdrawn. It does not use real money, BLINK Coins or live BLINK wallets. Purchases are cosmetic demo interactions only. No gambling, cash-out, or pay-to-win mechanics.
+
+## Launch and performance isolation (Testlab)
+
+- Normal BLINK usage (Feed, Reels, Market, Connect, Messages and other Games) **does not start the native Godot renderer or open its scene**.
+- Only a deliberate **Play BLINK LIFE 3D** tap uses `BlinkLifeLaunchGate` to start a separate Android process `:blink_life`; the UI launcher does not reference Godot classes. Windows also starts the native executable only on Play.
+- The secondary process bypasses the BLINK social app's Supabase, Firebase, notification-worker and other startup initialization. Exit is available inside the scene. A launch failure should leave the social app usable.
+- **Important tradeoff:** The Godot engine and scene are included in the downloaded APK/Windows installer, so they still increase **download size and installed storage** even for users who never play. Lazy *runtime* loading avoids paying the engine's normal memory/graphics/CPU cost before Play; it does not make APK downloads smaller. Optional on-demand content packs require a separately designed, verified delivery mechanism.
+- Godot first start may take longer as the native engine creates its graphics context and imports assets. Validate on Redmi-class physical hardware and verify memory returns to normal after exiting. The native Android/Windows integration is not production-verified.
+
