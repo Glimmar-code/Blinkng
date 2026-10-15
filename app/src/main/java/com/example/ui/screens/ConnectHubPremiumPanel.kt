@@ -146,6 +146,8 @@ data class ConnectHubActions(
     val refreshStudents: () -> Unit = {},
     val searchStudents: (String) -> Unit = {},
     val publishRoommate: (String, String, String, Double?, Double?) -> Unit = { _, _, _, _, _ -> },
+    val submitHubForm: (String, String, String, String, String, String, (Boolean, String?) -> Unit) -> Unit =
+        { _, _, _, _, _, _, onResult -> onResult(false, "Publishing is currently unavailable.") },
     val applyRoommate: (String) -> Unit = {},
     val publishMentor: (List<String>, String, String, String) -> Unit = { _, _, _, _ -> },
     val requestMentor: (String) -> Unit = {},
@@ -200,6 +202,8 @@ fun ConnectHubPremiumPanel(
 ) {
     var match by remember(current?.id) { mutableStateOf<Pair<UserProfile, Int>?>(null) }
     var form by rememberSaveable(current?.id) { mutableStateOf(HubForm.NONE) }
+    var isFormSubmitting by remember(form, current?.id) { mutableStateOf(false) }
+    var formSubmissionError by remember(form, current?.id) { mutableStateOf<String?>(null) }
     var hubQuery by rememberPersistentTextState(key = "connect:hub:query:${current?.id.orEmpty()}")
     var isMatching by remember { mutableStateOf(false) }
     var showMatchSpinDialog by rememberSaveable(current?.id) { mutableStateOf(false) }
@@ -990,44 +994,19 @@ fun ConnectHubPremiumPanel(
     if (form != HubForm.NONE) {
         HubFormDialog(
             form = form,
-            onDismiss = { form = HubForm.NONE },
+            isSubmitting = isFormSubmitting,
+            errorMessage = formSubmissionError,
+            onDismiss = { if (!isFormSubmitting) form = HubForm.NONE },
             onSubmit = { a, b, c, d, e ->
-                when (form) {
-                    HubForm.ROOMMATE -> actions.publishRoommate(
-                        a.ifBlank { "Looking for a roommate" },
-                        d,
-                        b,
-                        null,
-                        c.toDoubleOrNull()
-                    )
-                    HubForm.MENTOR -> actions.publishMentor(
-                        a.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                        b,
-                        c,
-                        "mentor"
-                    )
-                    HubForm.READING -> actions.publishReadingMate(
-                        a.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                        d.ifBlank { "Focused" },
-                        b.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                        c,
-                        e
-                    )
-                    HubForm.AGENT -> actions.applyHousingAgent(
-                        a,
-                        b.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                        c
-                    )
-                    HubForm.HOUSING -> actions.publishHousingRequest(
-                        a.ifBlank { "Need accommodation" },
-                        b,
-                        null,
-                        c.toDoubleOrNull(),
-                        d
-                    )
-                    HubForm.NONE -> Unit
+                if (!isFormSubmitting) {
+                    isFormSubmitting = true
+                    formSubmissionError = null
+                    actions.submitHubForm(form.name, a, b, c, d, e) { success, error ->
+                        isFormSubmitting = false
+                        if (success) form = HubForm.NONE
+                        else formSubmissionError = error ?: "Could not publish. Please retry."
+                    }
                 }
-                form = HubForm.NONE
             }
         )
     }
@@ -2900,6 +2879,8 @@ private fun ChallengeModeDialog(
 @Composable
 private fun HubFormDialog(
     form: HubForm,
+    isSubmitting: Boolean,
+    errorMessage: String?,
     onDismiss: () -> Unit,
     onSubmit: (String, String, String, String, String) -> Unit
 ) {
@@ -2926,7 +2907,7 @@ private fun HubFormDialog(
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSubmitting) onDismiss() },
         title = {
             Text(
                 when (form) {
@@ -2945,6 +2926,9 @@ private fun HubFormDialog(
                 modifier = Modifier.heightIn(max = 470.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(9.dp)
             ) {
+                if (!errorMessage.isNullOrBlank()) {
+                    Text(errorMessage, fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                }
                 OutlinedTextField(first, { first = it.take(120) }, label = { Text(labels.first) }, singleLine = true)
                 OutlinedTextField(second, { second = it.take(240) }, label = { Text(labels.second) }, singleLine = true)
                 OutlinedTextField(
@@ -2971,10 +2955,10 @@ private fun HubFormDialog(
                 onClick = {
                     onSubmit(first.trim(), second.trim(), third.trim(), fourth.trim(), fifth.trim())
                 },
-                enabled = first.isNotBlank() && requiredDetailsValid && validBudget
-            ) { Text("Submit") }
+                enabled = !isSubmitting && first.isNotBlank() && requiredDetailsValid && validBudget
+            ) { Text(if (isSubmitting) "Submitting…" else "Submit") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !isSubmitting) { Text("Cancel") } }
     )
 }
 
