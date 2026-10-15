@@ -1,6 +1,9 @@
 package com.example.ui.components
 
 import android.graphics.Color as AndroidColor
+import android.util.Log
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
@@ -57,7 +60,15 @@ fun BlinkSponsoredNativeAd(
     var nativeAd by remember(adUnitId) { mutableStateOf<NativeAd?>(null) }
     var loadFailed by remember(adUnitId) { mutableStateOf(false) }
 
-    DisposableEffect(adUnitId, canRequestAds) {
+    var retryCount by remember(adUnitId, placement) { mutableStateOf(0) }
+    LaunchedEffect(loadFailed, canRequestAds, retryCount) {
+        if (loadFailed && canRequestAds && retryCount < 2) {
+            delay(30_000L * (retryCount + 1))
+            retryCount++
+        }
+    }
+
+    DisposableEffect(adUnitId, placement, canRequestAds, retryCount) {
         if (!canRequestAds) {
             nativeAd?.destroy()
             nativeAd = null
@@ -65,9 +76,15 @@ fun BlinkSponsoredNativeAd(
             return@DisposableEffect onDispose {}
         }
 
+        var disposed = false
+        loadFailed = false
         val placementName = if (placement == BlinkNativeAdPlacement.FEED) "feed" else "reels"
         val adLoader = AdLoader.Builder(context, adUnitId)
             .forNativeAd { loaded ->
+                if (disposed || !BlinkAdsRuntime.canRequestAds.value) {
+                    loaded.destroy()
+                    return@forNativeAd
+                }
                 nativeAd?.destroy()
                 nativeAd = loaded
                 loadFailed = false
@@ -75,6 +92,7 @@ fun BlinkSponsoredNativeAd(
             .withAdListener(
                 object : AdListener() {
                     override fun onAdLoaded() {
+                        if (disposed) return
                         BlinkAdAnalytics.loaded(context, placementName, "native")
                     }
 
@@ -87,6 +105,8 @@ fun BlinkSponsoredNativeAd(
                     }
 
                     override fun onAdFailedToLoad(error: LoadAdError) {
+                        if (disposed) return
+                        Log.w("BlinkSponsoredAds", "$placementName failed: ${error.domain}/${error.code} ${error.message}; response=${error.responseInfo}")
                         loadFailed = true
                         BlinkAdAnalytics.failed(context, placementName, "native", error.code)
                     }
@@ -97,6 +117,7 @@ fun BlinkSponsoredNativeAd(
         adLoader.loadAd(AdRequest.Builder().build())
 
         onDispose {
+            disposed = true
             nativeAd?.destroy()
             nativeAd = null
         }
