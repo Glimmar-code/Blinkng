@@ -2761,7 +2761,15 @@ fun ProfileScreen(state: DesktopAppState) {
 
 @Composable
 fun GamesScreen(state: DesktopAppState) {
-    DesktopGeneralStudyGame()
+    Box(modifier = Modifier.fillMaxSize()) {
+        DesktopGeneralStudyGame()
+        // Only tapping Play starts the separate Godot executable; existing
+        // study games and every other BLINK desktop screen stay unchanged.
+        Button(
+            onClick = { BlinkLifeNativeLauncher.launch() },
+            modifier = Modifier.align(Alignment.TopEnd).padding(18.dp),
+        ) { Text("Play BLINK LIFE 3D · Preview") }
+    }
 }
 
 @Composable
