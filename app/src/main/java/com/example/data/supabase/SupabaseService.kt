@@ -3453,10 +3453,10 @@ suspend fun uploadPostMedia(
             val safeLimit = limit.coerceIn(1, 60)
             val safeOffset = offset.coerceAtLeast(0)
             val order = when (sort.lowercase(Locale.US)) {
-                "price_low" -> "price.asc,created_at.desc"
-                "price_high" -> "price.desc,created_at.desc"
-                "popular" -> "views_count.desc,created_at.desc"
-                else -> "created_at.desc"
+                "price_low" -> "price.asc,created_at.desc,id.desc"
+                "price_high" -> "price.desc,created_at.desc,id.desc"
+                "popular" -> "views_count.desc,created_at.desc,id.desc"
+                else -> "created_at.desc,id.desc"
             }
 
             val url = buildString {
