@@ -31,6 +31,12 @@
         <activity android:name=".game.BlinkLifeWebActivity"
             android:exported="false"
             android:screenOrientation="sensorLandscape" />
+        <receiver android:name=".game.BlinkLifeGameDownloadReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
         <activity android:name=".BlinkStoreActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".BlinkDropsActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".ProfessionalCenterActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
