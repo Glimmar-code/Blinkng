@@ -2210,6 +2210,13 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /** Reflect the authoritative balance returned by a successful Connect Match RPC. */
+    fun onConnectMatchSpinCoinsUpdated(remainingCoins: Long) {
+        if (remainingCoins >= 0L) {
+            _uiState.value = _uiState.value.copy(blinkCoinBalance = remainingCoins)
+        }
+    }
+
     fun refreshConnectHub() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isConnectHubLoading = true)
