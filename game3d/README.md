@@ -21,7 +21,7 @@ Open the `game3d/` folder as a project in **Godot 4 (Compatibility renderer)** a
 
 **Packaging status (experimental PR #283):** Android now has a pinned Godot 4.3 AAR host and bundles this project's real 3D scene into APK assets at build time. The Games entry opens a dedicated landscape Godot activity in an isolated process. The Windows desktop installer build stages the same project with a pinned Godot 4.3 Windows runtime and launches it from Games; unbundled development builds retain a clearly labelled projected-3D fallback. **This code is under Testlab validation only; there is no verified production or physical-device native 3D release yet.** Check PR #283 CI and real Redmi/Windows installs before promoting to main.
 
-**Validation limitation:** Godot Editor / headless executable is not yet part of the repository's CI runners; these GDScript and scene files still require Godot import/runtime smoke testing.
+**Validation:** `.github/workflows/blink-life-3d-check.yml` installs Godot 4.3, imports the scene and runs runtime smoke tests under an OpenGL-compatible virtual display. GitHub CI does not replace installation on Android phones and Windows PCs.
 
 ## Required host-app integration
 
