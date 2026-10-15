@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonList
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -304,9 +306,10 @@ fun BlinkDropsRoute(
         }
 
         if (loading && state == null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
+            BlinkSkeletonList(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                rows = 5
+            )
             return@Column
         }
 

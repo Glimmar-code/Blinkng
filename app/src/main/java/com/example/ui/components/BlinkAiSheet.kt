@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.components.BlinkSkeletonList
+
 import android.content.Intent
 import android.net.Uri
 import android.speech.RecognizerIntent
@@ -514,10 +516,10 @@ fun BlinkAiSheet(
                     Spacer(Modifier.height(8.dp))
 
                     if (historyLoading) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                            Text("  Loading…")
-                        }
+                        BlinkSkeletonList(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
+                            rows = 3
+                        )
                     } else if (filtered.isEmpty()) {
                         Text(
                             "No saved conversations found.",

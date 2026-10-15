@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.components.BlinkSkeletonList
+
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.*
@@ -728,6 +730,10 @@ fun GetVerifiedSheet(
                                             if (isDailyMissionsLoading) {
                                                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                                             }
+                                        }
+
+                                        if (isDailyMissionsLoading && dailyMissions.isEmpty()) {
+                                            BlinkSkeletonList(rows = 3, avatar = false)
                                         }
 
                                         if (!isDailyMissionsLoading && dailyMissions.isEmpty()) {

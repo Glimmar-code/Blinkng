@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.example.ui.components.BlinkSkeletonList
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -69,11 +71,11 @@ fun ProfileConnectionsSheet(
                 fontWeight = FontWeight.Black
             )
             when {
-                loading -> {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 28.dp),
-                        horizontalArrangement = Arrangement.Center
-                    ) { CircularProgressIndicator() }
+                loading && profiles.isEmpty() -> {
+                    BlinkSkeletonList(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                        rows = 5
+                    )
                 }
                 profiles.isEmpty() -> {
                     Text(

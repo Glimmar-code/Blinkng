@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonBlock
+
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -113,8 +115,15 @@ fun ProductDetailScreen(
                 ) {
                     val currentImage = item.images.getOrNull(selectedImageIndex)
                         ?: item.images.firstOrNull()
+                    var imageLoading by remember(currentImage) { mutableStateOf(currentImage != null) }
+                    if (imageLoading) {
+                        BlinkSkeletonBlock(modifier = Modifier.fillMaxSize(), shape = RoundedCornerShape(0.dp))
+                    }
                     AsyncImage(
                         model = currentImage,
+                        onLoading = { imageLoading = true },
+                        onSuccess = { imageLoading = false },
+                        onError = { imageLoading = false },
                         error = painterResource(R.drawable.ic_default_profile),
                         fallback = painterResource(R.drawable.ic_default_profile),
                         contentDescription = item.title,

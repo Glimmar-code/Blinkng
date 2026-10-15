@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonList
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -148,8 +150,11 @@ fun ConnectDirectoryDetailDialog(
                     )
                 }
                 Spacer(Modifier.height(12.dp))
-                if (loading) {
-                    CircularProgressIndicator()
+                if (loading && listings.isEmpty() && error == null) {
+                    BlinkSkeletonList(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                        rows = 5
+                    )
                 } else {
                     LazyColumn(
                         modifier = Modifier.weight(1f),
