@@ -42,11 +42,34 @@ jobs:
         with:
           gradle-version: '8.12.1'
 
+      - name: Stage pinned Godot 4.3 native Windows runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'blink-godot-4.3-windows.zip'
+          $extracted = Join-Path $env:RUNNER_TEMP 'blink-godot-4.3-windows'
+          $uri = 'https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_win64.exe.zip'
+          Invoke-WebRequest -Uri $uri -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $extracted -Force
+          $engine = Get-ChildItem -Path $extracted -Filter 'Godot_v4.3-stable_win64.exe' -Recurse | Select-Object -First 1
+          if (-not $engine -or $engine.Length -lt 1000000) { throw 'Godot engine missing from archive' }
+          $destination = 'desktopApp/build/nativeResources/windows/blink-life'
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          Copy-Item -Path $engine.FullName -Destination (Join-Path $destination 'BlinkLife.exe')
+
       - name: Compile and test desktop app
         run: gradle -p desktopApp build --stacktrace --no-daemon
 
       - name: Build Windows EXE and MSI
         run: gradle -p desktopApp packageExe packageMsi --stacktrace --no-daemon
+
+      - name: Verify native Godot game files
+        shell: pwsh
+        run: |
+          $base = 'desktopApp/build/nativeResources/windows/blink-life'
+          foreach ($file in @('BlinkLife.exe', 'game/project.godot', 'game/scenes/main.tscn', 'game/scripts/world.gd')) {
+            if (-not (Test-Path (Join-Path $base $file))) { throw "Missing BLINK LIFE resource: $file" }
+          }
 
       - name: Upload Windows installers
         uses: actions/upload-artifact@v4
