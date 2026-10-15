@@ -53,7 +53,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.example.data.repository.PostRepository
 import com.example.data.repository.SearchDiscoveryRepository
+import com.example.ui.components.PostCard
 import com.example.data.models.DiscoveryResult
 import com.example.data.models.DiscoveryResultType
 import com.example.data.models.DiscoverySort
@@ -127,8 +129,16 @@ internal fun PremiumSearchPhase3Host(
     Phase3SearchContent(
         localPosts = (posts + serverPosts).distinctBy { it.id },
         viewModel = searchVm,
+        currentUsername = currentUsername,
+        isDark = isDark,
         onProfileClick = onProfileClick,
         onPostClick = onPostClick,
+        onLikePost = onLikePost,
+        onCommentPost = onCommentPost,
+        onBookmarkPost = onBookmarkPost,
+        onSharePost = onSharePost,
+        onOptionsClick = onOptionsClick,
+        onDeletePost = onDeletePost,
         onBack = onBackToHome,
     )
 }
@@ -153,8 +163,16 @@ private data class Phase3Category(val type: DiscoveryResultType?, val label: Str
 private fun Phase3SearchContent(
     localPosts: List<FeedPost>,
     viewModel: SearchDiscoveryViewModel,
+    currentUsername: String,
+    isDark: Boolean,
     onProfileClick: (String) -> Unit,
     onPostClick: (FeedPost) -> Unit,
+    onLikePost: (String) -> Unit,
+    onCommentPost: (String) -> Unit,
+    onBookmarkPost: (String) -> Unit,
+    onSharePost: (String) -> Unit,
+    onOptionsClick: (FeedPost) -> Unit,
+    onDeletePost: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -162,6 +180,7 @@ private fun Phase3SearchContent(
     val context = LocalContext.current
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val postRepository = remember { PostRepository() }
 
     var showFilters by remember { mutableStateOf(false) }
     var showSort by remember { mutableStateOf(false) }
@@ -282,7 +301,11 @@ private fun Phase3SearchContent(
             when (result.type) {
                 DiscoveryResultType.PROFILE -> if (result.username.isNotBlank()) onProfileClick(result.username)
                 DiscoveryResultType.POST, DiscoveryResultType.REEL -> {
-                    onPostClick(localPosts.firstOrNull { it.id == result.id } ?: result.asFeedPost())
+                    // Navigation must use a real, permission-checked post. A search
+                    // index snippet is not a trustworthy substitute for FeedPost.
+                    val post = localPosts.firstOrNull { it.id == result.id }
+                        ?: runCatching { postRepository.fetchPostById(result.id) }.getOrNull()
+                    if (post != null) onPostClick(post) else detailResult = result
                 }
                 else -> detailResult = result
             }
@@ -438,11 +461,32 @@ private fun Phase3SearchContent(
                         key = { _, item -> "result-${item.type.backendValue}-${item.id}" },
                     ) { _, result ->
                         val key = "result-${result.type.backendValue}-${result.id}"
-                        DiscoveryCard(
-                            result = result,
-                            autoplay = state.autoplayPreviews && state.capabilities.autoplayPreviews && visibleResultKeys.contains(key),
-                            onClick = { openResult(result) },
-                        )
+                        val autoplay = state.autoplayPreviews &&
+                            state.capabilities.autoplayPreviews && visibleResultKeys.contains(key)
+                        if (result.type == DiscoveryResultType.POST || result.type == DiscoveryResultType.REEL) {
+                            SearchRealFeedCard(
+                                result = result,
+                                localPost = localPosts.firstOrNull { it.id == result.id },
+                                repository = postRepository,
+                                currentUsername = currentUsername,
+                                isDark = isDark,
+                                autoplay = autoplay,
+                                onOpenPost = onPostClick,
+                                onProfileClick = onProfileClick,
+                                onLikePost = onLikePost,
+                                onCommentPost = onCommentPost,
+                                onBookmarkPost = onBookmarkPost,
+                                onSharePost = onSharePost,
+                                onOptionsClick = onOptionsClick,
+                                onDeletePost = onDeletePost,
+                            )
+                        } else {
+                            DiscoveryCard(
+                                result = result,
+                                autoplay = autoplay,
+                                onClick = { openResult(result) },
+                            )
+                        }
                     }
                 }
                 if (state.isLoadingMore) {
@@ -675,6 +719,99 @@ private fun SearchSectionTitle(title: String, subtitle: String) {
     Column(Modifier.fillMaxWidth().padding(top = 5.dp)) {
         Text(title, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = colors.textPrimary)
         Text(subtitle, fontSize = 9.sp, color = colors.textMuted)
+    }
+}
+
+/**
+ * Search uses the exact same post component as Home and Profile. Search RPC rows
+ * are discovery snippets, not complete FeedPost records: hydrate missing posts by ID
+ * using the normal authenticated post repository and never fabricate an author/media
+ * card from an index snippet. LazyColumn only composes visible rows, so lookups are
+ * scoped to visible results instead of downloading an entire discovery page.
+ */
+@Composable
+private fun SearchRealFeedCard(
+    result: DiscoveryResult,
+    localPost: FeedPost?,
+    repository: PostRepository,
+    currentUsername: String,
+    isDark: Boolean,
+    autoplay: Boolean,
+    onOpenPost: (FeedPost) -> Unit,
+    onProfileClick: (String) -> Unit,
+    onLikePost: (String) -> Unit,
+    onCommentPost: (String) -> Unit,
+    onBookmarkPost: (String) -> Unit,
+    onSharePost: (String) -> Unit,
+    onOptionsClick: (FeedPost) -> Unit,
+    onDeletePost: (String) -> Unit,
+) {
+    val colors = BlinkThemeTokens.colors
+    var loadedPost by remember(result.id) { mutableStateOf<FeedPost?>(null) }
+    var isLoading by remember(result.id) { mutableStateOf(localPost == null) }
+    var failed by remember(result.id) { mutableStateOf(false) }
+    var retryAttempt by remember(result.id) { mutableIntStateOf(0) }
+
+    LaunchedEffect(result.id, localPost, retryAttempt) {
+        if (localPost != null) {
+            isLoading = false
+            failed = false
+        } else {
+            isLoading = true
+            failed = false
+            loadedPost = runCatching { repository.fetchPostById(result.id) }.getOrNull()
+            failed = loadedPost == null
+            isLoading = false
+        }
+    }
+
+    val post = localPost ?: loadedPost
+    when {
+        post != null -> Column(Modifier.fillMaxWidth()) {
+            PostCard(
+                post = post,
+                isDark = isDark,
+                onLike = { onLikePost(post.id) },
+                onComment = { onCommentPost(post.id) },
+                onBookmark = { onBookmarkPost(post.id) },
+                onShare = { onSharePost(post.id) },
+                onOptionsClick = { onOptionsClick(post) },
+                onProfileClick = onProfileClick,
+                isAuthor = post.author.equals(currentUsername, ignoreCase = true) ||
+                    post.authorUsername.equals(currentUsername, ignoreCase = true),
+                onDelete = { onDeletePost(post.id) },
+                trackExposure = false,
+                xFeedStyle = true,
+            )
+            if (post.isReel && !post.videoUrl.isNullOrBlank()) {
+                SearchMutedAutoplayPreview(
+                    post.videoUrl,
+                    autoplay,
+                    result.matchedMomentMs,
+                )
+            }
+            TextButton(onClick = { onOpenPost(post) }, modifier = Modifier.padding(start = 8.dp)) {
+                Text(if (post.isReel) "Open reel" else "Open post")
+            }
+        }
+        isLoading -> SearchSkeleton()
+        failed -> Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(15.dp),
+            color = colors.surfaceElevated,
+            border = BorderStroke(1.dp, colors.borderSoft),
+        ) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Post unavailable or you don't have access to it.",
+                    modifier = Modifier.weight(1f),
+                    fontSize = 11.sp,
+                    color = colors.textSecondary,
+                )
+                TextButton(onClick = { retryAttempt++ }) { Text("Retry") }
+            }
+        }
+        else -> SearchSkeleton()
     }
 }
 
