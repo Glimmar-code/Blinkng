@@ -52,6 +52,7 @@ import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
 import com.blinkng.shared.BlinkOnboardingPolicy
+import java.io.ByteArrayOutputStream
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -5538,9 +5539,21 @@ private suspend fun restoreSupabaseSession() {
         val mimeType = resolver.getType(uri) ?: "image/jpeg"
         if (!mimeType.startsWith("image/")) return@withContext null
         val bytes = runCatching {
-            resolver.openInputStream(uri)?.use { stream -> stream.readBytes() }
+            resolver.openInputStream(uri)?.use { stream ->
+                val output = ByteArrayOutputStream()
+                val buffer = ByteArray(64 * 1024)
+                var total = 0
+                while (true) {
+                    val count = stream.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    if (total > 10 * 1024 * 1024) return@use ByteArray(0)
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            }
         }.getOrNull() ?: return@withContext null
-        if (bytes.isEmpty() || bytes.size > 10 * 1024 * 1024) return@withContext null
+        if (bytes.isEmpty()) return@withContext null
         supabaseService.uploadMarketMedia(userId, bytes, mimeType)
     }
 
@@ -5577,6 +5590,8 @@ private suspend fun restoreSupabaseSession() {
             for (source in cleanSources) {
                 val url = uploadMarketImage(source, p.id)
                 if (url == null) {
+                    // Prevent abandoned storage objects from earlier successful uploads.
+                    uploaded.forEach { supabaseService.deleteStagedMarketMedia(p.id, it) }
                     _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
                     showToast("One of the product photos couldn't be uploaded. Please try again.")
                     return@launch
@@ -5621,6 +5636,7 @@ private suspend fun restoreSupabaseSession() {
                 persistExtendedCache()
                 showToast("Product published to BLINK Market.")
             } else {
+                uploaded.forEach { supabaseService.deleteStagedMarketMedia(p.id, it) }
                 _uiState.value = _uiState.value.copy(isPublishingMarketItem = false)
                 showToast("Product wasn't published. Check your seller status and details.")
             }
