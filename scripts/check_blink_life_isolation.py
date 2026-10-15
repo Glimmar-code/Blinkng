@@ -28,7 +28,43 @@ release_workflow = (root / ".github/workflows/signed-release.yml").read_text()
 assert "--mode=universal" in website_build
 assert "assets/project.godot" in website_build
 assert "BlinkLifeGodotActivity" in website_build
-assert "build_full_website_apk.sh" in release_workflow
+# The Play module remains isolated in both delivery paths. Website packaging differs:
+# older production uses a signed fused universal APK, while Option B stages a
+# small, signed base APK plus an integrity-pinned WebGL pack.
+web_release = "BLINK_LIFE_WEB_SHA256" in release_workflow
+if web_release:
+    assert "scripts/build_blink_life_web_pack.sh" in release_workflow, (
+        "Website release must export the optional game before signing"
+    )
+    assert "Verify website APK excludes native Godot" in release_workflow, (
+        "Small website APK must not accidentally include native Godot"
+    )
+    assert "gamePackSha256=$BLINK_LIFE_WEB_SHA256" in release_workflow, (
+        "Signed release metadata must pin the downloaded game archive"
+    )
+    assert "blink-life-web.zip" in release_workflow, (
+        "Game archive must be published alongside the matching APK"
+    )
+    assert "build_full_website_apk.sh" not in release_workflow, (
+        "Option B must not replace the small website APK with a universal APK"
+    )
+    publisher = (root / ".github/scripts/publish_verified_apk.py").read_text()
+    assert "verify_web_pack" in publisher and "blink-life-web.zip" in publisher, (
+        "Publisher must verify both APK and game ZIP before releasing"
+    )
+    web_activity = (
+        root / "app/src/main/java/com/example/game/BlinkLifeWebActivity.kt"
+    ).read_text()
+    assert "onBackPressedDispatcher.addCallback" in web_activity, (
+        "Web game must support Android gesture back navigation"
+    )
+    assert "override fun onBackPressed()" not in web_activity, (
+        "Legacy back callback is not supported by gesture navigation"
+    )
+else:
+    assert "build_full_website_apk.sh" in release_workflow, (
+        "Native website release must retain the full signed game"
+    )
 
 game_activities = [
     item for item in feature.find("application").findall("activity")
