@@ -159,8 +159,9 @@ jobs:
             echo "::error::Lightweight APK unexpectedly contains Godot native runtime."
             exit 1
           fi
-          unzip -Z1 "$AAB" | grep -Fxq blinkLifeFeature/assets/project.godot
-          unzip -Z1 "$AAB" | grep -Fxq blinkLifeFeature/lib/arm64-v8a/libgodot_android.so
+          unzip -Z1 "$AAB" > "$RUNNER_TEMP/blink-play-bundle-files.txt"
+          grep -Fxq blinkLifeFeature/assets/project.godot "$RUNNER_TEMP/blink-play-bundle-files.txt"
+          grep -Fxq blinkLifeFeature/lib/arm64-v8a/libgodot_android.so "$RUNNER_TEMP/blink-play-bundle-files.txt"
           sha256sum -c app/build/outputs/publish/blink-life-web.zip.sha256
           echo "PASS: game not installed in website base; Play game remains on demand."
 
