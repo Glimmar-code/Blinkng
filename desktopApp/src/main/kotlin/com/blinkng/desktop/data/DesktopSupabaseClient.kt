@@ -1279,10 +1279,36 @@ class DesktopSupabaseClient(
         )
     }
 
-    suspend fun fetchMarketplace(): List<DesktopMarketItem> = withContext(Dispatchers.IO) {
-        val rows = getArray(
-            "/rest/v1/market_items?status=eq.active&select=id,title,price,currency,category,condition,description,image_url,image_urls,seller_id,seller_name,seller_username,seller_is_verified,university,location,is_featured,is_sold,created_at&order=is_featured.desc,created_at.desc&limit=100",
-        )
+    suspend fun fetchMarketplace(
+        query: String = "",
+        category: String? = null,
+        sort: String = "newest",
+        minPrice: Long? = null,
+        maxPrice: Long? = null,
+    ): List<DesktopMarketItem> = withContext(Dispatchers.IO) {
+        require(minPrice == null || maxPrice == null || minPrice <= maxPrice) {
+            "Minimum price must not exceed maximum price."
+        }
+        val order = when (sort) {
+            "price_low" -> "price.asc,created_at.desc,id.desc"
+            "price_high" -> "price.desc,created_at.desc,id.desc"
+            else -> "created_at.desc,id.desc"
+        }
+        val url = buildString {
+            append("/rest/v1/market_items?status=eq.active&is_sold=eq.false")
+            append("&select=id,title,price,currency,category,condition,description,image_url,image_urls,seller_id,seller_name,seller_username,seller_is_verified,university,location,is_featured,is_sold,created_at")
+            query.trim().take(80).takeIf { it.isNotBlank() }?.let {
+                append("&or=").append(encode("(title.ilike.*$it*,description.ilike.*$it*,category.ilike.*$it*,seller_name.ilike.*$it*,university.ilike.*$it*)"))
+            }
+            category?.takeIf { it.isNotBlank() && it != "All Categories" }?.let {
+                append("&category=eq.").append(encode(it))
+            }
+            minPrice?.takeIf { it > 0 }?.let { append("&price=gte.").append(it) }
+            maxPrice?.takeIf { it >= 0 }?.let { append("&price=lte.").append(it) }
+            append("&order=").append(encode(order))
+            append("&limit=100")
+        }
+        val rows = getArray(url)
         (0 until rows.length()).mapNotNull { i -> rows.optJSONObject(i)?.let(::parseMarketItem) }
     }
 
