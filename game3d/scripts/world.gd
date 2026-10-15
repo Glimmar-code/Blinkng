@@ -88,6 +88,11 @@ func _unhandled_key_input(event: InputEvent) -> void:
             _orbit(35.0)
         elif event.keycode == KEY_F:
             _interact()
+        elif event.keycode == KEY_ESCAPE:
+            if hud_modal != null and hud_modal.visible:
+                _close_quiz()
+            else:
+                get_tree().quit()
 
 
 func _create_lights() -> void:
@@ -250,6 +255,18 @@ func _create_hud() -> void:
     hud_status.text = "TESTLAB: all money is fictional. Walk using WASD/arrows or touch controls."
     hud_status.add_theme_font_size_override("font_size", 14)
     hud.add_child(hud_status)
+
+    # Always offer a visible exit: Android's Godot instance runs in a
+    # separate process, so quitting here returns the player to BLINK.
+    var exit_button := _new_button("EXIT TO BLINK", 160)
+    exit_button.anchor_left = 1.0
+    exit_button.anchor_right = 1.0
+    exit_button.offset_left = -195
+    exit_button.offset_right = -12
+    exit_button.offset_top = 14
+    exit_button.offset_bottom = 66
+    exit_button.pressed.connect(func(): get_tree().quit())
+    hud.add_child(exit_button)
 
     var direction_bar := HBoxContainer.new()
     direction_bar.anchor_top = 1
