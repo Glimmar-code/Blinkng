@@ -40,6 +40,16 @@ var show_location_button: Button
 var car_button: Button
 var social_layer: CanvasLayer
 var chat_lines: Array[String] = []
+var secure_dedicated: bool = false
+var joining_secure: bool = false
+var auth_secret: String = ""
+var online_ticket: String = ""
+var ticket_input: LineEdit
+var online_host_input: LineEdit
+var online_port_input: LineEdit
+var used_ticket_nonces: Dictionary = {}
+var peer_auth_ids: Dictionary = {}
+var is_connected_to_authoritative_server: bool = false
 
 
 func configure(game_world: Node3D, avatar: CharacterBody3D) -> void:
@@ -50,6 +60,43 @@ func configure(game_world: Node3D, avatar: CharacterBody3D) -> void:
     multiplayer.server_disconnected.connect(_on_server_lost)
     multiplayer.peer_disconnected.connect(_on_peer_left)
     _build_ui()
+    var args := OS.get_cmdline_user_args()
+    if args.has("--blink-dedicated"):
+        _start_dedicated_server()
+    else:
+        for arg in args:
+            if arg.begins_with("--blink-host="):
+                online_host_input.text = arg.trim_prefix("--blink-host=")
+            elif arg.begins_with("--blink-port="):
+                online_port_input.text = arg.trim_prefix("--blink-port=")
+            elif arg.begins_with("--blink-ticket="):
+                ticket_input.text = arg.trim_prefix("--blink-ticket=")
+        # A ticket is only useful after deliberate Play; it must never trigger
+        # a network connection merely because the main BLINK app opens.
+        if not ticket_input.text.is_empty():
+            _join_online()
+
+
+func _start_dedicated_server() -> void:
+    auth_secret = OS.get_environment("BLINK_LIFE_AUTH_SECRET")
+    var port_str := OS.get_environment("BLINK_LIFE_SERVER_PORT")
+    var port := int(port_str) if port_str.is_valid_int() else PORT
+    if auth_secret.length() < 32 or port < 1024 or port > 65535:
+        push_error("Dedicated server disabled: missing secret or invalid configured port.")
+        return
+    var peer := ENetMultiplayerPeer.new()
+    var result := peer.create_server(port, MAX_PLAYERS)
+    if result != OK:
+        push_error("Dedicated server unable to bind UDP port (code: %d)." % result)
+        return
+    multiplayer.multiplayer_peer = peer
+    secure_dedicated = true
+    is_online = true
+    people.clear()
+    slot_counter = 0
+    status_label.text = "Dedicated session online: authenticated tickets required."
+    # No fake host appears in the roster; only authenticated human peers.
+    print("BLINK LIFE dedicated session listening on UDP port %d" % port)
 
 
 func _make_button(title: String, callback: Callable, container: Node) -> Button:
@@ -106,7 +153,7 @@ func _build_ui() -> void:
     rows.add_child(header)
     _make_label("BLINK LIFE · SOCIAL TESTLAB", header)
     _make_button("CLOSE", func(): panel.visible = false, header)
-    _make_label("Only trusted LAN sessions. Never share your real GPS or personal address.", rows)
+    _make_label("Trusted LAN demo or ticket-authenticated dedicated server. Never share real GPS.", rows)
 
     var network_row := HBoxContainer.new()
     rows.add_child(network_row)
@@ -120,6 +167,24 @@ func _build_ui() -> void:
     ip_input.placeholder_text = "Host LAN IP e.g. 192.168.1.5"
     ip_input.custom_minimum_size = Vector2(230, 48)
     network_row.add_child(ip_input)
+
+    var online_row := HBoxContainer.new()
+    rows.add_child(online_row)
+    online_host_input = LineEdit.new()
+    online_host_input.placeholder_text = "Dedicated game host"
+    online_host_input.custom_minimum_size = Vector2(190, 48)
+    online_row.add_child(online_host_input)
+    online_port_input = LineEdit.new()
+    online_port_input.placeholder_text = "UDP port"
+    online_port_input.text = "24567"
+    online_port_input.custom_minimum_size = Vector2(80, 48)
+    online_row.add_child(online_port_input)
+    ticket_input = LineEdit.new()
+    ticket_input.placeholder_text = "Signed BLINK game ticket"
+    ticket_input.secret = true
+    ticket_input.custom_minimum_size = Vector2(200, 48)
+    online_row.add_child(ticket_input)
+    _make_button("JOIN ONLINE", _join_online, rows)
 
     var connection_row := HBoxContainer.new()
     rows.add_child(connection_row)
@@ -244,9 +309,36 @@ func _join_lan() -> void:
     status_label.text = "Connecting to trusted LAN host %s..." % address
 
 
+func _join_online() -> void:
+    if is_online:
+        status_label.text = "Disconnect first before opening another world."
+        return
+    var host := online_host_input.text.strip_edges()
+    var port := int(online_port_input.text) if online_port_input.text.is_valid_int() else 0
+    var ticket := ticket_input.text.strip_edges()
+    if host.is_empty() or host.length() > 253 or host.contains("/") or host.contains(" ") or port < 1024 or port > 65535:
+        status_label.text = "The dedicated game host or UDP port is invalid."
+        return
+    if ticket.length() < 110 or ticket.length() > 240 or ticket.split(".").size() != 4:
+        status_label.text = "Request a new short-lived ticket while signed into BLINK."
+        return
+    var peer := ENetMultiplayerPeer.new()
+    var code := peer.create_client(host, port)
+    if code != OK:
+        status_label.text = "Could not connect to the dedicated game server."
+        return
+    joining_secure = true
+    online_ticket = ticket
+    ticket_input.clear()
+    multiplayer.multiplayer_peer = peer
+    is_online = true
+    status_label.text = "Connecting to authenticated dedicated session..."
+
+
 func _on_connected_to_server() -> void:
-    _register.rpc_id(1, _clean_name(player_name_input.text))
-    status_label.text = "Connected to LAN host. Synchronizing characters..."
+    _register.rpc_id(1, _clean_name(player_name_input.text), online_ticket)
+    online_ticket = ""
+    status_label.text = "Connected. Waiting for game server to authenticate the ticket..."
 
 
 func _on_connection_failed() -> void:
@@ -266,6 +358,7 @@ func _on_peer_left(peer_id: int) -> void:
         return
     var departed_slot := int(people[peer_id]["slot"])
     people.erase(peer_id)
+    peer_auth_ids.erase(peer_id)
     last_motion_ms.erase(peer_id)
     last_chat_ms.erase(peer_id)
     visit_requests.erase(peer_id)
@@ -288,6 +381,13 @@ func _disconnect() -> void:
         multiplayer.multiplayer_peer.close()
     multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
     is_online = false
+    joining_secure = false
+    online_ticket = ""
+    is_connected_to_authoritative_server = false
+    secure_dedicated = false
+    auth_secret = ""
+    peer_auth_ids.clear()
+    used_ticket_nonces.clear()
     people.clear()
     cars.clear()
     visit_requests.clear()
@@ -327,13 +427,25 @@ func _make_profile(display_name: String, room_slot: int) -> Dictionary:
 
 
 @rpc("any_peer", "reliable")
-func _register(display_name: String) -> void:
+func _register(display_name: String, signed_ticket: String = "") -> void:
     if not multiplayer.is_server():
         return
     var id := multiplayer.get_remote_sender_id()
     if id < 2 or people.has(id) or people.size() >= MAX_PLAYERS:
         return
-    people[id] = _make_profile(_clean_name(display_name), slot_counter)
+    var actual_name := _clean_name(display_name)
+    if secure_dedicated:
+        var auth_script: Script = load("res://scripts/ticket_auth.gd")
+        var account_id: String = auth_script.verify(
+            signed_ticket, auth_secret, int(Time.get_unix_time_from_system()), used_ticket_nonces
+        )
+        if account_id.is_empty() or peer_auth_ids.values().has(account_id):
+            multiplayer.multiplayer_peer.disconnect_peer(id)
+            return
+        peer_auth_ids[id] = account_id
+        # The editable nickname cannot impersonate a verified BLINK profile.
+        actual_name = "BLINK-" + account_id.substr(0, 8)
+    people[id] = _make_profile(actual_name, slot_counter)
     slot_counter += 1
     _broadcast_roster()
 
@@ -363,7 +475,8 @@ func _apply_roster(roster: Dictionary, shared_cars: Dictionary) -> void:
         if local_player.global_position.distance_to(confirmed) > 16.0:
             local_player.global_position = confirmed
             local_player.velocity = Vector3.ZERO
-        status_label.text = "LAN ONLINE · %d player(s) · virtual world only" % people.size()
+        status_label.text = "ONLINE · %d player(s) · in-game world only" % people.size()
+        is_connected_to_authoritative_server = true
         var my_profile: Dictionary = people[my_id]
         show_location_button.text = "VIRTUAL MAP: ON" if bool(my_profile.get("map_opt_in", false)) else "VIRTUAL MAP: OFF"
         car_button.text = "CAR READY" if bool(my_profile.get("car_enabled", false)) else "GET CAR"
