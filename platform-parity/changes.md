@@ -1,3 +1,10 @@
+## 2026-10-14 — BLINK menu navigation and accessibility upgrade (Testlab)
+
+- **Shared:** `MenuSearch` provides case-insensitive trimmed search for Android and Windows, covered by unit tests.
+- **Android:** Add searchable menu actions, a close button and native drag handle, rounded sheet corners, descriptive menu-row subtitles, truncation for long profile names, verified badge, neutral theme switches, non-bouncy section animations, logout confirmation and a proper About dialog. Existing route IDs, Supabase permissions and admin gating remain unchanged.
+- **PARITY-EXCEPTION: android-native-menu-sheet** — The menu is an Android platform-specific bottom sheet, not a full-screen Windows dialog. Windows retains its desktop sidebar/keyboard/mouse navigation and platform-native notification settings; the platform-neutral search matcher is compiled by both clients. No server schema or API contracts change.
+- **Release gate:** Test search terms, accessibility, menu routing, swipe dismissal, appearance, account actions, Android build + unit tests, Windows build/parity, and physical Android device behavior. Keep Testlab and main separate until verified, particularly because Testlab diverged from main.
+
 ## 2026-10-14 — BLINK LIFE experimental 3D city playground
 
 - **Shared:** `BlinkLifeRules` defines six city locations, orthogonal movement, three local work tasks, and a fictional Game Cash market purchase. `BlinkLifeWorld3D` projects real X/Y/Z cuboid world geometry with depth ordering and an orbiting camera; `BlinkLifePrototype` embeds the shared renderer and gameplay on Android and Windows.
