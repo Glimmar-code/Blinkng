@@ -1,0 +1,68 @@
+name: BLINK LIFE native Android APK preview
+
+on:
+  pull_request:
+    branches: [Testlab]
+    paths:
+      - 'game3d/**'
+      - 'app/src/**'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/blink-life-native-apk-preview.yml'
+  push:
+    branches: [Testlab]
+    paths:
+      - 'game3d/**'
+      - 'app/src/**'
+      - 'app/build.gradle.kts'
+      - '.github/workflows/blink-life-native-apk-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blink-life-native-debug-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-android-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Android unit tests and native Godot debug APK
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Assert native 3D is inside the APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -Z1 "$APK" > "$RUNNER_TEMP/native-blink-apk-files.txt"
+          for required in assets/project.godot assets/scenes/main.tscn assets/scripts/world.gd lib/arm64-v8a/libgodot_android.so; do
+            grep -Fxq "$required" "$RUNNER_TEMP/native-blink-apk-files.txt" || {
+              echo "::error::Missing Godot engine/game file $required"
+              exit 1
+            }
+          done
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -F BlinkLifeGodotActivity
+          echo "Native BLINK LIFE Godot APK staged; physical device testing still required."
+          du -h "$APK"
+
+      - name: Upload Testlab debug APK for device validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-life-native-testlab-debug-${{ github.sha }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
