@@ -1,3 +1,11 @@
+## 2026-10-15 — Selective BLINK LIFE 3D port to current production baseline (staged PR)
+
+- **Shared:** Original Godot 4.3 `game3d` scene, optional networked player avatars, per-owner demo homes, consent-based passenger rides, server-only virtual Game Cash and experimental dedicated Godot service, with signed Supabase-authenticated 90-second join tickets. No real GPS, paid rewards, cashout, or BLINK wallets in game.
+- **Android:** Independent isolated Godot `:blink_life` process, no eager renderer startup or social/Firebase workers inside that process; Games page has opt-in **BLINK LIFE 3D · PREVIEW** Play card; game opens offline when no live dedicated service exists.
+- **Windows:** Identical Godot scene, staged Windows engine in EXE/MSI installer, on-demand Play button alongside existing General Study game. Main Windows package icon and current main navigation preserved.
+- **Merge safety:** Selective port from validated Testlab PR #283 onto independent production history; *does not merge Testlab itself* because it diverged massively from main. No deployment of experimental Supabase Edge function or public UDP server. Preserve all existing main production features.
+- **Mandatory release checks:** Godot headless import and smoke, Android APK debug/release, Windows installer, current main full regression checks, safe staging test of online admissions, real Android phone startup/exit/network testing, and confirmation no social app performance regressions. Public matchmaking, encrypted transport, moderation and durable multi-instance persistence are still not production-ready.
+
 ## 2026-10-14 — Notification reliability and premium inbox on Android and Windows (Testlab)
 
 PARITY-EXCEPTION: android-os-fcm-notification-delivery-20261014
