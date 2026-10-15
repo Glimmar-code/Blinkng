@@ -616,6 +616,14 @@ func _create_home(owner: int, slot: int) -> void:
     _make_solid_box(home, Vector3(5, 1.75, 0), Vector3(0.3, 3.5, 10), wall)
     _make_mesh_box(home, Vector3(0, 0.6, -3.5), Vector3(3, 1, 1.1), Color(0.35, 0.49, 0.61))
     _make_mesh_box(home, Vector3(2, 0.55, 1), Vector3(1.8, 0.8, 1.4), Color(0.48, 0.31, 0.25))
+    var count: int = clampi(int(people[owner].get("furniture", 0)), 0, 12)
+    for index in count:
+        var column: int = index % 4
+        var row: int = index / 4
+        _make_mesh_box(
+            home, Vector3(-3.5 + float(column) * 2.0, 0.35, 2.0 - float(row) * 2.0),
+            Vector3(0.9, 0.7, 0.7), Color(0.32, 0.53, 0.54)
+        )
     var label := Label3D.new()
     label.text = str(people[owner]["name"]) + "'s demo home"
     label.font_size = 40
@@ -972,6 +980,31 @@ func _approve_ride() -> void:
         return
     _action("approve_ride", pending_ride_from)
     pending_ride_from = -1
+
+
+func _send_private_wallet(peer_id: int) -> void:
+    if not secure_dedicated or persistent_store == null:
+        return
+    var account: String = str(peer_auth_ids.get(peer_id, ""))
+    var saved: Dictionary = persistent_store.call("get_profile", account)
+    if saved.is_empty():
+        return
+    if peer_id == 1:
+        _receive_private_wallet(int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"]))
+    else:
+        _receive_private_wallet.rpc_id(
+            peer_id, int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"])
+        )
+
+
+@rpc("authority", "reliable")
+func _receive_private_wallet(cash: int, owns_home: bool, furnishing: int) -> void:
+    if multiplayer.get_remote_sender_id() != 1:
+        return
+    if account_status != null:
+        account_status.text = "My private Game Cash: %d GC · Home: %s · Furniture: %d" % [
+            cash, "owned" if owns_home else "not owned", furnishing
+        ]
 
 
 func _notify(peer_id: int, message: String) -> void:
