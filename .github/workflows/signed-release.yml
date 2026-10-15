@@ -216,6 +216,14 @@ jobs:
           VERSION_NAME: ${{ steps.version.outputs.name }}
         run: gradle :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
 
+      - name: Build full signed website APK from Play App Bundle
+        shell: bash
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: bash .github/scripts/build_full_website_apk.sh
+
       - name: Verify embedded source revision
         shell: bash
         run: |

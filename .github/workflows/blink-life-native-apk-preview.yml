@@ -1,10 +1,13 @@
-name: BLINK LIFE native Android APK preview
+name: BLINK LIFE on-demand feature bundle verification
 
 on:
   pull_request:
     branches: [main, Testlab]
     paths:
       - 'game3d/**'
+      - 'blinkLifeFeature/**'
+      - 'settings.gradle.kts'
+      - 'gradle/libs.versions.toml'
       - 'app/src/**'
       - 'app/build.gradle.kts'
       - '.github/workflows/blink-life-native-apk-preview.yml'
@@ -12,6 +15,9 @@ on:
     branches: [main, Testlab]
     paths:
       - 'game3d/**'
+      - 'blinkLifeFeature/**'
+      - 'settings.gradle.kts'
+      - 'gradle/libs.versions.toml'
       - 'app/src/**'
       - 'app/build.gradle.kts'
       - '.github/workflows/blink-life-native-apk-preview.yml'
@@ -41,31 +47,53 @@ jobs:
       - name: Verify native 3D does not load at BLINK app startup
         run: python3 scripts/check_blink_life_isolation.py
 
-      - name: Android unit tests and native Godot debug APK
-        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+      - name: Android unit tests, base debug APK and on-demand App Bundle
+        run: gradle :app:testDebugUnitTest :app:assembleDebug :app:bundleDebug --stacktrace --no-daemon
 
-      - name: Assert native 3D is inside the APK
+      - name: Verify downloadable Godot split, and no engine in base APK
         shell: bash
         run: |
           set -euo pipefail
-          APK=app/build/outputs/apk/debug/app-debug.apk
-          test -s "$APK"
-          unzip -Z1 "$APK" > "$RUNNER_TEMP/native-blink-apk-files.txt"
-          for required in assets/project.godot assets/scenes/main.tscn assets/scripts/world.gd lib/arm64-v8a/libgodot_android.so; do
-            grep -Fxq "$required" "$RUNNER_TEMP/native-blink-apk-files.txt" || {
-              echo "::error::Missing Godot engine/game file $required"
+          BASE=app/build/outputs/apk/debug/app-debug.apk
+          BUNDLE=app/build/outputs/bundle/debug/app-debug.aab
+          test -s "$BASE"
+          test -s "$BUNDLE"
+          unzip -Z1 "$BASE" > "$RUNNER_TEMP/blink-base-files.txt"
+          unzip -Z1 "$BUNDLE" > "$RUNNER_TEMP/blink-bundle-files.txt"
+          for absent in \
+            assets/project.godot \
+            assets/scenes/main.tscn \
+            lib/arm64-v8a/libgodot_android.so; do
+            if grep -Fxq "$absent" "$RUNNER_TEMP/blink-base-files.txt"; then
+              echo "::error::On-demand Godot payload leaked into BLINK base APK: $absent"
+              exit 1
+            fi
+          done
+          for required in \
+            blinkLifeFeature/manifest/AndroidManifest.xml \
+            blinkLifeFeature/assets/project.godot \
+            blinkLifeFeature/assets/scenes/main.tscn \
+            blinkLifeFeature/lib/arm64-v8a/libgodot_android.so; do
+            grep -Fxq "$required" "$RUNNER_TEMP/blink-bundle-files.txt" || {
+              echo "::error::On-demand AAB feature is missing: $required"
               exit 1
             }
           done
-          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
-          "$BUILD_TOOLS/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -F BlinkLifeGodotActivity
-          echo "Native BLINK LIFE Godot APK staged; physical device testing still required."
-          du -h "$APK"
+          echo "Validated: base APK excludes the Godot engine; optional AAB split includes it."
+          du -h "$BASE" "$BUNDLE"
 
-      - name: Upload Testlab debug APK for device validation
+      - name: Upload on-demand debug App Bundle (for bundletool testing)
         uses: actions/upload-artifact@v4
         with:
-          name: blink-life-native-preview-debug-${{ github.sha }}
+          name: blink-life-play-on-demand-aab-${{ github.sha }}
+          path: app/build/outputs/bundle/debug/app-debug.aab
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload smaller BASE-ONLY debug APK (no game; website cannot deliver split)
+        uses: actions/upload-artifact@v4
+        with:
+          name: blink-life-base-only-debug-${{ github.sha }}
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14

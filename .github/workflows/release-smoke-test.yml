@@ -8,6 +8,8 @@ on:
       - 'Testlab-*'
     paths:
       - 'app/src/**'
+      - 'blinkLifeFeature/**'
+      - '.github/scripts/build_full_website_apk.sh'
       - 'shared/src/**'
       - 'app/build.gradle.kts'
       - 'build.gradle.kts'
@@ -25,6 +27,8 @@ on:
       - Testlab
     paths:
       - 'app/src/**'
+      - 'blinkLifeFeature/**'
+      - '.github/scripts/build_full_website_apk.sh'
       - 'shared/src/**'
       - 'app/build.gradle.kts'
       - 'build.gradle.kts'
@@ -126,6 +130,14 @@ jobs:
           VERSION_NAME: 'ci-smoke'
           ALLOW_PLACEHOLDER_GOOGLE_SERVICES: 'true'
         run: gradle :app:assembleRelease :app:bundleRelease -x :app:uploadCrashlyticsMappingFileRelease --stacktrace --no-daemon
+
+      - name: Build and verify complete website APK from signed on-demand AAB
+        shell: bash
+        env:
+          STORE_PASSWORD: smoke-password
+          KEY_ALIAS: smoke
+          KEY_PASSWORD: smoke-password
+        run: bash .github/scripts/build_full_website_apk.sh
 
       - name: Verify embedded source revision
         shell: bash

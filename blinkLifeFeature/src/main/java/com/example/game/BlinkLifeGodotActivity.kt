@@ -1,5 +1,7 @@
 package com.example.game
 
+import android.content.Context
+import com.google.android.play.core.splitcompat.SplitCompat
 import org.godotengine.godot.GodotActivity
 
 /**
@@ -9,6 +11,11 @@ import org.godotengine.godot.GodotActivity
  * game-join tickets. The full Supabase session JWT is never sent to Godot.
  */
 class BlinkLifeGodotActivity : GodotActivity() {
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        SplitCompat.installActivity(this)
+    }
+
     override fun getCommandLine(): List<String> {
         val ticket = intent.getStringExtra("blink_life_ticket").orEmpty()
         val host = intent.getStringExtra("blink_life_host").orEmpty()

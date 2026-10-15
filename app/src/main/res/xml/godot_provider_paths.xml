@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Godot's non-exported FileProvider has a manifest reference to this XML.
+         Restrict grants to temporary game-share cache rather than all BLINK data. -->
+    <cache-path name="blink_life_game_cache" path="blink-life-share/" />
+    <external-cache-path name="blink_life_external_cache" path="blink-life-share/" />
+</paths>
