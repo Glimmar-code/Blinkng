@@ -118,6 +118,7 @@ data class BlinkUiState(
     val isLoadingMoreMarket: Boolean = false,
     val marketHasMore: Boolean = true,
     val marketErrorMessage: String? = null,
+    val isRequestingMarketOrder: Boolean = false,
     val isPublishingMarketItem: Boolean = false,
     val isSellerActivationLoading: Boolean = false,
     val leaderboardUsers: List<LeaderboardUser> = emptyList(),
@@ -233,6 +234,12 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
     private var marketQuery: String = ""
     private var marketCategory: String? = null
     private var marketSort: String = "newest"
+    private var marketMinPrice: Long? = null
+    private var marketMaxPrice: Long? = null
+    // Reject late network responses after the user changes search, sort or price.
+    private var marketRequestVersion = 0L
+    private var marketNextOffset = 0
+    private val marketplaceSaveInFlight = mutableSetOf<String>()
     private val prefs = application.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val authPrefs = application.getSharedPreferences(AUTH_PREFS, Context.MODE_PRIVATE)
     // A Google SSV callback can arrive after the ad closes or the app is backgrounded.
@@ -5406,88 +5413,105 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
-    fun searchMarketItems(query: String, category: String?, sort: String) {
-        marketQuery = query.trim()
-        marketCategory = category?.takeUnless { it.equals("All Categories", true) }
+    fun searchMarketItems(
+        query: String,
+        category: String?,
+        sort: String,
+        minPrice: Long? = null,
+        maxPrice: Long? = null
+    ) {
+        val cleanQuery = query.trim()
+        val cleanCategory = category?.takeUnless { it.equals("All Categories", true) }
+        if (minPrice != null && maxPrice != null && minPrice > maxPrice) return
+        if (marketQuery == cleanQuery && marketCategory == cleanCategory &&
+            marketSort == sort && marketMinPrice == minPrice && marketMaxPrice == maxPrice &&
+            !_uiState.value.isMarketLoading && _uiState.value.marketErrorMessage == null) return
+        marketQuery = cleanQuery
+        marketCategory = cleanCategory
         marketSort = sort
-        if (!_uiState.value.isOnline) return
+        marketMinPrice = minPrice
+        marketMaxPrice = maxPrice
+        refreshMarketItems()
+    }
 
-        _uiState.value = _uiState.value.copy(isMarketLoading = true, marketErrorMessage = null)
+    fun refreshMarketItems() {
+        val generation = ++marketRequestVersion
+        if (!_uiState.value.isOnline) {
+            _uiState.value = _uiState.value.copy(
+                isMarketLoading = false,
+                isLoadingMoreMarket = false,
+                marketErrorMessage = "Offline: showing previously loaded Market listings."
+            )
+            return
+        }
+        val requestQuery = marketQuery
+        val requestCategory = marketCategory
+        val requestSort = marketSort
+        val requestMin = marketMinPrice
+        val requestMax = marketMaxPrice
+        _uiState.value = _uiState.value.copy(
+            isMarketLoading = true, isLoadingMoreMarket = false, marketErrorMessage = null
+        )
         viewModelScope.launch {
-            runCatching {
+            val result = runCatching {
                 supabaseService.fetchMarketItems(
                     limit = 40,
                     offset = 0,
-                    query = marketQuery,
-                    category = marketCategory,
-                    sort = marketSort
+                    query = requestQuery,
+                    category = requestCategory,
+                    sort = requestSort,
+                    minPrice = requestMin,
+                    maxPrice = requestMax
                 )
-            }.onSuccess { fresh ->
+            }
+            if (generation != marketRequestVersion) return@launch
+            result.onSuccess { fresh ->
+                marketNextOffset = fresh.size
                 _uiState.value = _uiState.value.copy(
                     marketItems = fresh,
                     isMarketLoading = false,
+                    isLoadingMoreMarket = false,
                     marketHasMore = fresh.size >= 40,
                     marketErrorMessage = null
                 )
                 persistExtendedCache()
             }.onFailure { error ->
-                Log.w(TAG, "Market search failed", error)
+                Log.w(TAG, "Market refresh failed", error)
                 _uiState.value = _uiState.value.copy(
                     isMarketLoading = false,
-                    marketErrorMessage = error.message ?: "Couldn't search Market."
+                    isLoadingMoreMarket = false,
+                    marketErrorMessage = error.message ?: "Couldn't refresh Market."
                 )
             }
-        }
-    }
-
-    fun refreshMarketItems() {
-        if (!_uiState.value.isOnline) {
-            showToast("You're offline. Showing your saved Market cache.")
-            return
-        }
-        _uiState.value = _uiState.value.copy(isMarketLoading = true, marketErrorMessage = null)
-        viewModelScope.launch {
-            runCatching {
-                supabaseService.fetchMarketItems(
-                    limit = 40,
-                    query = marketQuery,
-                    category = marketCategory,
-                    sort = marketSort
-                )
-            }
-                .onSuccess { fresh ->
-                    _uiState.value = _uiState.value.copy(
-                        marketItems = fresh,
-                        isMarketLoading = false,
-                        marketHasMore = fresh.size >= 40,
-                        marketErrorMessage = null
-                    )
-                    persistExtendedCache()
-                }
-                .onFailure { error ->
-                    Log.w(TAG, "Market refresh failed", error)
-                    _uiState.value = _uiState.value.copy(
-                        isMarketLoading = false,
-                        marketErrorMessage = error.message ?: "Couldn't refresh Market."
-                    )
-                }
         }
     }
 
     fun loadMoreMarketItems() {
         val current = _uiState.value
-        if (!current.isOnline || current.isLoadingMoreMarket || !current.marketHasMore) return
+        if (!current.isOnline || current.isMarketLoading || current.isLoadingMoreMarket || !current.marketHasMore) return
+        val generation = marketRequestVersion
+        val offset = marketNextOffset.coerceAtLeast(current.marketItems.size)
+        val requestQuery = marketQuery
+        val requestCategory = marketCategory
+        val requestSort = marketSort
+        val requestMin = marketMinPrice
+        val requestMax = marketMaxPrice
         _uiState.value = current.copy(isLoadingMoreMarket = true)
         viewModelScope.launch {
-            runCatching {
+            val result = runCatching {
                 supabaseService.fetchMarketItems(
                     limit = 40,
-                    offset = _uiState.value.marketItems.size,
-                    query = marketQuery,
-                    category = marketCategory,
-                    sort = marketSort
+                    offset = offset,
+                    query = requestQuery,
+                    category = requestCategory,
+                    sort = requestSort,
+                    minPrice = requestMin,
+                    maxPrice = requestMax
                 )
-            }.onSuccess { page ->
+            }
+            if (generation != marketRequestVersion) return@launch
+            result.onSuccess { page ->
+                marketNextOffset = offset + page.size
                 val latest = _uiState.value
                 _uiState.value = latest.copy(
                     marketItems = (latest.marketItems + page).distinctBy { it.id },
