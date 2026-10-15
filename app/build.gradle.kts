@@ -1,4 +1,5 @@
 import java.net.URI
+import org.gradle.api.tasks.Sync
 
 plugins {
   alias(libs.plugins.android.application)
@@ -126,6 +127,25 @@ if (releaseTaskRequested) {
   }
 }
 
+// Package the *actual* Godot source scene into the host APK. No placeholder
+// viewport: GodotActivity reads project.godot and scene files from assets.
+val stageBlinkLifeGodotAssets by tasks.registering(Sync::class) {
+  from(rootProject.file("game3d")) {
+    include("project.godot", "scenes/**", "scripts/**")
+  }
+  into(layout.buildDirectory.dir("generated/blinkLifeGodot/assets"))
+}
+
+tasks.matching {
+  (it.name.startsWith("merge") && it.name.endsWith("Assets")) ||
+    it.name.startsWith("lint") ||
+    it.name.contains("Lint")
+}.configureEach {
+  // Android Lint reads Android sourceSet assets as input too. Without this
+  // dependency Gradle 9 flags stageBlinkLifeGodotAssets implicit consumption.
+  dependsOn(stageBlinkLifeGodotAssets)
+}
+
 android {
   namespace = "com.example"
   compileSdk { version = release(37) }
@@ -174,6 +194,9 @@ android {
   compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
   buildFeatures { compose = true; buildConfig = true }
   sourceSets.getByName("main").kotlin.srcDir("../shared/src/main/kotlin")
+  // AGP's SourceSet API requires a concrete File, not a Provider<Directory>.
+  // merge*Assets explicitly depends on the staging Sync task above.
+  sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/blinkLifeGodot/assets").get().asFile)
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo { includeInApk = false; includeInBundle = true }
 }
@@ -190,6 +213,8 @@ dependencies {
   implementation(platform(libs.androidx.compose.bom))
   implementation(libs.androidx.activity.compose)
   implementation("androidx.fragment:fragment-ktx:1.8.5")
+  // Keep the Godot engine and game scripts at the same 4.3 version.
+  implementation("org.godotengine:godot:4.3.0.stable")
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.compose.material3)

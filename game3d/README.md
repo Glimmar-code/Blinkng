@@ -19,9 +19,9 @@ All shapes are generated from original procedural geometry. No licensed photos, 
 
 Open the `game3d/` folder as a project in **Godot 4 (Compatibility renderer)** and run `scenes/main.tscn`.
 
-**Packaging status:** The Godot project is not yet embedded in the BLINK Android APK or the Windows desktop release. The existing Games > BLINK LIFE preview in these apps currently runs the shared **software-projected 3D** proof-of-concept; it is not a substitute for the Godot free-roam runtime. Do not describe the shipping BLINK app as having the native 3D game until embedding and actual device testing have succeeded.
+**Packaging status (experimental PR #283):** Android now has a pinned Godot 4.3 AAR host and bundles this project's real 3D scene into APK assets at build time. The Games entry opens a dedicated landscape Godot activity in an isolated process. The Windows desktop installer build stages the same project with a pinned Godot 4.3 Windows runtime and launches it from Games; unbundled development builds retain a clearly labelled projected-3D fallback. **This code is under Testlab validation only; there is no verified production or physical-device native 3D release yet.** Check PR #283 CI and real Redmi/Windows installs before promoting to main.
 
-**Validation limitation:** Godot Editor / headless executable is not yet part of the repository's CI runners; these GDScript and scene files still require Godot import/runtime smoke testing.
+**Validation:** `.github/workflows/blink-life-3d-check.yml` installs Godot 4.3, imports the scene and runs runtime smoke tests under an OpenGL-compatible virtual display. GitHub CI does not replace installation on Android phones and Windows PCs.
 
 ## Required host-app integration
 
@@ -36,3 +36,27 @@ Open the `game3d/` folder as a project in **Godot 4 (Compatibility renderer)** a
 ## Economy and safety
 
 The native prototype's **GC** balance is fiction, exists only for its local session, and cannot be exchanged, sold, redeemed, transferred or withdrawn. It does not use real money, BLINK Coins or live BLINK wallets. Purchases are cosmetic demo interactions only. No gambling, cash-out, or pay-to-win mechanics.
+
+## Social multiplayer foundation (Testlab, not public release)
+
+The native Godot world now adds `scripts/social_world.gd`. Its LAN preview is strictly opt-in through **FRIENDS / WORLD → HOST LAN / JOIN LAN** while BLINK LIFE is already open. It has no persistent Internet matchmaking, production user identity, global chat, live GPS, or wallet.
+
+- Two devices on a **trusted private Wi-Fi** network may connect using a private IPv4 address; localhost is allowed for developer testing. The host runs a Godot ENet server on UDP port 24567. This is not safe to expose as a public game server; never port-forward or advertise the local IP publicly.
+- Players see each other's low-poly 3D avatars, nickname nameplates and interpolated movement in the shared city.
+- Each session participant receives a separate temporary demonstration home interior. Visiting another player's demo home requires request/owner approval, not just a shared address. Gameplay returns to the original city.
+- Players can create one simple fictional vehicle each; a visitor must request and be approved before becoming the single passenger. This is a prototype visual vehicle following the driver (not a production physics/racing system).
+- Short session chat, wave messages and local player mute are available. Social content has not undergone live public moderation; it must remain LAN preview until blocking, reporting, filtering and moderator tooling are integrated.
+- In-game coordinate sharing is **off by default**, toggled per player. These are fictional 3D positions, **not** device location services.
+- All usernames in this preview are editable unverified nicknames, not authenticated BLINK users. No fabricated online counts or fake friends. Disconnect and scene exit do not end the main BLINK app.
+- `ROADMAP_110.md` tracks all 110 requested professional features honestly, separating partially prototyped LAN behavior from unfinished production systems.
+
+**Before real online multiplayer:** Use a secure, server-authoritative Internet architecture with account-bound identities, interest management, validation, staging RLS, invites restricted by friendship and consent, accessible reporting/moderation, parental-age-appropriate protections, and server-owned inventories. Do not deploy this trust-based LAN session protocol as an Internet endpoint.
+
+## Launch and performance isolation (Testlab)
+
+- Normal BLINK usage (Feed, Reels, Market, Connect, Messages and other Games) **does not start the native Godot renderer or open its scene**.
+- Only a deliberate **Play BLINK LIFE 3D** tap uses `BlinkLifeLaunchGate` to start a separate Android process `:blink_life`; the UI launcher does not reference Godot classes. Windows also starts the native executable only on Play.
+- The secondary process bypasses the BLINK social app's Supabase, Firebase, notification-worker and other startup initialization. Exit is available inside the scene. A launch failure should leave the social app usable.
+- **Important tradeoff:** The Godot engine and scene are included in the downloaded APK/Windows installer, so they still increase **download size and installed storage** even for users who never play. Lazy *runtime* loading avoids paying the engine's normal memory/graphics/CPU cost before Play; it does not make APK downloads smaller. Optional on-demand content packs require a separately designed, verified delivery mechanism.
+- Godot first start may take longer as the native engine creates its graphics context and imports assets. Validate on Redmi-class physical hardware and verify memory returns to normal after exiting. The native Android/Windows integration is not production-verified.
+

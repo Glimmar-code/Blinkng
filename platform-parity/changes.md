@@ -6,6 +6,26 @@
 - Testlab is behind main in these files. Review promotion conflicts against main explicitly; never replace main's newer ad implementations wholesale.
 - Required before promotion: Android and Windows CI, then all three Google test placements on a physical device. A successful build does not prove live AdMob approval, inventory or reward delivery.
 
+## 2026-10-15 — Shared native Godot multiplayer social neighbourhood (Testlab only)
+
+- **Android and Windows:** The exact same `game3d/scripts/social_world.gd` is loaded inside Godot after launch, with opt-in trusted-LAN ENet host/join; real networked avatars and names, session chat, owner-approved home visits, driver-approved single passenger rides, virtual coordinate sharing OFF by default, and temporary cosmetic changes.
+- **App independence:** Neither platform preloads Godot during feed, messages, search, market or other social use. LAN network is disconnected by default even inside Godot. No real GPS/BLINK payments/auth claims.
+- **Scope:** This is not deployed Internet matchmaking, authenticated accounts or permanent economy. See `game3d/ROADMAP_110.md` for the 110-feature list with exact remaining work and test gates.
+- **QA:** Linux/Windows Godot import/scene smoke, Android APK build, desktop package check, actual Android↔Windows LAN testing, memory/battery tests and staged security review all required. No main promotion on draft PR #283.
+
+## 2026-10-15 — BLINK LIFE on-demand engine startup and host protection
+
+- **Android:** The Games card now calls a Godot-free `BlinkLifeLaunchGate` only when Play is tapped; rapid double taps are ignored and start failures are handled without crashing BLINK. The Godot activity stays in isolated `:blink_life` process; `BlinkApplication` skips normal Supabase/Firebase/worker startup there.
+- **Windows:** Its native Godot launcher is also invoked only when the Games button is clicked; no startup preload.
+- **Checks:** New static isolation contract verifies manifest, game startup, and desktop lazy launcher. Existing Godot smoke tests and Android/Windows builds still required. APK/installer size grows even if game is never played because binaries are pre-bundled; runtime memory/graphics cost is deferred to Play, not the installation size. Physical device tests still required before main merge.
+
+## 2026-10-15 — BLINK LIFE native Godot host (PR #283, Testlab validation)
+
+- **Shared game source:** Both Android and Windows use the *same* Godot 4.3 `game3d/` scene and GDScript gameplay. Money is fictional local Game Cash, not BLINK Coins, payments or real rewards.
+- **Android:** The Games button opens a separate landscape `GodotActivity` backed by the pinned Godot 4.3 AAR; the build copies the native scene into APK assets. `:blink_life` runs in a dedicated process to protect the Compose app and authentication lifecycle. CI inspects APK native binaries, assets, and activity registration.
+- **Windows:** The Games button launches the matching native Godot scene from installer-packaged resources; Windows CI obtains the pinned Godot 4.3 runtime binary and stages the common source project into resources before MSI/EXE packaging. Development builds without the packaged engine show a clearly labelled preview fallback.
+- **Status:** Staged only. Do not call this a shipping feature until Android/Windows CI, Android 15 physical launch/exit, Windows installer smoke checks, package-size and performance checks all pass. Main remains untouched. No Supabase migration or wallet changes.
+
 ## 2026-10-14 — BLINK menu navigation and accessibility upgrade (Testlab)
 
 - **Shared:** `MenuSearch` provides case-insensitive trimmed search for Android and Windows, covered by unit tests.

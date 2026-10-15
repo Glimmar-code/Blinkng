@@ -38,7 +38,7 @@ func _run() -> void:
         _assert_true(camera.current, "Perspective camera must be the active scene camera")
 
     var places: Array = world.get("places")
-    _assert_true(places.size() == 6, "Native world should have six destinations")
+    _assert_true(places.size() == 7, "World should include Homes and six original destinations")
 
     var initial_cash: int = int(world.get("game_cash"))
     _assert_true(initial_cash == 500, "Prototype Game Cash balance should start at 500")
@@ -70,6 +70,34 @@ func _run() -> void:
         _assert_true(int(world.get("game_cash")) == 370, "Market purchase should cost 250 fictional GC")
         world.call("_interact")
         _assert_true(int(world.get("game_cash")) == 370, "Purchasing a second time must not charge again")
+
+    # The game must remain offline until a player explicitly chooses Host/Join.
+    var social: Node = world.get_node_or_null("SocialWorld")
+    _assert_true(social != null, "Social LAN module must be embedded in native scene")
+    if social != null:
+        _assert_true(not bool(social.get("is_online")), "Social session must start offline")
+        _assert_true(social.get("people").is_empty(), "No fake players should appear offline")
+        _assert_true(social.has_method("open_social"), "Homes must open social controls")
+        _assert_true(social.has_method("_host_lan"), "LAN host flow must exist")
+        _assert_true(social.has_method("_join_lan"), "LAN join flow must exist")
+        _assert_true(social.has_method("_server_action"), "Host must authorize social actions")
+        _assert_true(social.has_method("_allowed_position"), "Server must validate player positions")
+        social.call("_host_lan")
+        _assert_true(bool(social.get("is_online")), "Trusted local multiplayer host should start")
+        var profiles: Dictionary = social.get("people")
+        _assert_true(profiles.size() == 1, "Hosting starts with exactly one real player")
+        social.call("_server_action", 1, "car", 0)
+        var vehicles: Dictionary = social.get("cars")
+        _assert_true(vehicles.has(1), "Host should be able to spawn a virtual car")
+        social.call("_server_action", 1, "location", 0)
+        profiles = social.get("people")
+        _assert_true(bool(profiles[1]["map_opt_in"]), "Virtual location sharing requires explicit opt in")
+        social.call("_server_action", 1, "home", 0)
+        _assert_true(player.global_position.x > 50.0, "My Home must teleport into a physical 3D interior")
+        social.call("_server_action", 1, "city", 0)
+        _assert_true(player.global_position.x < 20.0, "Return to City must restore gameplay")
+        social.call("_disconnect")
+        _assert_true(not bool(social.get("is_online")), "Disconnect must return to offline mode")
 
     # Give the 3D meshes and physics resources time to leave the scene tree
     # before stopping the headless runtime.

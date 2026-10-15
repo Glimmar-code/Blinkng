@@ -28,7 +28,8 @@ def diff_range() -> str | None:
     base_ref = os.getenv("GITHUB_BASE_REF", "").strip()
     if base_ref:
         subprocess.run(
-            ["git", "fetch", "origin", base_ref, "--depth=1"],
+            ["git", "fetch", "--no-tags", "origin",
+             f"+refs/heads/{base_ref}:refs/remotes/origin/{base_ref}"],
             check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

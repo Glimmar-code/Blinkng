@@ -1007,7 +1007,11 @@ fun GamesScreen(state: DesktopAppState) {
         coins = summary.second
     }
     if (blinkLifeOpen) {
-        BlinkLifePrototype(onExit = { blinkLifeOpen = false })
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Native 3D game is not installed in this desktop build; this is the preview.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            BlinkLifePrototype(onExit = { blinkLifeOpen = false })
+        }
         return
     }
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -1015,13 +1019,19 @@ fun GamesScreen(state: DesktopAppState) {
         item {
             Surface(shape = RoundedCornerShape(18.dp), tonalElevation = 1.dp) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("BLINK LIFE · TESTLAB", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("BLINK LIFE 3D · TESTLAB", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "Interactive 3D city preview with a rotatable camera, three jobs, fictional cash and room decoration. " +
-                            "No real-money transactions or BLINK Coin rewards.",
+                        "Launch the native Godot 3D city with free-roam movement and jobs. " +
+                            "Fictional Game Cash only; no real money or BLINK Coin rewards.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Button(onClick = { blinkLifeOpen = true }) { Text("Enter BLINK LIFE playground") }
+                    Text(
+                        "Native 3D is never preloaded; Godot starts only when you select Play.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Button(onClick = {
+                        if (!BlinkLifeNativeLauncher.launch()) blinkLifeOpen = true
+                    }) { Text("Play BLINK LIFE 3D") }
                 }
             }
         }
