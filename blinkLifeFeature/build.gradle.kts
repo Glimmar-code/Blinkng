@@ -32,5 +32,6 @@ android {
 
 dependencies {
     implementation(project(":app"))
+    implementation("com.google.android.play:feature-delivery:2.1.0")
     implementation("org.godotengine:godot:4.3.0.stable")
 }
