@@ -23,6 +23,11 @@ enabled = true
 
 # Keep Edge Function authentication behavior source-controlled so a fallback
 # deployment cannot silently change which endpoints require a JWT.
+# BLINK LIFE tickets require a signed-in account. The dedicated server and
+# Edge Function are separately provisioned after staging security validation.
+[functions.blink-life-session]
+verify_jwt = true
+
 [functions.game-rewards]
 verify_jwt = true
 
