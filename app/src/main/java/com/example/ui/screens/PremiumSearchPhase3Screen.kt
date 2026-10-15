@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -54,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.data.repository.PostRepository
+import com.example.data.repository.FollowStateStore
 import com.example.data.repository.SearchDiscoveryRepository
 import com.example.ui.components.PostCard
 import com.example.data.models.DiscoveryResult
@@ -89,6 +91,7 @@ internal fun PremiumSearchPhase3Host(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
     onSharePost: (String) -> Unit,
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit,
@@ -117,6 +120,7 @@ internal fun PremiumSearchPhase3Host(
             onLikePost = onLikePost,
             onCommentPost = onCommentPost,
             onBookmarkPost = onBookmarkPost,
+            onVotePoll = onVotePoll,
             onSharePost = onSharePost,
             onOptionsClick = onOptionsClick,
             onDeletePost = onDeletePost,
@@ -136,6 +140,7 @@ internal fun PremiumSearchPhase3Host(
         onLikePost = onLikePost,
         onCommentPost = onCommentPost,
         onBookmarkPost = onBookmarkPost,
+            onVotePoll = onVotePoll,
         onSharePost = onSharePost,
         onOptionsClick = onOptionsClick,
         onDeletePost = onDeletePost,
@@ -170,6 +175,7 @@ private fun Phase3SearchContent(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
     onSharePost: (String) -> Unit,
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit,
@@ -324,7 +330,7 @@ private fun Phase3SearchContent(
                         Text("Search Blink", fontSize = 27.sp, fontWeight = FontWeight.Black, color = colors.textPrimary)
                         Text(
                             if (state.imageSearchActive) "Private visual descriptor search · original image stays on device"
-                            else "Live universal discovery · account-synced history",
+                            else "Find people, posts, reels and more",
                             fontSize = 10.sp,
                             color = colors.textMuted,
                         )
@@ -334,7 +340,7 @@ private fun Phase3SearchContent(
                         color = colors.primaryBright.copy(alpha = 0.12f),
                         border = BorderStroke(1.dp, colors.primaryBright.copy(alpha = 0.24f)),
                     ) {
-                        Text("Premium", Modifier.padding(horizontal = 9.dp, vertical = 6.dp), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.primaryBright)
+                        Text("Premium", Modifier.padding(horizontal = 9.dp, vertical = 6.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.primaryBright)
                     }
                 }
 
@@ -433,7 +439,7 @@ private fun Phase3SearchContent(
                             else -> "Discover"
                         },
                         if (state.imageSearchActive) "${state.results.size} privacy-preserving image matches"
-                        else "${state.results.size} loaded · ${state.selectedType?.label ?: "all categories"} · cursor pagination",
+                        else "${state.results.size} loaded · ${state.selectedType?.label ?: "all categories"} · more results available",
                     )
                 }
 
@@ -476,6 +482,7 @@ private fun Phase3SearchContent(
                                 onLikePost = onLikePost,
                                 onCommentPost = onCommentPost,
                                 onBookmarkPost = onBookmarkPost,
+            onVotePoll = onVotePoll,
                                 onSharePost = onSharePost,
                                 onOptionsClick = onOptionsClick,
                                 onDeletePost = onDeletePost,
@@ -561,7 +568,7 @@ private fun Phase3SearchContent(
                         Spacer(Modifier.width(7.dp))
                         Text(if (state.latitude == null) "Use approximate location" else "Refresh approximate location")
                     }
-                    Text("Location is used ephemerally for this search and is not written to your profile.", Modifier.padding(top = 6.dp), fontSize = 9.sp, color = colors.textMuted)
+                    Text("Location is used ephemerally for this search and is not written to your profile.", Modifier.padding(top = 6.dp), fontSize = 10.sp, color = colors.textMuted)
                 }
                 Spacer(Modifier.height(22.dp))
             }
@@ -639,6 +646,7 @@ private fun Phase3SearchField(
     onClearVisual: () -> Unit,
 ) {
     val colors = BlinkThemeTokens.colors
+    val keyboardController = LocalSoftwareKeyboardController.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(19.dp),
@@ -659,7 +667,7 @@ private fun Phase3SearchField(
                         singleLine = true,
                         textStyle = TextStyle(fontSize = 13.sp, color = colors.textPrimary, fontWeight = FontWeight.Medium),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = {}),
+                        keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
                     )
                 }
             }
@@ -671,7 +679,7 @@ private fun Phase3SearchField(
                 IconButton(onFilters, Modifier.size(33.dp)) { Icon(Icons.Rounded.FilterList, "Filters", Modifier.size(17.dp), tint = if (activeFilterCount > 0) colors.primaryBright else colors.textSecondary) }
                 if (activeFilterCount > 0) {
                     Surface(Modifier.align(Alignment.TopEnd).size(14.dp), CircleShape, colors.primaryBright) {
-                        Box(contentAlignment = Alignment.Center) { Text(activeFilterCount.toString(), fontSize = 7.sp, fontWeight = FontWeight.Black, color = colors.background) }
+                        Box(contentAlignment = Alignment.Center) { Text(activeFilterCount.toString(), fontSize = 10.sp, fontWeight = FontWeight.Black, color = colors.background) }
                     }
                 }
             }
@@ -708,7 +716,7 @@ private fun Phase3FilterChip(label: String, icon: ImageVector, active: Boolean, 
         Row(Modifier.padding(horizontal = 9.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, Modifier.size(12.dp), tint = if (active) colors.primaryBright else colors.textMuted)
             Spacer(Modifier.width(4.dp))
-            Text(label, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = if (active) colors.primaryBright else colors.textSecondary)
+            Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = if (active) colors.primaryBright else colors.textSecondary)
         }
     }
 }
@@ -718,7 +726,7 @@ private fun SearchSectionTitle(title: String, subtitle: String) {
     val colors = BlinkThemeTokens.colors
     Column(Modifier.fillMaxWidth().padding(top = 5.dp)) {
         Text(title, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = colors.textPrimary)
-        Text(subtitle, fontSize = 9.sp, color = colors.textMuted)
+        Text(subtitle, fontSize = 10.sp, color = colors.textMuted)
     }
 }
 
@@ -742,11 +750,14 @@ private fun SearchRealFeedCard(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
     onSharePost: (String) -> Unit,
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit,
 ) {
     val colors = BlinkThemeTokens.colors
+    val followingIds by FollowStateStore.followingIds.collectAsState()
+    val followScope = rememberCoroutineScope()
     var loadedPost by remember(result.id) { mutableStateOf<FeedPost?>(null) }
     var isLoading by remember(result.id) { mutableStateOf(localPost == null) }
     var failed by remember(result.id) { mutableStateOf(false) }
@@ -774,9 +785,14 @@ private fun SearchRealFeedCard(
                 onLike = { onLikePost(post.id) },
                 onComment = { onCommentPost(post.id) },
                 onBookmark = { onBookmarkPost(post.id) },
+                        onVotePoll = onVotePoll,
                 onShare = { onSharePost(post.id) },
                 onOptionsClick = { onOptionsClick(post) },
                 onProfileClick = onProfileClick,
+                authorProfileId = post.authorProfileId,
+                isFollowingAuthor = post.authorProfileId in followingIds,
+                onFollowAuthor = { id -> followScope.launch { FollowStateStore.setFollowing(id, true) } },
+                onUnfollowAuthor = { id -> followScope.launch { FollowStateStore.setFollowing(id, false) } },
                 isAuthor = post.author.equals(currentUsername, ignoreCase = true) ||
                     post.authorUsername.equals(currentUsername, ignoreCase = true),
                 onDelete = { onDeletePost(post.id) },
@@ -837,7 +853,7 @@ private fun DiscoveryCard(result: DiscoveryResult, autoplay: Boolean, onClick: (
                             Icon(Icons.Rounded.Verified, "Verified", Modifier.size(14.dp), tint = colors.primaryBright)
                         }
                     }
-                    if (result.subtitle.isNotBlank()) Text(result.subtitle, fontSize = 9.sp, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (result.subtitle.isNotBlank()) Text(result.subtitle, fontSize = 10.sp, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 SearchTypeBadge(result.type)
             }
@@ -886,7 +902,7 @@ private fun SearchResultAvatar(result: DiscoveryResult) {
 private fun SearchTypeBadge(type: DiscoveryResultType) {
     val colors = BlinkThemeTokens.colors
     Surface(shape = RoundedCornerShape(9.dp), color = colors.surfaceHighest, border = BorderStroke(1.dp, colors.borderSoft)) {
-        Text(type.label, Modifier.padding(horizontal = 7.dp, vertical = 5.dp), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = colors.textMuted)
+        Text(type.label, Modifier.padding(horizontal = 7.dp, vertical = 5.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.textMuted)
     }
 }
 
@@ -897,7 +913,7 @@ private fun SearchMetric(label: String, icon: ImageVector) {
         Row(Modifier.padding(horizontal = 7.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, Modifier.size(10.dp), tint = colors.primaryBright)
             Spacer(Modifier.width(4.dp))
-            Text(label, fontSize = 8.sp, color = colors.textSecondary, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(label, fontSize = 10.sp, color = colors.textSecondary, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
@@ -947,7 +963,7 @@ private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onToggl
     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
-            Text(subtitle, fontSize = 9.sp, color = colors.textMuted)
+            Text(subtitle, fontSize = 10.sp, color = colors.textMuted)
         }
         Spacer(Modifier.width(10.dp))
         Switch(checked = checked, onCheckedChange = onToggle)
@@ -1013,7 +1029,7 @@ private fun SearchHeroCard(result: DiscoveryResult) {
                 SearchResultAvatar(result)
                 Spacer(Modifier.height(9.dp))
                 Text(result.title, fontSize = 17.sp, fontWeight = FontWeight.Black, color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(result.type.label, fontSize = 9.sp, color = colors.primaryBright)
+                Text(result.type.label, fontSize = 10.sp, color = colors.primaryBright)
             }
         }
     }
