@@ -1656,8 +1656,10 @@ fun MainAppContent(
                     isDark = uiState.isDarkMode,
                     currentUserId = uiState.myProfile.id,
                     isProfileRefreshing = profileKey in uiState.profileSurfaceLoadingIds,
+                    onFollowChanged = { viewModel.refreshViewedProfile() },
                     onRefreshProfile = {
                         viewModel.refreshProgressState()
+                        viewModel.refreshViewedProfile()
                         viewModel.loadProfileSurfaceData(currentProfileToDisplay, force = true)
                     }
                 )
