@@ -912,3 +912,12 @@ Validation: Android unit tests, lint, release compilation, runtime smoke and lig
 - Promoted profiles remain compact and clearly labeled; promoted posts and reels display full cards with the same linked interactions and dedicated Open actions across both Phase 2 fallback and Phase 3 discovery.
 - Offline empty-feed states accurately describe missing cache and offer a retry rather than inviting an unrelated post.
 - Shared pure `searchResultsSummary` helper fixes misleading pagination language with unit tests.
+
+## 2026-10-15 — BLINK Market reliability staging (PR #296)
+
+- **Shared/backend contract:** Android and Windows use the same Supabase market listings, deterministic price/date/ID sorting, price-range constraints, category searches, and real seller IDs. No simulated listings or separate Windows backend.
+- **Android:** Market search request generation guards and pagination offsets, server price filters, staged filter application, safe wishlist reconciliation, request-in-flight protection, seller ownership checks, upload cleanup and image controls.
+- **Windows:** Marketplace query, category and min/max price filters, sorting, refresh and explicit network/empty states using the same real Supabase records.
+- **Platform-specific exception:** Android product photo upload cleanup and external WhatsApp deep-link validation are Android adapters. Windows currently exposes a simpler listing creation UI; its existing form must not be treated as an equivalent verified seller checkout and remains a known parity follow-up.
+- **Release blocker:** The tracked marketplace hardening migration and server RPCs are absent from live Blink Supabase, so database updates must be staged and tested before any production promotion. This PR remains draft pending complete Android, Windows, backend and real-device checks.
+
