@@ -178,8 +178,6 @@ private enum class ConnectCategory(
 }
 
 
-private val PagerHeight = 620.dp
-
 @Composable
 fun ConnectHubPremiumPanel(
     current: UserProfile?,
@@ -206,6 +204,8 @@ fun ConnectHubPremiumPanel(
     var showUnifiedInbox by rememberSaveable(current?.id) { mutableStateOf(false) }
     val followingIds by FollowStateStore.followingIds.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+    val pagerHeight = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - 225)
+        .coerceIn(420, 760).dp
     val matchRepository = remember { ConnectHubRepository() }
     val categoryCatalogRepository = remember { ConnectCategoryCatalogRepository() }
     var directoryCategories by remember { mutableStateOf(ConnectCategoryCatalogRepository.defaultCategories()) }
@@ -452,7 +452,7 @@ fun ConnectHubPremiumPanel(
             state = connectSurfacePager,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(PagerHeight),
+                .height(pagerHeight),
             pageSpacing = 12.dp
         ) { page ->
             if (page == 0) {

@@ -560,6 +560,33 @@ class BlinkViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Open an authenticated Search result in the normal full post or reel viewer. */
+    fun openSearchPost(post: FeedPost) {
+        val state = _uiState.value
+        if (post.isReel) {
+            _uiState.value = state.copy(
+                selectedTab = MainTab.HOME,
+                feedSubTab = 1,
+                routedReelId = post.id,
+                reels = listOf(post) + state.reels.filterNot { it.id == post.id },
+                deepLinkedPost = null,
+                activeCommentsPostId = null,
+                activePostOptionsPost = null
+            )
+        } else {
+            _uiState.value = state.copy(
+                selectedTab = MainTab.HOME,
+                feedSubTab = 0,
+                routedReelId = null,
+                posts = listOf(post) + state.posts.filterNot { it.id == post.id },
+                deepLinkedPost = post,
+                activeCommentsPostId = null,
+                activePostOptionsPost = null
+            )
+        }
+        persistCurrentFeed()
+    }
+
     fun closeDeepLinkedPost() {
         _uiState.value = _uiState.value.copy(deepLinkedPost = null)
     }

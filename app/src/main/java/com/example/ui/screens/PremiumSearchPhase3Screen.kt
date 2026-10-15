@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -53,7 +54,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.example.data.repository.PostRepository
+import com.example.data.repository.FollowStateStore
 import com.example.data.repository.SearchDiscoveryRepository
+import com.example.ui.components.PostCard
 import com.example.data.models.DiscoveryResult
 import com.example.data.models.DiscoveryResultType
 import com.example.data.models.DiscoverySort
@@ -87,6 +91,7 @@ internal fun PremiumSearchPhase3Host(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
     onSharePost: (String) -> Unit,
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit,
@@ -115,6 +120,7 @@ internal fun PremiumSearchPhase3Host(
             onLikePost = onLikePost,
             onCommentPost = onCommentPost,
             onBookmarkPost = onBookmarkPost,
+            onVotePoll = onVotePoll,
             onSharePost = onSharePost,
             onOptionsClick = onOptionsClick,
             onDeletePost = onDeletePost,
@@ -127,8 +133,17 @@ internal fun PremiumSearchPhase3Host(
     Phase3SearchContent(
         localPosts = (posts + serverPosts).distinctBy { it.id },
         viewModel = searchVm,
+        currentUsername = currentUsername,
+        isDark = isDark,
         onProfileClick = onProfileClick,
         onPostClick = onPostClick,
+        onLikePost = onLikePost,
+        onCommentPost = onCommentPost,
+        onBookmarkPost = onBookmarkPost,
+            onVotePoll = onVotePoll,
+        onSharePost = onSharePost,
+        onOptionsClick = onOptionsClick,
+        onDeletePost = onDeletePost,
         onBack = onBackToHome,
     )
 }
@@ -153,8 +168,17 @@ private data class Phase3Category(val type: DiscoveryResultType?, val label: Str
 private fun Phase3SearchContent(
     localPosts: List<FeedPost>,
     viewModel: SearchDiscoveryViewModel,
+    currentUsername: String,
+    isDark: Boolean,
     onProfileClick: (String) -> Unit,
     onPostClick: (FeedPost) -> Unit,
+    onLikePost: (String) -> Unit,
+    onCommentPost: (String) -> Unit,
+    onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
+    onSharePost: (String) -> Unit,
+    onOptionsClick: (FeedPost) -> Unit,
+    onDeletePost: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -162,6 +186,7 @@ private fun Phase3SearchContent(
     val context = LocalContext.current
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val postRepository = remember { PostRepository() }
 
     var showFilters by remember { mutableStateOf(false) }
     var showSort by remember { mutableStateOf(false) }
@@ -282,7 +307,11 @@ private fun Phase3SearchContent(
             when (result.type) {
                 DiscoveryResultType.PROFILE -> if (result.username.isNotBlank()) onProfileClick(result.username)
                 DiscoveryResultType.POST, DiscoveryResultType.REEL -> {
-                    onPostClick(localPosts.firstOrNull { it.id == result.id } ?: result.asFeedPost())
+                    // Navigation must use a real, permission-checked post. A search
+                    // index snippet is not a trustworthy substitute for FeedPost.
+                    val post = localPosts.firstOrNull { it.id == result.id }
+                        ?: runCatching { postRepository.fetchPostById(result.id) }.getOrNull()
+                    if (post != null) onPostClick(post) else detailResult = result
                 }
                 else -> detailResult = result
             }
@@ -301,7 +330,7 @@ private fun Phase3SearchContent(
                         Text("Search Blink", fontSize = 27.sp, fontWeight = FontWeight.Black, color = colors.textPrimary)
                         Text(
                             if (state.imageSearchActive) "Private visual descriptor search · original image stays on device"
-                            else "Live universal discovery · account-synced history",
+                            else "Find people, posts, reels and more",
                             fontSize = 10.sp,
                             color = colors.textMuted,
                         )
@@ -311,7 +340,7 @@ private fun Phase3SearchContent(
                         color = colors.primaryBright.copy(alpha = 0.12f),
                         border = BorderStroke(1.dp, colors.primaryBright.copy(alpha = 0.24f)),
                     ) {
-                        Text("Premium", Modifier.padding(horizontal = 9.dp, vertical = 6.dp), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = colors.primaryBright)
+                        Text("Discover", Modifier.padding(horizontal = 9.dp, vertical = 6.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.primaryBright)
                     }
                 }
 
@@ -398,6 +427,25 @@ private fun Phase3SearchContent(
                     }
                 }
 
+                if (state.query.isBlank() && !state.imageSearchActive && !state.savedOnly && !state.followingOnly) {
+                    item(key = "promoted-discovery") {
+                        BlinkPromotedDiscoveryRail(
+                            surface = "SEARCH",
+                            currentUsername = currentUsername,
+                            isDark = isDark,
+                            onProfileClick = onProfileClick,
+                            onPostClick = onPostClick,
+                            onLikePost = onLikePost,
+                            onCommentPost = onCommentPost,
+                            onBookmarkPost = onBookmarkPost,
+                            onVotePoll = onVotePoll,
+                            onSharePost = onSharePost,
+                            onOptionsClick = onOptionsClick,
+                            onDeletePost = onDeletePost,
+                        )
+                    }
+                }
+
                 item(key = "results-title") {
                     SearchSectionTitle(
                         when {
@@ -410,7 +458,7 @@ private fun Phase3SearchContent(
                             else -> "Discover"
                         },
                         if (state.imageSearchActive) "${state.results.size} privacy-preserving image matches"
-                        else "${state.results.size} loaded · ${state.selectedType?.label ?: "all categories"} · cursor pagination",
+                        else searchResultsSummary(state.results.size, state.selectedType?.label, state.hasMore),
                     )
                 }
 
@@ -438,11 +486,33 @@ private fun Phase3SearchContent(
                         key = { _, item -> "result-${item.type.backendValue}-${item.id}" },
                     ) { _, result ->
                         val key = "result-${result.type.backendValue}-${result.id}"
-                        DiscoveryCard(
-                            result = result,
-                            autoplay = state.autoplayPreviews && state.capabilities.autoplayPreviews && visibleResultKeys.contains(key),
-                            onClick = { openResult(result) },
-                        )
+                        val autoplay = state.autoplayPreviews &&
+                            state.capabilities.autoplayPreviews && visibleResultKeys.contains(key)
+                        if (result.type == DiscoveryResultType.POST || result.type == DiscoveryResultType.REEL) {
+                            SearchRealFeedCard(
+                                result = result,
+                                localPost = localPosts.firstOrNull { it.id == result.id },
+                                repository = postRepository,
+                                currentUsername = currentUsername,
+                                isDark = isDark,
+                                autoplay = autoplay,
+                                onOpenPost = onPostClick,
+                                onProfileClick = onProfileClick,
+                                onLikePost = onLikePost,
+                                onCommentPost = onCommentPost,
+                                onBookmarkPost = onBookmarkPost,
+            onVotePoll = onVotePoll,
+                                onSharePost = onSharePost,
+                                onOptionsClick = onOptionsClick,
+                                onDeletePost = onDeletePost,
+                            )
+                        } else {
+                            DiscoveryCard(
+                                result = result,
+                                autoplay = autoplay,
+                                onClick = { openResult(result) },
+                            )
+                        }
                     }
                 }
                 if (state.isLoadingMore) {
@@ -517,7 +587,7 @@ private fun Phase3SearchContent(
                         Spacer(Modifier.width(7.dp))
                         Text(if (state.latitude == null) "Use approximate location" else "Refresh approximate location")
                     }
-                    Text("Location is used ephemerally for this search and is not written to your profile.", Modifier.padding(top = 6.dp), fontSize = 9.sp, color = colors.textMuted)
+                    Text("Location is used ephemerally for this search and is not written to your profile.", Modifier.padding(top = 6.dp), fontSize = 10.sp, color = colors.textMuted)
                 }
                 Spacer(Modifier.height(22.dp))
             }
@@ -595,6 +665,7 @@ private fun Phase3SearchField(
     onClearVisual: () -> Unit,
 ) {
     val colors = BlinkThemeTokens.colors
+    val keyboardController = LocalSoftwareKeyboardController.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(19.dp),
@@ -615,7 +686,7 @@ private fun Phase3SearchField(
                         singleLine = true,
                         textStyle = TextStyle(fontSize = 13.sp, color = colors.textPrimary, fontWeight = FontWeight.Medium),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = {}),
+                        keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
                     )
                 }
             }
@@ -627,7 +698,7 @@ private fun Phase3SearchField(
                 IconButton(onFilters, Modifier.size(33.dp)) { Icon(Icons.Rounded.FilterList, "Filters", Modifier.size(17.dp), tint = if (activeFilterCount > 0) colors.primaryBright else colors.textSecondary) }
                 if (activeFilterCount > 0) {
                     Surface(Modifier.align(Alignment.TopEnd).size(14.dp), CircleShape, colors.primaryBright) {
-                        Box(contentAlignment = Alignment.Center) { Text(activeFilterCount.toString(), fontSize = 7.sp, fontWeight = FontWeight.Black, color = colors.background) }
+                        Box(contentAlignment = Alignment.Center) { Text(activeFilterCount.toString(), fontSize = 10.sp, fontWeight = FontWeight.Black, color = colors.background) }
                     }
                 }
             }
@@ -664,7 +735,7 @@ private fun Phase3FilterChip(label: String, icon: ImageVector, active: Boolean, 
         Row(Modifier.padding(horizontal = 9.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, Modifier.size(12.dp), tint = if (active) colors.primaryBright else colors.textMuted)
             Spacer(Modifier.width(4.dp))
-            Text(label, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = if (active) colors.primaryBright else colors.textSecondary)
+            Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = if (active) colors.primaryBright else colors.textSecondary)
         }
     }
 }
@@ -674,7 +745,108 @@ private fun SearchSectionTitle(title: String, subtitle: String) {
     val colors = BlinkThemeTokens.colors
     Column(Modifier.fillMaxWidth().padding(top = 5.dp)) {
         Text(title, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = colors.textPrimary)
-        Text(subtitle, fontSize = 9.sp, color = colors.textMuted)
+        Text(subtitle, fontSize = 12.sp, color = colors.textMuted)
+    }
+}
+
+/**
+ * Search uses the exact same post component as Home and Profile. Search RPC rows
+ * are discovery snippets, not complete FeedPost records: hydrate missing posts by ID
+ * using the normal authenticated post repository and never fabricate an author/media
+ * card from an index snippet. LazyColumn only composes visible rows, so lookups are
+ * scoped to visible results instead of downloading an entire discovery page.
+ */
+@Composable
+private fun SearchRealFeedCard(
+    result: DiscoveryResult,
+    localPost: FeedPost?,
+    repository: PostRepository,
+    currentUsername: String,
+    isDark: Boolean,
+    autoplay: Boolean,
+    onOpenPost: (FeedPost) -> Unit,
+    onProfileClick: (String) -> Unit,
+    onLikePost: (String) -> Unit,
+    onCommentPost: (String) -> Unit,
+    onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
+    onSharePost: (String) -> Unit,
+    onOptionsClick: (FeedPost) -> Unit,
+    onDeletePost: (String) -> Unit,
+) {
+    val colors = BlinkThemeTokens.colors
+    val followingIds by FollowStateStore.followingIds.collectAsState()
+    val followScope = rememberCoroutineScope()
+    var loadedPost by remember(result.id) { mutableStateOf<FeedPost?>(null) }
+    var isLoading by remember(result.id) { mutableStateOf(localPost == null) }
+    var failed by remember(result.id) { mutableStateOf(false) }
+    var retryAttempt by remember(result.id) { mutableIntStateOf(0) }
+
+    LaunchedEffect(result.id, localPost, retryAttempt) {
+        if (localPost != null) {
+            isLoading = false
+            failed = false
+        } else {
+            isLoading = true
+            failed = false
+            loadedPost = runCatching { repository.fetchPostById(result.id) }.getOrNull()
+            failed = loadedPost == null
+            isLoading = false
+        }
+    }
+
+    val post = localPost ?: loadedPost
+    when {
+        post != null -> Column(Modifier.fillMaxWidth()) {
+            PostCard(
+                post = post,
+                isDark = isDark,
+                onLike = { onLikePost(post.id) },
+                onComment = { onCommentPost(post.id) },
+                onBookmark = { onBookmarkPost(post.id) },
+                        onVotePoll = onVotePoll,
+                onShare = { onSharePost(post.id) },
+                onOptionsClick = { onOptionsClick(post) },
+                onProfileClick = onProfileClick,
+                authorProfileId = post.authorProfileId,
+                isFollowingAuthor = post.authorProfileId in followingIds,
+                onFollowAuthor = { id -> followScope.launch { FollowStateStore.setFollowing(id, true) } },
+                onUnfollowAuthor = { id -> followScope.launch { FollowStateStore.setFollowing(id, false) } },
+                isAuthor = post.author.equals(currentUsername, ignoreCase = true) ||
+                    post.authorUsername.equals(currentUsername, ignoreCase = true),
+                onDelete = { onDeletePost(post.id) },
+                trackExposure = false,
+                xFeedStyle = true,
+            )
+            if (post.isReel && !post.videoUrl.isNullOrBlank()) {
+                SearchMutedAutoplayPreview(
+                    post.videoUrl,
+                    autoplay,
+                    result.matchedMomentMs,
+                )
+            }
+            TextButton(onClick = { onOpenPost(post) }, modifier = Modifier.padding(start = 8.dp)) {
+                Text(if (post.isReel) "Open reel" else "Open post")
+            }
+        }
+        isLoading -> SearchSkeleton()
+        failed -> Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(15.dp),
+            color = colors.surfaceElevated,
+            border = BorderStroke(1.dp, colors.borderSoft),
+        ) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Post unavailable or you don't have access to it.",
+                    modifier = Modifier.weight(1f),
+                    fontSize = 11.sp,
+                    color = colors.textSecondary,
+                )
+                TextButton(onClick = { retryAttempt++ }) { Text("Retry") }
+            }
+        }
+        else -> SearchSkeleton()
     }
 }
 
@@ -700,7 +872,7 @@ private fun DiscoveryCard(result: DiscoveryResult, autoplay: Boolean, onClick: (
                             Icon(Icons.Rounded.Verified, "Verified", Modifier.size(14.dp), tint = colors.primaryBright)
                         }
                     }
-                    if (result.subtitle.isNotBlank()) Text(result.subtitle, fontSize = 9.sp, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (result.subtitle.isNotBlank()) Text(result.subtitle, fontSize = 10.sp, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 SearchTypeBadge(result.type)
             }
@@ -749,7 +921,7 @@ private fun SearchResultAvatar(result: DiscoveryResult) {
 private fun SearchTypeBadge(type: DiscoveryResultType) {
     val colors = BlinkThemeTokens.colors
     Surface(shape = RoundedCornerShape(9.dp), color = colors.surfaceHighest, border = BorderStroke(1.dp, colors.borderSoft)) {
-        Text(type.label, Modifier.padding(horizontal = 7.dp, vertical = 5.dp), fontSize = 8.sp, fontWeight = FontWeight.Bold, color = colors.textMuted)
+        Text(type.label, Modifier.padding(horizontal = 7.dp, vertical = 5.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.textMuted)
     }
 }
 
@@ -760,7 +932,7 @@ private fun SearchMetric(label: String, icon: ImageVector) {
         Row(Modifier.padding(horizontal = 7.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, Modifier.size(10.dp), tint = colors.primaryBright)
             Spacer(Modifier.width(4.dp))
-            Text(label, fontSize = 8.sp, color = colors.textSecondary, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(label, fontSize = 10.sp, color = colors.textSecondary, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
     }
 }
@@ -810,7 +982,7 @@ private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onToggl
     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
-            Text(subtitle, fontSize = 9.sp, color = colors.textMuted)
+            Text(subtitle, fontSize = 12.sp, color = colors.textMuted)
         }
         Spacer(Modifier.width(10.dp))
         Switch(checked = checked, onCheckedChange = onToggle)
@@ -876,7 +1048,7 @@ private fun SearchHeroCard(result: DiscoveryResult) {
                 SearchResultAvatar(result)
                 Spacer(Modifier.height(9.dp))
                 Text(result.title, fontSize = 17.sp, fontWeight = FontWeight.Black, color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(result.type.label, fontSize = 9.sp, color = colors.primaryBright)
+                Text(result.type.label, fontSize = 10.sp, color = colors.primaryBright)
             }
         }
     }

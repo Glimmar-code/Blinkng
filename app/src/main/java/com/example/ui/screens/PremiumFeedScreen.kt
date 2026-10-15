@@ -1532,7 +1532,8 @@ private fun PremiumHomeFeed(
                                                 isFollowingLane = laneIndex == 1,
                                                 offlineNoCache = false,
                                                 onCreatePost = onOpenCreatePost,
-                                                onClearFilter = { filter = PremiumFeedFilter.ALL }
+                                                onClearFilter = { filter = PremiumFeedFilter.ALL },
+                                                onRetry = onRetry
                                             )
                                         }
                                     }
@@ -1551,7 +1552,8 @@ private fun PremiumHomeFeed(
                                                 isFollowingLane = false,
                                                 offlineNoCache = !isOnline && stableRankedPosts.isEmpty() && offlineEmptyConfirmed,
                                                 onCreatePost = onOpenCreatePost,
-                                                onClearFilter = { filter = PremiumFeedFilter.ALL }
+                                                onClearFilter = { filter = PremiumFeedFilter.ALL },
+                                                onRetry = onRetry
                                             )
                                         }
                                     }
@@ -2115,7 +2117,8 @@ private fun PremiumEmptyFeed(
     isFollowingLane: Boolean,
     offlineNoCache: Boolean = false,
     onCreatePost: () -> Unit,
-    onClearFilter: () -> Unit
+    onClearFilter: () -> Unit,
+    onRetry: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -2136,7 +2139,7 @@ private fun PremiumEmptyFeed(
             text = when {
                 isFiltered -> "No posts match this filter"
                 isFollowingLane -> "No posts from people you follow yet"
-                else -> if (offlineNoCache) "Your feed is ready for something new" else "No posts to show right now"
+                else -> if (offlineNoCache) "No saved posts available offline" else "No posts to show right now"
             },
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleMedium
@@ -2146,15 +2149,23 @@ private fun PremiumEmptyFeed(
             text = when {
                 isFiltered -> "Choose another feed filter to keep browsing."
                 isFollowingLane -> "Follow people from Discover or profiles; their ranked posts will appear here."
-                else -> if (offlineNoCache) "You're offline and there are no saved posts on this device." else "Pull to refresh for the latest posts."
+                else -> if (offlineNoCache) "Connect to the internet and refresh to load posts." else "Pull to refresh for the latest posts."
             },
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium
         )
         Spacer(Modifier.height(14.dp))
         if (!isFollowingLane || isFiltered) {
-            TextButton(onClick = if (isFiltered) onClearFilter else onCreatePost) {
-                Text(if (isFiltered) "Show all posts" else "Create Post", color = MaterialTheme.colorScheme.primary)
+            TextButton(onClick = when {
+                isFiltered -> onClearFilter
+                offlineNoCache -> onRetry
+                else -> onCreatePost
+            }) {
+                Text(when {
+                    isFiltered -> "Show all posts"
+                    offlineNoCache -> "Try again"
+                    else -> "Create Post"
+                }, color = MaterialTheme.colorScheme.primary)
             }
         }
     }

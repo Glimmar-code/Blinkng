@@ -992,10 +992,11 @@ fun MainAppContent(
                         isSearching = uiState.isDiscoverSearching,
                         onSearchQueryChange = { viewModel.searchDiscover(it) },
                         onProfileClick = { viewModel.openProfile(it) },
-                        onPostClick = { viewModel.openCommentsForPost(it.id) },
+                        onPostClick = { viewModel.openSearchPost(it) },
                         onLikePost = { viewModel.togglePostLike(it) },
                         onCommentPost = { viewModel.openCommentsForPost(it) },
                         onBookmarkPost = { viewModel.toggleBookmark(it) },
+                        onVotePoll = { postId, optionId -> viewModel.votePoll(postId, optionId) },
                         onSharePost = { sharePostOrReel(it) },
                         onOptionsClick = { viewModel.openPostOptions(it) },
                         onDeletePost = { viewModel.deletePost(it) },
@@ -1326,6 +1327,8 @@ fun MainAppContent(
                             onLikePost = { viewModel.togglePostLike(it) },
                             onCommentPost = { viewModel.openCommentsForPost(it) },
                             onBookmarkPost = { viewModel.toggleBookmark(it) },
+                            onVotePoll = { postId, optionId -> viewModel.votePoll(postId, optionId) },
+                            onOpenPost = { post -> dismissUtility { viewModel.openSearchPost(post) } },
                             onProfileClick = { username ->
                                 dismissUtility { viewModel.openProfile(username) }
                             },

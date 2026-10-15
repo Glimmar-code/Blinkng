@@ -63,6 +63,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
+import com.blinkng.desktop.sharing.DesktopShareLinkManager
 import com.blinkng.desktop.data.DesktopConnectListing
 import com.blinkng.desktop.data.DesktopFeedPost
 import com.blinkng.desktop.data.DesktopMarketItem
@@ -105,12 +106,23 @@ fun PremiumSearchScreen(state: DesktopAppState) {
     var marketItems by remember { mutableStateOf(emptyList<DesktopMarketItem>()) }
     var connectListings by remember { mutableStateOf(emptyList<DesktopConnectListing>()) }
     var discoveryLoading by remember { mutableStateOf(true) }
+    var discoveryError by remember { mutableStateOf<String?>(null) }
+    var retryGeneration by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(retryGeneration) {
         discoveryLoading = true
-        discoveryPosts = runCatching { state.client.fetchFeed() }.getOrDefault(emptyList())
-        marketItems = runCatching { state.client.fetchMarketplace() }.getOrDefault(emptyList())
-        connectListings = runCatching { state.client.fetchConnectListings() }.getOrDefault(emptyList())
+        discoveryError = null
+        // Do not turn network failures into false "no results" states. Preserve
+        // previously fetched content and offer a real retry.
+        val feedResult = runCatching { state.client.fetchFeed() }
+        val marketResult = runCatching { state.client.fetchMarketplace() }
+        val connectResult = runCatching { state.client.fetchConnectListings() }
+        feedResult.onSuccess { discoveryPosts = it }
+        marketResult.onSuccess { marketItems = it }
+        connectResult.onSuccess { connectListings = it }
+        if (listOf(feedResult, marketResult, connectResult).any { it.isFailure }) {
+            discoveryError = "Some results could not load. Check your connection and retry."
+        }
         discoveryLoading = false
     }
 
@@ -147,6 +159,23 @@ fun PremiumSearchScreen(state: DesktopAppState) {
             }
         }
 
+        discoveryError?.let { error ->
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(error, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onErrorContainer)
+                    TextButton(onClick = { retryGeneration++ }, enabled = !discoveryLoading) {
+                        Text("Retry")
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(12.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
             items(DesktopSearchCollection.entries, key = { it.name }) { item ->
@@ -168,6 +197,7 @@ fun PremiumSearchScreen(state: DesktopAppState) {
             when (selected) {
                 DesktopSearchCollection.SEARCH -> DesktopSearchCore(state = state, discoveryPosts = discoveryPosts)
                 DesktopSearchCollection.TRENDING -> DesktopTrendingCollection(
+                    state = state,
                     posts = discoveryPosts,
                     loading = discoveryLoading,
                 )
@@ -499,11 +529,11 @@ private fun DesktopSearchCore(
                     }
                     if ((category == DesktopSearchCategory.ALL || category == DesktopSearchCategory.REELS) && reels.isNotEmpty()) {
                         item { DesktopSearchSection("Reels", "${reels.size} matches") }
-                        items(reels, key = { "reel-${it.id}" }) { post -> DesktopPremiumContent(post) }
+                        items(reels, key = { "reel-${it.id}" }) { post -> DesktopPremiumContent(post, state) }
                     }
                     if ((category == DesktopSearchCategory.ALL || category == DesktopSearchCategory.POSTS) && posts.isNotEmpty()) {
                         item { DesktopSearchSection("Posts", "${posts.size} matches") }
-                        items(posts, key = { "post-${it.id}" }) { post -> DesktopPremiumContent(post) }
+                        items(posts, key = { "post-${it.id}" }) { post -> DesktopPremiumContent(post, state) }
                     }
                     if (!loading && people.isEmpty() && posts.isEmpty() && reels.isEmpty() && hashtags.isEmpty()) {
                         item {
@@ -529,6 +559,7 @@ private fun DesktopSearchCore(
 
 @Composable
 private fun DesktopTrendingCollection(
+    state: DesktopAppState,
     posts: List<DesktopFeedPost>,
     loading: Boolean,
 ) {
@@ -576,7 +607,7 @@ private fun DesktopTrendingCollection(
         }
         if (ranked.isNotEmpty()) {
             item { DesktopSearchSection("Rising posts & reels", "Sorted by views, likes, comments and shares") }
-            items(ranked, key = { "trend-${it.id}" }) { post -> DesktopPremiumContent(post) }
+            items(ranked, key = { "trend-${it.id}" }) { post -> DesktopPremiumContent(post, state) }
         } else if (!loading) {
             item { DesktopCollectionEmpty("Nothing is trending yet", "Rising content will appear here as people interact with Blink.") }
         }
@@ -763,43 +794,79 @@ private fun DesktopPremiumPerson(profile: DesktopProfile) {
     }
 }
 
+/**
+ * Search and Trending reuse the very same full post card as Desktop Home.
+ * The post model comes from the authenticated feed; no synthetic thumbnails,
+ * stripped-down author rows or placeholder content are substituted for it.
+ */
 @Composable
-private fun DesktopPremiumContent(post: DesktopFeedPost) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        tonalElevation = 1.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(54.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(if (post.isReel) Icons.Rounded.PlayCircle else Icons.Rounded.Tag, null, tint = MaterialTheme.colorScheme.primary)
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(post.authorName, fontWeight = FontWeight.Bold)
-                    if (post.authorVerified) {
-                        Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Rounded.Verified, "Verified", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(15.dp))
+private fun DesktopPremiumContent(post: DesktopFeedPost, state: DesktopAppState) {
+    val scope = rememberCoroutineScope()
+    var visible by remember(post) { mutableStateOf(post) }
+    var showComments by remember(post.id) { mutableStateOf(false) }
+    var error by remember(post.id) { mutableStateOf<String?>(null) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        DesktopFeedPostCard(
+            post = visible,
+            onLike = {
+                val before = visible
+                val liked = !before.isLiked
+                visible = before.copy(
+                    isLiked = liked,
+                    likeCount = (before.likeCount + if (liked) 1 else -1).coerceAtLeast(0),
+                )
+                scope.launch {
+                    val confirmed = runCatching { state.client.toggleLike(post.id) }.getOrNull()
+                    if (confirmed == null) {
+                        visible = before
+                        error = "Couldn't update like."
+                    } else if (confirmed != liked) {
+                        visible = visible.copy(isLiked = confirmed, likeCount = before.likeCount)
                     }
                 }
-                Text(
-                    post.caption ?: post.text ?: if (post.isReel) "Reel" else "Post",
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    fontSize = 12.sp,
+            },
+            onBookmark = {
+                val before = visible
+                visible = before.copy(isBookmarked = !before.isBookmarked)
+                scope.launch {
+                    val confirmed = runCatching { state.client.toggleBookmark(post.id) }.getOrNull()
+                    if (confirmed == null) {
+                        visible = before
+                        error = "Couldn't update saved post."
+                    } else {
+                        visible = visible.copy(isBookmarked = confirmed)
+                    }
+                }
+            },
+            onRepost = {
+                val before = visible
+                val reposted = !before.isRepostedByMe
+                visible = before.copy(
+                    isRepostedByMe = reposted,
+                    repostCount = (before.repostCount + if (reposted) 1 else -1).coerceAtLeast(0),
                 )
-                Text(
-                    "${desktopCompactNumber(post.viewCount.toLong())} views · ${desktopCompactNumber(post.likeCount.toLong())} likes · ${desktopCompactNumber(post.commentCount.toLong())} comments · ${desktopCompactNumber(post.shareCount.toLong())} shares",
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (desktopTrendScore(post) > 0) {
-                Icon(Icons.Rounded.TrendingUp, null, tint = MaterialTheme.colorScheme.primary)
+                scope.launch {
+                    val confirmed = runCatching { state.client.toggleRepost(post.id) }.getOrNull()
+                    if (confirmed == null) {
+                        visible = before
+                        error = "Couldn't update repost."
+                    } else {
+                        visible = visible.copy(
+                            isRepostedByMe = confirmed.first,
+                            repostCount = confirmed.second,
+                        )
+                    }
+                }
+            },
+            onComments = { showComments = !showComments },
+            onCopyLink = { DesktopShareLinkManager.copyToClipboard(post.id, post.isReel) },
+        )
+        if (showComments) DesktopCommentsPanel(state, post.id)
+        error?.let { message ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(message, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                TextButton(onClick = { error = null }) { Text("Dismiss") }
             }
         }
     }
