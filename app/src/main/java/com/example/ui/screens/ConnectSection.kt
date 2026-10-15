@@ -89,6 +89,7 @@ import com.blinkng.shared.BlinkPulseTrend
 import com.blinkng.shared.campusActivityLabel
 import com.blinkng.shared.connectActivityScoreRange
 import com.blinkng.shared.pulseTrend
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private enum class LivePeopleFilter(val label: String) {
@@ -303,6 +304,14 @@ fun ConnectSection(
 
     LaunchedEffect(Unit) {
         FollowStateStore.refresh()
+    }
+
+    LaunchedEffect(query) {
+        val search = query.trim()
+        if (search.length >= 2) {
+            delay(350)
+            connectHubActions.searchStudents(search)
+        }
     }
 
     Column(
