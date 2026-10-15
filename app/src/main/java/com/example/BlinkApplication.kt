@@ -1,6 +1,8 @@
 package com.example
 
 import android.app.Application
+import android.content.Context
+import com.google.android.play.core.splitcompat.SplitCompat
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -24,6 +26,12 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
 import java.util.concurrent.TimeUnit
 
 class BlinkApplication : Application(), ImageLoaderFactory {
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        // Make on-demand game splits accessible, including in the isolated Godot process.
+        SplitCompat.install(this)
+    }
+
     override fun onCreate() {
         super.onCreate()
 
