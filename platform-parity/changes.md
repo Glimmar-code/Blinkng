@@ -1,3 +1,10 @@
+## 2026-10-15 — BLINK LIFE native multiplayer preview (targeted main integration)
+
+- **Android/Windows:** Same Godot 4.3 original scenes and optional game path. Android enters an isolated :blink_life Activity only after Play; Windows launches a separately packaged native process only on Play.
+- **Backend:** Staging-only, nondeployed authenticated join-ticket function and dedicated Godot server source; permanent houses and fictional Game Cash use single-server file persistence, not production database. No new production migrations or real-currency connections.
+- **Compatibility:** This ports only game-related files from the Testlab PR into the latest main, without reverting main's hundreds of newer feed, messages, ads, notifications, call, payment or signing improvements.
+- **Release caveats:** Real-device validation still required, host not deployed, no encrypted UDP or production voice/text moderation. UI explicitly labels Preview. Existing General Study remains available.
+
 ## 2026-10-15 — Promote tested ad fixes from Testlab PR #284
 
 - Reconciles #284 with main's newer one-tap rewarded loading, timeout, cache expiry, consent gating and Reels failed-slot removal.

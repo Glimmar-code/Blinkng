@@ -58,6 +58,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import com.example.game.BlinkLifeLaunchGate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -212,6 +214,7 @@ fun GeneralStudyGameSection(
 
 @Composable
 private fun CatalogPane(onOpenGeneralStudy: () -> Unit) {
+    val context = LocalContext.current
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Text("Games", fontSize = 26.sp, fontWeight = FontWeight.Black)
         Text(
@@ -290,6 +293,36 @@ private fun CatalogPane(onOpenGeneralStudy: () -> Unit) {
                     Spacer(Modifier.width(6.dp))
                     Text("Open General Study", fontWeight = FontWeight.Bold)
                 }
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        ) {
+            Column(Modifier.padding(18.dp)) {
+                Text("BLINK LIFE 3D · Preview", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Explore an optional native 3D neighbourhood. Multiplayer is a trusted-network preview. " +
+                        "Public servers, permanent online accounts and advanced vehicles are not live.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = { BlinkLifeLaunchGate.play(context) }) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Play BLINK LIFE 3D")
+                }
+                Text(
+                    "The 3D engine starts only after Play and closes independently of BLINK.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 

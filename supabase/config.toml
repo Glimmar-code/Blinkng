@@ -23,6 +23,10 @@ enabled = true
 
 # Keep Edge Function authentication behavior source-controlled so a fallback
 # deployment cannot silently change which endpoints require a JWT.
+# BLINK LIFE: authenticated short-lived server tickets, no public anonymous joins.
+[functions.blink-life-session]
+verify_jwt = true
+
 [functions.game-rewards]
 verify_jwt = true
 
