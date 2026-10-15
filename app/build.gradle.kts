@@ -136,8 +136,15 @@ val stageBlinkLifeGodotAssets by tasks.registering(Sync::class) {
   into(layout.buildDirectory.dir("generated/blinkLifeGodot/assets"))
 }
 
-tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }
-  .configureEach { dependsOn(stageBlinkLifeGodotAssets) }
+tasks.matching {
+  (it.name.startsWith("merge") && it.name.endsWith("Assets")) ||
+    it.name.startsWith("lint") ||
+    it.name.contains("Lint")
+}.configureEach {
+  // Android Lint reads Android sourceSet assets as input too. Without this
+  // dependency Gradle 9 flags stageBlinkLifeGodotAssets implicit consumption.
+  dependsOn(stageBlinkLifeGodotAssets)
+}
 
 android {
   namespace = "com.example"
