@@ -140,7 +140,7 @@ fun PostCard(
     onLike: () -> Unit,
     onComment: () -> Unit,
     onBookmark: () -> Unit,
-    onRepost: () -> Unit = {},
+    onRepost: (() -> Unit)? = null,
     onShare: () -> Unit,
     onOptionsClick: () -> Unit,
     onProfileClick: (String) -> Unit,
@@ -700,8 +700,8 @@ fun PostCard(
                             description = if (isAuthor) "${post.repostsCount} reposts · Reposting your own post unavailable"
                                 else if (post.isRepostedByMe) "Undo repost · ${post.repostsCount} reposts"
                                 else "Repost · ${post.repostsCount} reposts",
-                            enabled = !isAuthor,
-                            onClick = onRepost
+                            enabled = !isAuthor && onRepost != null,
+                            onClick = { onRepost?.invoke() }
                         )
                         PremiumPostAction(
                             icon = if (post.isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -797,8 +797,9 @@ fun PostCard(
                                 icon = Icons.Default.Repeat,
                                 value = if (compactActions) null else "Repost",
                                 tint = repostTint,
-                                description = if (post.isRepostedByMe) "Undo repost" else "Repost",
-                                onClick = onRepost
+                                description = if (onRepost == null) "Repost unavailable here" else if (post.isRepostedByMe) "Undo repost" else "Repost",
+                                enabled = onRepost != null,
+                                onClick = { onRepost?.invoke() }
                             )
                         }
                         PremiumPostAction(
