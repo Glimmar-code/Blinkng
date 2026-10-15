@@ -2982,6 +2982,29 @@ private suspend fun restoreSupabaseSession() {
             }
         }
     }
+    /** Reconcile profile counters, verification, XP and other server-owned fields. */
+    fun refreshViewedProfile() {
+        val viewing = _uiState.value.viewingProfile ?: return
+        val actorId = supabaseService.getCurrentUserId() ?: return
+        viewModelScope.launch {
+            val refreshed = runCatching {
+                if (viewing.id.isNotBlank()) profileRepository.fetchById(viewing.id)
+                else profileRepository.fetchByUsername(viewing.username)
+            }.getOrNull() ?: return@launch
+            if (supabaseService.getCurrentUserId() != actorId) return@launch
+            val state = _uiState.value
+            if (state.viewingProfile?.id != refreshed.id) return@launch
+            val isOwner = refreshed.id == actorId
+            _uiState.value = state.copy(
+                viewingProfile = refreshed,
+                myProfile = if (isOwner) refreshed else state.myProfile,
+                profiles = listOf(refreshed) + state.profiles.filterNot { it.id == refreshed.id }
+            )
+            if (isOwner) saveLocalProfile(refreshed)
+            persistProfile(refreshed)
+        }
+    }
+
     fun closeProfile() { _uiState.value = _uiState.value.copy(viewingProfile = null) }
 
     fun updateProfile(updated: UserProfile) {
