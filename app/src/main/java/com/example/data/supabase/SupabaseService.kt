@@ -4100,6 +4100,7 @@ suspend fun uploadPostMedia(
             sellerUsername = obj.optString("seller_username", ""),
             sellerAvatar = obj.optString("seller_avatar", ""),
             sellerName = obj.optString("seller_name", ""),
+            sellerId = obj.optString("seller_id", ""),
             sellerPhone = obj.optString("seller_phone", ""),
             sellerWhatsapp = obj.optString("seller_whatsapp", ""),
             sellerIsVerified = sellerIsVerified,
