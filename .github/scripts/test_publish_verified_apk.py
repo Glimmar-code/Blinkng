@@ -31,8 +31,8 @@ class ReleaseIntegrityTests(unittest.TestCase):
         self.info = self.root / "release-info.txt"
         self.info.write_text("applicationId=com.aistudio.blink.appvtwo\nversionCode=123\n"
                              "versionName=1.0.123\ncommit=abc\nproductionSource=main\n"
-                             f"signingCertificateSha256={'a' * 64}\napkSha256={self.sha}\\n"
-                             f"gamePackSha256={self.pack_sha}\\ngamePackSize={self.pack.stat().st_size}\\n")
+                             f"signingCertificateSha256={'a' * 64}\napkSha256={self.sha}\n"
+                             f"gamePackSha256={self.pack_sha}\ngamePackSize={self.pack.stat().st_size}\n")
         self.calls = []
         self.assets = {}
         self.corrupt = False
