@@ -67,3 +67,29 @@ verify_jwt = false
 # third-party secret values must be configured through Supabase/secrets
 # management and documented as required configuration in RECOVERY.md.
 # Secret values must never be committed to Git.
+
+# BLINK essential transactional email templates for local/Testlab Supabase.
+# Hosted Supabase projects require uploading these templates separately via
+# Authentication > Email Templates; this file does NOT configure hosted SMTP.
+# Keep SMTP credentials only in provider/Supabase secret settings.
+[auth.email.template.confirmation]
+subject = "Verify your BLINK email"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Reset your BLINK password"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.email_change]
+subject = "Confirm your BLINK email change"
+content_path = "./supabase/templates/email_change.html"
+
+[auth.email.notification.password_changed]
+enabled = true
+subject = "BLINK security: your password was changed"
+content_path = "./supabase/templates/password_changed_notification.html"
+
+[auth.email.notification.email_changed]
+enabled = true
+subject = "BLINK security: your email was changed"
+content_path = "./supabase/templates/email_changed_notification.html"
