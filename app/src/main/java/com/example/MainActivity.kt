@@ -1612,13 +1612,13 @@ fun MainAppContent(
                 val profileLikedPosts = if (isMyProfile) uiState.myLikedPosts.filter { it.isLiked } else emptyList()
                 val profileSavedPosts = if (isMyProfile) uiState.mySavedPosts.filter { it.isBookmarked } else emptyList()
 
-                val userMarketItems = if (isMyProfile) {
-                    uiState.marketItems.filter {
-                        viewModel.isMe(it.sellerUsername) || viewModel.isMe(it.sellerName)
-                    }
-                } else {
-                    uiState.marketItems.filter { it.sellerUsername.equals(profile.username, ignoreCase = true) }
-                }
+                // Seller listings are loaded from Supabase by seller ID, never from
+                // the limited global Market discovery feed.
+                val userMarketItems = uiState.profileMarketItemsByUserId[profileKey].orEmpty()
+                val isProfileMarketLoading = profileKey in uiState.profileMarketLoadingIds ||
+                    (profileKey !in uiState.profileMarketLoadedIds &&
+                     profileKey !in uiState.profileMarketFailedIds)
+                val isProfileMarketFailed = profileKey in uiState.profileMarketFailedIds
 
                 ProfileScreen(
                     profile = currentProfileToDisplay,
@@ -1629,6 +1629,8 @@ fun MainAppContent(
                     likedPosts = profileLikedPosts,
                     savedPosts = profileSavedPosts,
                     userMarketItems = userMarketItems,
+                    isMarketLoading = isProfileMarketLoading,
+                    hasMarketLoadError = isProfileMarketFailed,
                     onBack = { viewModel.closeProfile() },
                     onEditProfileClick = { viewModel.openEditProfile(true) },
                     onDirectMessage = { partner ->
