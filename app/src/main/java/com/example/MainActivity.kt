@@ -1636,7 +1636,7 @@ fun MainAppContent(
                     onDirectMessage = { partner ->
                         viewModel.closeProfile()
                         viewModel.setTab(MainTab.MESSAGES)
-                        viewModel.openChatWithUser(partner, profile.fullName, profile.avatarUrl)
+                        viewModel.openChatWithUser(partner, currentProfileToDisplay.fullName, currentProfileToDisplay.avatarUrl)
                     },
                     onEndorseSkill = { skill -> viewModel.endorseSkill(skill) },
                     onLikePost = { viewModel.togglePostLike(it) },
