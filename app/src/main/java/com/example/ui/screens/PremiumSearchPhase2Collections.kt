@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.models.FeedPost
 import com.example.data.models.UserProfile
+import com.example.ui.components.PostCard
 import com.example.ui.theme.BlinkThemeTokens
 import java.util.Locale
 
@@ -91,6 +93,7 @@ internal fun PremiumSearchPhase2Host(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
     onSharePost: (String) -> Unit,
     onOptionsClick: (FeedPost) -> Unit,
     onDeletePost: (String) -> Unit,
@@ -131,6 +134,7 @@ internal fun PremiumSearchPhase2Host(
                     onLikePost = onLikePost,
                     onCommentPost = onCommentPost,
                     onBookmarkPost = onBookmarkPost,
+            onVotePoll = onVotePoll,
                     onSharePost = onSharePost,
                     onOptionsClick = onOptionsClick,
                     onDeletePost = onDeletePost,
@@ -141,8 +145,17 @@ internal fun PremiumSearchPhase2Host(
                 PremiumSearchCollection.TRENDING -> PremiumTrendingCollection(
                     profiles = allProfiles,
                     posts = allPosts,
+                    currentUsername = currentUsername,
+                    isDark = isDark,
                     onProfileClick = onProfileClick,
                     onPostClick = onPostClick,
+                    onLikePost = onLikePost,
+                    onCommentPost = onCommentPost,
+                    onBookmarkPost = onBookmarkPost,
+            onVotePoll = onVotePoll,
+                    onSharePost = onSharePost,
+                    onOptionsClick = onOptionsClick,
+                    onDeletePost = onDeletePost,
                 )
 
                 PremiumSearchCollection.PLACES -> PremiumPlacesCollection(
@@ -218,8 +231,17 @@ private fun PremiumSearchCollectionDock(
 private fun PremiumTrendingCollection(
     profiles: List<UserProfile>,
     posts: List<FeedPost>,
+    currentUsername: String,
+    isDark: Boolean,
     onProfileClick: (String) -> Unit,
     onPostClick: (FeedPost) -> Unit,
+    onLikePost: (String) -> Unit,
+    onCommentPost: (String) -> Unit,
+    onBookmarkPost: (String) -> Unit,
+    onVotePoll: (String, String) -> Unit,
+    onSharePost: (String) -> Unit,
+    onOptionsClick: (FeedPost) -> Unit,
+    onDeletePost: (String) -> Unit,
 ) {
     val trendingPosts = remember(posts) { posts.sortedByDescending(::phase2TrendScore).take(30) }
     val trendingCreators = remember(profiles) {
@@ -270,7 +292,27 @@ private fun PremiumTrendingCollection(
         if (trendingPosts.isNotEmpty()) {
             item { PremiumCollectionHeading("Rising posts & reels", "Sorted by views, likes, comments and shares") }
             items(trendingPosts, key = { "trend-${it.id}" }) { post ->
-                PremiumCollectionPostCard(post = post, onClick = { onPostClick(post) })
+                Column {
+                    PostCard(
+                        post = post,
+                        isDark = isDark,
+                        onLike = { onLikePost(post.id) },
+                        onComment = { onCommentPost(post.id) },
+                        onBookmark = { onBookmarkPost(post.id) },
+                        onVotePoll = onVotePoll,
+                        onShare = { onSharePost(post.id) },
+                        onOptionsClick = { onOptionsClick(post) },
+                        onProfileClick = onProfileClick,
+                        isAuthor = post.author.equals(currentUsername, true) ||
+                            post.authorUsername.equals(currentUsername, true),
+                        onDelete = { onDeletePost(post.id) },
+                        trackExposure = false,
+                        xFeedStyle = true,
+                    )
+                    TextButton(onClick = { onPostClick(post) }) {
+                        Text(if (post.isReel) "Open reel" else "Open post")
+                    }
+                }
             }
         } else {
             item { PremiumCollectionEmpty("Nothing is trending yet", "As people interact with posts and reels, rising content will appear here.") }
@@ -410,60 +452,6 @@ private fun PremiumCreatorMiniCard(profile: UserProfile, onClick: () -> Unit) {
             Text("@${profile.username.removePrefix("@")}", maxLines = 1, fontSize = 10.sp, color = colors.textSecondary)
             Spacer(Modifier.height(5.dp))
             Text("${phase2CompactNumber(profile.followerCount.toLong())} followers", fontSize = 9.sp, color = colors.primaryBright)
-        }
-    }
-}
-
-@Composable
-private fun PremiumCollectionPostCard(post: FeedPost, onClick: () -> Unit) {
-    val colors = BlinkThemeTokens.colors
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
-        color = colors.surfaceElevated,
-        border = BorderStroke(1.dp, colors.borderSoft),
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AsyncImage(
-                    model = post.authorAvatar,
-                    contentDescription = post.author,
-                    modifier = Modifier.size(38.dp).clip(CircleShape),
-                    contentScale = ContentScale.Crop,
-                )
-                Spacer(Modifier.width(9.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(post.author, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-                    Text(post.timeAgo, fontSize = 9.sp, color = colors.textSecondary)
-                }
-                Icon(
-                    imageVector = if (post.isReel) Icons.Rounded.VideoLibrary else Icons.Rounded.Photo,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = colors.primaryBright,
-                )
-            }
-            if (post.text.isNotBlank()) {
-                Spacer(Modifier.height(8.dp))
-                Text(post.text, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = colors.textPrimary)
-            }
-            val preview = post.images.firstOrNull()
-            if (!preview.isNullOrBlank()) {
-                Spacer(Modifier.height(9.dp))
-                AsyncImage(
-                    model = preview,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxWidth().height(156.dp).clip(RoundedCornerShape(16.dp)),
-                    contentScale = ContentScale.Crop,
-                )
-            }
-            Spacer(Modifier.height(9.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                PremiumMetric(Icons.Rounded.TrendingUp, phase2CompactNumber(post.viewsCount.toLong()))
-                PremiumMetric(Icons.Rounded.Tag, phase2CompactNumber(post.likes.toLong()) + " likes")
-                if (!post.location.isNullOrBlank()) PremiumMetric(Icons.Rounded.LocationOn, post.location.orEmpty())
-            }
         }
     }
 }

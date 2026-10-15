@@ -580,7 +580,7 @@ private fun ConversationSwitchRail(
             Text(
                 text = "Chats",
                 color = palette.textSecondary,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
             )
@@ -622,7 +622,7 @@ private fun ConversationSwitchRail(
                             ) {
                                 Text(
                                     conversation.unreadCount.coerceAtMost(99).toString(),
-                                    fontSize = 8.sp
+                                    fontSize = 11.sp
                                 )
                             }
                         }
@@ -850,7 +850,7 @@ private fun MessageInboxTabChip(
                     containerColor = if (selected) palette.backgroundMiddle else palette.accent,
                     contentColor = if (selected) palette.textPrimary else Color.White
                 ) {
-                    Text(count.coerceAtMost(99).toString(), fontSize = 8.sp)
+                    Text(count.coerceAtMost(99).toString(), fontSize = 11.sp)
                 }
             }
         }
@@ -1028,7 +1028,7 @@ private fun ImportantContactsRail(
                 Text(
                     "Quick access",
                     color = palette.textMuted,
-                    fontSize = 9.sp
+                    fontSize = 11.sp
                 )
             }
         }
@@ -1352,7 +1352,7 @@ private fun ConversationCard(
                 Text(
                     conversation.lastMessageTime,
                     color = palette.textMuted,
-                    fontSize = 9.sp,
+                    fontSize = 11.sp,
                     maxLines = 1
                 )
                 if (conversation.unreadCount > 0 || conversation.isMarkedUnread) {
@@ -1364,7 +1364,7 @@ private fun ConversationCard(
                             } else {
                                 "•"
                             },
-                            fontSize = 9.sp
+                            fontSize = 11.sp
                         )
                     }
                 }
@@ -2118,7 +2118,20 @@ private fun PremiumChatDetail(
         SharedChatContentSheet(
             conversation = conversation,
             palette = palette,
-            onDismiss = { showSharedContent = false }
+            onDismiss = { showSharedContent = false },
+            onJumpToMessage = { messageId ->
+                showSharedContent = false
+                searchQuery = ""
+                pinnedOnly = false
+                starredOnly = false
+                val targetIndex = conversation.messages.indexOfFirst { it.id == messageId }
+                if (targetIndex >= 0) {
+                    scrollScope.launch {
+                        delay(120)
+                        listState.animateScrollToItem(targetIndex + if (isLoadingOlder) 1 else 0)
+                    }
+                }
+            }
         )
     }
 
@@ -2248,7 +2261,7 @@ private fun ChatHeader(
                     if (conversation.isOnline) "Active now" else conversation.lastSeen
                 },
                 color = if (conversation.isOnline) palette.online else palette.textSecondary,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -2496,7 +2509,7 @@ private fun ChatContactAction(
             Text(
                 label,
                 color = palette.textSecondary,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -2552,7 +2565,7 @@ private fun DayDivider(label: String, palette: MessagePalette) {
             Text(
                 label,
                 color = palette.textSecondary,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
             )
@@ -2639,7 +2652,7 @@ private fun MessageBubble(
                         Text(
                             "Forwarded",
                             color = palette.textSecondary,
-                            fontSize = 8.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 7.dp)
                         )
@@ -2658,13 +2671,13 @@ private fun MessageBubble(
                                 Text(
                                     if (replyTarget?.isFromMe == true) "You" else partnerName,
                                     color = palette.accent,
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
                                     replyTarget?.text?.ifBlank { "Media message" } ?: "Original message unavailable",
                                     color = palette.textSecondary,
-                                    fontSize = 9.sp,
+                                    fontSize = 11.sp,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -2690,7 +2703,7 @@ private fun MessageBubble(
                                 shape = RoundedCornerShape(100.dp),
                                 border = BorderStroke(1.dp, if (entry.key in message.myReactions) palette.accent.copy(alpha = .55f) else palette.border)
                             ) {
-                                Text("${entry.key} ${entry.value}", fontSize = 9.sp, color = palette.textSecondary, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
+                                Text("${entry.key} ${entry.value}", fontSize = 11.sp, color = palette.textSecondary, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
                             }
                         }
                     }
@@ -2708,12 +2721,12 @@ private fun MessageBubble(
                     else -> ""
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (message.isPinned) Text("📌 ", fontSize = 8.sp)
-                    if (message.isStarred) Text("★ ", color = palette.accent, fontSize = 8.sp)
+                    if (message.isPinned) Text("📌 ", fontSize = 11.sp)
+                    if (message.isStarred) Text("★ ", color = palette.accent, fontSize = 11.sp)
                     Text(
                         metadata,
                         color = if (message.status == MessageStatus.FAILED) palette.danger else palette.textSecondary,
-                        fontSize = 8.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Medium
                     )
                     if (receipt.isNotBlank()) {
@@ -2803,7 +2816,7 @@ private fun MessageContent(
                         Text(
                             if (message.isVoiceNote) message.voiceDuration.ifBlank { "Voice" } else "Audio",
                             color = contentColor,
-                            fontSize = 9.sp
+                            fontSize = 11.sp
                         )
                     }
                 }
@@ -2833,7 +2846,7 @@ private fun MessageContent(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Text("Tap to open", color = contentColor.copy(alpha = .72f), fontSize = 9.sp)
+                            Text("Tap to open", color = contentColor.copy(alpha = .72f), fontSize = 11.sp)
                         }
                     }
                 }
@@ -2877,7 +2890,7 @@ private fun MessageContent(
                             Text(
                                 url,
                                 color = contentColor.copy(alpha = .72f),
-                                fontSize = 8.sp,
+                                fontSize = 11.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -3189,7 +3202,7 @@ private fun MessageComposer(
                             Text(
                                 formatCallDuration(recordingSeconds),
                                 color = palette.textSecondary,
-                                fontSize = 9.sp
+                                fontSize = 11.sp
                             )
                         }
                     }
@@ -3304,7 +3317,8 @@ private fun firstHttpUrl(text: String): String? =
 private fun SharedChatContentSheet(
     conversation: ChatConversation,
     palette: MessagePalette,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onJumpToMessage: (String) -> Unit
 ) {
     val context = LocalContext.current
     var tab by rememberSaveable(conversation.id) { mutableStateOf("media") }
@@ -3446,7 +3460,7 @@ private fun SharedChatContentSheet(
                                 },
                                 subtitle = message.timestamp,
                                 palette = palette,
-                                onClick = {}
+                                onClick = { onJumpToMessage(message.id) }
                             )
                         }
                     }
@@ -3482,7 +3496,7 @@ private fun SharedContentRow(
             Text(
                 subtitle,
                 color = palette.textSecondary,
-                fontSize = 9.sp,
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp)
@@ -4050,7 +4064,7 @@ private fun ChatPrivacyScopeSection(
                 ) {
                     Text(
                         label,
-                        fontSize = 9.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
                     )
@@ -4088,7 +4102,7 @@ private fun ChatPrivacyToggleRow(
                 Text(
                     subtitle,
                     color = palette.textSecondary,
-                    fontSize = 9.sp,
+                    fontSize = 11.sp,
                     modifier = Modifier.padding(top = 2.dp)
                 )
             }
@@ -4318,7 +4332,7 @@ private fun ThemePreviewCard(
             Spacer(Modifier.height(8.dp))
             Text(mode.displayName, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             if (mode == MessageThemeMode.DARK) {
-                Text("Default", color = preview.textSecondary, fontSize = 8.sp)
+                Text("Default", color = preview.textSecondary, fontSize = 11.sp)
             }
         }
     }

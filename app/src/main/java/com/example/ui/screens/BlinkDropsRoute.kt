@@ -698,10 +698,13 @@ private fun DropCard(
                         )
                     }
                 }
-                AssistChip(
-                    onClick = {},
-                    label = { Text(drop.status.lowercase().replaceFirstChar { it.uppercase() }) }
-                )
+                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Text(
+                        drop.status.lowercase().replaceFirstChar { it.uppercase() },
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
             }
 
             Text(
