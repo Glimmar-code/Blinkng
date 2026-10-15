@@ -714,6 +714,7 @@ fun MainAppContent(
         ConnectHubActions(
             refresh = { viewModel.refreshConnectHub() },
             refreshStudents = { viewModel.refreshConnectStudents() },
+            searchStudents = { query -> viewModel.searchConnectStudents(query) },
             publishRoommate = { title, description, location, minBudget, maxBudget ->
                 viewModel.publishRoommateProfile(title, description, location, minBudget, maxBudget)
             },
