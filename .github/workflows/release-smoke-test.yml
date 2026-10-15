@@ -21,6 +21,9 @@ on:
       - 'app/proguard-rules.pro'
       - '.github/workflows/signed-release.yml'
       - '.github/workflows/release-smoke-test.yml'
+      - 'scripts/build_blink_life_web_pack.sh'
+      - 'scripts/setup_godot_43_web.sh'
+      - 'game3d/**'
   pull_request:
     branches:
       - main
@@ -40,6 +43,9 @@ on:
       - 'app/proguard-rules.pro'
       - '.github/workflows/signed-release.yml'
       - '.github/workflows/release-smoke-test.yml'
+      - 'scripts/build_blink_life_web_pack.sh'
+      - 'scripts/setup_godot_43_web.sh'
+      - 'game3d/**'
   workflow_dispatch:
 
 permissions:
@@ -121,6 +127,17 @@ jobs:
           chmod 600 "$KEYSTORE_PATH"
           echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
 
+      - name: Install Godot 4.3 Web exporter
+        run: bash scripts/setup_godot_43_web.sh
+
+      - name: Export the actual optional Web game and embed checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/build_blink_life_web_pack.sh
+          GAME_SHA="$(sha256sum app/build/outputs/publish/blink-life-web.zip | awk '{print $1}')"
+          echo "BLINK_LIFE_WEB_SHA256=$GAME_SHA" >> "$GITHUB_ENV"
+
       - name: Build release variant with disposable key
         env:
           STORE_PASSWORD: smoke-password
@@ -131,13 +148,21 @@ jobs:
           ALLOW_PLACEHOLDER_GOOGLE_SERVICES: 'true'
         run: gradle :app:assembleRelease :app:bundleRelease -x :app:uploadCrashlyticsMappingFileRelease --stacktrace --no-daemon
 
-      - name: Build and verify complete website APK from signed on-demand AAB
+      - name: Verify small website APK plus native on-demand Play split
         shell: bash
-        env:
-          STORE_PASSWORD: smoke-password
-          KEY_ALIAS: smoke
-          KEY_PASSWORD: smoke-password
-        run: bash .github/scripts/build_full_website_apk.sh
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          AAB="$(find app/build/outputs/bundle/release -name '*.aab' -type f | head -n 1)"
+          unzip -Z1 "$APK" > "$RUNNER_TEMP/blink-base-apk-files.txt"
+          if grep -E '(^|/)libgodot_android\.so$|(^|/)project\.godot$' "$RUNNER_TEMP/blink-base-apk-files.txt"; then
+            echo "::error::Lightweight APK unexpectedly contains Godot native runtime."
+            exit 1
+          fi
+          unzip -Z1 "$AAB" | grep -Fxq blinkLifeFeature/assets/project.godot
+          unzip -Z1 "$AAB" | grep -Fxq blinkLifeFeature/lib/arm64-v8a/libgodot_android.so
+          sha256sum -c app/build/outputs/publish/blink-life-web.zip.sha256
+          echo "PASS: game not installed in website base; Play game remains on demand."
 
       - name: Verify embedded source revision
         shell: bash
