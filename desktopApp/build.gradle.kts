@@ -1,4 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.gradle.api.tasks.Sync
 
 plugins {
     kotlin("jvm") version "2.4.10"
@@ -41,12 +42,24 @@ val desktopPackageVersion = providers.environmentVariable("BLINK_DESKTOP_VERSION
     .orElse(providers.gradleProperty("BLINK_DESKTOP_VERSION"))
     .orElse("1.0.0")
 
+// The same checked-in game3d/ scene powers Android and Windows. Windows CI
+// stages the pinned Godot 4.3 runtime executable separately before packaging.
+val stageBlinkLifeWindowsAssets by tasks.registering(Sync::class) {
+    from(rootProject.file("../game3d")) {
+        include("project.godot", "scenes/**", "scripts/**")
+    }
+    into(layout.buildDirectory.dir("nativeResources/windows/blink-life/game"))
+}
+tasks.matching { it.name.startsWith("prepareAppResources") }
+    .configureEach { dependsOn(stageBlinkLifeWindowsAssets) }
+
 compose.desktop {
     application {
         mainClass = "com.blinkng.desktop.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Exe, TargetFormat.Msi)
+            appResourcesRootDir.set(layout.buildDirectory.dir("nativeResources"))
             packageName = "Blinkng"
             packageVersion = desktopPackageVersion.get()
             description = "Blinkng social platform for Windows"
