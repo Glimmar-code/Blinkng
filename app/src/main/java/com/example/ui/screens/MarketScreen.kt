@@ -110,7 +110,7 @@ fun MarketScreen(
 
     val minPrice = minPriceText.toLongOrNull()
     val maxPrice = maxPriceText.toLongOrNull()
-    val validPriceRange = minPrice == null || maxPrice == null || minPrice <= maxPrice
+    val validPriceRange = com.blinkng.shared.MarketQueryPolicy.validPriceRange(minPrice, maxPrice)
     val keyboardController = LocalSoftwareKeyboardController.current
     LaunchedEffect(searchQuery, selectedCategory, selectedSort, minPrice, maxPrice, validPriceRange) {
         if (validPriceRange) {
