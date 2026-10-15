@@ -1,3 +1,10 @@
+## 2026-10-15 — Shared native Godot multiplayer social neighbourhood (Testlab only)
+
+- **Android and Windows:** The exact same `game3d/scripts/social_world.gd` is loaded inside Godot after launch, with opt-in trusted-LAN ENet host/join; real networked avatars and names, session chat, owner-approved home visits, driver-approved single passenger rides, virtual coordinate sharing OFF by default, and temporary cosmetic changes.
+- **App independence:** Neither platform preloads Godot during feed, messages, search, market or other social use. LAN network is disconnected by default even inside Godot. No real GPS/BLINK payments/auth claims.
+- **Scope:** This is not deployed Internet matchmaking, authenticated accounts or permanent economy. See `game3d/ROADMAP_110.md` for the 110-feature list with exact remaining work and test gates.
+- **QA:** Linux/Windows Godot import/scene smoke, Android APK build, desktop package check, actual Android↔Windows LAN testing, memory/battery tests and staged security review all required. No main promotion on draft PR #283.
+
 ## 2026-10-15 — BLINK LIFE on-demand engine startup and host protection
 
 - **Android:** The Games card now calls a Godot-free `BlinkLifeLaunchGate` only when Play is tapped; rapid double taps are ignored and start failures are handled without crashing BLINK. The Godot activity stays in isolated `:blink_life` process; `BlinkApplication` skips normal Supabase/Firebase/worker startup there.
