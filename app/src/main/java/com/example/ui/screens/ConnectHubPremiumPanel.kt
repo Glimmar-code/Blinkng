@@ -120,6 +120,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
+import com.example.data.models.ConnectInboxPolicy
 import com.example.data.models.ConnectRequestItem
 import com.example.data.models.GameChallenge
 import com.example.data.models.MatchSpinPreferences
@@ -340,13 +341,10 @@ fun ConnectHubPremiumPanel(
     }
 
     val inboxRequests = remember(hub.requests) {
-        // Game requests also arrive in gameChallenges. Never display or count the same challenge twice.
-        hub.requests.filterNot { it.kind.equals("game", ignoreCase = true) }
+        ConnectInboxPolicy.requestsWithoutGames(hub.requests)
     }
-    val pendingInboxCount = remember(inboxRequests, incomingChallenges) {
-        inboxRequests.count {
-            it.direction.equals("incoming", true) && it.status.equals("pending", true)
-        } + incomingChallenges.size
+    val pendingInboxCount = remember(hub.requests, hub.gameChallenges, current?.id) {
+        ConnectInboxPolicy.incomingPendingCount(hub.requests, hub.gameChallenges, current?.id)
     }
 
     val categories = remember { ConnectCategory.entries }
