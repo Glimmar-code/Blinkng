@@ -68,8 +68,16 @@ func update_profile(account_id: String, profile: Dictionary) -> bool:
         "house_owned": bool(profile.get("house_owned", false)),
         "furniture": clampi(int(profile.get("furniture", 0)), 0, 12),
     }
+    var previous: Dictionary = records.get(account_id, {}).duplicate(true)
     records[account_id] = clean
-    return save_to_disk()
+    if save_to_disk():
+        return true
+    # A failed disk commit must not change the active wallet or ownership.
+    if previous.is_empty():
+        records.erase(account_id)
+    else:
+        records[account_id] = previous
+    return false
 
 
 func save_to_disk() -> bool:
