@@ -94,6 +94,10 @@ fun MarketScreen(
     var verifiedOnly by remember { mutableStateOf(false) }
     var minPriceText by remember { mutableStateOf("") }
     var maxPriceText by remember { mutableStateOf("") }
+    var draftSavedOnly by remember { mutableStateOf(false) }
+    var draftVerifiedOnly by remember { mutableStateOf(false) }
+    var draftMinPriceText by remember { mutableStateOf("") }
+    var draftMaxPriceText by remember { mutableStateOf("") }
 
     val sortOptions = remember {
         listOf(
@@ -263,7 +267,13 @@ fun MarketScreen(
 
                 FilterChip(
                     selected = activeFilterCount > 0,
-                    onClick = { showFilters = true },
+                    onClick = {
+                        draftSavedOnly = savedOnly
+                        draftVerifiedOnly = verifiedOnly
+                        draftMinPriceText = minPriceText
+                        draftMaxPriceText = maxPriceText
+                        showFilters = true
+                    },
                     leadingIcon = { Icon(Icons.Default.FilterList, null, modifier = Modifier.size(16.dp)) },
                     label = {
                         Text(if (activeFilterCount > 0) "Filters ($activeFilterCount)" else "Filters")
@@ -522,6 +532,10 @@ fun MarketScreen(
     }
 
     if (showFilters) {
+        val draftMinPrice = draftMinPriceText.toLongOrNull()
+        val draftMaxPrice = draftMaxPriceText.toLongOrNull()
+        val draftPriceRangeValid = draftMinPrice == null || draftMaxPrice == null ||
+            draftMinPrice <= draftMaxPrice
         AlertDialog(
             onDismissRequest = { showFilters = false },
             title = { Text("Market filters", fontWeight = FontWeight.Black) },
@@ -529,47 +543,59 @@ fun MarketScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Saved only", modifier = Modifier.weight(1f))
-                        Switch(checked = savedOnly, onCheckedChange = { savedOnly = it })
+                        Switch(checked = draftSavedOnly, onCheckedChange = { draftSavedOnly = it })
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Verified sellers only", modifier = Modifier.weight(1f))
-                        Switch(checked = verifiedOnly, onCheckedChange = { verifiedOnly = it })
+                        Switch(checked = draftVerifiedOnly, onCheckedChange = { draftVerifiedOnly = it })
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedTextField(
-                            value = minPriceText,
-                            onValueChange = { minPriceText = it.filter(Char::isDigit).take(12) },
+                            value = draftMinPriceText,
+                            onValueChange = { draftMinPriceText = it.filter(Char::isDigit).take(12) },
                             label = { Text("Min ₦") },
-                            isError = !validPriceRange,
+                            isError = !draftPriceRangeValid,
                             keyboardOptions = KeyboardOptions.Default,
                             singleLine = true,
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedTextField(
-                            value = maxPriceText,
-                            onValueChange = { maxPriceText = it.filter(Char::isDigit).take(12) },
+                            value = draftMaxPriceText,
+                            onValueChange = { draftMaxPriceText = it.filter(Char::isDigit).take(12) },
                             label = { Text("Max ₦") },
-                            isError = !validPriceRange,
+                            isError = !draftPriceRangeValid,
                             keyboardOptions = KeyboardOptions.Default,
                             singleLine = true,
                             modifier = Modifier.weight(1f)
                         )
+                    }
+                    if (!draftPriceRangeValid) {
+                        Text("Minimum price must not exceed maximum price.", color = MaterialTheme.colorScheme.error)
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = { showFilters = false }, enabled = validPriceRange) { Text("Apply") }
-            },
-            dismissButton = {
-                TextButton(
+                Button(
+                    enabled = draftPriceRangeValid,
                     onClick = {
-                        savedOnly = false
-                        verifiedOnly = false
-                        minPriceText = ""
-                        maxPriceText = ""
+                        savedOnly = draftSavedOnly
+                        verifiedOnly = draftVerifiedOnly
+                        minPriceText = draftMinPriceText
+                        maxPriceText = draftMaxPriceText
                         showFilters = false
                     }
-                ) { Text("Reset") }
+                ) { Text("Apply") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = {
+                        draftSavedOnly = false
+                        draftVerifiedOnly = false
+                        draftMinPriceText = ""
+                        draftMaxPriceText = ""
+                    }) { Text("Reset") }
+                    TextButton(onClick = { showFilters = false }) { Text("Cancel") }
+                }
             }
         )
     }
