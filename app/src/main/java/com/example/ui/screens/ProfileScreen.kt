@@ -125,6 +125,8 @@ fun ProfileScreen(
     likedPosts: List<FeedPost>,
     savedPosts: List<FeedPost>,
     userMarketItems: List<MarketItem>,
+    isMarketLoading: Boolean = false,
+    hasMarketLoadError: Boolean = false,
     onBack: () -> Unit,
     onEditProfileClick: () -> Unit,
     onDirectMessage: (String) -> Unit,
@@ -1132,6 +1134,9 @@ fun ProfileScreen(
 
                     "Market" -> profileMarketItems(
                         items = userMarketItems,
+                        isLoading = isMarketLoading,
+                        loadFailed = hasMarketLoadError,
+                        onRetry = onRefreshProfile,
                         isDark = isDark,
                         textPrimary = textPrimary,
                         textSecondary = textSecondary,
@@ -2295,11 +2300,33 @@ private fun AboutSection(
 
 private fun LazyListScope.profileMarketItems(
     items: List<MarketItem>,
+    isLoading: Boolean = false,
+    loadFailed: Boolean = false,
+    onRetry: () -> Unit = {},
     isDark: Boolean,
     textPrimary: Color,
     textSecondary: Color,
     onItemClick: (MarketItem) -> Unit
 ) {
+    if (items.isEmpty() && isLoading) {
+        items(3, key = { "market_skeleton_$it" }, contentType = { "profile_skeleton" }) {
+            ProfilePostSkeleton()
+        }
+        return
+    }
+    if (items.isEmpty() && loadFailed) {
+        item(key = "market_error", contentType = "profile_error") {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Listings couldn't load", color = textPrimary, fontWeight = FontWeight.SemiBold)
+                Text("Check your connection and retry.", color = textSecondary)
+                TextButton(onClick = onRetry) { Text("Retry") }
+            }
+        }
+        return
+    }
     if (items.isEmpty()) {
         item(key = "market_empty", contentType = "profile_empty") {
             EmptyProfileState(
