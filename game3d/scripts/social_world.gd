@@ -50,6 +50,9 @@ var online_port_input: LineEdit
 var used_ticket_nonces: Dictionary = {}
 var peer_auth_ids: Dictionary = {}
 var is_connected_to_authoritative_server: bool = false
+var persistent_store: RefCounted
+var last_work_ms: Dictionary = {}
+var account_status: Label
 
 
 func configure(game_world: Node3D, avatar: CharacterBody3D) -> void:
@@ -92,6 +95,9 @@ func _start_dedicated_server() -> void:
     multiplayer.multiplayer_peer = peer
     secure_dedicated = true
     is_online = true
+    var store_script: Script = load("res://scripts/persistent_state.gd")
+    persistent_store = store_script.new()
+    persistent_store.call("load_from_disk")
     people.clear()
     slot_counter = 0
     status_label.text = "Dedicated session online: authenticated tickets required."
@@ -202,6 +208,12 @@ func _build_ui() -> void:
     _make_button("TO CITY", func(): _action("city", 0), actions)
     car_button = _make_button("GET CAR", func(): _action("car", 0), actions)
     _make_button("LEAVE RIDE", func(): _action("exit_ride", 0), actions)
+    var property_actions := HBoxContainer.new()
+    rows.add_child(property_actions)
+    _make_button("BUY HOME (400 GC)", func(): _action("buy_home", 0), property_actions)
+    _make_button("FURNITURE (150 GC)", func(): _action("furnish", 0), property_actions)
+    _make_button("DEPOT SHIFT (+80 GC)", func(): _action("work", 0), property_actions)
+    account_status = _make_label("Persistent property needs a signed-in dedicated world.", rows)
     _make_button("WAVE", func(): _action("wave", 0), actions)
 
     var privacy := HBoxContainer.new()
@@ -359,6 +371,7 @@ func _on_peer_left(peer_id: int) -> void:
     var departed_slot := int(people[peer_id]["slot"])
     people.erase(peer_id)
     peer_auth_ids.erase(peer_id)
+    last_work_ms.erase(peer_id)
     last_motion_ms.erase(peer_id)
     last_chat_ms.erase(peer_id)
     visit_requests.erase(peer_id)
@@ -388,6 +401,8 @@ func _disconnect() -> void:
     auth_secret = ""
     peer_auth_ids.clear()
     used_ticket_nonces.clear()
+    persistent_store = null
+    last_work_ms.clear()
     people.clear()
     cars.clear()
     visit_requests.clear()
@@ -422,7 +437,9 @@ func _make_profile(display_name: String, room_slot: int) -> Dictionary:
         "visiting": -1,
         "map_opt_in": false,
         "car_enabled": false,
-        "outfit": 0
+        "outfit": 0,
+        "home_owned": false,
+        "furniture": 0
     }
 
 
@@ -445,8 +462,17 @@ func _register(display_name: String, signed_ticket: String = "") -> void:
         peer_auth_ids[id] = account_id
         # The editable nickname cannot impersonate a verified BLINK profile.
         actual_name = "BLINK-" + account_id.substr(0, 8)
-    people[id] = _make_profile(actual_name, slot_counter)
+    var member := _make_profile(actual_name, slot_counter)
+    if secure_dedicated and persistent_store != null:
+        var saved: Dictionary = persistent_store.call("get_profile", peer_auth_ids[id])
+        member["home_owned"] = bool(saved.get("house_owned", false))
+        member["furniture"] = int(saved.get("furniture", 0))
+    else:
+        member["home_owned"] = true # LAN demonstration has free temporary homes.
+    people[id] = member
     slot_counter += 1
+    if secure_dedicated:
+        _send_private_wallet(id)
     _broadcast_roster()
 
 
@@ -765,6 +791,9 @@ func _server_action(sender: int, kind: String, target: int) -> void:
                 if int(cars[driver]) == sender:
                     cars[driver] = -1
         "home":
+            if secure_dedicated and not bool(profile.get("home_owned", false)):
+                _notify(sender, "Purchase your permanent virtual home for 400 fictional GC first.")
+                return
             _teleport(sender, int(profile["slot"]), true)
         "city":
             profile["visiting"] = -1
@@ -772,6 +801,9 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             _teleport(sender, -1, false)
         "visit":
             if target == sender or not people.has(target):
+                return
+            if secure_dedicated and not bool(people[target].get("home_owned", false)):
+                _notify(sender, "This player has not bought a virtual home yet.")
                 return
             visit_requests[target] = sender
             _deliver_request(target, sender, "home")
@@ -814,6 +846,68 @@ func _server_action(sender: int, kind: String, target: int) -> void:
         "outfit":
             profile["outfit"] = posmod(int(profile["outfit"]) + 1, 4)
             people[sender] = profile
+        "buy_home":
+            if not secure_dedicated or persistent_store == null:
+                _notify(sender, "Permanent homes are only available in account-backed dedicated sessions.")
+                return
+            var account: String = str(peer_auth_ids.get(sender, ""))
+            var saved: Dictionary = persistent_store.call("get_profile", account)
+            if bool(saved.get("house_owned", false)):
+                _notify(sender, "You already own this virtual home.")
+                return
+            if int(saved["cash"]) < 400:
+                _notify(sender, "Earn more fictional GC from gameplay missions first.")
+                return
+            saved["cash"] = int(saved["cash"]) - 400
+            saved["house_owned"] = true
+            if not bool(persistent_store.call("update_profile", account, saved)):
+                _notify(sender, "Save failed; ask the game server operator to check storage.")
+                return
+            profile["home_owned"] = true
+            people[sender] = profile
+            _send_private_wallet(sender)
+        "furnish":
+            if not secure_dedicated or persistent_store == null:
+                _notify(sender, "Persistent furnishings require a dedicated world.")
+                return
+            var account: String = str(peer_auth_ids.get(sender, ""))
+            var saved: Dictionary = persistent_store.call("get_profile", account)
+            if not bool(saved.get("house_owned", false)) or int(saved.get("furniture", 0)) >= 12 or int(saved["cash"]) < 150:
+                _notify(sender, "Own a home and keep at least 150 fictional GC for each furniture item (maximum 12).")
+                return
+            saved["cash"] = int(saved["cash"]) - 150
+            saved["furniture"] = int(saved["furniture"]) + 1
+            if not bool(persistent_store.call("update_profile", account, saved)):
+                _notify(sender, "House inventory couldn't be saved.")
+                return
+            profile["furniture"] = int(saved["furniture"])
+            people[sender] = profile
+            if home_models.has(sender):
+                home_models[sender].queue_free()
+                home_models.erase(sender)
+            _send_private_wallet(sender)
+        "work":
+            if not secure_dedicated or persistent_store == null:
+                _notify(sender, "Persistent jobs require an authenticated dedicated session.")
+                return
+            var location: Vector3 = profile["pos"]
+            var depot := Vector3(-6, 0.5, 12)
+            if location.distance_to(depot) > 7.0:
+                _notify(sender, "Walk to the delivery depot to begin a shift.")
+                return
+            var now := Time.get_ticks_msec()
+            if last_work_ms.has(sender) and now - int(last_work_ms[sender]) < 30000:
+                _notify(sender, "Your virtual job cooldown has not finished.")
+                return
+            last_work_ms[sender] = now
+            var account: String = str(peer_auth_ids.get(sender, ""))
+            var saved: Dictionary = persistent_store.call("get_profile", account)
+            saved["cash"] = mini(int(saved["cash"]) + 80, 1000000)
+            if not bool(persistent_store.call("update_profile", account, saved)):
+                _notify(sender, "This job couldn't save its result.")
+                return
+            _send_private_wallet(sender)
+            _notify(sender, "Shift complete: +80 fictional Game Cash.")
         _:
             return
     _broadcast_roster()
