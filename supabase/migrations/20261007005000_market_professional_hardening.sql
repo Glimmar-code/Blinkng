@@ -552,4 +552,138 @@ CREATE TRIGGER trg_activity_marketplace_order_status
 AFTER UPDATE OF status ON public.marketplace_orders
 FOR EACH ROW EXECUTE FUNCTION public.activity_from_marketplace_order_status();
 
+
+-- Ensure repeated purchase requests cannot create duplicate pending orders, and
+-- reserve outstanding accepted quantities while changing order status.
+-- These SECURITY DEFINER functions authenticate and authorize each operation.
+CREATE OR REPLACE FUNCTION public.create_marketplace_order(
+  p_item_id uuid,
+  p_quantity integer DEFAULT 1
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_item public.market_items%ROWTYPE;
+  v_order_id uuid;
+  v_uid uuid := auth.uid();
+BEGIN
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'AUTHENTICATION_REQUIRED'; END IF;
+  IF p_quantity IS NULL OR p_quantity NOT BETWEEN 1 AND 20 THEN RAISE EXCEPTION 'INVALID_QUANTITY'; END IF;
+
+  SELECT * INTO v_item
+  FROM public.market_items
+  WHERE id = p_item_id AND COALESCE(is_sold, false) = false AND status = 'active'
+  FOR UPDATE;
+
+  IF NOT FOUND THEN RAISE EXCEPTION 'ITEM_NOT_AVAILABLE'; END IF;
+  IF v_item.seller_id IS NULL OR v_item.seller_id = v_uid THEN RAISE EXCEPTION 'INVALID_SELLER'; END IF;
+  IF v_item.quantity < p_quantity THEN RAISE EXCEPTION 'INSUFFICIENT_QUANTITY'; END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.blocks b
+    WHERE (b.blocker_id = v_uid AND b.blocked_id = v_item.seller_id)
+       OR (b.blocker_id = v_item.seller_id AND b.blocked_id = v_uid)
+  ) THEN RAISE EXCEPTION 'USER_BLOCKED'; END IF;
+
+  -- Item-row locking serializes simultaneous requests for one product.
+  SELECT id INTO v_order_id FROM public.marketplace_orders
+  WHERE item_id = p_item_id AND buyer_id = v_uid
+    AND quantity = p_quantity AND status = 'pending'
+    AND created_at > now() - interval '10 minutes'
+  ORDER BY created_at DESC, id DESC LIMIT 1;
+  IF v_order_id IS NOT NULL THEN RETURN v_order_id; END IF;
+
+  IF (
+    SELECT count(*) FROM public.marketplace_orders
+    WHERE buyer_id = v_uid AND created_at > now() - interval '1 minute'
+  ) >= 8 THEN RAISE EXCEPTION 'ORDER_RATE_LIMITED'; END IF;
+
+  INSERT INTO public.marketplace_orders (
+    item_id, buyer_id, seller_id, quantity, unit_price, total_price, currency, status
+  ) VALUES (
+    p_item_id, v_uid, v_item.seller_id, p_quantity, v_item.price,
+    (v_item.price::numeric * p_quantity), COALESCE(v_item.currency, 'NGN'), 'pending'
+  ) RETURNING id INTO v_order_id;
+
+  RETURN v_order_id;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.create_marketplace_order(uuid, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.create_marketplace_order(uuid, integer) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.update_marketplace_order_status(
+  p_order_id uuid,
+  p_status text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_order public.marketplace_orders%ROWTYPE;
+  v_item public.market_items%ROWTYPE;
+  v_uid uuid := auth.uid();
+  v_next text := lower(trim(coalesce(p_status, '')));
+  v_reserved integer := 0;
+BEGIN
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'AUTHENTICATION_REQUIRED'; END IF;
+  SELECT * INTO v_order FROM public.marketplace_orders
+    WHERE id = p_order_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ORDER_NOT_FOUND'; END IF;
+
+  IF v_uid = v_order.seller_id THEN
+    IF NOT (
+      (v_order.status = 'pending' AND v_next IN ('accepted','declined'))
+      OR (v_order.status = 'accepted' AND v_next IN ('completed','cancelled'))
+    ) THEN RAISE EXCEPTION 'INVALID_SELLER_TRANSITION'; END IF;
+  ELSIF v_uid = v_order.buyer_id THEN
+    IF NOT (
+      (v_order.status = 'pending' AND v_next = 'cancelled')
+      OR (v_order.status = 'accepted' AND v_next = 'completed')
+    ) THEN RAISE EXCEPTION 'INVALID_BUYER_TRANSITION'; END IF;
+  ELSE
+    RAISE EXCEPTION 'NOT_AUTHORIZED';
+  END IF;
+
+  IF v_next IN ('accepted', 'completed') THEN
+    -- Serialize decisions involving stock across different orders.
+    SELECT * INTO v_item FROM public.market_items WHERE id = v_order.item_id FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'ITEM_NOT_FOUND'; END IF;
+    IF v_next = 'accepted' THEN
+      IF v_item.status <> 'active' OR COALESCE(v_item.is_sold, false) THEN
+        RAISE EXCEPTION 'ITEM_NOT_AVAILABLE';
+      END IF;
+      SELECT COALESCE(sum(quantity), 0)::integer INTO v_reserved
+      FROM public.marketplace_orders
+      WHERE item_id = v_order.item_id AND status = 'accepted' AND id <> v_order.id;
+      IF v_reserved + v_order.quantity > v_item.quantity THEN
+        RAISE EXCEPTION 'INSUFFICIENT_QUANTITY';
+      END IF;
+    ELSIF v_item.quantity < v_order.quantity THEN
+      RAISE EXCEPTION 'INSUFFICIENT_QUANTITY';
+    END IF;
+  END IF;
+
+  UPDATE public.marketplace_orders
+  SET status = v_next, updated_at = now()
+  WHERE id = v_order.id;
+
+  IF v_next = 'completed' THEN
+    UPDATE public.market_items
+    SET quantity = quantity - v_order.quantity,
+        is_sold = (quantity - v_order.quantity) <= 0,
+        status = CASE WHEN (quantity - v_order.quantity) <= 0 THEN 'sold' ELSE status END,
+        updated_at = now()
+    WHERE id = v_order.item_id AND quantity >= v_order.quantity;
+    IF NOT FOUND THEN RAISE EXCEPTION 'INSUFFICIENT_QUANTITY'; END IF;
+  END IF;
+  RETURN true;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.update_marketplace_order_status(uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.update_marketplace_order_status(uuid, text) TO authenticated;
+
 COMMIT;
