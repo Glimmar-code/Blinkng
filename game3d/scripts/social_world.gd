@@ -166,6 +166,10 @@ func _build_ui() -> void:
     _refresh_player_rows()
 
 
+func open_social() -> void:
+    panel.visible = true
+
+
 func _clean_name(raw: String) -> String:
     var cleaned := raw.strip_edges().replace("\n", " ").replace("\r", " ")
     if cleaned.is_empty():
@@ -198,6 +202,7 @@ func _host_lan() -> void:
     ride_requests.clear()
     status_label.text = "Hosting on port %d. Friends must be on the same trusted Wi-Fi." % PORT
     _reconcile_people()
+    _refresh_player_rows()
 
 
 func _join_lan() -> void:
