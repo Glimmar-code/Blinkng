@@ -1286,14 +1286,10 @@ class DesktopSupabaseClient(
         minPrice: Long? = null,
         maxPrice: Long? = null,
     ): List<DesktopMarketItem> = withContext(Dispatchers.IO) {
-        require(minPrice == null || maxPrice == null || minPrice <= maxPrice) {
-            "Minimum price must not exceed maximum price."
+        require(com.blinkng.shared.MarketQueryPolicy.validPriceRange(minPrice, maxPrice)) {
+            "Invalid price range."
         }
-        val order = when (sort) {
-            "price_low" -> "price.asc,created_at.desc,id.desc"
-            "price_high" -> "price.desc,created_at.desc,id.desc"
-            else -> "created_at.desc,id.desc"
-        }
+        val order = com.blinkng.shared.MarketQueryPolicy.order(sort)
         val url = buildString {
             append("/rest/v1/market_items?status=eq.active&is_sold=eq.false")
             append("&select=id,title,price,currency,category,condition,description,image_url,image_urls,seller_id,seller_name,seller_username,seller_is_verified,university,location,is_featured,is_sold,created_at")
