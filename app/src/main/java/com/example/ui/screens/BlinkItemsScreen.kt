@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.example.ui.components.BlinkSkeletonBlock
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -814,13 +816,19 @@ private fun BlinkWeatherItem() {
                 border = androidx.compose.foundation.BorderStroke(1.dp, FeedBorder)
             ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-                    Text(
-                        text = snapshot?.let { "${it.temperatureC.roundToInt()}°C" } ?: "--°C",
-                        style = MaterialTheme.typography.displaySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = FeedTextPrimary
-                    )
-                    Text(snapshot?.condition ?: "Turn on Weather to load conditions", color = FeedTextSecondary)
+                    if (loading && snapshot == null) {
+                        BlinkSkeletonBlock(modifier = Modifier.width(150.dp).height(44.dp))
+                        Spacer(Modifier.height(10.dp))
+                        BlinkSkeletonBlock(modifier = Modifier.width(210.dp).height(14.dp))
+                    } else {
+                        Text(
+                            text = snapshot?.let { "${it.temperatureC.roundToInt()}°C" } ?: "--°C",
+                            style = MaterialTheme.typography.displaySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = FeedTextPrimary
+                        )
+                        Text(snapshot?.condition ?: "Turn on Weather to load conditions", color = FeedTextSecondary)
+                    }
                     snapshot?.let {
                         Spacer(Modifier.height(8.dp))
                         val lastFetched = BlinkItemPreferences.lastWeatherFetchMillis(context)
