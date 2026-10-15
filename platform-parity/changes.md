@@ -1,3 +1,10 @@
+## 2026-10-15 — BLINK LIFE native Godot host (PR #283, Testlab validation)
+
+- **Shared game source:** Both Android and Windows use the *same* Godot 4.3 `game3d/` scene and GDScript gameplay. Money is fictional local Game Cash, not BLINK Coins, payments or real rewards.
+- **Android:** The Games button opens a separate landscape `GodotActivity` backed by the pinned Godot 4.3 AAR; the build copies the native scene into APK assets. `:blink_life` runs in a dedicated process to protect the Compose app and authentication lifecycle. CI inspects APK native binaries, assets, and activity registration.
+- **Windows:** The Games button launches the matching native Godot scene from installer-packaged resources; Windows CI obtains the pinned Godot 4.3 runtime binary and stages the common source project into resources before MSI/EXE packaging. Development builds without the packaged engine show a clearly labelled preview fallback.
+- **Status:** Staged only. Do not call this a shipping feature until Android/Windows CI, Android 15 physical launch/exit, Windows installer smoke checks, package-size and performance checks all pass. Main remains untouched. No Supabase migration or wallet changes.
+
 ## 2026-10-14 — BLINK menu navigation and accessibility upgrade (Testlab)
 
 - **Shared:** `MenuSearch` provides case-insensitive trimmed search for Android and Windows, covered by unit tests.
