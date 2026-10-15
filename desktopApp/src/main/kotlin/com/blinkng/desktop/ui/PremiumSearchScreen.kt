@@ -106,12 +106,23 @@ fun PremiumSearchScreen(state: DesktopAppState) {
     var marketItems by remember { mutableStateOf(emptyList<DesktopMarketItem>()) }
     var connectListings by remember { mutableStateOf(emptyList<DesktopConnectListing>()) }
     var discoveryLoading by remember { mutableStateOf(true) }
+    var discoveryError by remember { mutableStateOf<String?>(null) }
+    var retryGeneration by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(retryGeneration) {
         discoveryLoading = true
-        discoveryPosts = runCatching { state.client.fetchFeed() }.getOrDefault(emptyList())
-        marketItems = runCatching { state.client.fetchMarketplace() }.getOrDefault(emptyList())
-        connectListings = runCatching { state.client.fetchConnectListings() }.getOrDefault(emptyList())
+        discoveryError = null
+        // Do not turn network failures into false "no results" states. Preserve
+        // previously fetched content and offer a real retry.
+        val feedResult = runCatching { state.client.fetchFeed() }
+        val marketResult = runCatching { state.client.fetchMarketplace() }
+        val connectResult = runCatching { state.client.fetchConnectListings() }
+        feedResult.onSuccess { discoveryPosts = it }
+        marketResult.onSuccess { marketItems = it }
+        connectResult.onSuccess { connectListings = it }
+        if (listOf(feedResult, marketResult, connectResult).any { it.isFailure }) {
+            discoveryError = "Some results could not load. Check your connection and retry."
+        }
         discoveryLoading = false
     }
 
@@ -148,6 +159,23 @@ fun PremiumSearchScreen(state: DesktopAppState) {
             }
         }
 
+        discoveryError?.let { error ->
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(error, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onErrorContainer)
+                    TextButton(onClick = { retryGeneration++ }, enabled = !discoveryLoading) {
+                        Text("Retry")
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(12.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
             items(DesktopSearchCollection.entries, key = { it.name }) { item ->
