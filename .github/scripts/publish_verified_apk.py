@@ -118,7 +118,7 @@ def publish(source, repository, commit):
         pack = work / "blink-life-web.zip"
         pack_checksum = work / "blink-life-web.zip.sha256"
         shutil.copyfile(packs[0], pack)
-        pack_checksum.write_text(f"{pack_sha}  blink-life-web.zip\\n")
+        pack_checksum.write_text(f"{pack_sha}  blink-life-web.zip\n")
         shutil.copyfile(apks[0], apk)
         shutil.copyfile(infos[0], saved_info)
         checksum.write_text(f"{expected}  Blink-latest.apk\n")

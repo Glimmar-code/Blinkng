@@ -67,6 +67,8 @@ class ReleaseIntegrityTests(unittest.TestCase):
         self.assertEqual([call[0] for call in self.calls], ["view", "create", "upload", "download", "edit"])
         self.assertIn("--draft", self.calls[1])
         self.assertIn("--draft=false", self.calls[-1])
+        self.assertEqual(self.assets["blink-life-web.zip.sha256"],
+                         f"{self.pack_sha}  blink-life-web.zip\n".encode())
 
     def test_damaged_download_is_never_published(self):
         self.corrupt = True
