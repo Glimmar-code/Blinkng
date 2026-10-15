@@ -68,6 +68,8 @@ import com.blinkng.shared.GeneralStudyBank
 import com.blinkng.shared.GeneralStudyDifficulty
 import com.blinkng.shared.GeneralStudyQuestion
 import com.example.R
+import com.example.game.BlinkLifeLaunchGate
+import androidx.compose.ui.platform.LocalContext
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkPurple
 
@@ -92,6 +94,7 @@ fun GeneralStudyGameSection(
     modifier: Modifier = Modifier,
     onRoundActiveChange: (Boolean) -> Unit = {},
 ) {
+    val context = LocalContext.current
     var paneName by rememberSaveable { mutableStateOf(GeneralStudyPane.CATALOG.name) }
     val pane = remember(paneName) { GeneralStudyPane.valueOf(paneName) }
     LaunchedEffect(pane) { onRoundActiveChange(pane == GeneralStudyPane.PLAY) }
@@ -168,6 +171,7 @@ fun GeneralStudyGameSection(
                 when (current) {
                     GeneralStudyPane.CATALOG -> CatalogPane(
                         onOpenGeneralStudy = { paneName = GeneralStudyPane.SETUP.name },
+                        onPlayBlinkLife = { BlinkLifeLaunchGate.play(context) },
                     )
                     GeneralStudyPane.SETUP -> SetupPane(
                         difficulty = difficulty,
@@ -211,11 +215,11 @@ fun GeneralStudyGameSection(
 }
 
 @Composable
-private fun CatalogPane(onOpenGeneralStudy: () -> Unit) {
+private fun CatalogPane(onOpenGeneralStudy: () -> Unit, onPlayBlinkLife: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Text("Games", fontSize = 26.sp, fontWeight = FontWeight.Black)
         Text(
-            "Start with General Study. More games will appear here as they are added.",
+            "Study together, or explore the opt-in BLINK LIFE 3D experimental city.",
             fontSize = 12.sp,
             lineHeight = 18.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -293,6 +297,32 @@ private fun CatalogPane(onOpenGeneralStudy: () -> Unit) {
             }
         }
 
+        Spacer(Modifier.height(18.dp))
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp,
+        ) {
+            Column(Modifier.fillMaxWidth().padding(18.dp)) {
+                Text("BLINK LIFE 3D · PREVIEW", fontWeight = FontWeight.Black, fontSize = 17.sp)
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    "Explore the 3D city, virtual homes, social rooms, demo jobs and vehicles. " +
+                        "Online play requires a configured dedicated game server; offline city works without it. " +
+                        "Fictional Game Cash only.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = onPlayBlinkLife,
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                    shape = RoundedCornerShape(100.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BlinkPink),
+                ) { Text("Play BLINK LIFE 3D", fontWeight = FontWeight.Bold) }
+            }
+        }
         Spacer(Modifier.height(18.dp))
         Surface(
             modifier = Modifier.fillMaxWidth(),
