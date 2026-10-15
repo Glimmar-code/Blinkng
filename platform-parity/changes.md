@@ -1,3 +1,11 @@
+## 2026-10-15 — BLINK LIFE on-demand delivery (Android / Windows parity)
+
+- **PARITY-EXCEPTION: blink-life-play-feature-delivery** — Google Play `com.android.dynamic-feature` and Play Feature Delivery exist only on Android. The downloadable game, progress/cancel controls and Game Storage module removal are Android-store-specific delivery controls, not gameplay capability changes.
+- **Windows equivalent:** The existing Windows EXE/MSI already installs the native Godot engine and 3D game scene, and its Games page Play control remains unchanged. Windows does not require Google Play APIs; Windows players can launch the same `game3d/` content without downloading a Play split.
+- **Shared gameplay:** No Godot scene, gameplay, accounting, or online-server behavior changed. Only where the Android native library and 3D source are packaged, and the Android UI to request this on-demand module.
+- **Website caveat:** Plain GitHub APKs cannot install Play dynamic features, so this implementation is staged and must not replace the public standalone APK before a separate distribution strategy and Google Play test are completed.
+- **Checks:** Android dynamic App Bundle content, base APK size, game-on-demand download/cancel/retry, isolated engine process and Windows EXE/MSI compatibility are all required.
+
 ## 2026-10-15 — BLINK LIFE native multiplayer preview (targeted main integration)
 
 - **Android/Windows:** Same Godot 4.3 original scenes and optional game path. Android enters an isolated :blink_life Activity only after Play; Windows launches a separately packaged native process only on Play.
