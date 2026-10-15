@@ -37,6 +37,21 @@ Open the `game3d/` folder as a project in **Godot 4 (Compatibility renderer)** a
 
 The native prototype's **GC** balance is fiction, exists only for its local session, and cannot be exchanged, sold, redeemed, transferred or withdrawn. It does not use real money, BLINK Coins or live BLINK wallets. Purchases are cosmetic demo interactions only. No gambling, cash-out, or pay-to-win mechanics.
 
+## Social multiplayer foundation (Testlab, not public release)
+
+The native Godot world now adds `scripts/social_world.gd`. Its LAN preview is strictly opt-in through **FRIENDS / WORLD → HOST LAN / JOIN LAN** while BLINK LIFE is already open. It has no persistent Internet matchmaking, production user identity, global chat, live GPS, or wallet.
+
+- Two devices on a **trusted private Wi-Fi** network may connect using a private IPv4 address; localhost is allowed for developer testing. The host runs a Godot ENet server on UDP port 24567. This is not safe to expose as a public game server; never port-forward or advertise the local IP publicly.
+- Players see each other's low-poly 3D avatars, nickname nameplates and interpolated movement in the shared city.
+- Each session participant receives a separate temporary demonstration home interior. Visiting another player's demo home requires request/owner approval, not just a shared address. Gameplay returns to the original city.
+- Players can create one simple fictional vehicle each; a visitor must request and be approved before becoming the single passenger. This is a prototype visual vehicle following the driver (not a production physics/racing system).
+- Short session chat, wave messages and local player mute are available. Social content has not undergone live public moderation; it must remain LAN preview until blocking, reporting, filtering and moderator tooling are integrated.
+- In-game coordinate sharing is **off by default**, toggled per player. These are fictional 3D positions, **not** device location services.
+- All usernames in this preview are editable unverified nicknames, not authenticated BLINK users. No fabricated online counts or fake friends. Disconnect and scene exit do not end the main BLINK app.
+- `ROADMAP_110.md` tracks all 110 requested professional features honestly, separating partially prototyped LAN behavior from unfinished production systems.
+
+**Before real online multiplayer:** Use a secure, server-authoritative Internet architecture with account-bound identities, interest management, validation, staging RLS, invites restricted by friendship and consent, accessible reporting/moderation, parental-age-appropriate protections, and server-owned inventories. Do not deploy this trust-based LAN session protocol as an Internet endpoint.
+
 ## Launch and performance isolation (Testlab)
 
 - Normal BLINK usage (Feed, Reels, Market, Connect, Messages and other Games) **does not start the native Godot renderer or open its scene**.
