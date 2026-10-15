@@ -1,3 +1,10 @@
+## 2026-10-15 — Search real feed-card rendering (Testlab)
+
+- **Android:** Phase 3 universal Search post/reel results use the same `PostCard` as Feed and Profile. Search index rows are used for discovery and ranking only; if a result is not already in the live feed cache, its full post is fetched through the authenticated `PostRepository.fetchPostById`. A missing or private post shows an unavailable/retry state rather than a synthetic FeedPost, and the existing profile/entity result cards remain unchanged.
+- **Windows:** Search and Trending reuse the existing full `DesktopFeedPostCard` from Home, backed by real authenticated `DesktopFeedPost` entries with like/bookmark/repost/comment/share actions. This replaces the miniature metadata-only card without introducing fabricated content.
+- **Shared-first assessment:** The existing backend post identity, authorization, media, and reaction semantics remain unchanged. No schema, RPC, ranking, currency, or account-contract migration is introduced.
+- **Validation required before main:** Android unit tests/build/lint, Windows build/parity checks, authenticated search on posts not currently loaded in Feed, deleted/private result handling, slow network/retry, photo ratio/media, Reels routing, light/dark mode, and search interactions.
+
 ## 2026-10-15 — BLINK LIFE on-demand delivery (Android / Windows parity)
 
 - **PARITY-EXCEPTION: blink-life-play-feature-delivery** — Google Play `com.android.dynamic-feature` and Play Feature Delivery exist only on Android. The downloadable game, progress/cancel controls and Game Storage module removal are Android-store-specific delivery controls, not gameplay capability changes.
