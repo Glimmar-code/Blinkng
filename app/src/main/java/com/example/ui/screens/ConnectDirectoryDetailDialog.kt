@@ -3,6 +3,8 @@ package com.example.ui.screens
 import com.example.ui.components.BlinkSkeletonList
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -65,6 +67,10 @@ fun ConnectDirectoryDetailDialog(
     var applications by remember(category.slug) {
         mutableStateOf<List<DirectoryConnectApplication>>(emptyList())
     }
+    var outgoingApplications by remember(category.slug, currentUserId) {
+        mutableStateOf<List<DirectoryConnectApplication>>(emptyList())
+    }
+    var archiveTarget by remember(category.slug) { mutableStateOf<DirectoryConnectListing?>(null) }
     var loading by remember(category.slug) { mutableStateOf(true) }
     var loadingMore by remember(category.slug) { mutableStateOf(false) }
     var hasMore by remember(category.slug) { mutableStateOf(false) }
@@ -84,6 +90,11 @@ fun ConnectDirectoryDetailDialog(
             .onSuccess { fetched ->
                 listings = fetched
                 hasMore = fetched.size == pageSize
+                runCatching { repository.myApplications(currentUserId) }
+                    .onSuccess { outgoingApplications = it }
+                    .onFailure { exception ->
+                        error = exception.message ?: "Could not load your sent requests."
+                    }
                 // Keep the browse results usable if the private application inbox fails.
                 runCatching { repository.applicationsForOwnListings(category.slug, currentUserId) }
                     .onSuccess { applications = it }
@@ -220,21 +231,37 @@ fun ConnectDirectoryDetailDialog(
                                             fontSize = 12.sp
                                         )
                                     }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
                                         if (isOwn) {
-                                            Text(
-                                                "Your listing",
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                            OutlinedButton(onClick = { error = null; archiveTarget = listing }, enabled = !submitting) {
+                                                Text("Close listing")
+                                            }
                                         } else {
-                                            Button(
-                                                onClick = {
-                                                    error = null
-                                                    applicationTarget = listing
-                                                    applicationMessage = "Hi, I'm interested in ${listing.title}."
-                                                },
-                                                enabled = !submitting
-                                            ) { Text("Request") }
+                                            val sent = outgoingApplications.firstOrNull { it.listingId == listing.id }
+                                            if (sent != null) {
+                                                Text("Request ${sent.status}", fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                if (sent.status.equals("pending", ignoreCase = true)) {
+                                                    OutlinedButton(onClick = {
+                                                        submit(
+                                                            { repository.withdrawApplication(sent.id, currentUserId) },
+                                                            {}
+                                                        )
+                                                    }, enabled = !submitting) { Text("Withdraw") }
+                                                }
+                                            } else {
+                                                Button(
+                                                    onClick = {
+                                                        error = null
+                                                        applicationTarget = listing
+                                                        applicationMessage = "Hi, I'm interested in ${listing.title}."
+                                                    },
+                                                    enabled = !submitting
+                                                ) { Text("Request") }
+                                            }
                                             if (owner != null) {
                                                 OutlinedButton(onClick = {
                                                     onMessageUser(
@@ -357,6 +384,37 @@ fun ConnectDirectoryDetailDialog(
             },
             dismissButton = {
                 TextButton(onClick = { showCreate = false }, enabled = !submitting) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    archiveTarget?.let { listing ->
+        AlertDialog(
+            onDismissRequest = { if (!submitting) archiveTarget = null },
+            title = { Text("Close listing?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This hides your listing from new applicants without deleting its request history.")
+                    if (error != null) {
+                        Text(error.orEmpty(), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        submit(
+                            { repository.archiveListing(listing.id, currentUserId) },
+                            { archiveTarget = null }
+                        )
+                    },
+                    enabled = !submitting
+                ) { Text(if (submitting) "Closing…" else "Close listing") }
+            },
+            dismissButton = {
+                TextButton(onClick = { archiveTarget = null }, enabled = !submitting) {
                     Text("Cancel")
                 }
             }
