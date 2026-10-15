@@ -140,6 +140,7 @@ import kotlinx.coroutines.launch
 
 data class ConnectHubActions(
     val refresh: () -> Unit = {},
+    val refreshStudents: () -> Unit = {},
     val publishRoommate: (String, String, String, Double?, Double?) -> Unit = { _, _, _, _, _ -> },
     val applyRoommate: (String) -> Unit = {},
     val publishMentor: (List<String>, String, String, String) -> Unit = { _, _, _, _ -> },
