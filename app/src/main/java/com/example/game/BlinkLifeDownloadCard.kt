@@ -80,8 +80,10 @@ fun BlinkLifeDownloadCard() {
                         Button(onClick = { BlinkLifeLaunchGate.play(context) }) {
                             Text("Play BLINK LIFE 3D")
                         }
-                        OutlinedButton(onClick = { confirmRemoval = true }) {
-                            Text("Remove files")
+                        if (delivery.canRemoveGameFiles()) {
+                            OutlinedButton(onClick = { confirmRemoval = true }) {
+                                Text("Remove files")
+                            }
                         }
                     }
                 }
@@ -134,9 +136,8 @@ fun BlinkLifeDownloadCard() {
                 )
             }
             Text(
-                "Free game download. Google Play handles the game package; " +
-                    "the normal BLINK app remains installed. Website APK users need " +
-                    "the Play version for this download.",
+                "On Google Play, the game downloads separately only when requested. " +
+                    "The signed website APK comes with the game preinstalled.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall,
             )
