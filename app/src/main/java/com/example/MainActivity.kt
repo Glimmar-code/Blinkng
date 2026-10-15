@@ -713,6 +713,7 @@ fun MainAppContent(
     val connectHubActions = remember(viewModel) {
         ConnectHubActions(
             refresh = { viewModel.refreshConnectHub() },
+            refreshStudents = { viewModel.refreshConnectStudents() },
             publishRoommate = { title, description, location, minBudget, maxBudget ->
                 viewModel.publishRoommateProfile(title, description, location, minBudget, maxBudget)
             },
