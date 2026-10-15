@@ -30,6 +30,7 @@
         <!-- Isolated WebGL game viewer: optional files never load when BLINK starts. -->
         <activity android:name=".game.BlinkLifeWebActivity"
             android:exported="false"
+            android:process=":blink_life_web"
             android:screenOrientation="sensorLandscape" />
         <receiver android:name=".game.BlinkLifeGameDownloadReceiver"
             android:exported="true">
