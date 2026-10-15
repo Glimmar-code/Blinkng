@@ -244,6 +244,18 @@ jobs:
           unzip -Z1 "$AAB" > "$RUNNER_TEMP/blink-play-bundle-files.txt"
           grep -Fxq blinkLifeFeature/manifest/AndroidManifest.xml "$RUNNER_TEMP/blink-play-bundle-files.txt"
           grep -Fxq blinkLifeFeature/assets/project.godot "$RUNNER_TEMP/blink-play-bundle-files.txt"
+          # Fail closed: publishing the old ~345 MB universal APK would break Option B.
+          # The optional game is published separately, never silently fused into Blink.
+          APK_BYTES="$(stat -c %s "$APK")"
+          PACK_BYTES="$(stat -c %s app/build/outputs/publish/blink-life-web.zip)"
+          if [ "$APK_BYTES" -gt 100000000 ]; then
+            echo "::error::Website APK is $APK_BYTES bytes (target: below 100 MB). Refusing oversized release."
+            exit 1
+          fi
+          if [ "$PACK_BYTES" -lt 1 ] || [ "$PACK_BYTES" -gt 167772160 ]; then
+            echo "::error::Optional game pack exceeds the app's 160 MiB download limit."
+            exit 1
+          fi
           echo "PASS: lightweight website APK, Google Play AAB keeps on-demand native game."
           du -h "$APK" app/build/outputs/publish/blink-life-web.zip
 
@@ -258,6 +270,10 @@ jobs:
           fi
           grep -F "BUILD_COMMIT_SHA = \"$GITHUB_SHA\"" "$BUILD_CONFIG" >/dev/null || {
             echo "::error::The release does not embed its exact Git source revision."
+            exit 1
+          }
+          grep -F "BLINK_LIFE_WEB_SHA256 = \"$BLINK_LIFE_WEB_SHA256\"" "$BUILD_CONFIG" >/dev/null || {
+            echo "::error::The signed APK does not pin its matching optional game archive."
             exit 1
           }
           echo "Embedded source revision verified: $GITHUB_SHA"
