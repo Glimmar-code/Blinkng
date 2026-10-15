@@ -2797,8 +2797,16 @@ private suspend fun restoreSupabaseSession() {
 
     fun loadProfileSurfaceData(profile: UserProfile, force: Boolean = false) {
         val key = profile.id.ifBlank { profile.username.trim().removePrefix("@").lowercase() }
-        val ownerId = supabaseService.getCurrentUserId() ?: return
-        if (key.isBlank() || !_uiState.value.isOnline) return
+        if (key.isBlank()) return
+        val ownerId = supabaseService.getCurrentUserId()
+        if (ownerId.isNullOrBlank() || !_uiState.value.isOnline) {
+            // Do not leave a profile with no cached posts permanently shimmering offline.
+            _uiState.value = _uiState.value.copy(
+                profileSurfaceFailedIds = _uiState.value.profileSurfaceFailedIds + key,
+                profileSurfaceLoadingIds = _uiState.value.profileSurfaceLoadingIds - key
+            )
+            return
+        }
         val current = _uiState.value
         if (key in current.profileSurfaceLoadingIds || (!force && key in current.profileSurfaceLoadedIds)) return
         _uiState.value = current.copy(
@@ -2809,7 +2817,7 @@ private suspend fun restoreSupabaseSession() {
             try {
                 val resolved = if (profile.id.isNotBlank()) profile
                     else profileRepository.fetchByUsername(profile.username) ?: profile
-                if (resolved.id.isBlank()) return@launch
+                if (resolved.id.isBlank()) throw IllegalStateException("Profile has no user ID.")
                 // Show actual profile posts as soon as one short request completes.
                 // The liked/saved collections are optional secondary requests and
                 // must not hold the entire Posts/Reels timeline hostage.
@@ -2838,10 +2846,12 @@ private suspend fun restoreSupabaseSession() {
                 }
             } catch (error: Exception) {
                 Log.w(TAG, "PROFILE_SURFACE_LOAD failed", error)
-                _uiState.value = _uiState.value.copy(
-                    profileSurfaceFailedIds = _uiState.value.profileSurfaceFailedIds + key
-                )
-                showToast("Could not load profile content. Tap Retry to try again.")
+                if (supabaseService.getCurrentUserId() == ownerId) {
+                    _uiState.value = _uiState.value.copy(
+                        profileSurfaceFailedIds = _uiState.value.profileSurfaceFailedIds + key
+                    )
+                    showToast("Could not load profile content. Tap Retry to try again.")
+                }
             } finally {
                 val latest = _uiState.value
                 _uiState.value = latest.copy(profileSurfaceLoadingIds = latest.profileSurfaceLoadingIds - key)
