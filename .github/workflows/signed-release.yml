@@ -216,6 +216,70 @@ jobs:
           VERSION_NAME: ${{ steps.version.outputs.name }}
         run: gradle :app:assembleRelease :app:bundleRelease --stacktrace --no-daemon
 
+      # Website/GitHub users need a complete, self-contained APK. Play installs
+      # the very same AAB as device-specific base + optional on-demand feature.
+      - name: Build signed universal standalone APK with BLINK LIFE included
+        shell: bash
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          BUNDLE="$(find app/build/outputs/bundle/release -name '*.aab' -type f | head -n 1)"
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)"
+          test -s "$BUNDLE"
+          test -s "$APK"
+
+          TOOL="$RUNNER_TEMP/bundletool-all-1.18.2.jar"
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/google/bundletool/releases/download/1.18.2/bundletool-all-1.18.2.jar \
+            --output "$TOOL"
+          echo "378b5434cd1378bef6b2bc527b8c7f0ff2584b273830335bce54d6d0813c8584  $TOOL" | sha256sum --check
+
+          STORE_PASSWORD_FILE="$(mktemp)"
+          KEY_PASSWORD_FILE="$(mktemp)"
+          trap 'rm -f "$STORE_PASSWORD_FILE" "$KEY_PASSWORD_FILE"' EXIT
+          printf '%s' "$STORE_PASSWORD" > "$STORE_PASSWORD_FILE"
+          printf '%s' "$KEY_PASSWORD" > "$KEY_PASSWORD_FILE"
+
+          java -jar "$TOOL" build-apks \
+            --bundle="$BUNDLE" \
+            --output="$RUNNER_TEMP/blink-standalone.apks" \
+            --mode=universal \
+            --ks="$KEYSTORE_PATH" \
+            --ks-pass="file:$STORE_PASSWORD_FILE" \
+            --ks-key-alias="$KEY_ALIAS" \
+            --key-pass="file:$KEY_PASSWORD_FILE"
+
+          unzip -p "$RUNNER_TEMP/blink-standalone.apks" universal.apk > "$RUNNER_TEMP/complete-blink.apk"
+          test -s "$RUNNER_TEMP/complete-blink.apk"
+          unzip -Z1 "$RUNNER_TEMP/complete-blink.apk" > "$RUNNER_TEMP/blink-universal-contents.txt"
+          for required in \
+            assets/project.godot \
+            assets/scenes/main.tscn \
+            lib/arm64-v8a/libgodot_android.so; do
+            grep -Fxq "$required" "$RUNNER_TEMP/blink-universal-contents.txt" || {
+              echo "::error::Standalone APK missing installed BLINK LIFE game component: $required"
+              exit 1
+            }
+          done
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$RUNNER_TEMP/complete-blink.apk"
+          "$BUILD_TOOLS/aapt" dump xmltree "$RUNNER_TEMP/complete-blink.apk" AndroidManifest.xml | \
+            grep -F BlinkLifeGodotActivity >/dev/null || {
+              echo "::error::Standalone game Activity was not fused into the website APK"
+              exit 1
+            }
+
+          # The existing metadata/signature gate now verifies the *complete*
+          # universal APK rather than an unusable social-only standalone APK.
+          mv "$RUNNER_TEMP/complete-blink.apk" "$APK"
+          echo "Standalone signed APK contains Godot; Play AAB keeps Godot on-demand."
+          du -h "$APK" "$BUNDLE"
+
       - name: Verify embedded source revision
         shell: bash
         run: |
