@@ -312,7 +312,10 @@ fun ConnectSection(
     ) {
         PullToRefreshBox(
             isRefreshing = isConnectHubLoading,
-            onRefresh = connectHubActions.refresh,
+            onRefresh = {
+                connectHubActions.refresh()
+                connectHubActions.refreshStudents()
+            },
             state = pullToRefreshState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             indicator = {
