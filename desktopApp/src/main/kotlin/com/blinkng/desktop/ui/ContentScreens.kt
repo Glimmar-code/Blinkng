@@ -514,7 +514,7 @@ fun HomeScreen(
         if (loading && posts.isEmpty()) item { LoadingRow() }
         if (!loading && posts.isEmpty()) item { EmptyState("No posts are available yet.") }
         items(posts, key = { it.id }) { post ->
-            PostCard(
+            DesktopFeedPostCard(
                 post = post,
                 onLike = {
                     val beforeLiked = post.isLiked
@@ -609,7 +609,7 @@ fun HomeScreen(
                 },
                 xFeedStyle = true,
             )
-            if (commentsFor == post.id) CommentsPanel(state, post.id)
+            if (commentsFor == post.id) DesktopCommentsPanel(state, post.id)
         }
         if (loadingMorePosts) item(key = "home_more_loading") {
             LoadingRow()
@@ -625,7 +625,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun CommentsPanel(state: DesktopAppState, postId: String) {
+internal fun DesktopCommentsPanel(state: DesktopAppState, postId: String) {
     var comments by remember(postId) { mutableStateOf<List<DesktopComment>>(emptyList()) }
     var draft by remember(postId) { mutableStateOf("") }
     var loading by remember(postId) { mutableStateOf(true) }
@@ -863,7 +863,7 @@ fun SearchScreen(state: DesktopAppState) {
         if (results.posts.isNotEmpty()) {
             item { SectionTitle("Posts") }
             items(results.posts, key = { "post-${it.id}" }) { post ->
-                PostCard(
+                DesktopFeedPostCard(
                     post = post,
                     onLike = {
                         val beforeLiked = post.isLiked
@@ -2851,7 +2851,7 @@ fun AdminScreen(state: DesktopAppState) {
 }
 
 @Composable
-private fun PostCard(
+internal fun DesktopFeedPostCard(
     post: DesktopFeedPost,
     onLike: () -> Unit,
     onBookmark: () -> Unit,
