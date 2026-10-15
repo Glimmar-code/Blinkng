@@ -2,14 +2,14 @@ name: BLINK LIFE native Android APK preview
 
 on:
   pull_request:
-    branches: [Testlab]
+    branches: [main, Testlab]
     paths:
       - 'game3d/**'
       - 'app/src/**'
       - 'app/build.gradle.kts'
       - '.github/workflows/blink-life-native-apk-preview.yml'
   push:
-    branches: [Testlab]
+    branches: [main, Testlab]
     paths:
       - 'game3d/**'
       - 'app/src/**'
@@ -62,7 +62,7 @@ jobs:
           echo "Native BLINK LIFE Godot APK staged; physical device testing still required."
           du -h "$APK"
 
-      - name: Upload Testlab debug APK for device validation
+      - name: Upload opt-in native debug APK for device validation
         uses: actions/upload-artifact@v4
         with:
           name: blink-life-native-testlab-debug-${{ github.sha }}
