@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -38,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -74,7 +76,7 @@ fun MarketScreen(
     onOpenBecomeSeller: () -> Unit,
     onOpenGetVerified: () -> Unit = {},
     onToggleSave: (MarketItem) -> Unit = {},
-    onSearch: (query: String, category: String?, sort: String) -> Unit = { _, _, _ -> },
+    onSearch: (query: String, category: String?, sort: String, minPrice: Long?, maxPrice: Long?) -> Unit = { _, _, _, _, _ -> },
     onRefresh: () -> Unit = {},
     onLoadMore: () -> Unit = {},
     isLoading: Boolean = false,
@@ -102,17 +104,16 @@ fun MarketScreen(
         )
     }
 
-    LaunchedEffect(searchQuery, selectedCategory, selectedSort) {
-        delay(350)
-        onSearch(
-            searchQuery.trim(),
-            selectedCategory.takeUnless { it == "All Categories" },
-            selectedSort
-        )
-    }
-
     val minPrice = minPriceText.toLongOrNull()
     val maxPrice = maxPriceText.toLongOrNull()
+    val validPriceRange = minPrice == null || maxPrice == null || minPrice <= maxPrice
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(searchQuery, selectedCategory, selectedSort, minPrice, maxPrice, validPriceRange) {
+        if (validPriceRange) {
+            delay(350)
+            onSearch(searchQuery.trim(), selectedCategory.takeUnless { it == "All Categories" }, selectedSort, minPrice, maxPrice)
+        }
+    }
     val visibleItems = remember(items, savedOnly, verifiedOnly, minPrice, maxPrice) {
         items.filter { item ->
             (!savedOnly || item.isSaved) &&
@@ -204,6 +205,7 @@ fun MarketScreen(
                             )
                         },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
                         singleLine = true,
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
@@ -419,7 +421,7 @@ fun MarketScreen(
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    "${visibleItems.size} shown",
+                    "${visibleItems.size} loaded",
                     fontSize = 11.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -454,7 +456,9 @@ fun MarketScreen(
                     )
                     Spacer(modifier = Modifier.height(5.dp))
                     Text(
-                        if (searchQuery.isNotBlank() || activeFilterCount > 0)
+                        if (hasMore && (savedOnly || verifiedOnly))
+                            "More listings may match. Load another page below to keep looking."
+                        else if (searchQuery.isNotBlank() || activeFilterCount > 0)
                             "Try a different search or clear your filters."
                         else
                             "New listings will appear here when sellers publish them.",
@@ -500,20 +504,16 @@ fun MarketScreen(
                 }
             }
 
-            if (hasMore || isLoadingMore) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isLoadingMore) {
-                            CircularProgressIndicator(modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
-                        } else {
-                            OutlinedButton(onClick = onLoadMore, shape = RoundedCornerShape(100.dp)) {
-                                Text("Load more listings")
-                            }
+        }
+        // Client-side saved/verified filters may hide an entire loaded page.
+        if (!isLoading && (hasMore || isLoadingMore)) {
+            item {
+                Box(modifier = Modifier.fillMaxWidth().padding(18.dp), contentAlignment = Alignment.Center) {
+                    if (isLoadingMore) {
+                        CircularProgressIndicator(modifier = Modifier.size(26.dp), strokeWidth = 2.dp)
+                    } else {
+                        OutlinedButton(onClick = onLoadMore, shape = RoundedCornerShape(100.dp)) {
+                            Text("Load more listings")
                         }
                     }
                 }
@@ -540,6 +540,7 @@ fun MarketScreen(
                             value = minPriceText,
                             onValueChange = { minPriceText = it.filter(Char::isDigit).take(12) },
                             label = { Text("Min ₦") },
+                            isError = !validPriceRange,
                             keyboardOptions = KeyboardOptions.Default,
                             singleLine = true,
                             modifier = Modifier.weight(1f)
@@ -548,6 +549,7 @@ fun MarketScreen(
                             value = maxPriceText,
                             onValueChange = { maxPriceText = it.filter(Char::isDigit).take(12) },
                             label = { Text("Max ₦") },
+                            isError = !validPriceRange,
                             keyboardOptions = KeyboardOptions.Default,
                             singleLine = true,
                             modifier = Modifier.weight(1f)
@@ -556,7 +558,7 @@ fun MarketScreen(
                 }
             },
             confirmButton = {
-                Button(onClick = { showFilters = false }) { Text("Apply") }
+                Button(onClick = { showFilters = false }, enabled = validPriceRange) { Text("Apply") }
             },
             dismissButton = {
                 TextButton(
@@ -565,6 +567,7 @@ fun MarketScreen(
                         verifiedOnly = false
                         minPriceText = ""
                         maxPriceText = ""
+                        showFilters = false
                     }
                 ) { Text("Reset") }
             }
