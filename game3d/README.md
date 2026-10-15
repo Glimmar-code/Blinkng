@@ -1,3 +1,5 @@
+> **MAIN INTEGRATION NOTE — 15 October 2026:** The Godot source was previously promoted without Android/Windows launch integration. PR #292 selectively adds isolated native host code on top of the newer main application. **This does not deploy a live multiplayer server** or prove the native game works on every device. Check current CI, Android hardware installs, encryption/moderation and server deployment before advertising a production multiplayer release.
+
 # BLINK LIFE — Native 3D Game (Experimental)
 
 This is the **real 3D engine source** for BLINK LIFE, built in Godot 4 with the mobile-friendly **Compatibility** renderer.
