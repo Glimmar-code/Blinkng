@@ -2761,7 +2761,25 @@ fun ProfileScreen(state: DesktopAppState) {
 
 @Composable
 fun GamesScreen(state: DesktopAppState) {
-    DesktopGeneralStudyGame()
+    var gameLaunchInfo by remember { mutableStateOf(false) }
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Button(onClick = {
+                if (!BlinkLifeNativeLauncher.launch()) gameLaunchInfo = true
+            }) { Text("Play BLINK LIFE 3D (Beta)") }
+            if (gameLaunchInfo) {
+                Text(
+                    "The native Godot runtime is available in the packaged Windows installer.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Box(Modifier.weight(1f)) { DesktopGeneralStudyGame() }
+    }
 }
 
 @Composable
