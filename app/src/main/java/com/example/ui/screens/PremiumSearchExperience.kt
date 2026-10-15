@@ -823,6 +823,23 @@ private fun PremiumDiscoveryHome(
             }
         }
 
+        item(key = "promoted-discovery") {
+            BlinkPromotedDiscoveryRail(
+                surface = "SEARCH",
+                currentUsername = currentUsername,
+                isDark = isDark,
+                onProfileClick = onProfileClick,
+                onPostClick = onPostClick,
+                onLikePost = onLikePost,
+                onCommentPost = onCommentPost,
+                onBookmarkPost = onBookmarkPost,
+                onVotePoll = onVotePoll,
+                onSharePost = onSharePost,
+                onOptionsClick = onOptionsClick,
+                onDeletePost = onDeletePost,
+            )
+        }
+
         if (trendingPosts.isNotEmpty()) {
             item { PremiumSectionTitle("Popular posts & reels", "High-engagement content right now") }
             items(trendingPosts, key = { "trend-${it.id}" }) { post ->

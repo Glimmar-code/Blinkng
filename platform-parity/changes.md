@@ -905,3 +905,10 @@ Android behavior: Render noninteractive shapes matched to awaiting rows/cards on
 Why Android-specific: These changes exclusively alter Android Jetpack Compose screen-level loading presentation and phone-specific dimensions. They do not change APIs, wallet values, points, ad behavior, database schema or business rules.
 Windows equivalent: The Windows desktop already has independent Compose Desktop loading/progress states and wider mouse/keyboard screen layouts in desktopApp. It does not reuse Android Activity screens or Android-specific 44dp touch avatar/list placeholders. Desktop should keep its existing cached-data-first and loading/error states; equivalent placeholder visuals can be introduced through desktop UI separately when visual QA warrants them. This is a presentation exception, not a new feature unavailable on desktop.
 Validation: Android unit tests, lint, release compilation, runtime smoke and light/dark screenshot review on Testlab-skeletons-20261015 before the draft PR is made mergeable; Windows parity gate and Windows build must remain green.
+
+## 2026-10-15 — Sponsored discovery full PostCards and search clarity (Testlab)
+
+- Paid Search content hydrates through authenticated `PostRepository.fetchPostById` before rendering the full standard `PostCard`; failed or private content is never substituted with a shortened synthetic post.
+- Promoted profiles remain compact and clearly labeled; promoted posts and reels display full cards with the same linked interactions and dedicated Open actions across both Phase 2 fallback and Phase 3 discovery.
+- Offline empty-feed states accurately describe missing cache and offer a retry rather than inviting an unrelated post.
+- Shared pure `searchResultsSummary` helper fixes misleading pagination language with unit tests.
