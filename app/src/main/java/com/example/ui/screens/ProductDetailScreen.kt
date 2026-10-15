@@ -61,9 +61,10 @@ private fun normalizeMarketWhatsapp(raw: String): String {
     val digits = raw.filter(Char::isDigit)
     if (digits.isBlank()) return ""
     return when {
-        digits.startsWith("234") -> digits
-        digits.startsWith("0") && digits.length >= 10 -> "234" + digits.drop(1)
-        else -> digits
+        digits.length == 13 && digits.startsWith("234") -> digits
+        digits.length == 11 && digits.startsWith("0") -> "234" + digits.drop(1)
+        digits.length == 10 -> "234" + digits
+        else -> ""
     }
 }
 
@@ -80,6 +81,7 @@ fun ProductDetailScreen(
     isOwner: Boolean = false,
     onUpdateListingStatus: (MarketItem, String) -> Unit = { _, _ -> },
     onDeleteListing: (MarketItem) -> Unit = {},
+    isSubmittingOrder: Boolean = false,
     isDark: Boolean
 ) {
     val context = LocalContext.current
@@ -88,6 +90,7 @@ fun ProductDetailScreen(
     var showOrderDialog by remember { mutableStateOf(false) }
     var showReportDialog by remember { mutableStateOf(false) }
     var showOwnerMenu by remember { mutableStateOf(false) }
+    var showRemoveConfirmation by remember(item.id) { mutableStateOf(false) }
     var quantity by remember(item.id) { mutableIntStateOf(1) }
     var reportReason by remember { mutableStateOf("Misleading listing") }
     var reportDetails by remember { mutableStateOf("") }
@@ -231,7 +234,7 @@ fun ProductDetailScreen(
                                             leadingIcon = { Icon(Icons.Default.DeleteOutline, null, tint = MaterialTheme.colorScheme.error) },
                                             onClick = {
                                                 showOwnerMenu = false
-                                                onDeleteListing(item)
+                                                showRemoveConfirmation = true
                                             }
                                         )
                                     }
@@ -252,6 +255,7 @@ fun ProductDetailScreen(
                                 when {
                                     item.isSold || item.status == "sold" -> "SOLD"
                                     item.status == "paused" -> "PAUSED"
+                                    item.quantity == 0 -> "OUT OF STOCK"
                                     else -> item.status.uppercase()
                                 },
                                 color = Color.White,
@@ -536,7 +540,7 @@ fun ProductDetailScreen(
 
                     Button(
                         onClick = { showOrderDialog = true },
-                        enabled = available,
+                        enabled = available && !isSubmittingOrder,
                         colors = ButtonDefaults.buttonColors(containerColor = BlinkPink),
                         shape = RoundedCornerShape(100.dp),
                         contentPadding = PaddingValues(horizontal = 14.dp),
@@ -544,7 +548,7 @@ fun ProductDetailScreen(
                     ) {
                         Icon(Icons.Default.ShoppingBag, null, modifier = Modifier.size(17.dp))
                         Spacer(modifier = Modifier.width(5.dp))
-                        Text("Request", fontWeight = FontWeight.Bold)
+                        Text(if (isSubmittingOrder) "Sending" else "Request", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -601,6 +605,7 @@ fun ProductDetailScreen(
                         showOrderDialog = false
                         onRequestOrder(item, quantity)
                     },
+                    enabled = !isSubmittingOrder && available && quantity <= availableQuantity,
                     colors = ButtonDefaults.buttonColors(containerColor = BlinkPink)
                 ) {
                     Text("Send request")
@@ -653,4 +658,19 @@ fun ProductDetailScreen(
             }
         )
     }
+    if (showRemoveConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showRemoveConfirmation = false },
+            title = { Text("Remove this listing?") },
+            text = { Text("This listing will no longer be visible to buyers.") },
+            confirmButton = {
+                Button(onClick = {
+                    showRemoveConfirmation = false
+                    onDeleteListing(item)
+                }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { showRemoveConfirmation = false }) { Text("Cancel") } }
+        )
+    }
+
 }
