@@ -1,3 +1,9 @@
+## 2026-10-15 — BLINK LIFE on-demand engine startup and host protection
+
+- **Android:** The Games card now calls a Godot-free `BlinkLifeLaunchGate` only when Play is tapped; rapid double taps are ignored and start failures are handled without crashing BLINK. The Godot activity stays in isolated `:blink_life` process; `BlinkApplication` skips normal Supabase/Firebase/worker startup there.
+- **Windows:** Its native Godot launcher is also invoked only when the Games button is clicked; no startup preload.
+- **Checks:** New static isolation contract verifies manifest, game startup, and desktop lazy launcher. Existing Godot smoke tests and Android/Windows builds still required. APK/installer size grows even if game is never played because binaries are pre-bundled; runtime memory/graphics cost is deferred to Play, not the installation size. Physical device tests still required before main merge.
+
 ## 2026-10-15 — BLINK LIFE native Godot host (PR #283, Testlab validation)
 
 - **Shared game source:** Both Android and Windows use the *same* Godot 4.3 `game3d/` scene and GDScript gameplay. Money is fictional local Game Cash, not BLINK Coins, payments or real rewards.
