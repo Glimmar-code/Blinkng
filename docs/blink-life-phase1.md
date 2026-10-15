@@ -6,7 +6,7 @@ Status: experimental; **not a production release**. Built to be reviewed via a f
 
 Open BLINK > Games > **BLINK LIFE · TESTLAB** on Android or Windows.
 
-**3D requirement:** The embedded Android/Windows proof-of-concept currently uses projected X/Y/Z meshes and an orbitable camera. A separate native Godot 4 project has now also been added under `game3d/` with a real perspective 3D scene, free-roam character physics, collidable buildings and touch/keyboard controls. The Godot runtime is **not yet embedded into the Android APK or Windows installer**, and its scene still needs a real Godot build/run smoke test. See `game3d/README.md`.
+**3D requirement (PR #283 Testlab integration candidate):** Android builds now stage the native `game3d/` Godot 4.3 scene and runtime AAR in a separate game activity, while Windows installer builds stage the same project and native Godot Windows executable. The previous software-projected preview remains a fallback for desktop development builds without native game resources. This is **not** evidence that a new APK works on a phone or that main has been updated; CI, physical Android and Windows installer tests must pass before production release. See `game3d/README.md`.
 
 - Shared original 3D city playground with six named places, cuboid buildings, low-poly trees, and a three-dimensional avatar.
 - Camera rotation with 45-degree orbit controls to view the city from different angles.
