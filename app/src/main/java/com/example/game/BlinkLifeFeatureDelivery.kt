@@ -2,6 +2,8 @@ package com.example.game
 
 import android.app.Activity
 import android.content.Context
+import android.content.ComponentName
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.getValue
@@ -20,7 +22,7 @@ import com.google.android.play.core.splitinstall.SplitInstallStateUpdatedListene
  * The base APK deliberately contains neither native Godot libraries nor scenes.
  *
  * This mechanism works for Play App Bundle installs and bundletool local-testing
- * installs. A plain GitHub base APK cannot fetch a module from Google Play.
+ * installs. A signed universal website APK includes the game split fused at build time.
  */
 class BlinkLifeFeatureDelivery(private val applicationContext: Context) {
     companion object {
@@ -40,8 +42,34 @@ class BlinkLifeFeatureDelivery(private val applicationContext: Context) {
     private val manager: SplitInstallManager =
         SplitInstallManagerFactory.create(applicationContext)
 
+    // The website release uses bundletool's fused universal APK: the native
+    // game Activity is already in that single APK even without a Play install.
+    private fun isInstalled(): Boolean {
+        if (manager.installedModules.contains(MODULE)) return true
+        return runCatching {
+            applicationContext.packageManager.getActivityInfo(
+                ComponentName(applicationContext.packageName, "com.example.game.BlinkLifeGodotActivity"),
+                0,
+            )
+            true
+        }.getOrDefault(false)
+    }
+
+    fun canRemoveGameFiles(): Boolean {
+        val playInstaller = runCatching {
+            if (Build.VERSION.SDK_INT >= 30) {
+                applicationContext.packageManager
+                    .getInstallSourceInfo(applicationContext.packageName).installingPackageName
+            } else {
+                @Suppress("DEPRECATION")
+                applicationContext.packageManager.getInstallerPackageName(applicationContext.packageName)
+            }
+        }.getOrNull()
+        return playInstaller == "com.android.vending" && manager.installedModules.contains(MODULE)
+    }
+
     var snapshot by mutableStateOf(
-        Snapshot(if (manager.installedModules.contains(MODULE)) Phase.INSTALLED else Phase.NOT_INSTALLED)
+        Snapshot(if (isInstalled()) Phase.INSTALLED else Phase.NOT_INSTALLED)
     )
         private set
 
@@ -72,7 +100,7 @@ class BlinkLifeFeatureDelivery(private val applicationContext: Context) {
     }
 
     fun refresh() {
-        if (manager.installedModules.contains(MODULE)) {
+        if (isInstalled()) {
             snapshot = Snapshot(Phase.INSTALLED)
             return
         }
@@ -88,7 +116,7 @@ class BlinkLifeFeatureDelivery(private val applicationContext: Context) {
     }
 
     fun downloadAndPlay() {
-        if (manager.installedModules.contains(MODULE)) {
+        if (isInstalled()) {
             snapshot = Snapshot(Phase.INSTALLED)
             onReady?.invoke()
             return
@@ -118,7 +146,7 @@ class BlinkLifeFeatureDelivery(private val applicationContext: Context) {
     }
 
     fun removeGameFiles() {
-        if (!manager.installedModules.contains(MODULE)) return
+        if (!canRemoveGameFiles()) return
         manager.deferredUninstall(listOf(MODULE))
             .addOnSuccessListener {
                 snapshot = Snapshot(
