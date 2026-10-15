@@ -94,7 +94,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.R
-import com.blinkng.shared.BlinkLifePrototype
+import com.example.game.BlinkLifeGodotActivity
 import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.GameDashboard
@@ -158,7 +158,6 @@ fun GameSection(
     val repository = remember { GameRepository() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var blinkLifeOpen by rememberSaveable { mutableStateOf(false) }
 
     var selectedModeName by rememberSaveable { mutableStateOf(ChallengeGameType.GENERAL_KNOWLEDGE.name) }
     val selectedMode = remember(selectedModeName) {
@@ -398,12 +397,6 @@ fun GameSection(
         )
     }
 
-    BackHandler(enabled = blinkLifeOpen) { blinkLifeOpen = false }
-    if (blinkLifeOpen) {
-        BlinkLifePrototype(onExit = { blinkLifeOpen = false }, modifier = modifier)
-        return
-    }
-
     LazyColumn(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(bottom = 120.dp)
@@ -470,15 +463,17 @@ fun GameSection(
                         color = MaterialTheme.colorScheme.surface
                     ) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("BLINK LIFE · TESTLAB", fontWeight = FontWeight.Black, fontSize = 16.sp)
+                            Text("BLINK LIFE 3D · TESTLAB", fontWeight = FontWeight.Black, fontSize = 16.sp)
                             Text(
-                                "Explore a 3D neighbourhood, rotate the camera, complete three jobs and decorate your room. " +
-                                    "Local fictional Game Cash only; no real money or BLINK Coin rewards.",
+                                "Play the native Godot 3D neighbourhood with free-roam movement, touch controls and jobs. " +
+                                    "Experimental · fictional Game Cash only, never BLINK Coins or real money.",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Button(onClick = { blinkLifeOpen = true }) {
-                                Text("Enter BLINK LIFE playground")
+                            Button(onClick = {
+                                context.startActivity(Intent(context, BlinkLifeGodotActivity::class.java))
+                            }) {
+                                Text("Play BLINK LIFE 3D")
                             }
                         }
                     }
