@@ -187,7 +187,9 @@ android {
   compileOptions { isCoreLibraryDesugaringEnabled = true; sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
   buildFeatures { compose = true; buildConfig = true }
   sourceSets.getByName("main").kotlin.srcDir("../shared/src/main/kotlin")
-  sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/blinkLifeGodot/assets"))
+  // AGP's SourceSet API requires a concrete File, not a Provider<Directory>.
+  // merge*Assets explicitly depends on the staging Sync task above.
+  sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/blinkLifeGodot/assets").get().asFile)
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo { includeInApk = false; includeInBundle = true }
 }
