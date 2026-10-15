@@ -23,7 +23,7 @@ assert game.get(android_ns + "exported") == "false", (
 )
 
 app = (root / "app/src/main/java/com/example/BlinkApplication.kt").read_text()
-assert 'currentProcess?.endsWith(":blink_life") == true) return' in app, (
+assert 'processName?.endsWith(":blink_life") == true) return' in app, (
     "Godot process must bypass Supabase/Firebase/BLINK background startup"
 )
 main_screen = (
