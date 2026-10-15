@@ -110,6 +110,7 @@ private enum class LivePeopleSort(val label: String) {
 @Composable
 fun ConnectSection(
     profiles: List<UserProfile>,
+    currentProfile: UserProfile? = null,
     currentUsername: String,
     userAvatar: String,
     isDark: Boolean,
@@ -139,8 +140,9 @@ fun ConnectSection(
     val followScope = rememberCoroutineScope()
     val followingIds by FollowStateStore.followingIds.collectAsState()
 
-    val current = remember(profiles, currentUsername) {
-        profiles.firstOrNull { it.username.equals(currentUsername, ignoreCase = true) }
+    val current = remember(profiles, currentUsername, currentProfile) {
+        currentProfile?.takeIf { it.username.equals(currentUsername, ignoreCase = true) }
+            ?: profiles.firstOrNull { it.username.equals(currentUsername, ignoreCase = true) }
     }
 
     val liveProfiles = remember(profiles, currentUsername) {
