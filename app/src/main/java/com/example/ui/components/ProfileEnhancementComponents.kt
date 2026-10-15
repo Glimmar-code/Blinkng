@@ -34,6 +34,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,11 +59,16 @@ fun ProfileConnectionsSheet(
     kind: ProfileConnectionKind,
     profiles: List<UserProfile>,
     loading: Boolean,
+    loadFailed: Boolean = false,
+    onRetry: () -> Unit = {},
+    currentUserId: String = "",
     followingIds: Set<String>,
     onDismiss: () -> Unit,
     onOpenProfile: (String) -> Unit,
-    onFollowToggle: (UserProfile, Boolean) -> Unit
+    onFollowToggle: suspend (UserProfile, Boolean) -> Boolean
 ) {
+    val scope = rememberCoroutineScope()
+    val busyIds = remember(kind) { mutableStateMapOf<String, Boolean>() }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
@@ -76,6 +85,12 @@ fun ProfileConnectionsSheet(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                         rows = 5
                     )
+                }
+                loadFailed && profiles.isEmpty() -> {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Unable to load connections. Check your network.", color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = onRetry) { Text("Retry") }
+                    }
                 }
                 profiles.isEmpty() -> {
                     Text(
@@ -134,8 +149,22 @@ fun ProfileConnectionsSheet(
                                     Text("View")
                                 }
                                 val following = item.id in followingIds
-                                OutlinedButton(onClick = { onFollowToggle(item, !following) }) {
-                                    Text(if (following) "Following" else "Follow", fontSize = 10.sp)
+                                if (item.id != currentUserId) {
+                                    val busy = busyIds[item.id] == true
+                                    OutlinedButton(
+                                        enabled = !busy,
+                                        onClick = {
+                                            if (!busy) {
+                                                busyIds[item.id] = true
+                                                scope.launch {
+                                                    try { onFollowToggle(item, !following) }
+                                                    finally { busyIds.remove(item.id) }
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Text(if (busy) "Saving…" else if (following) "Following" else "Follow", fontSize = 10.sp)
+                                    }
                                 }
                             }
                         }
