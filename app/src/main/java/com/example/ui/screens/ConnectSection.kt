@@ -86,7 +86,7 @@ import com.blinkng.shared.BlinkActivityPulseDefaults
 import com.blinkng.shared.BlinkActivityPulsePolicy
 import com.blinkng.shared.BlinkPulseTrend
 import com.blinkng.shared.campusActivityLabel
-import com.blinkng.shared.communityActivityRange
+import com.blinkng.shared.connectActivityScoreRange
 import com.blinkng.shared.pulseTrend
 import kotlinx.coroutines.launch
 
@@ -230,9 +230,26 @@ fun ConnectSection(
 
     val policy = remember(activityPulsePolicy) { activityPulsePolicy.normalized() }
     val activeNowCount = remember(liveProfiles) { liveProfiles.count { it.onlineNow } }
-    // Count only users with confirmed online presence; never fabricate a baseline user.
-    val realOnlineCount = activeNowCount
+    // The signed-in, foreground Connect session counts as one actual active session.
+    // Other people are counted only when their profile reports online presence.
+    val isCurrentSessionActive = isLiveDataAvailable && currentUsername.isNotBlank()
+    val realOnlineCount = activeNowCount + if (isCurrentSessionActive) 1 else 0
     val reduceMotion = rememberReducedMotionEnabled()
+    val activityScoreRange = remember(realOnlineCount) { connectActivityScoreRange(realOnlineCount) }
+    val activityScoreState = rememberManagedPulse(
+        key = "connect_activity_score_${currentUsername.lowercase()}",
+        range = activityScoreRange,
+        tickMillis = policy.connectTickMillis,
+        policy = policy,
+        liveDataAvailable = isLiveDataAvailable,
+        windowActive = rememberWindowActive(),
+        reduceMotion = reduceMotion,
+    )
+    // Always show values from the current band (even when an older session has a
+    // cached pulse value). This score is never shown as a count of people.
+    val activityScore = if (isLiveDataAvailable) {
+        (activityScoreState.value ?: activityScoreRange.first).coerceIn(activityScoreRange)
+    } else null
     var previousRealOnline by rememberSaveable(currentUsername) { mutableStateOf(realOnlineCount) }
     var activityTrend by rememberSaveable(currentUsername) { mutableStateOf(BlinkPulseTrend.STABLE) }
     LaunchedEffect(realOnlineCount) {
@@ -241,16 +258,16 @@ fun ConnectSection(
     }
 
     val displayedOnlineCount by animateIntAsState(
-        targetValue = activeNowCount,
+        targetValue = realOnlineCount,
         animationSpec = tween(durationMillis = 720),
         label = "connectLiveActiveCount"
     )
     val campusName = current?.university.orEmpty().takeUnless { it.equals("null", true) }.orEmpty()
-    val realCampusOnline = remember(liveProfiles, campusName) {
+    val realCampusOnline = remember(liveProfiles, campusName, isCurrentSessionActive) {
         val others = liveProfiles.count {
             it.onlineNow && campusName.isNotBlank() && it.university.equals(campusName, ignoreCase = true)
         }
-        others
+        others + if (isCurrentSessionActive && campusName.isNotBlank()) 1 else 0
     }
     val campusLabel = remember(realCampusOnline, policy) {
         campusActivityLabel(realCampusOnline, policy)
@@ -260,14 +277,18 @@ fun ConnectSection(
     }
 
     LaunchedEffect(realOnlineCount, currentUsername, isLiveDataAvailable) {
-        val shown = if (isLiveDataAvailable) realOnlineCount else null
-        if (shown != null && isLiveDataAvailable) {
+        if (isLiveDataAvailable) {
             onActivityPulseEvent(
                 "connect",
                 "impression",
                 realOnlineCount,
-                shown,
-                mapOf("trend" to activityTrend.label)
+                activityScore,
+                mapOf(
+                    "trend" to activityTrend.label,
+                    "metric" to "estimated_activity_points",
+                    "min" to activityScoreRange.first.toString(),
+                    "max" to activityScoreRange.last.toString(),
+                ),
             )
         }
     }
@@ -321,14 +342,14 @@ fun ConnectSection(
                                 ) {
                                     Column(Modifier.weight(1f)) {
                                         Text(
-                                            "Online students",
+                                            "Community activity",
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.Black
                                         )
                                         Text(
                                             when {
                                                 !isLiveDataAvailable -> "Online status temporarily unavailable"
-                                                else -> "Live presence • ${activityTrend.label}"
+                                                else -> "Estimated activity points • not people"
                                             },
                                             fontSize = 10.5.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -341,7 +362,7 @@ fun ConnectSection(
                                     ) {
                                         if (reduceMotion) {
                                             Text(
-                                                if (isLiveDataAvailable) realOnlineCount.toString() else "—",
+                                                activityScore?.toString() ?: "—",
                                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                                                 color = BlinkOnlineGreen,
                                                 fontSize = 13.sp,
@@ -349,7 +370,7 @@ fun ConnectSection(
                                             )
                                         } else {
                                             Crossfade(
-                                                targetState = if (isLiveDataAvailable) realOnlineCount else null,
+                                                targetState = activityScore,
                                                 label = "communityActivityPulse"
                                             ) { pulseValue ->
                                                 Text(
@@ -365,7 +386,7 @@ fun ConnectSection(
                                 }
 
                                 Text(
-                                    if (isLiveDataAvailable) "Confirmed online now: $realOnlineCount" else "Online count unavailable",
+                                    if (isLiveDataAvailable) "Online sessions (including yours): $realOnlineCount" else "Online count unavailable",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -381,7 +402,7 @@ fun ConnectSection(
                                 if (onlinePreview.isNotEmpty()) {
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                                     Text(
-                                        if (isLiveDataAvailable) "Actually online" else "Previously online",
+                                        if (isLiveDataAvailable) "Other students online" else "Previously online",
                                         fontSize = 10.5.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -468,7 +489,7 @@ fun ConnectSection(
                                     color = BlinkOnlineGreen.copy(alpha = .13f)
                                 ) {
                                     Text(
-                                        "${if (isLiveDataAvailable) "Active now" else "Presence unavailable"} · ${if (isLiveDataAvailable) (if (reduceMotion) activeNowCount else displayedOnlineCount) else "—"}",
+                                        "${if (isLiveDataAvailable) "Active now" else "Presence unavailable"} · ${if (isLiveDataAvailable) (if (reduceMotion) realOnlineCount else displayedOnlineCount) else "—"}",
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                         color = BlinkOnlineGreen,
                                         fontSize = 10.5.sp,
