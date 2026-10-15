@@ -23,10 +23,16 @@ class ReleaseIntegrityTests(unittest.TestCase):
             for name in ("AndroidManifest.xml", "classes.dex", "resources.arsc"):
                 archive.writestr(name, b"test payload")
         self.sha = hashlib.sha256(self.apk.read_bytes()).hexdigest()
+        self.pack = self.root / "blink-life-web.zip"
+        with zipfile.ZipFile(self.pack, "w") as archive:
+            for name in ("index.html", "index.js", "index.wasm", "index.pck"):
+                archive.writestr(name, b"valid web game")
+        self.pack_sha = hashlib.sha256(self.pack.read_bytes()).hexdigest()
         self.info = self.root / "release-info.txt"
         self.info.write_text("applicationId=com.aistudio.blink.appvtwo\nversionCode=123\n"
                              "versionName=1.0.123\ncommit=abc\nproductionSource=main\n"
-                             f"signingCertificateSha256={'a' * 64}\napkSha256={self.sha}\n")
+                             f"signingCertificateSha256={'a' * 64}\napkSha256={self.sha}\\n"
+                             f"gamePackSha256={self.pack_sha}\\ngamePackSize={self.pack.stat().st_size}\\n")
         self.calls = []
         self.assets = {}
         self.corrupt = False
@@ -105,6 +111,25 @@ class ReleaseIntegrityTests(unittest.TestCase):
         self.apk.write_bytes(content)
         with self.assertRaisesRegex(ValueError, "ZIP integrity"):
             publisher.verify_apk(self.apk, hashlib.sha256(content).hexdigest())
+
+    def test_bad_game_hash_blocks_publication(self):
+        self.info.write_text(self.info.read_text().replace(
+            f"gamePackSha256={self.pack_sha}", f"gamePackSha256={'0' * 64}"))
+        with self.assertRaisesRegex(ValueError, "Game pack SHA-256 mismatch"):
+            self.run_publish()
+        self.assertNotIn("edit", [call[0] for call in self.calls])
+
+    def test_missing_game_pack_blocks_publication(self):
+        self.pack.unlink()
+        with self.assertRaisesRegex(ValueError, "Expected exactly one"):
+            self.run_publish()
+
+    def test_zip_slip_game_pack_is_rejected(self):
+        with zipfile.ZipFile(self.pack, "w") as archive:
+            for name in ("index.html", "index.js", "index.wasm", "index.pck", "../escape.js"):
+                archive.writestr(name, b"payload")
+        with self.assertRaisesRegex(ValueError, "Invalid game pack entries"):
+            publisher.verify_web_pack(self.pack, hashlib.sha256(self.pack.read_bytes()).hexdigest())
 
     def test_non_apk_zip_is_rejected(self):
         with zipfile.ZipFile(self.apk, "w") as archive:
