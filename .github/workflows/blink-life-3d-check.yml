@@ -47,6 +47,16 @@ jobs:
             echo 'Godot import failed.'
             exit 1
           fi
+      - name: Test HMAC join tickets, replay protection and server-backed houses
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 60s godot --headless --path game3d --script res://tests/auth_smoke.gd 2>&1 | tee /tmp/blink-life-auth-tests.log
+          if grep -Ei '(^ERROR:|^SCRIPT ERROR:|Parse Error|SMOKE FAILURE)' /tmp/blink-life-auth-tests.log; then
+            echo 'Dedicated game authentication or persistence regression detected.'
+            exit 1
+          fi
+
       - name: Run native 3D interactive scene smoke tests
         shell: bash
         run: |
