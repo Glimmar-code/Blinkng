@@ -19,6 +19,7 @@ var completed_jobs: int = 0
 var owns_plant: bool = false
 var places: Array[Dictionary] = []
 var active_quiz: Dictionary = {}
+var social: Node3D
 
 
 func _ready() -> void:
@@ -27,6 +28,13 @@ func _ready() -> void:
     _create_player()
     _create_camera()
     _create_hud()
+    # Instantiate network UI only inside the already-launched Godot game.
+    # Connections are opt-in: no socket opens until HOST LAN / JOIN LAN.
+    var social_script: Script = load("res://scripts/social_world.gd")
+    social = social_script.new()
+    social.name = "SocialWorld"
+    add_child(social)
+    social.call("configure", self, player)
 
 
 func _process(delta: float) -> void:
@@ -53,6 +61,12 @@ func _process(delta: float) -> void:
 func _physics_process(delta: float) -> void:
     if player == null:
         return
+    # Approved passengers follow their driver's networked vehicle.
+    # Driving remains a client-side visual preview; the host validates moves.
+    if social != null and bool(social.call("is_local_passenger")):
+        player.velocity = Vector3.ZERO
+        player.global_position = social.call("passenger_position")
+        return
 
     var direction := Vector2.ZERO
     if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
@@ -68,8 +82,11 @@ func _physics_process(delta: float) -> void:
         direction = touch_axis
 
     direction = direction.normalized()
-    player.velocity.x = direction.x * WALK_SPEED
-    player.velocity.z = direction.y * WALK_SPEED
+    var speed: float = WALK_SPEED
+    if social != null and bool(social.call("is_local_driver")):
+        speed *= 1.6
+    player.velocity.x = direction.x * speed
+    player.velocity.z = direction.y * speed
     if not player.is_on_floor():
         player.velocity.y -= 18.0 * delta
     else:
@@ -164,7 +181,8 @@ func _create_city() -> void:
         {"name": "Tech hub", "col": 6, "row": 1, "height": 4.4, "color": Color(0.40, 0.53, 0.67)},
         {"name": "Market", "col": 0, "row": 3, "height": 3.2, "color": Color(0.79, 0.65, 0.39)},
         {"name": "Delivery depot", "col": 2, "row": 4, "height": 3.2, "color": Color(0.50, 0.51, 0.59)},
-        {"name": "Hostel", "col": 6, "row": 4, "height": 5.3, "color": Color(0.63, 0.55, 0.47)}
+        {"name": "Hostel", "col": 6, "row": 4, "height": 5.3, "color": Color(0.63, 0.55, 0.47)},
+        {"name": "Homes", "col": 4, "row": 3, "height": 3.8, "color": Color(0.73, 0.59, 0.42)}
     ]
 
     for place in places:
@@ -373,6 +391,10 @@ func _interact() -> void:
                 hud_status.text = "Purchased a desk plant. Visit your hostel!"
         "Hostel":
             hud_status.text = "Your room has a desk plant." if owns_plant else "Your room is empty. Visit the market."
+        "Homes":
+            if social != null:
+                social.call("open_social")
+            hud_status.text = "Social homes: visiting requires the owner's approval."
         _:
             hud_status.text = "Campus unlocked. More missions will follow."
 
