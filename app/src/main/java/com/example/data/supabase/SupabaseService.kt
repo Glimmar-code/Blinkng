@@ -3452,12 +3452,7 @@ suspend fun uploadPostMedia(
         try {
             val safeLimit = limit.coerceIn(1, 60)
             val safeOffset = offset.coerceAtLeast(0)
-            val order = when (sort.lowercase(Locale.US)) {
-                "price_low" -> "price.asc,created_at.desc,id.desc"
-                "price_high" -> "price.desc,created_at.desc,id.desc"
-                "popular" -> "views_count.desc,created_at.desc,id.desc"
-                else -> "created_at.desc,id.desc"
-            }
+            val order = com.blinkng.shared.MarketQueryPolicy.order(sort)
 
             val url = buildString {
                 append("/rest/v1/market_items?select=*")
