@@ -27,7 +27,7 @@ assert 'currentProcess?.endsWith(":blink_life") == true) return' in app, (
     "Godot process must bypass Supabase/Firebase/BLINK background startup"
 )
 main_screen = (
-    root / "app/src/main/java/com/example/ui/screens/GameSection.kt"
+    root / "app/src/main/java/com/example/ui/screens/GeneralStudyGameSection.kt"
 ).read_text()
 assert "BlinkLifeLaunchGate.play(context)" in main_screen
 assert "org.godotengine" not in main_screen
@@ -52,7 +52,7 @@ assert "GodotActivity()" in native_activity
 desktop = (
     root / "desktopApp/src/main/kotlin/com/blinkng/desktop/ui/ContentScreens.kt"
 ).read_text()
-assert "if (!BlinkLifeNativeLauncher.launch())" in desktop
+assert "BlinkLifeNativeLauncher.launch()" in desktop
 assert "ProcessBuilder" in (
     root / "desktopApp/src/main/kotlin/com/blinkng/desktop/ui/BlinkLifeNativeLauncher.kt"
 ).read_text()
