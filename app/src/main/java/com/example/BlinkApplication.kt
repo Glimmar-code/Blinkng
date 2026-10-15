@@ -27,6 +27,18 @@ class BlinkApplication : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
 
+        // Native Godot uses a separate :blink_life process. Never run BLINK
+        // social app initialization, Firebase, calls or workers in that process.
+        val processName = if (android.os.Build.VERSION.SDK_INT >= 28) {
+            getProcessName()
+        } else {
+            val manager = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+            manager.runningAppProcesses?.firstOrNull {
+                it.pid == android.os.Process.myPid()
+            }?.processName
+        }
+        if (processName?.endsWith(":blink_life") == true) return
+
         // Apply Blink's 120 Hz-class preference to every Activity before its UI is created.
         HighRefreshRateController.install(this)
 

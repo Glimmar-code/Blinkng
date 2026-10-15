@@ -27,6 +27,15 @@
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-9152580730716304~4430294008" />
+        <!-- BLINK LIFE runs only on Play, in an isolated game process. -->
+        <activity
+            android:name=".game.BlinkLifeGodotActivity"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:process=":blink_life"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
         <activity android:name=".BlinkStoreActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".BlinkDropsActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />
         <activity android:name=".ProfessionalCenterActivity" android:exported="false" android:theme="@style/Theme.MyApplication" />

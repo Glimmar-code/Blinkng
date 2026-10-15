@@ -2761,7 +2761,23 @@ fun ProfileScreen(state: DesktopAppState) {
 
 @Composable
 fun GamesScreen(state: DesktopAppState) {
-    DesktopGeneralStudyGame()
+    var nativeUnavailable by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("BLINK LIFE 3D · Preview", fontWeight = FontWeight.Bold)
+                Text("Optional native 3D world. Only starts after Play; online servers are not live.")
+            }
+            Button(onClick = {
+                nativeUnavailable = !BlinkLifeNativeLauncher.launch()
+            }) { Text("Play BLINK LIFE 3D") }
+        }
+        if (nativeUnavailable) {
+            Text("Native 3D runtime unavailable in this installation. BLINK games are still accessible.",
+                modifier = Modifier.padding(horizontal = 16.dp))
+        }
+        Box(Modifier.weight(1f)) { DesktopGeneralStudyGame() }
+    }
 }
 
 @Composable
