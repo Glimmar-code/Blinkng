@@ -1985,10 +1985,16 @@ private fun TrustBanner(
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            VerifiedMark(
-                badge = if (verified) profile.verificationBadge else VerificationBadge.BLUE,
-                size = 28.dp
-            )
+            if (verified) {
+                VerifiedMark(badge = profile.verificationBadge, size = 28.dp)
+            } else {
+                Icon(
+                    imageVector = Icons.Default.LockOutline,
+                    contentDescription = "Not verified",
+                    tint = textSecondary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.width(10.dp))
 
