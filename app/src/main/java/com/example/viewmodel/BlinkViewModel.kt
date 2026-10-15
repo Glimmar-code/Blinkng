@@ -2218,6 +2218,27 @@ private suspend fun restoreSupabaseSession() {
     }
 
     /** Re-fetch the profile directory without clearing previously loaded results on failure. */
+    private var connectStudentSearchEpoch: Long = 0
+
+    /** Search beyond the first directory page; stale results cannot replace newer queries. */
+    fun searchConnectStudents(query: String) {
+        val cleaned = query.trim()
+        if (cleaned.length < 2) return
+        val epoch = ++connectStudentSearchEpoch
+        viewModelScope.launch {
+            val found = runCatching { supabaseService.searchProfilesPage(cleaned, limit = 60) }
+                .getOrDefault(emptyList())
+            if (epoch == connectStudentSearchEpoch && found.isNotEmpty()) {
+                val current = _uiState.value
+                _uiState.value = current.copy(
+                    profiles = (listOf(current.myProfile) + found + current.profiles)
+                        .distinctBy { it.id.ifBlank { it.username.lowercase() } }
+                        .take(600)
+                )
+            }
+        }
+    }
+
     fun refreshConnectStudents() {
         viewModelScope.launch {
             runCatching { supabaseService.fetchProfiles() }
