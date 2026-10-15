@@ -2291,6 +2291,52 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /** Publish a Connect form with explicit acknowledgement so user input survives failures. */
+    fun submitConnectForm(
+        kind: String,
+        first: String,
+        second: String,
+        third: String,
+        fourth: String,
+        fifth: String,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = runCatching {
+                val values = first.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                val otherValues = second.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                val budget = third.takeIf { it.isNotBlank() }?.toDoubleOrNull()
+                require(third.isBlank() || kind !in setOf("ROOMMATE", "HOUSING") ||
+                    (budget != null && budget.isFinite() && budget >= 0.0)) {
+                    "Enter a valid non-negative budget."
+                }
+                when (kind) {
+                    "ROOMMATE" -> connectHubRepository.upsertRoommate(
+                        first, fourth, second, null, budget
+                    )
+                    "MENTOR" -> connectHubRepository.upsertMentor("mentor", values, second, third)
+                    "READING" -> connectHubRepository.upsertReadingMate(
+                        values, fourth.ifBlank { "Focused" }, otherValues, third, fifth
+                    )
+                    "AGENT" -> connectHubRepository.applyAsHousingAgent(first, otherValues, third)
+                    "HOUSING" -> connectHubRepository.createHousingRequest(first, second, null, budget, fourth)
+                    else -> throw IllegalArgumentException("Unknown Connect form.")
+                }
+            }
+            result.onSuccess { ok ->
+                if (ok) {
+                    refreshConnectHub()
+                    onResult(true, null)
+                } else {
+                    onResult(false, "The server did not confirm your submission.")
+                }
+            }.onFailure { error ->
+                Log.w(TAG, "Connect form submission failed", error)
+                onResult(false, error.message ?: "Connect submission failed. Try again.")
+            }
+        }
+    }
+
     fun publishRoommateProfile(
         title: String,
         description: String,
