@@ -33,6 +33,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -990,11 +992,11 @@ fun ConnectHubPremiumPanel(
         HubFormDialog(
             form = form,
             onDismiss = { form = HubForm.NONE },
-            onSubmit = { a, b, c ->
+            onSubmit = { a, b, c, d, e ->
                 when (form) {
                     HubForm.ROOMMATE -> actions.publishRoommate(
                         a.ifBlank { "Looking for a roommate" },
-                        "",
+                        d,
                         b,
                         null,
                         c.toDoubleOrNull()
@@ -1007,10 +1009,10 @@ fun ConnectHubPremiumPanel(
                     )
                     HubForm.READING -> actions.publishReadingMate(
                         a.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                        "Focused",
+                        d.ifBlank { "Focused" },
                         b.split(",").map { it.trim() }.filter { it.isNotBlank() },
                         c,
-                        ""
+                        e
                     )
                     HubForm.AGENT -> actions.applyHousingAgent(
                         a,
@@ -1022,7 +1024,7 @@ fun ConnectHubPremiumPanel(
                         b,
                         null,
                         c.toDoubleOrNull(),
-                        ""
+                        d
                     )
                     HubForm.NONE -> Unit
                 }
@@ -2900,11 +2902,20 @@ private fun ChallengeModeDialog(
 private fun HubFormDialog(
     form: HubForm,
     onDismiss: () -> Unit,
-    onSubmit: (String, String, String) -> Unit
+    onSubmit: (String, String, String, String, String) -> Unit
 ) {
     var first by rememberSaveable(form) { mutableStateOf("") }
     var second by rememberSaveable(form) { mutableStateOf("") }
     var third by rememberSaveable(form) { mutableStateOf("") }
+    var fourth by rememberSaveable(form) { mutableStateOf("") }
+    var fifth by rememberSaveable(form) { mutableStateOf("") }
+    val isBudgetForm = form == HubForm.ROOMMATE || form == HubForm.HOUSING
+    val validBudget = !isBudgetForm || third.isBlank() ||
+        (third.toDoubleOrNull()?.let { it.isFinite() && it >= 0.0 } == true)
+    val requiredDetailsValid = when (form) {
+        HubForm.ROOMMATE, HubForm.HOUSING, HubForm.MENTOR, HubForm.AGENT -> second.isNotBlank()
+        else -> true
+    }
 
     val labels = when (form) {
         HubForm.ROOMMATE -> Triple("Listing title", "Preferred location", "Maximum budget")
@@ -2931,16 +2942,37 @@ private fun HubFormDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                OutlinedTextField(first, { first = it }, label = { Text(labels.first) }, singleLine = true)
-                OutlinedTextField(second, { second = it }, label = { Text(labels.second) }, singleLine = true)
-                OutlinedTextField(third, { third = it }, label = { Text(labels.third) })
+            Column(
+                modifier = Modifier.heightIn(max = 470.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
+                OutlinedTextField(first, { first = it.take(120) }, label = { Text(labels.first) }, singleLine = true)
+                OutlinedTextField(second, { second = it.take(240) }, label = { Text(labels.second) }, singleLine = true)
+                OutlinedTextField(
+                    third, { third = it.take(if (isBudgetForm) 22 else 800) },
+                    label = { Text(labels.third) },
+                    singleLine = isBudgetForm,
+                    keyboardOptions = KeyboardOptions(keyboardType = if (isBudgetForm) KeyboardType.Decimal else KeyboardType.Text),
+                    isError = !validBudget
+                )
+                if (!validBudget) {
+                    Text("Enter a valid non-negative amount, or leave it blank.",
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                }
+                if (form == HubForm.ROOMMATE || form == HubForm.HOUSING) {
+                    OutlinedTextField(fourth, { fourth = it.take(800) }, label = { Text("Description (optional)") }, maxLines = 4)
+                } else if (form == HubForm.READING) {
+                    OutlinedTextField(fourth, { fourth = it.take(80) }, label = { Text("Study style") }, singleLine = true)
+                    OutlinedTextField(fifth, { fifth = it.take(800) }, label = { Text("Description (optional)") }, maxLines = 4)
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = { onSubmit(first.trim(), second.trim(), third.trim()) },
-                enabled = first.isNotBlank()
+                onClick = {
+                    onSubmit(first.trim(), second.trim(), third.trim(), fourth.trim(), fifth.trim())
+                },
+                enabled = first.isNotBlank() && requiredDetailsValid && validBudget
             ) { Text("Submit") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
