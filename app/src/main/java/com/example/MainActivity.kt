@@ -260,6 +260,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (::rewardedAdManager.isInitialized) rewardedAdManager.close()
         playInAppUpdateCoordinator.close()
         super.onDestroy()
     }
