@@ -102,6 +102,8 @@ import com.example.data.models.FeedPost
 import com.example.data.models.MarketItem
 import com.example.data.models.UserProfile
 import com.example.data.models.VerificationBadge
+import com.example.sharing.ShareContentType
+import com.example.sharing.ShareLinkManager
 import com.example.data.models.kNigerianUniversitiesList
 import com.example.data.network.NetworkMonitor
 import com.example.data.repository.FollowStateStore
@@ -160,6 +162,7 @@ fun BlinkBoostGrowthRoute(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onOpenPost: (FeedPost) -> Unit,
     onProfileClick: (String) -> Unit,
     onListingClick: (MarketItem) -> Unit,
     onGetCoins: () -> Unit = {},
@@ -230,6 +233,7 @@ fun BlinkBoostGrowthRoute(
                 onLikePost = onLikePost,
                 onCommentPost = onCommentPost,
                 onBookmarkPost = onBookmarkPost,
+                onOpenPost = onOpenPost,
                 onProfileClick = onProfileClick,
                 onListingClick = onListingClick,
             )
@@ -949,10 +953,12 @@ private fun EarnRankPointsColumn(
     onLikePost: (String) -> Unit,
     onCommentPost: (String) -> Unit,
     onBookmarkPost: (String) -> Unit,
+    onOpenPost: (FeedPost) -> Unit,
     onProfileClick: (String) -> Unit,
     onListingClick: (MarketItem) -> Unit,
 ) {
     val service = remember { BlinkEconomyService() }
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val followingIds by FollowStateStore.followingIds.collectAsState()
 
@@ -1118,9 +1124,15 @@ private fun EarnRankPointsColumn(
                                 }
                             }
                         },
-                        onRepost = {},
-                        onShare = {},
-                        onOptionsClick = {},
+                        onShare = {
+                            ShareLinkManager.share(
+                                context = context,
+                                type = if (post.isReel) ShareContentType.REEL else ShareContentType.POST,
+                                id = post.id,
+                                title = "Share BLINK post"
+                            )
+                        },
+                        onOptionsClick = { onOpenPost(post) },
                         onProfileClick = onProfileClick,
                         authorName = mission.ownerName,
                         authorUsername = mission.ownerUsername,
@@ -1636,10 +1648,13 @@ private fun CampaignHistoryCard(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
-                AssistChip(
-                    onClick = {},
-                    label = { Text(if (status == "ENDED") "Completed" else status.lowercase().replaceFirstChar { it.uppercase() }) },
-                )
+                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Text(
+                        if (status == "ENDED") "Completed" else status.lowercase().replaceFirstChar { it.uppercase() },
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
             }
             Text(
                 "Budget " + formatter.format(budget) +
