@@ -255,7 +255,7 @@ fun ProfileScreen(
         val requestId = ++connectionRequestId
         overlayScope.launch {
             try {
-                val response = profileService.fetchProfileConnections(profile.id, kind)
+                val response = profileService.fetchProfileConnections(profile.id, kind, throwOnError = true)
                 if (requestId == connectionRequestId && connectionKind == kind) {
                     connectionProfiles = response
                 }
