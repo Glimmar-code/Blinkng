@@ -1652,6 +1652,8 @@ fun MainAppContent(
                     onWatchAdForCoins = onWatchAdForCoins,
                     onBuyBlinkCoins = { viewModel.buyBlinkCoins() },
                     isDark = uiState.isDarkMode,
+                    currentUserId = uiState.myProfile.id,
+                    isProfileRefreshing = profileKey in uiState.profileSurfaceLoadingIds,
                     onRefreshProfile = {
                         viewModel.refreshProgressState()
                         viewModel.loadProfileSurfaceData(currentProfileToDisplay, force = true)
