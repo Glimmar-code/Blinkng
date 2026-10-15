@@ -22,7 +22,9 @@ import com.google.android.gms.ads.rewarded.ServerSideVerificationOptions
  */
 class BlinkRewardedAdManager(
     private val activity: Activity,
-    private val adUnitId: String
+    private val adUnitId: String,
+    private val requestAd: (Activity, String, AdRequest, RewardedAdLoadCallback) -> Unit =
+        { host, unit, request, callback -> RewardedAd.load(host, unit, request, callback) }
 ) {
     companion object {
         private const val TAG = "BlinkRewardedAds"
@@ -43,10 +45,21 @@ class BlinkRewardedAdManager(
 
     private var rewardedAd: RewardedAd? = null
     private var loading = false
+    private var closed = false
     private var loadedAtElapsedMs = 0L
     private var loadGeneration = 0L
     private val handler = Handler(Looper.getMainLooper())
     private var loadTimeout: Runnable? = null
+
+    fun close() {
+        closed = true
+        loadGeneration++
+        cancelLoadTimeout()
+        loading = false
+        rewardedAd = null
+        pendingReady = null
+        pendingUnavailable = null
+    }
 
     private fun cancelLoadTimeout() {
         loadTimeout?.let(handler::removeCallbacks)
@@ -63,7 +76,7 @@ class BlinkRewardedAdManager(
     private var pendingUnavailable: ((String) -> Unit)? = null
 
     val isReady: Boolean
-        get() = BlinkAdsRuntime.canRequestAds.value &&
+        get() = !closed && BlinkAdsRuntime.canRequestAds.value &&
             rewardedAd != null &&
             (SystemClock.elapsedRealtime() - loadedAtElapsedMs) < MAX_AD_AGE_MS
 
@@ -81,6 +94,10 @@ class BlinkRewardedAdManager(
         onReady: (() -> Unit)? = null,
         onUnavailable: ((String) -> Unit)? = null
     ) {
+        if (closed || activity.isFinishing || activity.isDestroyed) {
+            onUnavailable?.invoke("Reopen BLINK to watch an ad.")
+            return
+        }
         if (!BlinkAdsRuntime.canRequestAds.value) {
             onUnavailable?.invoke("Ads are unavailable until your privacy choices are complete.")
             return
@@ -113,7 +130,7 @@ class BlinkRewardedAdManager(
         }
         loadTimeout = timeout
         handler.postDelayed(timeout, LOAD_TIMEOUT_MS)
-        RewardedAd.load(
+        requestAd(
             activity,
             adUnitId,
             AdRequest.Builder().build(),
@@ -143,9 +160,9 @@ class BlinkRewardedAdManager(
                     loading = false
                     rewardedAd = null
                     BlinkAdAnalytics.failed(activity, "coin_reward", "rewarded", error.code)
-                    Log.w(TAG, "Rewarded ad failed to load: ${error.code} ${error.message}")
+                    Log.w(TAG, "Rewarded ad failed to load: ${error.domain}/${error.code} ${error.message}; response=${error.responseInfo}")
 
-                    clearPendingWithError(loadFailureMessage(error.code))
+                    clearPendingWithError("${loadFailureMessage(error.code)} (Ad error ${error.code}, ${error.domain})")
                 }
             }
         )
@@ -158,6 +175,11 @@ class BlinkRewardedAdManager(
         onUnavailable: (String) -> Unit,
         onClosed: () -> Unit = {}
     ) {
+        if (closed || activity.isFinishing || activity.isDestroyed) {
+            onUnavailable("Reopen BLINK to watch an ad.")
+            onClosed()
+            return
+        }
         if (!BlinkAdsRuntime.canRequestAds.value) {
             onUnavailable("Ads are unavailable until your privacy choices are complete.")
             onClosed()
