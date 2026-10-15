@@ -1,3 +1,12 @@
+## 2026-10-15 — BLINK LIFE 3D main-branch integration (beta, opt-in)
+
+- **Android and Windows:** Same original Godot 4.3 scripts and scene, started only on Play; preserve both current General Study Games surfaces.
+- **Android:** Isolated `:blink_life` process avoids BLINK background-worker, session and messaging initialization. The Godot runtime is still bundled into the APK and increases download size.
+- **Windows:** Native Godot is included in the installer and launched in a separate process. Unpackaged development builds explain when the runtime is unavailable.
+- **Backend:** Signed 90-second tickets and Godot dedicated-server source are included, but hosting, publicly deployed authentication, encrypted UDP, moderation, and cross-instance persistence are NOT enabled.
+- **Safety:** No physical location, real-money gambling, live BLINK wallet or real cashout. Public online mode must remain off until protected services are deployed.
+- **Tests:** Check Android/Windows CI, Godot headless, Android 15 install, and native in-game operation on real devices before enabling a production multiplayer rollout. The deployment source alone does not constitute a live server.
+
 ## 2026-10-14 — Notification reliability and premium inbox on Android and Windows (Testlab)
 
 PARITY-EXCEPTION: android-os-fcm-notification-delivery-20261014
