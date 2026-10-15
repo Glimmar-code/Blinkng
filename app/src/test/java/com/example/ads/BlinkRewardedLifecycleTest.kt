@@ -1,6 +1,7 @@
 package com.example.ads
 
 import android.app.Activity
+import android.app.Application
 import android.os.Looper
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
@@ -17,7 +18,7 @@ import org.robolectric.annotation.LooperMode
 import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
-@Config(manifest = Config.NONE, sdk = [28])
+@Config(application = Application::class, manifest = Config.NONE, sdk = [28])
 @LooperMode(LooperMode.Mode.PAUSED)
 class BlinkRewardedLifecycleTest {
     private val callbacks = mutableListOf<RewardedAdLoadCallback>()
