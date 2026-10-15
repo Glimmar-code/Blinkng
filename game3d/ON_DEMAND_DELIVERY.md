@@ -22,12 +22,15 @@ The previous BLINK APK included all Godot 4.3 native engine libraries and the 3D
 ## Important differences between download sources
 **Google Play:** Users download a smaller base package, then the signed on-demand module when they tap Download & Play.
 
-**GitHub standalone APK / Blink website:** A plain standalone base APK **cannot** later obtain Play dynamic features. It remains useful for social app testing but the BLINK LIFE button must explain the Play requirement rather than crashing or downloading untrusted executables. Do **not** replace the currently functioning website production APK with this base-only APK until a supported companion distribution method is designed and verified.
+**GitHub standalone APK / Blink website:** The production release workflow converts the signed release AAB into a **fully signed, fused universal APK** using pinned, SHA-256-verified bundletool. That standalone APK includes the native Godot game as before; it cannot use Play's on-demand delivery, so the full website download will remain larger. The Games card detects the already-packaged native Activity and displays **Play**, not Download. Website users keep working BLINK LIFE functionality.
+
+A bare development `assembleDebug` or `assembleRelease` output is **base-only** and must **never** replace the public website APK. Publication happens only after the universal APK is constructed, checked for Godot assets/Activity and verified against the production signing certificate.
+
 
 ## Release gates
-- All on-demand Android CI tests pass; no Godot libraries/assets in the base; module is signed correctly within the AAB.
+- All on-demand Android CI tests pass; no Godot libraries/assets in the base; module is signed correctly within the AAB. Release smoke must assemble and emulator-install the fully fused standalone APK.
 - Both Google Play internal-test build and real Android device install/uninstall flow are verified.
-- Debug and production builds must not silently preload game.
+- Play Store installs must not silently preload game. Fused standalone website APK intentionally embeds game but still initializes the renderer only after Play.
 - Exact optimized size reported after Play splits, not based only on source AAB size.
 - Online dedicated server, optional ticket Edge Function, encrypted public transport, accounts, moderation and scalable persistent multiplayer are separate **not-yet-deployed** concerns.
 - Windows desktop continues to package its native Godot runtime as before.
