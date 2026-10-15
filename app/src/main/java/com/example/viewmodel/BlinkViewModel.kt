@@ -5609,7 +5609,7 @@ private suspend fun restoreSupabaseSession() {
             )
 
             if (supabaseService.createMarketItem(listing)) {
-                val live = runCatching { supabaseService.fetchMarketItems(limit = 40) }
+                val live = runCatching { supabaseService.fetchMarketItems(limit = 40, query = marketQuery, category = marketCategory, sort = marketSort, minPrice = marketMinPrice, maxPrice = marketMaxPrice) }
                     .getOrDefault(_uiState.value.marketItems)
                 _uiState.value = _uiState.value.copy(
                     marketItems = live,
@@ -5672,50 +5672,63 @@ private suspend fun restoreSupabaseSession() {
     }
 
     fun toggleMarketSaved(item: MarketItem) {
-        if (item.id.isBlank()) return
-        val before = _uiState.value
-        val optimisticSaved = !item.isSaved
-        fun update(current: MarketItem): MarketItem =
-            if (current.id == item.id) current.copy(
+        if (item.id.isBlank() || !marketplaceSaveInFlight.add(item.id)) return
+        val previousSaved = item.isSaved
+        val previousCount = item.savesCount
+        val optimisticSaved = !previousSaved
+        fun optimistic(row: MarketItem): MarketItem =
+            if (row.id == item.id) row.copy(
                 isSaved = optimisticSaved,
-                savesCount = (current.savesCount + if (optimisticSaved) 1 else -1).coerceAtLeast(0)
-            ) else current
-        _uiState.value = before.copy(
-            marketItems = before.marketItems.map(::update),
-            viewingProduct = before.viewingProduct?.let(::update)
+                savesCount = (row.savesCount + if (optimisticSaved) 1 else -1).coerceAtLeast(0)
+            ) else row
+        val current = _uiState.value
+        _uiState.value = current.copy(
+            marketItems = current.marketItems.map(::optimistic),
+            viewingProduct = current.viewingProduct?.let(::optimistic)
         )
         viewModelScope.launch {
-            val saved = supabaseService.toggleMarketWishlist(item.id)
-            if (saved == null) {
-                _uiState.value = before
-                showToast("Couldn't update saved listing.")
-            } else {
+            try {
+                val saved = supabaseService.toggleMarketWishlist(item.id)
+                fun reconcile(row: MarketItem): MarketItem =
+                    if (row.id == item.id) row.copy(
+                        isSaved = saved ?: previousSaved,
+                        savesCount = if (saved == null) previousCount else row.savesCount
+                    ) else row
+                // Reconcile just this listing. Do not overwrite a newer app state.
                 val latest = _uiState.value
-                fun reconcile(current: MarketItem): MarketItem =
-                    if (current.id == item.id) current.copy(isSaved = saved) else current
                 _uiState.value = latest.copy(
                     marketItems = latest.marketItems.map(::reconcile),
                     viewingProduct = latest.viewingProduct?.let(::reconcile)
                 )
-                persistExtendedCache()
+                if (saved == null) showToast("Couldn't update saved listing.")
+                else persistExtendedCache()
+            } finally {
+                marketplaceSaveInFlight.remove(item.id)
             }
         }
     }
 
     fun requestMarketplaceOrder(item: MarketItem, quantity: Int) {
-        if (item.id.isBlank() || item.isSold || item.status != "active") {
-            showToast("This listing is no longer available.")
+        if (item.id.isBlank() || item.isSold || item.status != "active" ||
+            quantity !in 1..20 || item.quantity < quantity) {
+            showToast("This listing is no longer available in the requested quantity.")
             return
         }
+        if (_uiState.value.isRequestingMarketOrder) return
+        _uiState.value = _uiState.value.copy(isRequestingMarketOrder = true)
         viewModelScope.launch {
-            val orderId = supabaseService.createMarketplaceOrder(item.id, quantity)
-            if (orderId != null) {
-                showToast("Purchase request sent. Continue in BLINK DM to arrange pickup or delivery.")
-                if (item.sellerUsername.isNotBlank()) {
-                    openChatWithUser(item.sellerUsername, item.sellerName, item.sellerAvatar)
+            try {
+                val orderId = supabaseService.createMarketplaceOrder(item.id, quantity)
+                if (orderId != null) {
+                    showToast("Purchase request sent. Continue in BLINK DM to arrange pickup or delivery.")
+                    if (item.sellerUsername.isNotBlank()) {
+                        openChatWithUser(item.sellerUsername, item.sellerName, item.sellerAvatar)
+                    }
+                } else {
+                    showToast("Couldn't create the purchase request. The item may have changed.")
                 }
-            } else {
-                showToast("Couldn't create the purchase request. The item may have changed.")
+            } finally {
+                _uiState.value = _uiState.value.copy(isRequestingMarketOrder = false)
             }
         }
     }
@@ -5735,7 +5748,7 @@ private suspend fun restoreSupabaseSession() {
         if (item.id.isBlank()) return
         viewModelScope.launch {
             if (supabaseService.updateMarketListingStatus(item.id, status)) {
-                val live = runCatching { supabaseService.fetchMarketItems(limit = 40) }
+                val live = runCatching { supabaseService.fetchMarketItems(limit = 40, query = marketQuery, category = marketCategory, sort = marketSort, minPrice = marketMinPrice, maxPrice = marketMaxPrice) }
                     .getOrDefault(_uiState.value.marketItems)
                 val latest = _uiState.value
                 val updatedViewing = latest.viewingProduct?.let { current ->
