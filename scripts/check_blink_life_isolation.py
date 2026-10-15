@@ -37,7 +37,10 @@ launcher = (
     root / "app/src/main/java/com/example/game/BlinkLifeLaunchGate.kt"
 ).read_text()
 assert "fun play(context: Context)" in launcher
-assert ".setClassName(context.packageName, NATIVE_ACTIVITY)" in launcher
+assert ".setClassName(applicationContext.packageName, NATIVE_ACTIVITY)" in launcher
+assert "fun play(context: Context)" in launcher
+assert "fetchGameTicket()" in launcher
+assert "if (joinDetails != null)" in launcher
 assert "org.godotengine" not in launcher, (
     "Game launch gate must not import or initialize Godot"
 )
