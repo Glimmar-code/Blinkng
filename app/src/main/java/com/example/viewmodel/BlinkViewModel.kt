@@ -797,6 +797,17 @@ private suspend fun restoreSupabaseSession() {
             // Never carry account A's in-memory chats into account B. The account-scoped
             // Room/snapshot cache below restores B's own conversations immediately.
             conversations = if (accountChanged) emptyList() else _uiState.value.conversations,
+            viewingProfile = if (accountChanged) null else _uiState.value.viewingProfile,
+            profilePostsByUserId = if (accountChanged) emptyMap() else _uiState.value.profilePostsByUserId,
+            myLikedPosts = if (accountChanged) emptyList() else _uiState.value.myLikedPosts,
+            mySavedPosts = if (accountChanged) emptyList() else _uiState.value.mySavedPosts,
+            profileSurfaceLoadingIds = if (accountChanged) emptySet() else _uiState.value.profileSurfaceLoadingIds,
+            profileSurfaceLoadedIds = if (accountChanged) emptySet() else _uiState.value.profileSurfaceLoadedIds,
+            profileSurfaceFailedIds = if (accountChanged) emptySet() else _uiState.value.profileSurfaceFailedIds,
+            profileMarketItemsByUserId = if (accountChanged) emptyMap() else _uiState.value.profileMarketItemsByUserId,
+            profileMarketLoadingIds = if (accountChanged) emptySet() else _uiState.value.profileMarketLoadingIds,
+            profileMarketLoadedIds = if (accountChanged) emptySet() else _uiState.value.profileMarketLoadedIds,
+            profileMarketFailedIds = if (accountChanged) emptySet() else _uiState.value.profileMarketFailedIds,
             destination = authenticatedDestination(UserProfile(onboardingCompleted = savedOnboardingCompleted))
         )
     }
