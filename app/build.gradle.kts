@@ -1,5 +1,4 @@
 import java.net.URI
-import org.gradle.api.tasks.Sync
 
 plugins {
   alias(libs.plugins.android.application)
