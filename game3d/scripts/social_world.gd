@@ -205,13 +205,34 @@ func _host_lan() -> void:
     _refresh_player_rows()
 
 
+func _is_private_lan_ip(raw: String) -> bool:
+    var parts := raw.split(".")
+    if parts.size() != 4:
+        return false
+    var octets: Array[int] = []
+    for part in parts:
+        if not part.is_valid_int():
+            return false
+        var value := int(part)
+        if value < 0 or value > 255:
+            return false
+        octets.append(value)
+    return (
+        octets[0] == 10 or
+        (octets[0] == 172 and octets[1] >= 16 and octets[1] <= 31) or
+        (octets[0] == 192 and octets[1] == 168) or
+        (octets[0] == 127 and octets[1] == 0 and octets[2] == 0 and octets[3] == 1)
+    )
+
+
 func _join_lan() -> void:
     if is_online:
         status_label.text = "Leave your current session before joining."
         return
     var address := ip_input.text.strip_edges()
-    if address.is_empty() or address.length() > 253 or address.contains("/") or address.contains(" "):
-        status_label.text = "Enter the host's trusted LAN IP address."
+    if not _is_private_lan_ip(address):
+        status_label.text = "Use a private LAN IPv4 only (10.x, 172.16-31.x, 192.168.x)."
+
         return
     var peer := ENetMultiplayerPeer.new()
     var error := peer.create_client(address, PORT)
@@ -241,7 +262,12 @@ func _on_server_lost() -> void:
 func _on_peer_left(peer_id: int) -> void:
     if not multiplayer.is_server():
         return
+    if not people.has(peer_id):
+        return
+    var departed_slot := int(people[peer_id]["slot"])
     people.erase(peer_id)
+    last_motion_ms.erase(peer_id)
+    last_chat_ms.erase(peer_id)
     visit_requests.erase(peer_id)
     ride_requests.erase(peer_id)
     cars.erase(peer_id)
@@ -250,9 +276,10 @@ func _on_peer_left(peer_id: int) -> void:
             cars[driver] = -1
     for profile_id in people.keys():
         var profile: Dictionary = people[profile_id]
-        if int(profile.get("visiting", -1)) == peer_id:
+        if int(profile.get("visiting", -1)) == departed_slot:
             profile["visiting"] = -1
             people[profile_id] = profile
+            _teleport(profile_id, -1, false)
     _broadcast_roster()
 
 
@@ -278,6 +305,9 @@ func _disconnect() -> void:
     for entry in home_models.values():
         entry.queue_free()
     home_models.clear()
+    if local_player != null:
+        local_player.global_position = Vector3(0, 0.55, 0)
+        local_player.velocity = Vector3.ZERO
     _refresh_player_rows()
     if status_label != null:
         status_label.text = "Offline single-player · no game server connected."
@@ -329,6 +359,10 @@ func _apply_roster(roster: Dictionary, shared_cars: Dictionary) -> void:
     _refresh_player_rows()
     var my_id := multiplayer.get_unique_id()
     if people.has(my_id):
+        var confirmed: Vector3 = people[my_id]["pos"]
+        if local_player.global_position.distance_to(confirmed) > 16.0:
+            local_player.global_position = confirmed
+            local_player.velocity = Vector3.ZERO
         status_label.text = "LAN ONLINE · %d player(s) · virtual world only" % people.size()
         var my_profile: Dictionary = people[my_id]
         show_location_button.text = "VIRTUAL MAP: ON" if bool(my_profile.get("map_opt_in", false)) else "VIRTUAL MAP: OFF"
@@ -355,6 +389,10 @@ func _reconcile_people() -> void:
             _create_home(id, int(people[id]["slot"]))
         if id != my_id and not remote_avatars.has(id):
             remote_avatars[id] = _create_remote_avatar(id, str(people[id]["name"]))
+        if id == my_id:
+            _apply_outfit(local_player, int(people[id].get("outfit", 0)))
+        elif remote_avatars.has(id):
+            _apply_outfit(remote_avatars[id], int(people[id].get("outfit", 0)))
     for driver in cars.keys():
         if not vehicle_models.has(driver):
             vehicle_models[driver] = _create_vehicle()
@@ -366,6 +404,15 @@ func _make_color(outfit: int) -> Color:
         Color(0.46, 0.23, 0.42), Color(0.25, 0.45, 0.29)
     ]
     return palette[clampi(outfit, 0, palette.size() - 1)]
+
+
+func _apply_outfit(avatar: Node3D, outfit: int) -> void:
+    if avatar == null:
+        return
+    for child in avatar.get_children():
+        if child is MeshInstance3D and child.material_override is StandardMaterial3D:
+            child.material_override.albedo_color = _make_color(outfit)
+            break
 
 
 func _make_mesh_box(parent: Node3D, center: Vector3, size: Vector3, color: Color) -> void:
@@ -455,6 +502,11 @@ func _process(delta: float) -> void:
     if not is_online or local_player == null:
         return
     var my_id := multiplayer.get_unique_id()
+    # Prevent stepping into an unapproved player's home even locally.
+    if people.has(my_id) and not _allowed_position(my_id, local_player.global_position):
+        local_player.global_position = people[my_id]["pos"]
+        local_player.velocity = Vector3.ZERO
+        status_label.text = "Private home: request permission before entering."
     send_elapsed += delta
     if send_elapsed >= SYNC_SECONDS and people.has(my_id):
         send_elapsed = 0.0
@@ -759,7 +811,7 @@ func _server_chat(sender: int, message: String) -> void:
     if not people.has(sender):
         return
     var now := Time.get_ticks_msec()
-    if now - int(last_chat_ms.get(sender, 0)) < 1500:
+    if last_chat_ms.has(sender) and now - int(last_chat_ms[sender]) < 1500:
         _notify(sender, "Please slow down before sending another message.")
         return
     var safe := message.strip_edges().replace("\n", " ").replace("\r", " ").substr(0, 120)
