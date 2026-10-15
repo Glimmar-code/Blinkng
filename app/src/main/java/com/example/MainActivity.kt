@@ -1717,7 +1717,7 @@ fun MainAppContent(
                 profile = uiState.myProfile,
                 onBack = { viewModel.openEditProfile(false) },
                 onSave = { updated ->
-                    viewModel.updateMyProfile(updated)
+                    viewModel.onProfilePersisted(updated)
                 },
                 isDark = uiState.isDarkMode
             )
