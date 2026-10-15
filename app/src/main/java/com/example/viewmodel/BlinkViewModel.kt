@@ -2217,6 +2217,22 @@ private suspend fun restoreSupabaseSession() {
         }
     }
 
+    /** Re-fetch the profile directory without clearing previously loaded results on failure. */
+    fun refreshConnectStudents() {
+        viewModelScope.launch {
+            runCatching { supabaseService.fetchProfiles() }
+                .onSuccess { fresh ->
+                    if (fresh.isNotEmpty()) {
+                        val own = _uiState.value.myProfile
+                        _uiState.value = _uiState.value.copy(
+                            profiles = (listOf(own) + fresh).distinctBy { it.id.ifBlank { it.username.lowercase() } }
+                        )
+                    }
+                }
+                .onFailure { Log.w(TAG, "Connect students refresh failed", it) }
+        }
+    }
+
     fun refreshConnectHub() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isConnectHubLoading = true)
