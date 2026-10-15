@@ -19,6 +19,17 @@ dist_ns = "{http://schemas.android.com/apk/distribution}"
 module = feature.find(dist_ns + "module")
 assert module is not None, "Missing on-demand feature module"
 assert module.find(dist_ns + "delivery/" + dist_ns + "on-demand") is not None
+fusing = module.find(dist_ns + "fusing")
+assert fusing is not None and fusing.get(dist_ns + "include") == "true", (
+    "GitHub universal APK must fuse the complete Godot game"
+)
+website_build = (root / ".github/scripts/build_full_website_apk.sh").read_text()
+release_workflow = (root / ".github/workflows/signed-release.yml").read_text()
+assert "--mode=universal" in website_build
+assert "assets/project.godot" in website_build
+assert "BlinkLifeGodotActivity" in website_build
+assert "build_full_website_apk.sh" in release_workflow
+
 game_activities = [
     item for item in feature.find("application").findall("activity")
     if item.get(android_ns + "name", "").endswith("BlinkLifeGodotActivity")
