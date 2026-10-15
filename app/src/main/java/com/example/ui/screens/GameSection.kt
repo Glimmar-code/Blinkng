@@ -94,7 +94,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.R
-import com.example.game.BlinkLifeGodotActivity
+import com.example.game.BlinkLifeLaunchGate
 import com.example.data.models.ChallengeGameType
 import com.example.data.models.ConnectHubSnapshot
 import com.example.data.models.GameDashboard
@@ -470,9 +470,13 @@ fun GameSection(
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Button(onClick = {
-                                context.startActivity(Intent(context, BlinkLifeGodotActivity::class.java))
-                            }) {
+                            Text(
+                                "The 3D game stays closed while you use BLINK. " +
+                                    "It starts loading only after you tap Play.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(onClick = { BlinkLifeLaunchGate.play(context) }) {
                                 Text("Play BLINK LIFE 3D")
                             }
                         }
