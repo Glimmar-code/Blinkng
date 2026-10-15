@@ -95,6 +95,7 @@ object BlinkLifeWebPack {
     }
 
     /** Slow file operations: call ONLY off the UI thread (or from a background Worker). */
+    @Synchronized
     fun verifyAndInstall(context: Context): Boolean {
         if (isInstalled(context)) return true
         if (snapshot(context).phase != Phase.VERIFYING) return false
