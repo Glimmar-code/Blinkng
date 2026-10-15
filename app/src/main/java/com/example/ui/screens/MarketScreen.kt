@@ -622,6 +622,8 @@ fun ProductCard(
                     AsyncImage(
                         model = cover,
                         contentDescription = item.title,
+                        error = painterResource(android.R.drawable.ic_menu_gallery),
+                        fallback = painterResource(android.R.drawable.ic_menu_gallery),
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
@@ -648,8 +650,8 @@ fun ProductCard(
                         onClick = onToggleSave,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
+                            .size(48.dp)
                             .padding(6.dp)
-                            .size(32.dp)
                             .background(Color.Black.copy(alpha = 0.56f), CircleShape)
                     ) {
                         Icon(
