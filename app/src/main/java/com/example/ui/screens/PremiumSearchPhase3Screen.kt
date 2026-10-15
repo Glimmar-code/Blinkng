@@ -340,7 +340,7 @@ private fun Phase3SearchContent(
                         color = colors.primaryBright.copy(alpha = 0.12f),
                         border = BorderStroke(1.dp, colors.primaryBright.copy(alpha = 0.24f)),
                     ) {
-                        Text("Premium", Modifier.padding(horizontal = 9.dp, vertical = 6.dp), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = colors.primaryBright)
+                        Text("Discover", Modifier.padding(horizontal = 9.dp, vertical = 6.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colors.primaryBright)
                     }
                 }
 
@@ -439,7 +439,7 @@ private fun Phase3SearchContent(
                             else -> "Discover"
                         },
                         if (state.imageSearchActive) "${state.results.size} privacy-preserving image matches"
-                        else "${state.results.size} loaded · ${state.selectedType?.label ?: "all categories"} · more results available",
+                        else searchResultsSummary(state.results.size, state.selectedType?.label, state.hasMore),
                     )
                 }
 
@@ -726,7 +726,7 @@ private fun SearchSectionTitle(title: String, subtitle: String) {
     val colors = BlinkThemeTokens.colors
     Column(Modifier.fillMaxWidth().padding(top = 5.dp)) {
         Text(title, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = colors.textPrimary)
-        Text(subtitle, fontSize = 10.sp, color = colors.textMuted)
+        Text(subtitle, fontSize = 12.sp, color = colors.textMuted)
     }
 }
 
@@ -963,7 +963,7 @@ private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onToggl
     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary)
-            Text(subtitle, fontSize = 10.sp, color = colors.textMuted)
+            Text(subtitle, fontSize = 12.sp, color = colors.textMuted)
         }
         Spacer(Modifier.width(10.dp))
         Switch(checked = checked, onCheckedChange = onToggle)

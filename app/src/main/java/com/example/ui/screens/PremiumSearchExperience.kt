@@ -719,7 +719,7 @@ private fun PremiumSearchBar(
                             modifier = Modifier.align(Alignment.TopEnd).size(15.dp),
                             shape = CircleShape,
                             color = colors.primary,
-                        ) { Box(contentAlignment = Alignment.Center) { Text(activeFilterCount.toString(), fontSize = 8.sp, color = androidx.compose.ui.graphics.Color.White) } }
+                        ) { Box(contentAlignment = Alignment.Center) { Text(activeFilterCount.toString(), fontSize = 11.sp, color = androidx.compose.ui.graphics.Color.White) } }
                     }
                 }
             }
