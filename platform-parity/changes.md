@@ -1,3 +1,11 @@
+## 2026-10-15 — Ad loader lifecycle repair (Testlab)
+
+- Android: bound rewarded loading to 30 seconds, reject stale callbacks, expire cached ads after 55 minutes, clear manager state on Activity destruction, and retry failed native placements at most twice with 30/60-second backoff. Preserve consent checks and SDK-owned video/click handling. Log native error domain/code/message/response for diagnosis.
+- Shared-first assessment: these changes exclusively manage Android Google Mobile Ads SDK objects and Activity/Compose lifecycle; no platform-independent economy or reward contracts change.
+- PARITY-EXCEPTION: android-admob-lifecycle — Google Mobile Ads is an Android SDK adapter. Windows retains its existing supported monetization behavior; no fake Windows ads or rewards are introduced.
+- Testlab is behind main in these files. Review promotion conflicts against main explicitly; never replace main's newer ad implementations wholesale.
+- Required before promotion: Android and Windows CI, then all three Google test placements on a physical device. A successful build does not prove live AdMob approval, inventory or reward delivery.
+
 ## 2026-10-14 — BLINK menu navigation and accessibility upgrade (Testlab)
 
 - **Shared:** `MenuSearch` provides case-insensitive trimmed search for Android and Windows, covered by unit tests.
