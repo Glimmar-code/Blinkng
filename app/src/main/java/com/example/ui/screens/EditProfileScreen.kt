@@ -410,6 +410,16 @@ fun EditProfileScreen(
 
                                 try {
 
+                                    val validationError = validateProfileEditInputs(fullName, username, email, phone, whatsapp, graduationYear, website, linkedin, twitter, instagram, featuredLink)
+
+                                    if (validationError != null) throw IllegalArgumentException(validationError)
+
+                                    val availability = com.example.data.supabase.SupabaseService().checkProfileIdentity(username.trim().lowercase().removePrefix("@"), fullName.trim(), excludeCurrentUser = true)
+
+                                    if (availability?.usernameAvailable == false) throw IllegalArgumentException("That username is already taken.")
+
+                                    if (availability?.fullNameAvailable == false) throw IllegalArgumentException("That display name is already in use.")
+
                                     var finalAvatar =
                                         avatarUrl
 
@@ -550,9 +560,7 @@ fun EditProfileScreen(
                                                 )
                                         )
 
-                                    try {
-                                        repository.updateProfile(updated)
-                                    } catch (_: Exception) {}
+                                    if (!repository.updateProfile(updated)) throw IllegalStateException("Could not save profile to the server. Please retry.")
 
                                     onSave(
                                         updated
@@ -1295,6 +1303,16 @@ fun EditProfileScreen(
 
                             try {
 
+                                val validationError = validateProfileEditInputs(fullName, username, email, phone, whatsapp, graduationYear, website, linkedin, twitter, instagram, featuredLink)
+
+                                if (validationError != null) throw IllegalArgumentException(validationError)
+
+                                val availability = com.example.data.supabase.SupabaseService().checkProfileIdentity(username.trim().lowercase().removePrefix("@"), fullName.trim(), excludeCurrentUser = true)
+
+                                if (availability?.usernameAvailable == false) throw IllegalArgumentException("That username is already taken.")
+
+                                if (availability?.fullNameAvailable == false) throw IllegalArgumentException("That display name is already in use.")
+
                                 var finalAvatar =
                                     avatarUrl
 
@@ -1342,7 +1360,7 @@ fun EditProfileScreen(
                                             fullName.trim(),
 
                                         username =
-                                            username.trim(),
+                                            username.trim().lowercase().removePrefix("@"),
 
                                         avatarUrl =
                                             finalAvatar,
@@ -1427,9 +1445,7 @@ fun EditProfileScreen(
                                             )
                                     )
 
-                                try {
-                                    repository.updateProfile(updated)
-                                } catch (_: Exception) {}
+                                if (!repository.updateProfile(updated)) throw IllegalStateException("Could not save profile to the server. Please retry.")
 
                                 avatarUrl =
                                     finalAvatar
@@ -2361,4 +2377,51 @@ private fun AvatarEditor(
             }
         }
     }
+}
+
+
+/**
+ * Local validation shared by both editor Save entry points. Run before any media upload.
+ * The server remains authoritative for username uniqueness and database constraints.
+ */
+private fun validateProfileEditInputs(
+    fullName: String,
+    username: String,
+    email: String,
+    phone: String,
+    whatsapp: String,
+    graduationYear: String,
+    website: String,
+    linkedin: String,
+    twitter: String,
+    instagram: String,
+    featuredLink: String
+): String? {
+    val handle = username.trim().lowercase().removePrefix("@")
+    if (!handle.matches(Regex("^[a-z0-9][a-z0-9._-]{1,29}$"))) {
+        return "Username must contain 2–30 letters, numbers, dots, dashes or underscores."
+    }
+    if (fullName.trim().length !in 2..60 || fullName.trim().equals("Blink User", ignoreCase = true)) {
+        return "Display name must contain 2–60 characters."
+    }
+    if (email.isNotBlank() && !android.util.Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) {
+        return "Enter a valid email address."
+    }
+    val phonePattern = Regex("^\\+?[0-9()\\s-]{7,20}$")
+    if (phone.isNotBlank() && !phone.trim().matches(phonePattern)) return "Enter a valid phone number."
+    if (whatsapp.isNotBlank() && !whatsapp.trim().matches(phonePattern)) return "Enter a valid WhatsApp number."
+    if (graduationYear.isNotBlank()) {
+        val year = graduationYear.trim().toIntOrNull() ?: return "Graduation year must be a number."
+        if (year !in 1990..2150) return "Enter a valid graduation year."
+    }
+    for (link in listOf(website, linkedin, twitter, instagram, featuredLink)) {
+        val value = link.trim()
+        if (value.isNotEmpty() && (value.contains(Regex("\\s")) ||
+                    value.startsWith("javascript:", ignoreCase = true) ||
+                    value.startsWith("file:", ignoreCase = true) ||
+                    value.startsWith("intent:", ignoreCase = true))) {
+            return "Enter a valid public website or social link."
+        }
+    }
+    return null
 }
