@@ -992,7 +992,7 @@ fun MainAppContent(
                         isSearching = uiState.isDiscoverSearching,
                         onSearchQueryChange = { viewModel.searchDiscover(it) },
                         onProfileClick = { viewModel.openProfile(it) },
-                        onPostClick = { viewModel.openCommentsForPost(it.id) },
+                        onPostClick = { viewModel.openSearchPost(it) },
                         onLikePost = { viewModel.togglePostLike(it) },
                         onCommentPost = { viewModel.openCommentsForPost(it) },
                         onBookmarkPost = { viewModel.toggleBookmark(it) },

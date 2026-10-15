@@ -124,10 +124,10 @@ fun ProductDetailScreen(
                         onLoading = { imageLoading = true },
                         onSuccess = { imageLoading = false },
                         onError = { imageLoading = false },
-                        error = painterResource(R.drawable.ic_default_profile),
-                        fallback = painterResource(R.drawable.ic_default_profile),
+                        error = painterResource(android.R.drawable.ic_menu_gallery),
+                        fallback = painterResource(android.R.drawable.ic_menu_gallery),
                         contentDescription = item.title,
-                        contentScale = ContentScale.Crop,
+                        contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize()
                     )
 
@@ -330,20 +330,23 @@ fun ProductDetailScreen(
                     Spacer(modifier = Modifier.height(10.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         item {
-                            AssistChip(onClick = {}, label = { Text(item.condition) })
+                            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                                Text(item.condition, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
+                            }
                         }
                         item {
-                            AssistChip(
-                                onClick = {},
-                                label = { Text(item.category, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                            )
+                            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                                Text(item.category, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp))
+                            }
                         }
                         item {
-                            AssistChip(
-                                onClick = {},
-                                leadingIcon = { Icon(Icons.Default.Inventory2, null, modifier = Modifier.size(16.dp)) },
-                                label = { Text("${availableQuantity} available") }
-                            )
+                            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                                Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Inventory2, null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text("${availableQuantity} available")
+                                }
+                            }
                         }
                     }
 
