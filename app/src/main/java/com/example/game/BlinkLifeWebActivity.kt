@@ -1,6 +1,7 @@
 package com.example.game
 
-import android.app.Activity
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import android.graphics.Color
 import android.os.Bundle
 import android.webkit.WebChromeClient
@@ -16,7 +17,7 @@ import java.io.FileInputStream
  * BLINK LIFE runs as sandboxed WebAssembly/WebGL inside BLINK.
  * Unlike a downloaded native APK, a static web pack needs no installation prompt.
  */
-class BlinkLifeWebActivity : Activity() {
+class BlinkLifeWebActivity : ComponentActivity() {
     private var webView: WebView? = null
     private val host = "appassets.androidplatform.net"
 
@@ -77,12 +78,15 @@ class BlinkLifeWebActivity : Activity() {
             loadUrl("https://$host/blinklife/index.html")
         }
         setContentView(webView)
+        // Android gesture navigation does not dispatch deprecated Activity.onBackPressed().
+        // Keep WebView history navigation and leave the game when there is no prior page.
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (webView?.canGoBack() == true) webView?.goBack() else finish()
+            }
+        })
     }
 
-    @Deprecated("Deprecated by Android system")
-    override fun onBackPressed() {
-        if (webView?.canGoBack() == true) webView?.goBack() else super.onBackPressed()
-    }
 
     override fun onPause() {
         webView?.onPause()
