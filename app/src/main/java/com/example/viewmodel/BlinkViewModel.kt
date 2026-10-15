@@ -175,6 +175,10 @@ data class BlinkUiState(
     val loadingOlderConversationId: String? = null,
     val loadingInitialConversationId: String? = null,
     val profilePostsByUserId: Map<String, List<FeedPost>> = emptyMap(),
+    val profileMarketItemsByUserId: Map<String, List<MarketItem>> = emptyMap(),
+    val profileMarketLoadingIds: Set<String> = emptySet(),
+    val profileMarketLoadedIds: Set<String> = emptySet(),
+    val profileMarketFailedIds: Set<String> = emptySet(),
     val myLikedPosts: List<FeedPost> = emptyList(),
     val mySavedPosts: List<FeedPost> = emptyList(),
     val profileSurfaceLoadingIds: Set<String> = emptySet(),
@@ -2795,9 +2799,60 @@ private suspend fun restoreSupabaseSession() {
     }
 
 
+    /** Independently load every active listing belonging to the viewed seller. */
+    fun loadProfileMarketData(profile: UserProfile, force: Boolean = false) {
+        val key = profile.id.ifBlank { profile.username.trim().removePrefix("@").lowercase() }
+        if (key.isBlank()) return
+        val ownerId = supabaseService.getCurrentUserId()
+        if (ownerId.isNullOrBlank() || !_uiState.value.isOnline) {
+            _uiState.value = _uiState.value.copy(
+                profileMarketFailedIds = _uiState.value.profileMarketFailedIds + key,
+                profileMarketLoadingIds = _uiState.value.profileMarketLoadingIds - key
+            )
+            return
+        }
+        val state = _uiState.value
+        if (key in state.profileMarketLoadingIds || (!force && key in state.profileMarketLoadedIds)) return
+        _uiState.value = state.copy(
+            profileMarketLoadingIds = state.profileMarketLoadingIds + key,
+            profileMarketFailedIds = state.profileMarketFailedIds - key
+        )
+        viewModelScope.launch {
+            try {
+                val resolved = profile.id.takeIf { it.isNotBlank() }
+                    ?: profileRepository.fetchByUsername(profile.username)?.id
+                    ?: throw IllegalStateException("Seller profile is missing.")
+                val items = supabaseService.fetchProfileMarketItems(resolved)
+                if (supabaseService.getCurrentUserId() != ownerId) return@launch
+                val latest = _uiState.value
+                _uiState.value = latest.copy(
+                    profileMarketItemsByUserId = latest.profileMarketItemsByUserId +
+                        mapOf(key to items, resolved to items),
+                    profileMarketLoadedIds = latest.profileMarketLoadedIds + key + resolved,
+                    profileMarketFailedIds = latest.profileMarketFailedIds - key - resolved
+                )
+            } catch (error: Exception) {
+                Log.w(TAG, "PROFILE_MARKET_LOAD failed", error)
+                if (supabaseService.getCurrentUserId() == ownerId) {
+                    _uiState.value = _uiState.value.copy(
+                        profileMarketFailedIds = _uiState.value.profileMarketFailedIds + key
+                    )
+                }
+            } finally {
+                if (supabaseService.getCurrentUserId() == ownerId) {
+                    val latest = _uiState.value
+                    _uiState.value = latest.copy(
+                        profileMarketLoadingIds = latest.profileMarketLoadingIds - key
+                    )
+                }
+            }
+        }
+    }
+
     fun loadProfileSurfaceData(profile: UserProfile, force: Boolean = false) {
         val key = profile.id.ifBlank { profile.username.trim().removePrefix("@").lowercase() }
         if (key.isBlank()) return
+        loadProfileMarketData(profile, force)
         val ownerId = supabaseService.getCurrentUserId()
         if (ownerId.isNullOrBlank() || !_uiState.value.isOnline) {
             // Do not leave a profile with no cached posts permanently shimmering offline.
