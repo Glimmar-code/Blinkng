@@ -1677,22 +1677,9 @@ fun getCurrentUserId(): String? {
             val (savedWithPrivacy, firstRaw) = send(profileBody(includePrivacy = true))
             if (savedWithPrivacy) return@withContext true
 
-            // Compatibility path while a Testlab client is running against an older backend.
-            if (firstRaw.contains("visibility", ignoreCase = true) ||
-                firstRaw.contains("schema cache", ignoreCase = true) ||
-                firstRaw.contains("PGRST204", ignoreCase = true)
-            ) {
-                val (legacySaved, legacyRaw) = send(profileBody(includePrivacy = false))
-                if (legacySaved) {
-                    // Older databases cannot save requested privacy settings.
-                    // Never claim a successful edit when contact visibility wasn't persisted.
-                    Log.e(TAG, "PROFILE_UPDATE refused partial save: missing privacy fields")
-                } else {
-                    Log.e(TAG, "PROFILE_UPDATE legacy fallback failed body=$legacyRaw")
-                }
-                return@withContext false
-            }
-
+            // Fail closed: falling back to a partial update can change contact
+            // information without persisting the user's privacy preferences.
+            // An outdated Supabase schema must be migrated first.
             Log.e(TAG, "PROFILE_UPDATE failed body=$firstRaw")
             false
         } catch (e: Exception) {
