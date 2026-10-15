@@ -557,7 +557,8 @@ func _send_position(position: Vector3, yaw: float) -> void:
     var earlier := int(last_motion_ms.get(sender, 0))
     if earlier > 0:
         var elapsed := maxf(float(now - earlier) / 1000.0, 0.01)
-        var distance := (position - previous["pos"]).length()
+        var previous_position: Vector3 = previous["pos"]
+        var distance: float = position.distance_to(previous_position)
         if distance > elapsed * 24.0 + 2.0:
             return
     last_motion_ms[sender] = now
