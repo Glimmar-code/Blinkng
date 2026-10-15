@@ -41,7 +41,7 @@ jobs:
             set -e
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb logcat -c
-            adb shell run-as com.aistudio.blink.appvtwo /system/bin/am start -n com.aistudio.blink.appvtwo/com.example.BlinkLife3DActivity
+            adb shell am start -n com.aistudio.blink.appvtwo/com.example.BlinkLife3DActivity
             COUNT=0
             while ! adb shell pidof com.aistudio.blink.appvtwo:blinklife3d >/dev/null; do
               COUNT=$((COUNT + 1))
