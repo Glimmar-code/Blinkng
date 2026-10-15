@@ -3536,6 +3536,38 @@ suspend fun uploadPostMedia(
         }
     }
 
+    /**
+     * Profile listings are not sourced from the discovery Market feed window.
+     * Query the seller's own active listings in stable, paginated batches instead.
+     */
+    suspend fun fetchProfileMarketItems(sellerId: String): List<MarketItem> = withContext(Dispatchers.IO) {
+        require(isValidUuid(sellerId)) { "Seller profile is required." }
+        if (getCurrentUserId() == null) throw IllegalStateException("Not authenticated.")
+        val wishlistIds = fetchMyMarketWishlistIds()
+        val items = mutableListOf<MarketItem>()
+        var offset = 0
+        while (true) {
+            val path = "/rest/v1/market_items?select=*" +
+                "&seller_id=eq.${encodeValue(sellerId)}&status=eq.active" +
+                "&order=created_at.desc,id.desc&limit=100&offset=$offset"
+            val rows = executeRequest(newRequestBuilder(path, true).get().build()).use { response ->
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw IllegalStateException(
+                    parseSupabaseError(raw, "Profile listings could not be loaded.")
+                )
+                JSONArray(raw.ifBlank { "[]" })
+            }
+            for (i in 0 until rows.length()) {
+                parseMarketItem(rows.getJSONObject(i))?.let { item ->
+                    items += item.copy(isSaved = item.id in wishlistIds)
+                }
+            }
+            if (rows.length() < 100) break
+            offset += rows.length()
+        }
+        items
+    }
+
     suspend fun fetchMyMarketItems(limit: Int = 100): List<MarketItem> = withContext(Dispatchers.IO) {
         val uid = getCurrentUserId() ?: return@withContext emptyList()
         try {
