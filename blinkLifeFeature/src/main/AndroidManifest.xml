@@ -1,12 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:dist="http://schemas.android.com/apk/distribution">
+    xmlns:dist="http://schemas.android.com/apk/distribution"
+    xmlns:tools="http://schemas.android.com/tools">
     <dist:module dist:instant="false" dist:title="@string/blink_life_feature_name">
         <dist:delivery><dist:on-demand /></dist:delivery>
         <dist:fusing dist:include="true" />
     </dist:module>
 
     <application>
+        <!-- The Godot 4.3 AAR declares an AndroidX FileProvider that conflicts
+             with the host's provider when bundletool fuses this module into
+             the signed website APK. The BLINK LIFE 3D preview does not share
+             files externally, so exclude the redundant AAR provider here. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            tools:node="remove" />
         <!-- Available only after Google Play installs the optional module. -->
         <activity
             android:name="com.example.game.BlinkLifeGodotActivity"
