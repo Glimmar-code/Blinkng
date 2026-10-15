@@ -38,6 +38,9 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Verify native 3D does not load at BLINK app startup
+        run: python3 scripts/check_blink_life_isolation.py
+
       - name: Android unit tests and native Godot debug APK
         run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
 
