@@ -3616,6 +3616,24 @@ suspend fun uploadPostMedia(
         }
     }
 
+    // Best-effort cleanup for photos uploaded during a listing attempt that failed.
+    // Only delete objects in this authenticated user's own listings folder.
+    suspend fun deleteStagedMarketMedia(userId: String, publicUrl: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isValidUuid(userId)) return@withContext false
+        val prefix = "$baseUrl/storage/v1/object/public/market-media/users/$userId/listings/"
+        if (!publicUrl.startsWith(prefix)) return@withContext false
+        val filename = publicUrl.removePrefix(prefix)
+        if (!Regex("^[0-9a-fA-F-]{36}\\.(jpg|jpeg|png|webp|heic|heif)$").matches(filename)) return@withContext false
+        runCatching {
+            executeRequest(
+                newRequestBuilder(
+                    "/storage/v1/object/market-media/users/$userId/listings/$filename",
+                    authenticated = true
+                ).delete().build()
+            ).use { it.isSuccessful }
+        }.getOrDefault(false)
+    }
+
     suspend fun createMarketItem(item: MarketItem): Boolean = withContext(Dispatchers.IO) {
         try {
             val userId = getCurrentUserId() ?: return@withContext false
