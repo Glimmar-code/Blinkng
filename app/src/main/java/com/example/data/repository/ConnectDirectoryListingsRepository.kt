@@ -94,6 +94,44 @@ class ConnectDirectoryListingsRepository {
         }
     }
 
+    /** Outgoing applications are independent of browse pagination and category page size. */
+    suspend fun myApplications(userId: String): List<DirectoryConnectApplication> = withContext(Dispatchers.IO) {
+        if (userId.isBlank()) return@withContext emptyList()
+        val rows = read(
+            "/rest/v1/connect_applications?select=id,listing_id,applicant_id,message,status" +
+                "&applicant_id=eq.${encode(userId)}&order=created_at.desc&limit=200"
+        )
+        buildList {
+            for (index in 0 until rows.length()) {
+                val row = rows.getJSONObject(index)
+                add(DirectoryConnectApplication(
+                    id = row.optString("id"),
+                    listingId = row.optString("listing_id"),
+                    applicantId = row.optString("applicant_id"),
+                    message = row.optString("message"),
+                    status = row.optString("status")
+                ))
+            }
+        }
+    }
+
+    suspend fun archiveListing(listingId: String, userId: String) = withContext(Dispatchers.IO) {
+        require(userId.isNotBlank()) { "Please sign in again." }
+        mutate(
+            "/rest/v1/connect_listings?id=eq.${encode(listingId)}&user_id=eq.${encode(userId)}&is_active=eq.true",
+            JSONObject().put("is_active", false), "PATCH"
+        )
+    }
+
+    suspend fun withdrawApplication(applicationId: String, userId: String) = withContext(Dispatchers.IO) {
+        require(userId.isNotBlank()) { "Please sign in again." }
+        mutate(
+            "/rest/v1/connect_applications?id=eq.${encode(applicationId)}" +
+                "&applicant_id=eq.${encode(userId)}&status=eq.pending",
+            JSONObject().put("status", "withdrawn"), "PATCH"
+        )
+    }
+
     suspend fun create(categorySlug: String, title: String, description: String) = withContext(Dispatchers.IO) {
         require(title.trim().length in 3..90) { "Title must be 3–90 characters." }
         require(description.length <= 800) { "Description is too long." }
