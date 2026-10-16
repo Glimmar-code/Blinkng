@@ -3,7 +3,20 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 // Internal worker only. Do not call this function from the Android, Windows or web client.
 // Password reset and email-change links are issued solely by Supabase Auth.
-type Kind = "welcome" | "new_device" | "suspicious_activity";
+type Kind =
+  | "welcome" | "new_device" | "suspicious_activity"
+  | "new_follower" | "unread_messages" | "post_engagement"
+  | "reel_milestone" | "leaderboard";
+const SOCIAL_FLAGS = {
+  new_follower: "new_follower_enabled",
+  unread_messages: "unread_messages_enabled",
+  post_engagement: "post_engagement_enabled",
+  reel_milestone: "reel_milestone_enabled",
+  leaderboard: "leaderboard_enabled",
+} as const;
+type SocialKind = keyof typeof SOCIAL_FLAGS;
+const isSocial = (kind: Kind): kind is SocialKind => kind in SOCIAL_FLAGS;
+
 type QueueRow = {
   id: string;
   user_id: string;
@@ -35,6 +48,41 @@ const MESSAGES: Record<Kind, Message> = {
     noteHeading: "Protect your account",
     note: "Open BLINK directly to review your account and update your password if necessary. Never share a recovery link.",
   },
+  new_follower: {
+    subject: "BLINK: You have new followers",
+    heading: "You have new followers",
+    intro: "Your BLINK community is growing. Open the app to see who followed you and decide whether to connect back.",
+    noteHeading: "You're in control",
+    note: "Manage followers and email reminders in BLINK settings. We don't send an email for each new follower.",
+  },
+  unread_messages: {
+    subject: "BLINK: Your conversations are waiting",
+    heading: "Your messages are waiting",
+    intro: "You have unread conversations in BLINK. Open the app when you're ready to catch up.",
+    noteHeading: "Your messages stay private",
+    note: "No message text, sender names or previews are included in this reminder.",
+  },
+  post_engagement: {
+    subject: "BLINK: Your posts are connecting",
+    heading: "Your posts are connecting",
+    intro: "Your recent posts reached a meaningful engagement milestone. Open BLINK to view your insights.",
+    noteHeading: "Just the highlights",
+    note: "We group these into an occasional digest, not an email for each like or comment.",
+  },
+  reel_milestone: {
+    subject: "BLINK: Your reel reached a milestone",
+    heading: "Your reel reached a milestone",
+    intro: "One of your reels reached a server-recorded unique-viewer milestone. Open BLINK to view the latest statistics.",
+    noteHeading: "Verified event counts",
+    note: "This alert is based on server-recorded viewer events, not inflated display-view weights.",
+  },
+  leaderboard: {
+    subject: "BLINK: Your leaderboard update",
+    heading: "Your leaderboard update",
+    intro: "Your official BLINK leaderboard ranking changed. Open the app to see your current position.",
+    noteHeading: "Play at your own pace",
+    note: "Weekly email summaries are optional. Turn them off any time in BLINK settings.",
+  },
 };
 
 const json = (body: unknown, status = 200) =>
@@ -57,7 +105,7 @@ async function secretEquals(provided: string, expected: string): Promise<boolean
   return mismatch === 0;
 }
 
-function render(message: Message): string {
+function render(message: Message, unsubscribeUrl: string | null = null): string {
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -81,10 +129,31 @@ function render(message: Message): string {
 <tr><td style="padding:10px 26px 30px;color:#999999;font-size:12px;line-height:20px;">
 This is a BLINK account email. Never share your password, verification codes, or recovery links.<br>
 Need help? <a href="mailto:blinksupport.ng@gmail.com" style="color:#ffffff;">BLINK Support</a>
+${unsubscribeUrl ? `<br><a href="${unsubscribeUrl}" style="color:#ffffff;">Unsubscribe or manage email alerts</a>` : ""}
 </td></tr></table>
 <p style="font-size:11px;color:#777777;">&copy; BLINK. All rights reserved.</p>
 </td></tr></table>
 </body></html>`;
+}
+
+// A social unsubscribe token can only disable one email category, never log in.
+function b64url(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+async function socialUnsubscribeUrl(userId: string, kind: SocialKind): Promise<string | null> {
+  const secret = Deno.env.get("BLINK_EMAIL_UNSUBSCRIBE_SECRET") ?? "";
+  const base = Deno.env.get("BLINK_EMAIL_UNSUBSCRIBE_URL") ?? "";
+  if (secret.length < 32 || !base.startsWith("https://")) return null;
+  const expires = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 90;
+  const content = `${userId}.${kind}.${expires}`;
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const signature = b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(content))));
+  const url = new URL(base);
+  url.searchParams.set("token", `${content}.${signature}`);
+  return url.toString().replaceAll("&", "&amp;");
 }
 
 async function setStatus(
@@ -129,6 +198,19 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  // Social emails default OFF. Requires an explicit schedule and working one-click
+  // unsubscribe endpoint. A missing social environment config is fail-closed.
+  const socialEnabled = Deno.env.get("BLINK_SOCIAL_EMAIL_ENABLED") === "true";
+  if (socialEnabled) {
+    const unsubscribeKey = Deno.env.get("BLINK_EMAIL_UNSUBSCRIBE_SECRET") ?? "";
+    const unsubscribeUrl = Deno.env.get("BLINK_EMAIL_UNSUBSCRIBE_URL") ?? "";
+    if (unsubscribeKey.length < 32 || !unsubscribeUrl.startsWith("https://")) {
+      return json({ error: "Social unsubscribe endpoint is not configured" }, 503);
+    }
+    const { error: enqueueError } = await admin.rpc("blink_queue_social_email_digests", { p_limit: 200 });
+    if (enqueueError) return json({ error: "Email digest scheduling failed" }, 503);
+  }
+
   // Reserve the provider's free-tier capacity for Supabase Auth recovery emails.
   // Brevo counts built-in SMTP emails outside this queue too: monitor those separately.
   const startOfDay = new Date();
@@ -168,6 +250,11 @@ Deno.serve(async (req: Request) => {
 
     if (claimError || !claimed) { skipped++; continue; }
     const message = MESSAGES[row.kind];
+    if (isSocial(row.kind) && !socialEnabled) {
+      await setStatus(admin, row, "failed", "social_delivery_disabled");
+      skipped++;
+      continue;
+    }
     if (!message) {
       await setStatus(admin, row, "failed", "unsupported_email_kind");
       failed++;
@@ -184,6 +271,39 @@ Deno.serve(async (req: Request) => {
         continue;
       }
 
+      // Opt-in and master email preference are checked again at send time, so
+      // queued messages cannot override a later unsubscribe or account setting.
+      let unsubscribeUrl: string | null = null;
+      if (isSocial(row.kind)) {
+        const { data: socialPrefs, error: prefsError } = await admin
+          .from("blink_social_email_preferences")
+          .select(SOCIAL_FLAGS[row.kind])
+          .eq("user_id", row.user_id)
+          .maybeSingle();
+        const { data: userSettings, error: settingsError } = await admin
+          .from("user_settings")
+          .select("email_notifs_enabled")
+          .eq("user_id", row.user_id)
+          .maybeSingle();
+        if (prefsError || settingsError) {
+          await setStatus(admin, row, "failed", "preferences_lookup_failed");
+          failed++;
+          continue;
+        }
+        if (socialPrefs?.[SOCIAL_FLAGS[row.kind]] !== true
+          || userSettings?.email_notifs_enabled === false) {
+          await setStatus(admin, row, "failed", "user_opted_out");
+          skipped++;
+          continue;
+        }
+        unsubscribeUrl = await socialUnsubscribeUrl(row.user_id, row.kind);
+        if (!unsubscribeUrl) {
+          await setStatus(admin, row, "failed", "unsubscribe_link_not_ready");
+          failed++;
+          continue;
+        }
+      }
+
       const response = await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: {
@@ -194,10 +314,15 @@ Deno.serve(async (req: Request) => {
           sender: { email: from, name: "BLINK" },
           to: [{ email: recipientEmail }],
           subject: message.subject,
-          htmlContent: render(message),
+          htmlContent: render(message, unsubscribeUrl),
           textContent: `${message.heading}\n\n${message.intro}\n\n${message.noteHeading}: ${message.note}\n\nBLINK Support: blinksupport.ng@gmail.com`,
-          // Disable vendor click/open tracking for account security emails.
-          params: { category: "blink_essential" },
+          // The HTTPS unsubscribe form requires confirmation on human GET;
+          // RFC 8058 mail-provider one-click POST can disable the preference.
+          ...(unsubscribeUrl ? { headers: {
+            "List-Unsubscribe": `<${unsubscribeUrl.replaceAll("&amp;", "&")}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          } } : {}),
+          tags: ["blink_essential"],
         }),
       });
       if (response.ok) {
