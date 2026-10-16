@@ -13,6 +13,7 @@ const WeatherVisuals = preload("res://scripts/weather_visuals.gd")
 const NpcWorld = preload("res://scripts/npc_world.gd")
 const PublicSpaces = preload("res://scripts/public_spaces.gd")
 const SoloProgress = preload("res://scripts/solo_progress.gd")
+const SoloHome = preload("res://scripts/solo_home.gd")
 
 const WALK_SPEED: float = 5.0
 const INTERACT_DISTANCE: float = 5.1
@@ -47,6 +48,9 @@ var residents: Node3D
 var public_spaces: Node3D
 var seated_at: String = ""
 var seated_meshes: Array[Dictionary] = []
+var solo_room: Node3D
+var home_inside: bool = false
+var home_return_position := Vector3.ZERO
 var sunlight: DirectionalLight3D
 var sky_settings: Environment
 var clock_label: Label
@@ -122,7 +126,9 @@ func _process(delta: float) -> void:
     hud_cash.text = "Game Cash: %d GC   |   Jobs: %d" % [game_cash, completed_jobs]
     var nearby_public: Dictionary = _nearest_public_spot()
     var nearby: Dictionary = _nearest_place()
-    if not seated_at.is_empty():
+    if home_inside:
+        hud_location.text = "Your solo room • INTERACT or F to go outside"
+    elif not seated_at.is_empty():
         hud_location.text = "Seated at %s • INTERACT or F to stand" % seated_at
     elif not nearby_public.is_empty():
         hud_location.text = "%s • INTERACT" % str(nearby_public["name"])
@@ -199,7 +205,14 @@ func _movement_blocked() -> bool:
 
 func _recover_if_needed() -> void:
     var position: Vector3 = player.global_position
-    if not position.is_finite() or position.y < -3.0 or absf(position.x) > 28.0 or absf(position.z) > 22.0:
+    if home_inside:
+        if not position.is_finite() or position.y < 27.0 or position.y > 40.0 or absf(position.x) > 5.0 or absf(position.z) > 5.0:
+            player.global_position = solo_room.call("spawn_position")
+            player.velocity = Vector3.ZERO
+            _stop_touch_axis()
+            hud_status.text = "Returned to your safe starter room."
+        return
+    if not position.is_finite() or position.y < -3.0 or position.y > 12.0 or absf(position.x) > 28.0 or absf(position.z) > 22.0:
         player.global_position = last_safe_position + Vector3.UP * 0.1
         player.velocity = Vector3.ZERO
         _stop_touch_axis()
@@ -217,6 +230,9 @@ func _notification(what: int) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
     if event is InputEventKey and event.pressed and not event.echo:
         if event.keycode == KEY_ESCAPE:
+            if home_inside and not hud_modal.visible and not controls_panel.visible:
+                _exit_solo_home()
+                return
             if not seated_at.is_empty():
                 _leave_seat()
                 return
@@ -232,6 +248,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
             return
         if not seated_at.is_empty() and event.keycode == KEY_F:
             _leave_seat()
+            return
+        if home_inside and event.keycode == KEY_F:
+            _exit_solo_home()
             return
         if _movement_blocked():
             return
@@ -683,7 +702,7 @@ func _orbit(degrees: float) -> void:
 func _nearest_place() -> Dictionary:
     # Use the closest frontage, not array order or a point inside the building.
     # Vertical separation prevents selecting a city business from another level.
-    if player == null or absf(player.global_position.y) > 3.0:
+    if home_inside or player == null or absf(player.global_position.y) > 3.0:
         return {}
     var nearest: Dictionary = {}
     var best_distance: float = 2.8
@@ -698,7 +717,7 @@ func _nearest_place() -> Dictionary:
 
 
 func _nearest_public_spot() -> Dictionary:
-    if player == null or public_spaces == null:
+    if home_inside or player == null or public_spaces == null:
         return {}
     return PublicSpaces.nearest_spot(player.global_position)
 
@@ -775,6 +794,10 @@ func _open_community_board() -> void:
 
 
 func _interact() -> void:
+    if home_inside:
+        if not _movement_blocked():
+            _exit_solo_home()
+        return
     if not seated_at.is_empty():
         _leave_seat()
         return
@@ -809,11 +832,93 @@ func _interact() -> void:
         "Hostel":
             hud_status.text = "Your room has a desk plant." if owns_plant else "Your room is empty. Visit the market."
         "Homes":
-            if social != null:
+            if social != null and bool(social.get("is_online")):
                 social.call("open_social")
-            hud_status.text = "Social homes: visiting requires the owner's approval."
+                hud_status.text = "Social homes: visiting requires the owner's approval."
+            else:
+                _show_home_choice()
         _:
             hud_status.text = "Campus unlocked. More missions will follow."
+
+
+
+func _show_home_choice() -> void:
+    _stop_touch_axis()
+    _close_quiz()
+    for child in hud_modal.get_children():
+        hud_modal.remove_child(child)
+        child.queue_free()
+    var choices := VBoxContainer.new()
+    hud_modal.add_child(choices)
+    var title := Label.new()
+    title.text = "Homes • Private solo demo or approved multiplayer"
+    title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    choices.add_child(title)
+    var solo := _new_button("Enter free starter room (offline)")
+    choices.add_child(solo)
+    solo.pressed.connect(_enter_solo_home)
+    var online := _new_button("Open multiplayer homes")
+    choices.add_child(online)
+    online.pressed.connect(func():
+        _close_quiz()
+        if social != null:
+            social.call("open_social"))
+    var leave := _new_button("Stay in city")
+    choices.add_child(leave)
+    leave.pressed.connect(_close_quiz)
+    hud_modal.show()
+
+
+func _refresh_home_camera() -> void:
+    if follow_camera == null or player == null:
+        return
+    var radians: float = deg_to_rad(orbit_angle)
+    follow_camera.global_position = player.global_position + Vector3(
+        sin(radians) * camera_distance, camera_distance * 0.846, cos(radians) * camera_distance
+    )
+    follow_camera.look_at(player.global_position + Vector3.UP * 1.25)
+
+
+func _enter_solo_home() -> void:
+    if player == null or home_inside:
+        return
+    if social != null and bool(social.get("is_online")):
+        hud_status.text = "Shared rooms use server-approved entry; solo mode is unavailable."
+        _close_quiz()
+        return
+    if str(_nearest_place().get("id", "")) != "homes":
+        hud_status.text = "Approach the Homes entrance to open your solo room."
+        _close_quiz()
+        return
+    _close_quiz()
+    _stop_touch_axis()
+    home_return_position = player.global_position
+    if solo_room == null:
+        solo_room = SoloHome.new()
+        add_child(solo_room)
+        solo_room.call("configure")
+    solo_room.call("update_owned_decor", owns_plant)
+    home_inside = true
+    player.global_position = solo_room.call("spawn_position")
+    player.velocity = Vector3.ZERO
+    last_safe_position = player.global_position
+    _refresh_home_camera()
+    hud_status.text = "Welcome home. Your desk plant appears here after a solo purchase."
+
+
+func _exit_solo_home() -> void:
+    if not home_inside:
+        return
+    _stop_touch_axis()
+    home_inside = false
+    player.global_position = home_return_position
+    player.velocity = Vector3.ZERO
+    last_safe_position = player.global_position
+    if solo_room != null:
+        solo_room.queue_free()
+        solo_room = null
+    _refresh_home_camera()
+    hud_status.text = "Returned to the city. Your solo progress stays saved."
 
 
 func _preview_plant_purchase() -> void:
