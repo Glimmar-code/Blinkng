@@ -196,3 +196,28 @@ The exact branch build, Windows packaging, rendered gameplay and physical-phone
 battery, UI and motion tests still require independent validation. This batch does
 not certify the other pending requirements or the launch readiness of public
 Internet multiplayer, property persistence or optional game-download delivery.
+
+## Batch 6: civic spaces, park seating and market noticeboards
+
+The starter neighborhood has an original Pocket Park, three named
+informational market stalls, three public benches and three waste bins.
+A community noticeboard shows the three existing local fictional Game Cash
+jobs and their established payouts without awarding money. Approaching and
+interacting with an offline bench changes the avatar to a reversible seated
+pose, blocks movement, and lets players stand up with Interact/F or Escape.
+Stalls are informational, not stores with transactions. The objects are
+non-colliding so they do not obstruct the seven existing building approaches.
+
+Requirement IDs **21, 23, 40, 43 and 44 are implemented in source**,
+while **166 and 167 are partial** because natural seated blending and
+sit-to-stand transitions remain to be done. Relative to the concurrent
+NPC batch, the evidence-only tracker counts are **36 implemented in source,
+29 partial, 935 pending audit, 0 device-verified, 0 released**.
+
+The implementation is `scripts/public_spaces.gd` with shared
+`scripts/world.gd` interactions, and new checks in
+`tests/neighborhood_smoke.gd` and `tests/smoke.gd`. The Android
+APK preview and game-isolation checks also assert the public module exists.
+These tests and all hardware acceptance gates must pass at the exact
+candidate commit before Testlab promotion. Source work does not mean that
+BLINK LIFE's complete 1,000-feature roadmap is delivered.
