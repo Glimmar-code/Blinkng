@@ -35,7 +35,7 @@ check("<h1" in index and "campus community" in index.lower(), "crawlable BLINK b
 check("<title>BLINK" in index, "descriptive brand title")
 check('<meta name="description"' in index, "description")
 
-match = re.search(r'<script type="application/ld\\+json">\\s*([\\s\\S]*?)\\s*</script>', index)
+match = re.search(r'<script type="application/ld\+json">\s*([\s\S]*?)\s*</script>', index)
 check(match is not None, "homepage structured data")
 data = json.loads(match.group(1)) if match else {}
 graph = data.get("@graph", [])
