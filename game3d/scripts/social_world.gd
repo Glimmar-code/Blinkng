@@ -893,6 +893,44 @@ func _server_action(sender: int, kind: String, target: int) -> void:
         return
     var profile: Dictionary = people[sender]
     match kind:
+        "duel_invite":
+            if not _can_request(sender, target):
+                _notify(sender, "This player is not accepting 1v1 invitations.")
+                return
+            if bool(duel_game.call("is_busy", sender)) or bool(duel_game.call("is_busy", target)):
+                _notify(sender, "One of these players is already in a quiz match.")
+                return
+            if not _request_rate_ok(sender):
+                _notify(sender, "Please slow down before inviting another player.")
+                return
+            duel_requests[target] = {"source": sender, "issued": Time.get_ticks_msec()}
+            _deliver_request(target, sender, "duel")
+            return
+        "duel_accept":
+            if not _fresh_request(duel_requests, sender, target):
+                duel_requests.erase(sender)
+                return
+            duel_requests.erase(sender)
+            var first_event: Dictionary = duel_game.call("start", sender, target, Time.get_ticks_msec())
+            if first_event.is_empty():
+                _notify(sender, "This quiz invitation is no longer available.")
+                return
+            _emit_duel_event(first_event)
+            return
+        "duel_decline":
+            if _fresh_request(duel_requests, sender, target):
+                duel_requests.erase(sender)
+                _notify(target, "Your friendly 1v1 quiz invite was declined.")
+            return
+        "duel_answer":
+            var answer_event: Dictionary = duel_game.call("answer", sender, target, Time.get_ticks_msec())
+            if answer_event.is_empty():
+                return
+            if str(answer_event.get("type", "")) == "waiting":
+                _notify(sender, "Answer recorded. Waiting for the other player.")
+            else:
+                _emit_duel_event(answer_event)
+            return
         "invites":
             profile["allow_requests"] = not bool(profile.get("allow_requests", false))
             people[sender] = profile
@@ -1156,6 +1194,9 @@ func _incoming_request(kind: String, source: int) -> void:
     elif kind == "ride":
         pending_ride_from = source
         status_label.text = "%s wants a passenger seat. Approve or ignore." % name
+    elif kind == "duel":
+        pending_duel_from = source
+        status_label.text = "%s invited you to a 3-question 1v1 quiz. Accept or decline." % name
     panel.visible = true
 
 
@@ -1191,6 +1232,84 @@ func _decline_ride() -> void:
     _action("decline_ride", pending_ride_from)
     pending_ride_from = -1
     status_label.text = "Passenger request declined."
+
+
+func _approve_duel() -> void:
+    if pending_duel_from == -1:
+        status_label.text = "No friendly quiz invitation pending."
+        return
+    _action("duel_accept", pending_duel_from)
+    pending_duel_from = -1
+
+
+func _decline_duel() -> void:
+    if pending_duel_from == -1:
+        status_label.text = "No friendly quiz invitation pending."
+        return
+    _action("duel_decline", pending_duel_from)
+    pending_duel_from = -1
+    status_label.text = "1v1 invitation declined."
+
+
+func _emit_duel_event(event: Dictionary) -> void:
+    if event.is_empty() or not multiplayer.is_server():
+        return
+    var first: int = int(event.get("first", -1))
+    var second: int = int(event.get("second", -1))
+    var kind: String = str(event.get("type", ""))
+    for recipient in [first, second]:
+        if not people.has(recipient):
+            continue
+        if kind == "question":
+            if recipient == 1:
+                _show_duel_question(int(event["round"]), int(event["total"]), str(event["prompt"]), event["options"])
+            else:
+                _show_duel_question.rpc_id(recipient, int(event["round"]), int(event["total"]), str(event["prompt"]), event["options"])
+        elif kind == "finished":
+            var your_score: int = int(event["first_score"]) if recipient == first else int(event["second_score"])
+            var their_score: int = int(event["second_score"]) if recipient == first else int(event["first_score"])
+            if recipient == 1:
+                _show_duel_result(your_score, their_score, int(event["total"]), false)
+            else:
+                _show_duel_result.rpc_id(recipient, your_score, their_score, int(event["total"]), false)
+        elif kind == "cancelled" and recipient != int(event.get("missing", -1)):
+            if recipient == 1:
+                _show_duel_result(0, 0, 0, true)
+            else:
+                _show_duel_result.rpc_id(recipient, 0, 0, 0, true)
+
+
+@rpc("authority", "reliable")
+func _show_duel_question(round_number: int, total: int, prompt: String, options: Array) -> void:
+    if not multiplayer.is_server() and multiplayer.get_remote_sender_id() != 1:
+        return
+    panel.visible = true
+    duel_status.text = "Friendly 1v1 · Question %d/%d: %s" % [round_number, total, prompt]
+    for child in duel_choices.get_children():
+        child.queue_free()
+    for index in range(options.size()):
+        _make_button(str(options[index]), _submit_duel_choice.bind(index), duel_choices)
+
+
+func _submit_duel_choice(choice: int) -> void:
+    for child in duel_choices.get_children():
+        if child is Button:
+            child.disabled = true
+    duel_status.text = "Answer submitted · waiting for other player or round timer."
+    _action("duel_answer", choice)
+
+
+@rpc("authority", "reliable")
+func _show_duel_result(your_score: int, opponent_score: int, total: int, cancelled: bool) -> void:
+    if not multiplayer.is_server() and multiplayer.get_remote_sender_id() != 1:
+        return
+    for child in duel_choices.get_children():
+        child.queue_free()
+    if cancelled:
+        duel_status.text = "1v1 quiz cancelled because a player disconnected."
+    else:
+        var outcome: String = "Tie" if your_score == opponent_score else ("Win" if your_score > opponent_score else "Loss")
+        duel_status.text = "1v1 finished · %s · You %d/%d vs opponent %d/%d · no GC or BLINK Coin rewards." % [outcome, your_score, total, opponent_score, total]
 
 
 func _send_private_wallet(peer_id: int) -> void:
