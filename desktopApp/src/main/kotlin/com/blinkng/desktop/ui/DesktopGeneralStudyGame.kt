@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -71,6 +73,7 @@ fun DesktopGeneralStudyGame() {
     val pane = remember(paneName) { DesktopGeneralStudyPane.valueOf(paneName) }
     var difficultyName by rememberSaveable { mutableStateOf(GeneralStudyDifficulty.EASY.name) }
     val difficulty = remember(difficultyName) { GeneralStudyDifficulty.valueOf(difficultyName) }
+    var selectedCategory by rememberSaveable { mutableStateOf("") }
     var seed by rememberSaveable { mutableLongStateOf(0L) }
     var questionIndex by rememberSaveable { mutableIntStateOf(0) }
     var score by rememberSaveable { mutableIntStateOf(0) }
@@ -80,12 +83,13 @@ fun DesktopGeneralStudyGame() {
     val listState = rememberLazyListState()
     LaunchedEffect(pane, questionIndex) { listState.scrollToItem(0) }
 
-    val questions = remember(difficulty, seed) {
+    val questions = remember(difficulty, seed, selectedCategory) {
         if (seed == 0L) emptyList()
         else GeneralStudyBank.round(
             difficulty = difficulty,
             seed = seed,
             count = GeneralStudyBank.DEFAULT_ROUND_SIZE,
+            category = selectedCategory.takeIf { it.isNotBlank() },
         )
     }
     val question = questions.getOrNull(questionIndex)
@@ -137,6 +141,8 @@ fun DesktopGeneralStudyGame() {
 
                     DesktopGeneralStudyPane.SETUP -> DesktopGeneralStudySetup(
                         difficulty = difficulty,
+                        selectedCategory = selectedCategory,
+                        onCategory = { selectedCategory = it },
                         onDifficulty = { difficultyName = it.name },
                         onBack = { paneName = DesktopGeneralStudyPane.CATALOG.name },
                         onStart = ::startRound,
@@ -306,6 +312,8 @@ private fun DesktopGameCatalog(onOpenGeneralStudy: () -> Unit) {
 @Composable
 private fun DesktopGeneralStudySetup(
     difficulty: GeneralStudyDifficulty,
+    selectedCategory: String,
+    onCategory: (String) -> Unit,
     onDifficulty: (GeneralStudyDifficulty) -> Unit,
     onBack: () -> Unit,
     onStart: () -> Unit,
@@ -367,6 +375,30 @@ private fun DesktopGeneralStudySetup(
             }
         }
 
+        Text("Study area", fontWeight = FontWeight.Black, fontSize = 14.sp)
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            (listOf("") + GeneralStudyBank.categories).forEach { category ->
+                val selected = selectedCategory == category
+                Surface(
+                    modifier = Modifier.clickable { onCategory(category) },
+                    shape = RoundedCornerShape(100.dp),
+                    color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .12f)
+                        else MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.outlineVariant),
+                ) {
+                    Text(
+                        if (category.isBlank()) "All topics" else category,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    )
+                }
+            }
+        }
         Surface(
             shape = RoundedCornerShape(18.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f),
@@ -374,7 +406,9 @@ private fun DesktopGeneralStudySetup(
             Column(Modifier.padding(18.dp)) {
                 Text("Round format", fontWeight = FontWeight.Black, fontSize = 13.sp)
                 Text(
-                    "10 mixed questions per round with instant answer feedback. The 20,000-question bank is generated on demand so it stays lightweight.",
+                    "10 questions per round from " +
+                        (if (selectedCategory.isBlank()) "mixed study areas" else selectedCategory) +
+                        ". Instant feedback works offline.",
                     fontSize = 11.sp,
                     lineHeight = 17.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
