@@ -335,7 +335,8 @@ func _create_futa_district() -> void:
     var map_script: Script = load("res://scripts/futa_map.gd")
     var map_builder: RefCounted = map_script.new()
     futa_landmarks = map_builder.call("build", self)
-    places.append_array(futa_landmarks)
+    # Keep starter businesses separate: Layout.entrance_for() requires col/row.
+    # FUTA destinations use their own entry coordinates in _nearest_place().
 
 
 func _create_player() -> void:
