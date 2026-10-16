@@ -661,11 +661,14 @@ class DesktopSupabaseClient(
         type: BlinkSocialEmailCategory,
         enabled: Boolean,
     ) = withContext(Dispatchers.IO) {
-        postArray(
-            "/rest/v1/blink_social_email_preferences?on_conflict=user_id",
-            JSONObject().put("user_id", requireSession().userId).put(type.column, enabled),
-            prefer = "resolution=merge-duplicates,return=minimal",
+        val result = postObject(
+            "/rest/v1/rpc/blink_set_social_email_preference",
+            JSONObject().put("p_category", type.column.removeSuffix("_enabled"))
+                .put("p_enabled", enabled),
         )
+        check((result as? JSONObject)?.optBoolean("value", false) == true) {
+            "Could not save social email preference."
+        }
         Unit
     }
 
