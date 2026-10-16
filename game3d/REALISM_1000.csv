@@ -78,10 +78,10 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 77,Sensible vehicle traction changes,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 78,Headlights becoming useful at night,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 79,Shops illuminating after sunset,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-80,Different nighttime street populations,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-81,Morning commuter activity,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+80,Different nighttime street populations,Time and weather,partial,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Residents return to home areas at night; nighttime public-population density and behavior still need real-device review.
+81,Morning commuter activity,Time and weather,implemented_in_source,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Local residents walk to fictional workplaces during the morning scene hours; phone usability pending.
 82,Lunchtime business activity,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-83,Evening leisure crowds,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+83,Evening leisure crowds,Time and weather,partial,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Residents visit local leisure destinations in the evening; real event crowds and scene variety pending.
 84,Weekend activity patterns,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 85,School-day campus schedules,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 86,Holiday decorations in districts,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -96,7 +96,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 95,Shadows moving with sunlight,Time and weather,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd;scripts/day_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Directional sun rotation follows the local visual clock. Android/Windows packaged-device verification outstanding.
 96,Temperature represented without excessive chores,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 97,Clear shelter indicators,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-98,Weather-aware NPC dialogue,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+98,Weather-aware NPC dialogue,Time and weather,partial,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Local residents have basic text greetings for clear and rainy weather; dynamic dialogues remain to develop.
 99,Photo opportunities during rare weather,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 100,Consistent clocks across game systems,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 101,Broad skin-tone selection,Characters,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -399,16 +399,16 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 398,Water service repair activities,Transport and services,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 399,City service request boards,Transport and services,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 400,Visible improvements after community projects,Transport and services,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-401,NPC daily schedules,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-402,NPC home locations,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-403,NPC workplace locations,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+401,NPC daily schedules,NPCs,implemented_in_source,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Eight fictional residents follow local clock schedules for home work and leisure; physical Android/Windows validation pending.
+402,NPC home locations,NPCs,implemented_in_source,scripts/npc_routines.gd;scripts/neighborhood_layout.gd,tests/npc_smoke.gd,Each fictional resident has a stable home district frontage; interior occupancy/persistence still pending.
+403,NPC workplace locations,NPCs,implemented_in_source,scripts/npc_routines.gd;scripts/neighborhood_layout.gd,tests/npc_smoke.gd,Residents have defined fictional workplaces and move along connected paths; jobs and commerce interactions pending.
 404,Different weekend routines,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 405,Age-appropriate background characters,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 406,Distinct personality profiles,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-407,Diverse clothing combinations,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-408,Weather-appropriate NPC outfits,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+407,Diverse clothing combinations,NPCs,partial,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Original varied shirt colors exist; layered clothing and wardrobe combinations pending.
+408,Weather-appropriate NPC outfits,NPCs,partial,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Residents carry umbrellas while moving in rain; full weather-specific wardrobes pending.
 409,Conversations between NPCs,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-410,NPC greetings reflecting familiarity,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+410,NPC greetings reflecting familiarity,NPCs,partial,scripts/npc_world.gd,tests/smoke.gd,Residents offer short proximity greetings; familiarity and relationship memory pending.
 411,Memory of completed player favors,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 412,Recognition of repeat customers,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 413,Believable shopkeeper interactions,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -419,7 +419,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 418,Families visiting public parks,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 419,Joggers using park paths,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 420,NPCs carrying relevant objects,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-421,NPCs avoiding obstacles,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+421,NPCs avoiding obstacles,NPCs,partial,scripts/npc_routines.gd,tests/npc_smoke.gd,Pedestrian waypoint routing avoids static building rectangles; dynamic obstacle and crowd avoidance pending.
 422,NPCs respecting personal space,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 423,Queues at busy counters,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 424,Reactions to nearby celebrations,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -428,7 +428,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 427,Moving aside for vehicles,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 428,Entering buildings at destinations,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 429,Sitting when seats are available,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-430,Umbrella use during rain,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+430,Umbrella use during rain,NPCs,implemented_in_source,scripts/npc_world.gd;scripts/npc_routines.gd,tests/npc_smoke.gd;tests/smoke.gd,Residents show an umbrella while moving during local rainfall; animation and visual-device checks pending.
 431,Contextual neighborhood gossip,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 432,Rumors clearly presented as fictional,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 433,Branching conversation choices,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -440,15 +440,15 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 439,NPC friendship progression,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 440,NPC mentorship opportunities,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 441,NPC business partnerships,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-442,Recurring community characters,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+442,Recurring community characters,NPCs,partial,scripts/npc_routines.gd;scripts/npc_world.gd,tests/npc_smoke.gd;tests/smoke.gd,Eight stable fictional local character IDs and names; conversation memory and online synchronization pending.
 443,Conflicts resolvable through conversation,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 444,Reputation changes tied to actions,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 445,Opportunities to repair relationships,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 446,No irreversible accidental hostility,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 447,Predictable merchant service availability,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-448,Lightweight distant NPC simulation,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-449,Population scaling by device capability,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-450,Diverse NPCs without cultural stereotypes,NPCs,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+448,Lightweight distant NPC simulation,NPCs,partial,scripts/npc_world.gd,tests/smoke.gd,Mesh-only NPCs update at a capped rate and hide at distance; LOD and crowd profiling pending.
+449,Population scaling by device capability,NPCs,partial,scripts/npc_world.gd;scripts/world.gd,tests/npc_smoke.gd;tests/smoke.gd,Battery saver reduces visible population from eight to four; automatic device capability adaptation pending.
+450,Diverse NPCs without cultural stereotypes,NPCs,partial,scripts/npc_routines.gd;scripts/npc_world.gd,tests/npc_smoke.gd;tests/smoke.gd,Small original cast has varied looks and neutral jobs; wider authentic casting and cultural review pending.
 451,Reliable online multiplayer sessions,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 452,Friend discovery through BLINK accounts,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 453,Private invitation-only sessions,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -498,7 +498,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 497,Reconnection without inventory loss,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 498,Visible network quality indicators,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 499,Fair handling of disconnected players,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-500,Clear distinction between NPCs and players,Social multiplayer,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+500,Clear distinction between NPCs and players,Social multiplayer,implemented_in_source,scripts/npc_world.gd,tests/smoke.gd,Local residents show NPC nameplates and are not counted as actual BLINK multiplayer users; device labeling review pending.
 501,Delivery rider jobs,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 502,Courier van jobs,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 503,Taxi driver jobs,Careers,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
