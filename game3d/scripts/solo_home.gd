@@ -1,0 +1,95 @@
+extends Node3D
+## A small offline starter room above the shared city block.
+## This is NOT an online property, rentable unit or public multiplayer interior.
+## Only simple low-poly meshes and bounded physical walls are built.
+
+const ROOM_WIDTH: float = 8.8
+const ROOM_DEPTH: float = 8.8
+const HEIGHT: float = 2.8
+const SPAWN_LOCAL: Vector3 = Vector3(0.0, 0.23, 1.25)
+var desk_plant: Node3D
+
+
+func configure() -> void:
+    name = "SoloStarterRoom"
+    position = Vector3(0, 30.0, 0)
+    _solid_box("Floor", Vector3(0, -0.15, 0), Vector3(ROOM_WIDTH, 0.3, ROOM_DEPTH), Color(0.71, 0.61, 0.48))
+    _solid_box("North wall", Vector3(0, HEIGHT / 2.0, -4.4), Vector3(8.8, HEIGHT, 0.25), Color(0.80, 0.84, 0.85))
+    _solid_box("South wall", Vector3(0, HEIGHT / 2.0, 4.4), Vector3(8.8, HEIGHT, 0.25), Color(0.80, 0.84, 0.85))
+    _solid_box("East wall", Vector3(4.4, HEIGHT / 2.0, 0), Vector3(0.25, HEIGHT, 8.8), Color(0.78, 0.82, 0.85))
+    _solid_box("West wall", Vector3(-4.4, HEIGHT / 2.0, 0), Vector3(0.25, HEIGHT, 8.8), Color(0.78, 0.82, 0.85))
+    _box(self, Vector3(-2.5, 0.42, -2.5), Vector3(2.15, 0.45, 2.8), Color(0.29, 0.32, 0.39))
+    _box(self, Vector3(-2.5, 0.70, -2.5), Vector3(1.9, 0.18, 2.55), Color(0.84, 0.81, 0.67))
+    _box(self, Vector3(-2.5, 0.9, -3.35), Vector3(1.55, 0.25, 0.5), Color(0.47, 0.62, 0.70))
+    _box(self, Vector3(2.3, 0.72, -2.5), Vector3(2.2, 0.15, 1.0), Color(0.50, 0.34, 0.25))
+    for x in [1.35, 3.25]:
+        for z in [-2.8, -2.2]:
+            _box(self, Vector3(x, 0.33, z), Vector3(0.12, 0.65, 0.12), Color(0.38, 0.27, 0.22))
+    _box(self, Vector3(2.3, 0.42, -0.8), Vector3(0.85, 0.15, 0.8), Color(0.53, 0.40, 0.29))
+    _box(self, Vector3(2.3, 0.78, -0.4), Vector3(0.85, 0.73, 0.13), Color(0.53, 0.40, 0.29))
+    _box(self, Vector3(-3.55, 1.2, 1.8), Vector3(0.65, 2.4, 1.45), Color(0.49, 0.40, 0.34))
+    _box(self, Vector3(0.0, 1.8, -4.25), Vector3(2.1, 1.0, 0.05), Color(0.46, 0.68, 0.78))
+    _box(self, Vector3(0.0, 1.8, -4.19), Vector3(0.08, 1.1, 0.06), Color(0.92, 0.92, 0.90))
+    _caption("YOUR SOLO STARTER ROOM", Vector3(0, 2.5, -3.9))
+    _caption("BED", Vector3(-2.5, 1.5, -2.5), 21)
+    _caption("STUDY DESK", Vector3(2.3, 1.8, -2.5), 21)
+    var light := OmniLight3D.new()
+    light.name = "InteriorLight"
+    light.position = Vector3(0, 2.5, 0)
+    light.light_color = Color(1.0, 0.89, 0.72)
+    light.omni_range = 9
+    light.light_energy = 1.0
+    light.shadow_enabled = false
+    add_child(light)
+    desk_plant = Node3D.new()
+    desk_plant.name = "DeskPlant"
+    add_child(desk_plant)
+    _box(desk_plant, Vector3(3.0, 1.0, -2.5), Vector3(0.34, 0.33, 0.34), Color(0.54, 0.32, 0.22))
+    _box(desk_plant, Vector3(3.0, 1.32, -2.5), Vector3(0.55, 0.5, 0.55), Color(0.19, 0.48, 0.24))
+    desk_plant.visible = false
+
+
+func update_owned_decor(has_plant: bool) -> void:
+    if desk_plant != null:
+        desk_plant.visible = has_plant
+
+
+func spawn_position() -> Vector3:
+    return global_position + SPAWN_LOCAL
+
+
+func _box(parent: Node3D, center: Vector3, size: Vector3, color: Color) -> void:
+    var mesh := BoxMesh.new()
+    mesh.size = size
+    var visual := MeshInstance3D.new()
+    visual.mesh = mesh
+    visual.position = center
+    var material := StandardMaterial3D.new()
+    material.albedo_color = color
+    material.roughness = 0.82
+    visual.material_override = material
+    parent.add_child(visual)
+
+
+func _solid_box(node_name: String, center: Vector3, size: Vector3, color: Color) -> void:
+    var body := StaticBody3D.new()
+    body.name = node_name
+    body.position = center
+    add_child(body)
+    _box(body, Vector3.ZERO, size, color)
+    var collision := CollisionShape3D.new()
+    var shape := BoxShape3D.new()
+    shape.size = size
+    collision.shape = shape
+    body.add_child(collision)
+
+
+func _caption(message: String, center: Vector3, size: int = 28) -> void:
+    var label := Label3D.new()
+    label.text = message
+    label.position = center
+    label.font_size = size
+    label.pixel_size = 0.009
+    label.outline_size = 8
+    label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+    add_child(label)
