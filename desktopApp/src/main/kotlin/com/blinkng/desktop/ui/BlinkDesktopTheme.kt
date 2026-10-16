@@ -47,29 +47,9 @@ private val DesktopBlinkDarkColors = darkColorScheme(
     scrim = Color.Black,
 )
 
-private val DesktopBlinkLightColors = lightColorScheme(
-    primary = DesktopBlinkPurpleDeep,
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFE9DFFF),
-    onPrimaryContainer = Color(0xFF25104D),
-    secondary = DesktopBlinkPurple,
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFF0E9FF),
-    onSecondaryContainer = Color(BlinkDesignTokens.Light.TextPrimary),
-    tertiary = Color(BlinkDesignTokens.Brand.Cyan),
-    background = Color(BlinkDesignTokens.Light.Background),
-    onBackground = Color(BlinkDesignTokens.Light.TextPrimary),
-    surface = Color(BlinkDesignTokens.Light.Surface),
-    onSurface = Color(BlinkDesignTokens.Light.TextPrimary),
-    surfaceVariant = Color(BlinkDesignTokens.Light.SurfaceHighest),
-    onSurfaceVariant = Color(BlinkDesignTokens.Light.TextSecondary),
-    surfaceTint = DesktopBlinkPurple,
-    outline = Color(BlinkDesignTokens.Light.Border),
-    outlineVariant = Color(BlinkDesignTokens.Light.BorderSoft),
-    error = Color(BlinkDesignTokens.Semantic.Error),
-    onError = Color.White,
-    scrim = Color.Black,
-)
+// Preserve the Windows light appearance that DesktopShell used before this migration.
+// The Auth-inspired redesign intentionally affects dark mode only.
+private val DesktopBlinkLightColors = lightColorScheme(primary = Color(0xFF6D3DF5))
 
 private val DesktopBlinkShapes = Shapes(
     extraSmall = RoundedCornerShape(BlinkDesignTokens.Shape.Small.dp),
@@ -93,7 +73,7 @@ fun BlinkDesktopTheme(
 
     MaterialTheme(
         colorScheme = if (dark) DesktopBlinkDarkColors else DesktopBlinkLightColors,
-        shapes = DesktopBlinkShapes,
+        shapes = if (dark) DesktopBlinkShapes else Shapes(),
         content = content,
     )
 }
