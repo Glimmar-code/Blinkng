@@ -1762,8 +1762,8 @@ private fun AnimatedTabRow(
 @Composable
 private fun ProfilePostSkeleton() {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val base = if (dark) Color(0xFF151515) else Color(0xFFE6E6E6)
-    val highlight = if (dark) Color(0xFF292929) else Color(0xFFF5F5F5)
+    val base = if (dark) MaterialTheme.colorScheme.surface else Color(0xFFE6E6E6)
+    val highlight = if (dark) MaterialTheme.colorScheme.surfaceContainerHighest else Color(0xFFF5F5F5)
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(42.dp).shimmerBackground(CircleShape, base, highlight))
@@ -2710,14 +2710,14 @@ private fun ProfileShareSheet(
                     modifier = Modifier
                         .size(72.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF303544))
+                        .background(if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.surfaceContainerHigh else Color(0xFF303544))
                         .testTag("profile_share_default_avatar"),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Person,
                         contentDescription = "$fullName default profile picture",
-                        tint = Color(0xFFC5CAD8),
+                        tint = if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFFC5CAD8),
                         modifier = Modifier.size(42.dp)
                     )
                 }
