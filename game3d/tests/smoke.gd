@@ -56,6 +56,20 @@ func _run() -> void:
     _assert_true(world.get_node_or_null("FutaEasternGround") is StaticBody3D, "Campus south-east roads need contiguous ground")
     _assert_true(world.get_node_or_null("CampusLibrary") is StaticBody3D, "Campus library must have 3D collision")
     var map_panel: Control = world.get("map_panel")
+    var map_view: Control = world.get("map_view")
+    _assert_true(map_view != null, "FUTA campus needs the vector road-and-building map")
+    if map_view != null:
+        _assert_true(map_view.has_method("_world_to_canvas"), "World coordinates must map to on-screen markers")
+        var top_left: Vector2 = map_view.call("_world_to_canvas", Vector3(-170, 0, -145))
+        var bottom_right: Vector2 = map_view.call("_world_to_canvas", Vector3(0, 0, 1))
+        _assert_true(top_left.x < bottom_right.x and top_left.y < bottom_right.y, "Campus roads and houses must draw north-up")
+        if landmarks.size() > 0:
+            var marker: InputEventMouseButton = InputEventMouseButton.new()
+            marker.button_index = MOUSE_BUTTON_LEFT
+            marker.pressed = true
+            marker.position = map_view.call("_world_to_canvas", landmarks[0]["position"])
+            map_view.call("_gui_input", marker)
+            _assert_true(world.get("selected_waypoint")["name"] == landmarks[0]["name"], "Tapping a map building marker selects its waypoint")
     _assert_true(map_panel != null and not map_panel.visible, "Campus map must start closed")
     if map_panel != null:
         map_panel.show()
