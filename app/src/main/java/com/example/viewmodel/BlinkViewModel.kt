@@ -183,7 +183,9 @@ data class BlinkUiState(
     val mySavedPosts: List<FeedPost> = emptyList(),
     val profileSurfaceLoadingIds: Set<String> = emptySet(),
     val profileSurfaceLoadedIds: Set<String> = emptySet(),
-    val profileSurfaceFailedIds: Set<String> = emptySet()
+    val profileSurfaceFailedIds: Set<String> = emptySet(),
+    val privateProfileCollectionsLoadingIds: Set<String> = emptySet(),
+    val privateProfileCollectionsFailedIds: Set<String> = emptySet()
 )
 
 class BlinkViewModel(application: Application) : AndroidViewModel(application) {
@@ -804,6 +806,8 @@ private suspend fun restoreSupabaseSession() {
             profileSurfaceLoadingIds = if (accountChanged) emptySet() else _uiState.value.profileSurfaceLoadingIds,
             profileSurfaceLoadedIds = if (accountChanged) emptySet() else _uiState.value.profileSurfaceLoadedIds,
             profileSurfaceFailedIds = if (accountChanged) emptySet() else _uiState.value.profileSurfaceFailedIds,
+            privateProfileCollectionsLoadingIds = if (accountChanged) emptySet() else _uiState.value.privateProfileCollectionsLoadingIds,
+            privateProfileCollectionsFailedIds = if (accountChanged) emptySet() else _uiState.value.privateProfileCollectionsFailedIds,
             profileMarketItemsByUserId = if (accountChanged) emptyMap() else _uiState.value.profileMarketItemsByUserId,
             profileMarketLoadingIds = if (accountChanged) emptySet() else _uiState.value.profileMarketLoadingIds,
             profileMarketLoadedIds = if (accountChanged) emptySet() else _uiState.value.profileMarketLoadedIds,
@@ -2877,7 +2881,9 @@ private suspend fun restoreSupabaseSession() {
         if (key in current.profileSurfaceLoadingIds || (!force && key in current.profileSurfaceLoadedIds)) return
         _uiState.value = current.copy(
             profileSurfaceLoadingIds = current.profileSurfaceLoadingIds + key,
-            profileSurfaceFailedIds = current.profileSurfaceFailedIds - key
+            profileSurfaceFailedIds = current.profileSurfaceFailedIds - key,
+            privateProfileCollectionsLoadingIds = if (profile.id == ownerId) current.privateProfileCollectionsLoadingIds + key else current.privateProfileCollectionsLoadingIds,
+            privateProfileCollectionsFailedIds = current.privateProfileCollectionsFailedIds - key
         )
         viewModelScope.launch {
             try {
@@ -2897,18 +2903,36 @@ private suspend fun restoreSupabaseSession() {
                     profileSurfaceFailedIds = latest.profileSurfaceFailedIds - key - resolved.id
                 )
                 if (isOwner) {
-                    runCatching { supabaseService.fetchProfileSurfaceContent(resolved.id, postsOverride = posts) }
-                        .onSuccess { content ->
-                            if (supabaseService.getCurrentUserId() != ownerId) return@onSuccess
-                            val current = _uiState.value
-                            _uiState.value = current.copy(
-                                profilePostsByUserId = current.profilePostsByUserId +
+                    // Private tabs must not claim "nothing saved/liked" while still loading.
+                    _uiState.value = _uiState.value.copy(
+                        privateProfileCollectionsLoadingIds = _uiState.value.privateProfileCollectionsLoadingIds + key
+                    )
+                    try {
+                        val content = supabaseService.fetchProfileSurfaceContent(resolved.id, postsOverride = posts)
+                        if (supabaseService.getCurrentUserId() == ownerId) {
+                            val state = _uiState.value
+                            _uiState.value = state.copy(
+                                profilePostsByUserId = state.profilePostsByUserId +
                                     mapOf(key to content.posts, resolved.id to content.posts),
                                 myLikedPosts = content.likedPosts,
-                                mySavedPosts = content.savedPosts
+                                mySavedPosts = content.savedPosts,
+                                privateProfileCollectionsFailedIds = state.privateProfileCollectionsFailedIds - key
                             )
                         }
-                        .onFailure { Log.w(TAG, "Optional profile collections sync failed", it) }
+                    } catch (error: Exception) {
+                        Log.w(TAG, "Private profile collections sync failed", error)
+                        if (supabaseService.getCurrentUserId() == ownerId) {
+                            _uiState.value = _uiState.value.copy(
+                                privateProfileCollectionsFailedIds = _uiState.value.privateProfileCollectionsFailedIds + key
+                            )
+                        }
+                    } finally {
+                        if (supabaseService.getCurrentUserId() == ownerId) {
+                            _uiState.value = _uiState.value.copy(
+                                privateProfileCollectionsLoadingIds = _uiState.value.privateProfileCollectionsLoadingIds - key
+                            )
+                        }
+                    }
                 }
             } catch (error: Exception) {
                 Log.w(TAG, "PROFILE_SURFACE_LOAD failed", error)
