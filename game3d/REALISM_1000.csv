@@ -249,7 +249,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 248,Quick recovery after failed activities,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 249,Clear explanations of needs,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 250,Settings to simplify life simulation,Everyday life,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-251,Affordable starter apartments,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+251,Affordable starter apartments,Homes,partial,scripts/solo_home.gd;scripts/world.gd,tests/smoke.gd,"One free offline starter room can be entered; broader affordable housing, rent and ownership choices remain pending."
 252,Rentable single rooms,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 253,Shared housing options,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 254,Purchasable family homes,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -262,8 +262,8 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 261,Clear rental renewal terms,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 262,Grace periods for missed rent,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 263,No surprise property deletion,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-264,Instanced interiors for performance,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-265,Persistent furniture placement,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+264,Instanced interiors for performance,Homes,implemented_in_source,scripts/solo_home.gd;scripts/world.gd,tests/smoke.gd,The separate playable solo room instantiates only on explicit entry and is freed after leaving; checks ensure no room at startup and collision floor/exit. Packaged-device review remains.
+265,Persistent furniture placement,Homes,partial,scripts/solo_home.gd;scripts/world.gd;scripts/solo_progress.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,"Owned desk plant appears in the private starter room after loading local save; arbitrary furniture placement, rotation and online persistence remain pending."
 266,Wall color customization,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 267,Floor material customization,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 268,Ceiling and lighting customization,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -277,7 +277,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 276,Accessible door-width checks,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 277,Functional kitchens,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 278,Functional bathrooms,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-279,Personal study rooms,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+279,Personal study rooms,Homes,partial,scripts/solo_home.gd;scripts/world.gd,tests/smoke.gd,Starter room includes a visible study desk but study activities and accessible study UI are unfinished.
 280,Home entertainment spaces,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 281,Gardens and courtyards,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 282,Balconies with usable seating,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -298,7 +298,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 297,Protection against decoration griefing,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 298,Restoration of accidentally removed layouts,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 299,Property upgrades with visible construction,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-300,Homes preserved during player absences,Homes,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+300,Homes preserved during player absences,Homes,partial,scripts/solo_home.gd;scripts/world.gd;scripts/solo_progress.gd,tests/smoke.gd;tests/solo_progress_smoke.gd,A solo cosmetic purchase survives room re-entry and app restart locally; online owned houses and long-term server recovery still pending.
 301,Distinct compact car handling,Vehicles,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 302,Distinct SUV handling,Vehicles,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 303,Distinct van handling,Vehicles,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
