@@ -22,7 +22,9 @@ static func fresh_state() -> Dictionary:
     return {"version": 1, "cash": 500, "jobs": 0, "plant": false,
         "wall_style": 0, "floor_style": 0, "plant_spot": 0,
         "plant_custom": false, "plant_x": SoloHome.PLANT_DEFAULT_X,
-        "plant_z": SoloHome.PLANT_DEFAULT_Z, "plant_rotation": 0}
+        "plant_z": SoloHome.PLANT_DEFAULT_Z, "plant_rotation": 0,
+        "chair_x": 2, "chair_z": -1, "chair_rotation": 0,
+        "table_x": 2, "table_z": 2, "table_rotation": 0}
 
 
 static func _is_integer_number(value: Variant, from_json: bool) -> bool:
@@ -79,12 +81,25 @@ static func valid_state(data: Variant, from_json: bool = false) -> Dictionary:
         return {}
     if rotation < 0 or rotation >= 4:
         return {}
-    if plant_custom and not SoloHome.floor_cell_allowed(x, z):
+    var furniture: Dictionary = {}
+    for key in SoloHome.FURNITURE_DEFAULTS:
+        var raw: Variant = data.get(key, SoloHome.FURNITURE_DEFAULTS[key])
+        if not _is_integer_number(raw, from_json):
+            return {}
+        furniture[key] = int(raw)
+    var layout: Dictionary = furniture.duplicate()
+    layout["plant_custom"] = plant_custom
+    layout["plant_x"] = x
+    layout["plant_z"] = z
+    if not SoloHome.layout_allowed(layout):
         return {}
     return {"version": 1, "cash": cash, "jobs": jobs, "plant": data["plant"],
         "wall_style": styles["wall_style"], "floor_style": styles["floor_style"],
         "plant_spot": styles["plant_spot"], "plant_custom": plant_custom,
-        "plant_x": x, "plant_z": z, "plant_rotation": rotation}
+        "plant_x": x, "plant_z": z, "plant_rotation": rotation,
+        "chair_x": furniture["chair_x"], "chair_z": furniture["chair_z"],
+        "chair_rotation": furniture["chair_rotation"], "table_x": furniture["table_x"],
+        "table_z": furniture["table_z"], "table_rotation": furniture["table_rotation"]}
 
 
 func _read_json(path: String) -> Variant:
