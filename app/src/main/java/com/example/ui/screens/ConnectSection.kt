@@ -66,6 +66,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -89,6 +90,7 @@ import com.blinkng.shared.BlinkPulseTrend
 import com.blinkng.shared.campusActivityLabel
 import com.blinkng.shared.connectActivityScoreRange
 import com.blinkng.shared.pulseTrend
+import org.json.JSONArray
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -135,8 +137,32 @@ fun ConnectSection(
     var query by rememberPersistentTextState(key = "connect:students:query:${currentUsername.trim().lowercase()}")
     var filter by rememberSaveable { mutableStateOf(LivePeopleFilter.ALL) }
     var sort by rememberSaveable { mutableStateOf(LivePeopleSort.RECOMMENDED) }
-    // Local, session-safe "Not interested" feedback. Backend remains responsible for block/privacy rules.
-    var dismissedIds by rememberSaveable(currentUsername) { mutableStateOf<List<String>>(emptyList()) }
+    // Account-isolated durable "Not interested" suggestions; server still enforces blocks.
+    val localContext = LocalContext.current
+    val hiddenProfilesStore = remember(localContext) {
+        localContext.applicationContext.getSharedPreferences("blink_connect_hidden_profiles", 0)
+    }
+    val hiddenProfileKey = remember(currentUsername) {
+        "hidden:${currentUsername.trim().lowercase()}"
+    }
+    var dismissedIds by remember(currentUsername) {
+        mutableStateOf(
+            runCatching {
+                val serialized = hiddenProfilesStore.getString(hiddenProfileKey, "[]").orEmpty()
+                val stored = JSONArray(serialized)
+                (0 until stored.length()).mapNotNull {
+                    stored.optString(it).takeIf { key -> key.isNotBlank() }
+                }.distinct().takeLast(200)
+            }.getOrDefault(emptyList())
+        )
+    }
+    LaunchedEffect(dismissedIds, hiddenProfileKey) {
+        if (currentUsername.isNotBlank()) {
+            val serialized = JSONArray()
+            dismissedIds.forEach { serialized.put(it) }
+            hiddenProfilesStore.edit().putString(hiddenProfileKey, serialized.toString()).apply()
+        }
+    }
     val pullToRefreshState = rememberPullToRefreshState()
     val followScope = rememberCoroutineScope()
     val followingIds by FollowStateStore.followingIds.collectAsState()
@@ -270,8 +296,8 @@ fun ConnectSection(
         label = "connectLiveActiveCount"
     )
     val campusName = current?.university.orEmpty().takeUnless { it.equals("null", true) }.orEmpty()
-    val realCampusOnline = remember(liveProfiles, campusName, isCurrentSessionActive) {
-        val others = liveProfiles.count {
+    val realCampusOnline = remember(liveProfiles, campusName, isCurrentSessionActive, isLiveDataAvailable) {
+        val others = if (!isLiveDataAvailable) 0 else liveProfiles.count {
             it.onlineNow && campusName.isNotBlank() && it.university.equals(campusName, ignoreCase = true)
         }
         others + if (isCurrentSessionActive && campusName.isNotBlank()) 1 else 0
