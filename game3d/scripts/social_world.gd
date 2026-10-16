@@ -28,6 +28,7 @@ var local_blocks: Dictionary = {} # This player's session UI state, not an accou
 var cars: Dictionary = {}
 var last_motion_ms: Dictionary = {}
 var last_chat_ms: Dictionary = {}
+var last_wave_ms: Dictionary = {}
 var muted_peers: Dictionary = {}
 var pending_visit_from: int = -1
 var pending_ride_from: int = -1
@@ -233,7 +234,9 @@ func _build_ui() -> void:
     var approvals := HBoxContainer.new()
     rows.add_child(approvals)
     _make_button("APPROVE HOME VISIT", _approve_visit, approvals)
+    _make_button("DECLINE VISIT", _decline_visit, approvals)
     _make_button("APPROVE PASSENGER", _approve_ride, approvals)
+    _make_button("DECLINE RIDE", _decline_ride, approvals)
 
     _make_label("PLAYERS (invites are OFF by default; session blocks are not permanent)", rows)
     player_rows = VBoxContainer.new()
@@ -395,6 +398,7 @@ func _on_peer_left(peer_id: int) -> void:
     last_work_ms.erase(peer_id)
     last_motion_ms.erase(peer_id)
     last_chat_ms.erase(peer_id)
+    last_wave_ms.erase(peer_id)
     last_request_ms.erase(peer_id)
     blocked_peers.erase(peer_id)
     for blocker in blocked_peers.keys():
@@ -440,6 +444,7 @@ func _disconnect() -> void:
     ride_requests.clear()
     last_motion_ms.clear()
     last_chat_ms.clear()
+    last_wave_ms.clear()
     last_request_ms.clear()
     blocked_peers.clear()
     local_blocks.clear()
@@ -910,6 +915,11 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             visit_requests[target] = {"source": sender, "issued": Time.get_ticks_msec()}
             _deliver_request(target, sender, "home")
             return
+        "decline_visit":
+            if _fresh_request(visit_requests, sender, target):
+                visit_requests.erase(sender)
+                _notify(target, "Your home visit request was declined.")
+            return
         "approve_visit":
             if not _fresh_request(visit_requests, sender, target):
                 visit_requests.erase(sender)
@@ -934,6 +944,11 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             ride_requests[target] = {"source": sender, "issued": Time.get_ticks_msec()}
             _deliver_request(target, sender, "ride")
             return
+        "decline_ride":
+            if _fresh_request(ride_requests, sender, target):
+                ride_requests.erase(sender)
+                _notify(target, "Your passenger request was declined.")
+            return
         "approve_ride":
             if not _fresh_request(ride_requests, sender, target) or not cars.has(sender):
                 ride_requests.erase(sender)
@@ -948,8 +963,18 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             cars[sender] = target
             ride_requests.erase(sender)
         "wave":
-            _wave.rpc(sender)
-            _append_chat(str(profile["name"]) + " waved hello!")
+            var now := Time.get_ticks_msec()
+            if last_wave_ms.has(sender) and now - int(last_wave_ms[sender]) < 2500:
+                return
+            last_wave_ms[sender] = now
+            for recipient in people.keys():
+                if _is_blocked(recipient, sender):
+                    continue
+                if recipient == 1:
+                    if not muted_peers.has(sender):
+                        _append_chat(str(profile["name"]) + " waved hello!")
+                else:
+                    _wave.rpc_id(recipient, sender)
             return
         "outfit":
             profile["outfit"] = posmod(int(profile["outfit"]) + 1, 4)
@@ -1082,6 +1107,24 @@ func _approve_ride() -> void:
     pending_ride_from = -1
 
 
+func _decline_visit() -> void:
+    if pending_visit_from == -1:
+        status_label.text = "No home visit requests pending."
+        return
+    _action("decline_visit", pending_visit_from)
+    pending_visit_from = -1
+    status_label.text = "Home visit declined."
+
+
+func _decline_ride() -> void:
+    if pending_ride_from == -1:
+        status_label.text = "No passenger requests pending."
+        return
+    _action("decline_ride", pending_ride_from)
+    pending_ride_from = -1
+    status_label.text = "Passenger request declined."
+
+
 func _send_private_wallet(peer_id: int) -> void:
     if not secure_dedicated or persistent_store == null:
         return
@@ -1192,7 +1235,7 @@ func _refresh_player_rows() -> void:
     var my_id := multiplayer.get_unique_id()
     for peer_id in people.keys():
         var state: Dictionary = people[peer_id]
-        var row := HBoxContainer.new()
+        var row := VBoxContainer.new()
         player_rows.add_child(row)
         var display := str(state["name"])
         if peer_id == my_id:
@@ -1202,12 +1245,14 @@ func _refresh_player_rows() -> void:
             display += " · virtual (%.0f, %.0f)" % [where.x, where.z]
         _make_label(display, row)
         if peer_id != my_id:
-            _make_button("VISIT", func(): _action("visit", peer_id), row)
-            _make_button("RIDE", func(): _action("ride", peer_id), row)
-            var is_blocked: bool = local_blocks.has(peer_id)
-            _make_button("UNBLOCK" if is_blocked else "BLOCK", func(): _toggle_block(peer_id), row)
+            var actions := HBoxContainer.new()
+            row.add_child(actions)
+            _make_button("VISIT", func(): _action("visit", peer_id), actions)
+            _make_button("RIDE", func(): _action("ride", peer_id), actions)
+            var blocked_here: bool = local_blocks.has(peer_id)
+            _make_button("UNBLOCK" if blocked_here else "BLOCK", func(): _toggle_block(peer_id), actions)
             var muted := muted_peers.has(peer_id)
-            _make_button("UNMUTE" if muted else "MUTE", func(): _toggle_mute(peer_id), row)
+            _make_button("UNMUTE" if muted else "MUTE", func(): _toggle_mute(peer_id), actions)
     if is_online:
         _make_button("CHANGE OUTFIT", func(): _action("outfit", 0), player_rows)
 
