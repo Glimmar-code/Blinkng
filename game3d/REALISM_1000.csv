@@ -19,9 +19,9 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 18,Visible building numbers,World,implemented_in_source,scripts/neighborhood_details.gd,tests/neighborhood_smoke.gd;tests/smoke.gd,Seven unique visible game addresses; verify legibility on both clients.
 19,Believable drainage channels,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 20,Bridges connecting important districts,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-21,Markets with individual stalls,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+21,Markets with individual stalls,World,implemented_in_source,scripts/public_spaces.gd;scripts/world.gd,tests/neighborhood_smoke.gd;tests/smoke.gd,"Three separate named market stalls can be approached and inspected. Purchases, vendors and indoor markets remain incomplete; packaged-device verification outstanding."
 22,Shopping centers with interiors,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-23,Parks with usable furniture,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+23,Parks with usable furniture,World,implemented_in_source,scripts/public_spaces.gd;scripts/world.gd,tests/neighborhood_smoke.gd;tests/smoke.gd,Small pocket park includes decorative vegetation and an interactive offline bench. Expanded park activities and physical-device checks pending.
 24,Beaches with interactive areas,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 25,Sports grounds with activities,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 26,Libraries with quiet spaces,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -38,11 +38,11 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 37,Alleys offering alternate routes,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 38,Local landmarks for navigation,World,partial,scripts/neighborhood_layout.gd;scripts/neighborhood_details.gd,,Campus marker geometry; landmark art and navigation playtest pending.
 39,District-specific ambient sounds,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-40,Public noticeboards with opportunities,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+40,Public noticeboards with opportunities,World,implemented_in_source,scripts/public_spaces.gd;scripts/world.gd,tests/neighborhood_smoke.gd;tests/smoke.gd,Community noticeboard lists actual three existing fictional-GC tasks and locations without payouts; physical-device checks pending.
 41,Shops with opening hours,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 42,Streetlights placed logically,World,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd;scripts/neighborhood_details.gd,tests/controls_smoke.gd;tests/smoke.gd,"Eight positioned lamps fade with local daylight; at most two nearby shadow-free lights, with emissive-only bulbs in saver mode. Physical Android/Windows acceptance outstanding."
-43,Benches near busy destinations,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-44,Waste bins in public spaces,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+43,Benches near busy destinations,World,implemented_in_source,scripts/public_spaces.gd;scripts/world.gd,tests/neighborhood_smoke.gd;tests/smoke.gd,Three visually distinct public benches have offline sit and stand controls. Expanded animations and real-device acceptance pending.
+44,Waste bins in public spaces,World,implemented_in_source,scripts/public_spaces.gd;scripts/world.gd,tests/neighborhood_smoke.gd;tests/smoke.gd,Three nonblocking public waste bins are visible and inspectable. Waste-collection systems and real-device acceptance pending.
 45,Realistic pavement variations,World,partial,scripts/neighborhood_layout.gd;scripts/neighborhood_details.gd,,Footpaths and crossing materials; pavement variation and wear art pending.
 46,Appropriate vegetation by location,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 47,Neighborhood maintenance differences,World,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -164,8 +164,8 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 163,Feet staying above surfaces,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 164,Realistic turning animations,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 165,Separate upper-body interactions,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-166,Natural seated poses,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-167,Sit-to-stand transitions,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+166,Natural seated poses,Movement,partial,scripts/public_spaces.gd;scripts/world.gd,tests/smoke.gd,Character bends low-poly leg geometry when sitting on public benches; natural animation blending and multiplayer authority remain outstanding.
+167,Sit-to-stand transitions,Movement,partial,scripts/public_spaces.gd;scripts/world.gd,tests/smoke.gd,Offline bench can be entered and exited with Interact/F; smooth interpolated sit-to-stand animations remain outstanding.
 168,Leaning against suitable surfaces,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 169,Crouching where useful,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 170,Reaching toward selected objects,Movement,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
