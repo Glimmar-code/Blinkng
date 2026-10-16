@@ -1295,9 +1295,9 @@ class DesktopSupabaseClient(
         val url = buildString {
             append("/rest/v1/market_items?status=eq.active&is_sold=eq.false")
             append("&select=id,title,price,currency,category,condition,description,image_url,image_urls,seller_id,seller_name,seller_username,seller_is_verified,university,location,is_featured,is_sold,created_at")
+            if (savedOnly) append(",marketplace_wishlist!inner(user_id)")
             if (verifiedOnly) append("&seller_is_verified=eq.true")
             if (savedOnly) {
-                append(",marketplace_wishlist!inner(user_id)")
                 append("&marketplace_wishlist.user_id=eq.").append(encode(requireSession().userId))
             }
             query.trim().take(80).takeIf { it.isNotBlank() }?.let {
