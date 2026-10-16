@@ -68,6 +68,7 @@ import com.example.data.supabase.BlinkAiConversation
 import com.example.data.supabase.BlinkAiService
 import com.blinkng.shared.ai.BlinkAiExperienceCatalog
 import com.blinkng.shared.ai.BlinkAiExperiencePage
+import com.blinkng.shared.BlinkDesignTokens
 import com.example.util.startActivitySafely
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -98,6 +99,9 @@ fun BlinkAiSheet(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    // This dialog previously used green-black hardcoded colors even in app Dark Mode.
+    // Preserve the old light appearance; in Dark Mode use Auth's shared palette.
+    val authDark = MaterialTheme.colorScheme.background == Color.Black
     val clipboard = LocalClipboardManager.current
     val service = remember { BlinkAiService() }
     val scope = rememberCoroutineScope()
@@ -630,7 +634,7 @@ fun BlinkAiSheet(
             modifier = Modifier
                 .fillMaxSize()
                 .imePadding(),
-            color = Color(0xFF020807),
+            color = (if (authDark) Color(BlinkDesignTokens.Dark.Background) else Color(0xFF020807)),
             contentColor = Color.White
         ) {
             Column(
@@ -712,14 +716,14 @@ fun BlinkAiSheet(
                             Surface(
                                 modifier = Modifier.size(74.dp),
                                 shape = CircleShape,
-                                color = Color(0xFF063D34)
+                                color = (if (authDark) Color(BlinkDesignTokens.Brand.Primary).copy(alpha = 0.16f) else Color(0xFF063D34))
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Text(
                                         "≋",
                                         fontSize = 34.sp,
                                         fontWeight = FontWeight.Black,
-                                        color = Color(0xFF35E1BE)
+                                        color = (if (authDark) Color(BlinkDesignTokens.Brand.PrimaryBright) else Color(0xFF35E1BE))
                                     )
                                 }
                             }
@@ -797,9 +801,9 @@ fun BlinkAiSheet(
                                                 .heightIn(min = 126.dp),
                                             shape = RoundedCornerShape(20.dp),
                                             color = if (activeExploreId == category.id) {
-                                                Color(0xFF0A3B33)
+                                                (if (authDark) Color(BlinkDesignTokens.Brand.Primary).copy(alpha = 0.20f) else Color(0xFF0A3B33))
                                             } else {
-                                                Color(0xFF061714)
+                                                (if (authDark) Color(BlinkDesignTokens.Dark.SurfaceElevated) else Color(0xFF061714))
                                             }
                                         ) {
                                             Column(
@@ -808,13 +812,13 @@ fun BlinkAiSheet(
                                             ) {
                                                 Surface(
                                                     shape = RoundedCornerShape(10.dp),
-                                                    color = Color(0xFF0B2E28)
+                                                    color = (if (authDark) Color(BlinkDesignTokens.Brand.Primary).copy(alpha = 0.15f) else Color(0xFF0B2E28))
                                                 ) {
                                                     Text(
                                                         category.title.take(1),
                                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                                         fontWeight = FontWeight.Black,
-                                                        color = Color(0xFF35E1BE)
+                                                        color = (if (authDark) Color(BlinkDesignTokens.Brand.PrimaryBright) else Color(0xFF35E1BE))
                                                     )
                                                 }
                                                 Text(
@@ -866,14 +870,14 @@ fun BlinkAiSheet(
                                 onClick = { experiencePage = BlinkAiExperiencePage.EXPLORE },
                                 enabled = !isSending
                             ) {
-                                Text("Explore", color = Color(0xFF35E1BE))
+                                Text("Explore", color = (if (authDark) Color(BlinkDesignTokens.Brand.PrimaryBright) else Color(0xFF35E1BE)))
                             }
                         }
 
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFF061714)
+                            color = (if (authDark) Color(BlinkDesignTokens.Dark.SurfaceElevated) else Color(0xFF061714))
                         ) {
                             val status = buildList {
                                 add(mode.replaceFirstChar { it.uppercase() })
@@ -907,9 +911,9 @@ fun BlinkAiSheet(
                                         modifier = Modifier.fillMaxWidth(0.9f),
                                         shape = RoundedCornerShape(20.dp),
                                         color = if (message.fromUser) {
-                                            Color(0xFF0B8E78)
+                                            (if (authDark) Color(BlinkDesignTokens.Brand.PrimaryDeep) else Color(0xFF0B8E78))
                                         } else {
-                                            Color(0xFF071815)
+                                            (if (authDark) Color(BlinkDesignTokens.Dark.Surface) else Color(0xFF071815))
                                         }
                                     ) {
                                         Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
@@ -936,10 +940,10 @@ fun BlinkAiSheet(
                                                     TextButton(onClick = {
                                                         clipboard.setText(AnnotatedString(message.text))
                                                     }) {
-                                                        Text("Copy", color = Color(0xFF35E1BE))
+                                                        Text("Copy", color = (if (authDark) Color(BlinkDesignTokens.Brand.PrimaryBright) else Color(0xFF35E1BE)))
                                                     }
                                                     TextButton(onClick = { shareText(message.text) }) {
-                                                        Text("Share", color = Color(0xFF35E1BE))
+                                                        Text("Share", color = (if (authDark) Color(BlinkDesignTokens.Brand.PrimaryBright) else Color(0xFF35E1BE)))
                                                     }
                                                     TextButton(
                                                         onClick = {
@@ -954,7 +958,7 @@ fun BlinkAiSheet(
                                                         },
                                                         enabled = ttsReady
                                                     ) {
-                                                        Text("Read", color = Color(0xFF35E1BE))
+                                                        Text("Read", color = (if (authDark) Color(BlinkDesignTokens.Brand.PrimaryBright) else Color(0xFF35E1BE)))
                                                     }
                                                 }
                                             }
@@ -968,7 +972,7 @@ fun BlinkAiSheet(
                                     Surface(
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(16.dp),
-                                        color = Color(0xFF061714)
+                                        color = (if (authDark) Color(BlinkDesignTokens.Dark.SurfaceElevated) else Color(0xFF061714))
                                     ) {
                                         Row(
                                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
@@ -1029,7 +1033,7 @@ fun BlinkAiSheet(
                                 imageUris.forEach { uri ->
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),
-                                        color = Color(0xFF071815)
+                                        color = (if (authDark) Color(BlinkDesignTokens.Dark.Surface) else Color(0xFF071815))
                                     ) {
                                         Column(
                                             Modifier.padding(6.dp),
@@ -1057,7 +1061,7 @@ fun BlinkAiSheet(
                             Spacer(Modifier.height(6.dp))
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF071815),
+                                color = (if (authDark) Color(BlinkDesignTokens.Dark.Surface) else Color(0xFF071815)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
@@ -1082,7 +1086,7 @@ fun BlinkAiSheet(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(22.dp),
-                            color = Color(0xFF061411)
+                            color = (if (authDark) Color(BlinkDesignTokens.Dark.Input) else Color(0xFF061411))
                         ) {
                             Column(Modifier.padding(10.dp)) {
                                 Row(
@@ -1162,7 +1166,7 @@ fun BlinkAiSheet(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp),
-                    color = Color(0xFF04110F)
+                    color = (if (authDark) Color(BlinkDesignTokens.Dark.Surface) else Color(0xFF04110F))
                 ) {
                     Row(
                         modifier = Modifier
@@ -1178,7 +1182,7 @@ fun BlinkAiSheet(
                             Text(
                                 "Explore",
                                 color = if (experiencePage == BlinkAiExperiencePage.EXPLORE) {
-                                    Color(0xFF35E1BE)
+                                    (if (authDark) Color(BlinkDesignTokens.Brand.PrimaryBright) else Color(0xFF35E1BE))
                                 } else {
                                     Color.White.copy(alpha = 0.58f)
                                 }
@@ -1200,7 +1204,7 @@ fun BlinkAiSheet(
                             Text(
                                 "Chat",
                                 color = if (experiencePage == BlinkAiExperiencePage.CHAT) {
-                                    Color(0xFF35E1BE)
+                                    (if (authDark) Color(BlinkDesignTokens.Brand.PrimaryBright) else Color(0xFF35E1BE))
                                 } else {
                                     Color.White.copy(alpha = 0.58f)
                                 }
