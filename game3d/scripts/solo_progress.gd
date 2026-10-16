@@ -21,17 +21,27 @@ static func fresh_state() -> Dictionary:
     return {"version": 1, "cash": 500, "jobs": 0, "plant": false}
 
 
-static func valid_state(data: Variant) -> Dictionary:
+static func _is_integer_number(value: Variant, from_json: bool) -> bool:
+    if typeof(value) == TYPE_INT:
+        return true
+    # Godot JSON parses all numbers as floats. Only accept exact finite whole
+    # numbers on disk; never accept a float when building a new transaction.
+    if from_json and typeof(value) == TYPE_FLOAT:
+        return is_finite(value) and value >= 0.0 and value <= 1000000.0 and value == floorf(value)
+    return false
+
+
+static func valid_state(data: Variant, from_json: bool = false) -> Dictionary:
     if not (data is Dictionary):
         return {}
-    if typeof(data.get("version")) != TYPE_INT or data["version"] != 1:
+    if not _is_integer_number(data.get("version"), from_json) or int(data["version"]) != 1:
         return {}
-    if typeof(data.get("cash")) != TYPE_INT or typeof(data.get("jobs")) != TYPE_INT:
+    if not _is_integer_number(data.get("cash"), from_json) or not _is_integer_number(data.get("jobs"), from_json):
         return {}
     if typeof(data.get("plant")) != TYPE_BOOL:
         return {}
-    var cash: int = data["cash"]
-    var jobs: int = data["jobs"]
+    var cash: int = int(data["cash"])
+    var jobs: int = int(data["jobs"])
     if cash < 0 or cash > MAX_CASH or jobs < 0 or jobs > MAX_JOBS:
         return {}
     return {"version": 1, "cash": cash, "jobs": jobs, "plant": data["plant"]}
@@ -57,16 +67,16 @@ func load_state() -> Dictionary:
         # Crash before rename: never accept an uncommitted .tmp file.
         return fresh_state()
     var data: Variant = _read_json(save_path)
-    var loaded: Dictionary = valid_state(data)
+    var loaded: Dictionary = valid_state(data, true)
     if not loaded.is_empty():
         return loaded
-    if data is Dictionary and typeof(data.get("version")) == TYPE_INT and int(data["version"]) > 1:
+    if data is Dictionary and _is_integer_number(data.get("version"), true) and int(data["version"]) > 1:
         # Prevent older builds from overwriting newer saves.
         write_blocked = true
         warning = "A newer solo-save format was found. Progress will not be overwritten."
         return fresh_state()
     if FileAccess.file_exists(backup_path):
-        var backup: Dictionary = valid_state(_read_json(backup_path))
+        var backup: Dictionary = valid_state(_read_json(backup_path), true)
         if not backup.is_empty():
             warning = "Recovered the last valid local progress backup."
             return backup
@@ -99,7 +109,7 @@ func save_state(candidate: Dictionary) -> bool:
         return false
     # Retain the previous known-good save as a recovery checkpoint.
     var source_path: String = ProjectSettings.globalize_path(save_path)
-    if FileAccess.file_exists(save_path) and not valid_state(_read_json(save_path)).is_empty():
+    if FileAccess.file_exists(save_path) and not valid_state(_read_json(save_path), true).is_empty():
         if DirAccess.copy_absolute(source_path, ProjectSettings.globalize_path(backup_path)) != OK:
             DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_path))
             warning = "Backup failed; previous local progress was preserved."
