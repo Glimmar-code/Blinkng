@@ -31,7 +31,7 @@ static func _is_integer_number(value: Variant, from_json: bool) -> bool:
     # Godot JSON parses all numbers as floats. Only accept exact finite whole
     # numbers on disk; never accept a float when building a new transaction.
     if from_json and typeof(value) == TYPE_FLOAT:
-        return is_finite(value) and value >= 0.0 and value <= 1000000.0 and value == floorf(value)
+        return is_finite(value) and absf(value) <= 1000000.0 and value == floorf(value)
     return false
 
 
