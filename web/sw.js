@@ -1,4 +1,4 @@
-const CACHE='blink-web-v14-github-pages-primary';
+const CACHE='blink-web-v15-go54-canonical-domain';
 const SHELL=[
   './',
   './index.html',
