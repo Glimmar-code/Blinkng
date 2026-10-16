@@ -1,0 +1,35 @@
+name: Essential email static safety
+
+on:
+  push:
+    branches:
+      - Testlab-essential-email-phase1-20261016
+    paths:
+      - 'supabase/templates/**'
+      - 'supabase/tests/test_essential_email_templates.py'
+      - 'supabase/functions/send-essential-email/**'
+      - 'supabase/migrations/20261016093000_blink_essential_email_outbox.sql'
+      - 'supabase/config.toml'
+      - '.github/workflows/essential-email-static-gate.yml'
+  pull_request:
+    branches:
+      - Testlab
+    paths:
+      - 'supabase/templates/**'
+      - 'supabase/tests/test_essential_email_templates.py'
+      - 'supabase/functions/send-essential-email/**'
+      - 'supabase/migrations/20261016093000_blink_essential_email_outbox.sql'
+      - 'supabase/config.toml'
+      - '.github/workflows/essential-email-static-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  essential-email-static:
+    name: templates and security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run isolated email safety tests
+        run: python3 -m unittest discover -s supabase/tests -p 'test_essential_email_templates.py' -v
