@@ -306,12 +306,11 @@ fun ConnectSection(
         FollowStateStore.refresh()
     }
 
-    LaunchedEffect(query) {
+    LaunchedEffect(query, currentUsername) {
         val search = query.trim()
-        if (search.length >= 2) {
-            delay(350)
-            connectHubActions.searchStudents(search)
-        }
+        if (search.length >= 2) delay(350)
+        // Even a cleared query invalidates any older in-flight search.
+        connectHubActions.searchStudents(search)
     }
 
     Column(
