@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import com.example.data.local.rememberPersistentTextState
 import com.example.auth.RememberedLoginStore
 import com.example.auth.AccountSessionStore
@@ -2024,8 +2026,8 @@ internal fun PasswordStrengthBar(
 
     val color =
         when (score) {
-            4 -> Color(0xFF22C55E)
-            3 -> Color(0xFFF59E0B)
+            4 -> Color(BlinkDesignTokens.Semantic.Success)
+            3 -> Color(BlinkDesignTokens.Semantic.Warning)
             2 -> Color(0xFFFF8A00)
             else -> BlinkPink
         }
@@ -2254,7 +2256,7 @@ internal fun AuthMessageCard(
 
     val color =
         if (success)
-            Color(0xFF22C55E)
+            Color(BlinkDesignTokens.Semantic.Success)
         else
             Color(0xFFFF4D4D)
 
@@ -2323,7 +2325,7 @@ private fun SecurityNotice() {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(15.dp),
-        color = Color(0xFF22C55E).copy(alpha = 0.07f)
+        color = Color(BlinkDesignTokens.Semantic.Success).copy(alpha = 0.07f)
     ) {
 
         Row(
@@ -2334,7 +2336,7 @@ private fun SecurityNotice() {
             Icon(
                 Icons.Default.VerifiedUser,
                 contentDescription = null,
-                tint = Color(0xFF22C55E),
+                tint = Color(BlinkDesignTokens.Semantic.Success),
                 modifier = Modifier.size(18.dp)
             )
 
@@ -2372,7 +2374,7 @@ private fun UsernamePreview(
         Icon(
             Icons.Default.CheckCircle,
             contentDescription = null,
-            tint = Color(0xFF22C55E),
+            tint = Color(BlinkDesignTokens.Semantic.Success),
             modifier = Modifier.size(12.dp)
         )
 
@@ -2382,7 +2384,7 @@ private fun UsernamePreview(
 
         Text(
             "@$username",
-            color = Color(0xFF22C55E),
+            color = Color(BlinkDesignTokens.Semantic.Success),
             fontSize = 9.5.sp
         )
     }
@@ -2766,7 +2768,7 @@ private fun PremiumCampusOrb() {
             modifier = Modifier
                 .size(20.dp)
                 .background(
-                    Color(0xFF22C55E),
+                    Color(BlinkDesignTokens.Semantic.Success),
                     CircleShape
                 )
                 .border(

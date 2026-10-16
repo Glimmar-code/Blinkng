@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import android.content.Intent
@@ -578,7 +580,7 @@ fun ProfileScreen(
                                                 .size(19.dp)
                                                 .align(Alignment.BottomEnd)
                                                 .background(
-                                                    Color(0xFF22C55E),
+                                                    Color(BlinkDesignTokens.Semantic.Success),
                                                     CircleShape
                                                 )
                                                 .border(3.dp, bgColor, CircleShape)
@@ -780,7 +782,7 @@ fun ProfileScreen(
                                     Modifier
                                         .size(7.dp)
                                         .background(
-                                            if (profile.onlineNow) Color(0xFF22C55E) else Color(0xFF8B8B8B),
+                                            if (profile.onlineNow) Color(BlinkDesignTokens.Semantic.Success) else Color(0xFF8B8B8B),
                                             CircleShape
                                         )
                                 )
@@ -789,7 +791,7 @@ fun ProfileScreen(
                                     text = TimeFormatters.presenceStatus(profile.onlineNow, profile.lastSeenAt),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = if (profile.onlineNow) Color(0xFF22C55E) else textSecondary
+                                    color = if (profile.onlineNow) Color(BlinkDesignTokens.Semantic.Success) else textSecondary
                                 )
                             }
                         }
@@ -1762,8 +1764,8 @@ private fun AnimatedTabRow(
 @Composable
 private fun ProfilePostSkeleton() {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val base = if (dark) Color(0xFF151515) else Color(0xFFE6E6E6)
-    val highlight = if (dark) Color(0xFF292929) else Color(0xFFF5F5F5)
+    val base = if (dark) MaterialTheme.colorScheme.surface else Color(0xFFE6E6E6)
+    val highlight = if (dark) MaterialTheme.colorScheme.surfaceContainerHighest else Color(0xFFF5F5F5)
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(42.dp).shimmerBackground(CircleShape, base, highlight))
@@ -2710,14 +2712,14 @@ private fun ProfileShareSheet(
                     modifier = Modifier
                         .size(72.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF303544))
+                        .background(if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.surfaceContainerHigh else Color(0xFF303544))
                         .testTag("profile_share_default_avatar"),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Person,
                         contentDescription = "$fullName default profile picture",
-                        tint = Color(0xFFC5CAD8),
+                        tint = if (MaterialTheme.colorScheme.background == Color.Black) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFFC5CAD8),
                         modifier = Modifier.size(42.dp)
                     )
                 }

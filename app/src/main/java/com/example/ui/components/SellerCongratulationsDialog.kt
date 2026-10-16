@@ -62,7 +62,7 @@ fun SellerCongratulationsDialog(
             Card(
                 shape = RoundedCornerShape(28.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (isDark) Color(0xFF1B1128) else Color(0xFFFFFFFF)
+                    containerColor = if (isDark) MaterialTheme.colorScheme.surface else Color.White
                 ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
                 modifier = Modifier
@@ -145,7 +145,7 @@ fun SellerCongratulationsDialog(
                     // Store badge pill
                     Surface(
                         shape = RoundedCornerShape(100.dp),
-                        color = if (isDark) Color(0xFF2E1C44) else Color(0xFFF3E8FF),
+                        color = if (isDark) MaterialTheme.colorScheme.surfaceContainerHighest else Color(0xFFF3E8FF),
                         border = androidx.compose.foundation.BorderStroke(1.dp, BlinkPink.copy(alpha = 0.5f))
                     ) {
                         Row(
@@ -202,7 +202,7 @@ fun SellerCongratulationsDialog(
                         onClick = onCreatePost,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = BlinkPink,
-                            contentColor = Color.White
+                            contentColor = if (isDark) Color.Black else Color.White
                         ),
                         shape = RoundedCornerShape(100.dp),
                         contentPadding = PaddingValues(vertical = 13.dp),

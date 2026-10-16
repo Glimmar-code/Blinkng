@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -48,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import com.example.ui.theme.BlinkElevation
 import com.example.ui.theme.BlinkMotion
 import com.example.ui.theme.BlinkThemeTokens
+import com.blinkng.shared.BlinkDesignTokens
 
 @Composable
 fun BlinkCard(
@@ -58,6 +61,7 @@ fun BlinkCard(
     content: @Composable () -> Unit,
 ) {
     val colors = BlinkThemeTokens.colors
+    val authDark = colors.background == Color.Black
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale = if (pressed) BlinkMotion.pressedScale else 1f
@@ -70,10 +74,20 @@ fun BlinkCard(
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .then(clickableModifier),
         shape = shape,
-        color = if (elevated) colors.surfaceElevated else colors.surface,
-        tonalElevation = if (elevated) BlinkElevation.raised else BlinkElevation.card,
-        shadowElevation = if (elevated) BlinkElevation.raised else BlinkElevation.flat,
-        border = BorderStroke(1.dp, colors.borderSoft),
+        // Auth's barely visible white glass on black; keep the current light palette.
+        color = if (authDark) Color.White.copy(
+            alpha = if (elevated) BlinkDesignTokens.PremiumDark.RaisedOverlayAlpha
+                else BlinkDesignTokens.PremiumDark.CardOverlayAlpha
+        ) else if (elevated) colors.surfaceElevated else colors.surface,
+        tonalElevation = if (authDark) BlinkElevation.flat
+            else if (elevated) BlinkElevation.raised else BlinkElevation.card,
+        shadowElevation = if (authDark) BlinkElevation.flat
+            else if (elevated) BlinkElevation.raised else BlinkElevation.flat,
+        border = BorderStroke(
+            1.dp,
+            if (authDark) Color.White.copy(alpha = BlinkDesignTokens.PremiumDark.SubtleBorderAlpha)
+            else colors.borderSoft
+        ),
         content = content,
     )
 }
@@ -87,22 +101,26 @@ fun BlinkPrimaryButton(
     leadingIcon: ImageVector? = null,
 ) {
     val colors = BlinkThemeTokens.colors
+    val authDark = colors.background == Color.Black
     Button(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(
+            if (authDark) BlinkDesignTokens.PremiumDark.ButtonCornerRadius.dp else 16.dp
+        ),
         colors = ButtonDefaults.buttonColors(
             containerColor = colors.primary,
-            contentColor = Color.White,
+            contentColor = if (authDark) Color.Black else Color.White,
             disabledContainerColor = colors.surfaceHighest,
             disabledContentColor = colors.textMuted,
         ),
     ) {
         if (leadingIcon != null) {
             Icon(leadingIcon, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
         }
-        Text(text, fontWeight = FontWeight.SemiBold)
+        Text(text, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -115,11 +133,12 @@ fun BlinkSearchBar(
     onSearch: (() -> Unit)? = null,
 ) {
     val colors = BlinkThemeTokens.colors
+    val authDark = colors.background == Color.Black
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        color = colors.input,
-        border = BorderStroke(1.dp, colors.borderSoft),
+        color = if (authDark) Color.White.copy(alpha = BlinkDesignTokens.PremiumDark.CardOverlayAlpha) else colors.input,
+        border = BorderStroke(1.dp, if (authDark) Color.White.copy(alpha = BlinkDesignTokens.PremiumDark.SubtleBorderAlpha) else colors.borderSoft),
         tonalElevation = 0.dp,
     ) {
         Row(
@@ -185,11 +204,12 @@ fun BlinkTextField(
     textStyle: TextStyle = MaterialTheme.typography.bodyMedium,
 ) {
     val colors = BlinkThemeTokens.colors
+    val authDark = colors.background == Color.Black
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
-        color = colors.input,
-        border = BorderStroke(1.dp, colors.borderSoft),
+        color = if (authDark) Color.White.copy(alpha = BlinkDesignTokens.PremiumDark.CardOverlayAlpha) else colors.input,
+        border = BorderStroke(1.dp, if (authDark) Color.White.copy(alpha = BlinkDesignTokens.PremiumDark.SubtleBorderAlpha) else colors.borderSoft),
     ) {
         BasicTextField(
             value = value,

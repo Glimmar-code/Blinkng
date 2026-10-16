@@ -83,6 +83,7 @@ import com.example.ui.components.rememberDelayedContentViewCount
 import com.example.ui.components.trackContentExposure
 import com.example.ui.components.shimmerBackground
 import com.example.ui.theme.BlinkPink
+import com.blinkng.shared.BlinkDesignTokens
 import kotlin.math.abs
 import kotlin.random.Random
 import kotlinx.coroutines.delay
@@ -746,8 +747,8 @@ private fun ReelsTopTabs(
 
 @Composable
 private fun ReelsLoadingSkeleton() {
-    val base = Color(0xFF171717)
-    val highlight = Color(0xFF343434)
+    val base = Color(BlinkDesignTokens.Dark.Surface)
+    val highlight = Color(BlinkDesignTokens.Dark.SurfaceHighest)
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         Box(
@@ -1586,7 +1587,7 @@ private fun ReelAction(
 private fun StaticDisc(avatar: String) {
     Surface(
         shape = CircleShape,
-        color = Color(0xFF202020),
+        color = Color(BlinkDesignTokens.Dark.SurfaceHighest),
         modifier = Modifier.size(42.dp)
     ) {
         Box(Modifier.padding(7.dp), contentAlignment = Alignment.Center) {

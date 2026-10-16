@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import com.blinkng.desktop.DesktopAppState
 import com.blinkng.shared.ai.BlinkAiExperienceCatalog
 import com.blinkng.shared.ai.BlinkAiExperiencePage
+import com.blinkng.shared.BlinkDesignTokens
 import com.blinkng.desktop.data.DesktopBlinkAiConversation
 import com.blinkng.desktop.data.DesktopBlinkAiService
 import kotlinx.coroutines.launch
@@ -99,6 +100,7 @@ private fun DesktopBlinkAiDialog(
     state: DesktopAppState,
     onDismiss: () -> Unit,
 ) {
+    val authDark = MaterialTheme.colorScheme.background == Color.Black
     val service = remember(state.client) { DesktopBlinkAiService(state.client) }
     val scope = rememberCoroutineScope()
     var input by remember { mutableStateOf("") }
@@ -423,14 +425,14 @@ private fun DesktopBlinkAiDialog(
                         Text("Tap to chat", fontSize = 28.sp, fontWeight = FontWeight.Black)
                         Surface(
                             shape = RoundedCornerShape(28.dp),
-                            color = Color(0xFF063D34),
+                            color = (if (authDark) Color(BlinkDesignTokens.Brand.Primary).copy(alpha = 0.16f) else Color(0xFF063D34)),
                         ) {
                             Text(
                                 "≋",
                                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 14.dp),
                                 fontSize = 32.sp,
                                 fontWeight = FontWeight.Black,
-                                color = Color(0xFF35E1BE),
+                                color = (if (authDark) Color(BlinkDesignTokens.Brand.PrimaryBright) else Color(0xFF35E1BE)),
                             )
                         }
                         Spacer(Modifier.height(12.dp))
@@ -475,7 +477,7 @@ private fun DesktopBlinkAiDialog(
                                         modifier = Modifier.weight(1f).heightIn(min = 116.dp),
                                         shape = RoundedCornerShape(18.dp),
                                         color = if (activeExploreId == category.id) {
-                                            Color(0xFF0A3B33)
+                                            (if (authDark) Color(BlinkDesignTokens.Brand.Primary).copy(alpha = 0.20f) else Color(0xFF0A3B33))
                                         } else {
                                             MaterialTheme.colorScheme.surfaceVariant
                                         },

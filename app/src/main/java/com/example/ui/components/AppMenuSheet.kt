@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import android.content.Intent
@@ -343,7 +345,7 @@ private fun ProfileHeaderCard(profile: UserProfile, onClick: () -> Unit) {
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .size(12.dp)
-                        .background(Color(0xFF22C55E), CircleShape)
+                        .background(Color(BlinkDesignTokens.Semantic.Success), CircleShape)
                 )
             }
         }

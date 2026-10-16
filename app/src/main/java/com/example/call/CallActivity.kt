@@ -1,5 +1,7 @@
 package com.example.call
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -893,7 +895,7 @@ private fun CallScreen(
                         CallRoundButton(
                             icon = Icons.Default.Call,
                             label = "Answer",
-                            container = Color(0xFF22C55E),
+                            container = Color(BlinkDesignTokens.Semantic.Success),
                             onClick = onAnswer
                         )
                     }

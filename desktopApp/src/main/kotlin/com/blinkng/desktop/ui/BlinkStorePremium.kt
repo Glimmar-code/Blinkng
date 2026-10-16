@@ -1,5 +1,7 @@
 package com.blinkng.desktop.ui
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import androidx.compose.ui.graphics.Color
 import com.blinkng.desktop.data.DesktopStoreItem
 
@@ -93,12 +95,12 @@ private fun experience(
 ) = DesktopPremiumExperience(benefit, visibleAt, activationHint, visibility, label, motion, priority)
 
 fun desktopPremiumAccent(experience: DesktopPremiumExperience): Color = when (experience.visibility) {
-    DesktopPremiumVisibility.PUBLIC_IDENTITY -> Color(0xFF8B5CF6)
+    DesktopPremiumVisibility.PUBLIC_IDENTITY -> Color(BlinkDesignTokens.Brand.Primary)
     DesktopPremiumVisibility.PUBLIC_CONTENT -> Color(0xFFEC4899)
-    DesktopPremiumVisibility.SHARED_SOCIAL -> Color(0xFF3B82F6)
-    DesktopPremiumVisibility.DISTRIBUTION -> Color(0xFFF59E0B)
+    DesktopPremiumVisibility.SHARED_SOCIAL -> Color(BlinkDesignTokens.Brand.Blue)
+    DesktopPremiumVisibility.DISTRIBUTION -> Color(BlinkDesignTokens.Semantic.Warning)
     DesktopPremiumVisibility.PRIVATE_UTILITY -> Color(0xFF94A3B8)
-    DesktopPremiumVisibility.RECIPIENT_VISIBLE -> Color(0xFF06B6D4)
+    DesktopPremiumVisibility.RECIPIENT_VISIBLE -> Color(BlinkDesignTokens.Brand.Cyan)
     DesktopPremiumVisibility.BUNDLE -> Color(0xFFA855F7)
 }
 

@@ -49,6 +49,9 @@ jobs:
       - name: Blink Store pause parity regression
         run: python3 scripts/test_blink_store_pause.py
 
+      - name: Guard Auth-inspired dark theme design tokens
+        run: python3 scripts/check_premium_dark_tokens.py
+
       - name: Android unit tests
         run: gradle :app:testDebugUnitTest --stacktrace --no-daemon
 

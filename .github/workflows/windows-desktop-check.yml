@@ -24,6 +24,9 @@ jobs:
       - name: Enforce Android-Windows feature parity
         run: python3 scripts/check_windows_parity.py
 
+      - name: Guard shared Auth-inspired dark palette
+        run: python3 scripts/check_premium_dark_tokens.py
+
   windows-build:
     runs-on: windows-latest
     timeout-minutes: 30

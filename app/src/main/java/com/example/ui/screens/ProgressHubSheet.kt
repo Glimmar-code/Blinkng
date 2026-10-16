@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -428,7 +430,7 @@ private fun MissionCard(
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
-        color = if (claimed) Color(0xFF22C55E).copy(alpha = 0.08f)
+        color = if (claimed) Color(BlinkDesignTokens.Semantic.Success).copy(alpha = 0.08f)
         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -441,7 +443,7 @@ private fun MissionCard(
                     "${progress.coerceAtMost(target)}/$target",
                     fontWeight = FontWeight.Black,
                     fontSize = 11.sp,
-                    color = if (progress >= target) Color(0xFF22C55E) else BlinkPink,
+                    color = if (progress >= target) Color(BlinkDesignTokens.Semantic.Success) else BlinkPink,
                 )
             }
             LinearProgressIndicator(

@@ -624,7 +624,7 @@ private fun PremiumHomeFeed(
     onReelClick: () -> Unit,
     onOpenInlineReel: (reelId: String, positionMs: Long) -> Unit
 ) {
-    val homeBackground = if (isDark) Color(0xFF08090B) else Color(0xFFF5F6FA)
+    val homeBackground = if (isDark) MaterialTheme.colorScheme.background else Color(0xFFF5F6FA)
     val context = LocalContext.current
     val imageLoader = context.imageLoader
     val uiScope = rememberCoroutineScope()

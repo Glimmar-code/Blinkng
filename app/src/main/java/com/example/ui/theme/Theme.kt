@@ -16,14 +16,9 @@ fun feedAccentBrush(): Brush = Brush.linearGradient(
 )
 
 fun blinkBackgroundBrush(isDark: Boolean): Brush = if (isDark) {
-    Brush.radialGradient(
-        colors = listOf(
-            DarkSurfaceElevated.copy(alpha = 0.74f),
-            DarkBackground,
-            DarkBackground
-        ),
-        radius = 1200f
-    )
+    // The Auth background is deliberately flat black. Avoid unrequested
+    // screen-wide purple/gray glows while leaving the Light Mode untouched.
+    Brush.verticalGradient(colors = listOf(DarkBackground, DarkBackground))
 } else {
     Brush.radialGradient(
         colors = listOf(

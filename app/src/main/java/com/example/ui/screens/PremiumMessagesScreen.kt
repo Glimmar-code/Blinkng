@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import com.example.ui.components.BlinkSkeletonChatHistory
 
 import android.Manifest
@@ -2733,7 +2735,7 @@ private fun MessageBubble(
                         Spacer(Modifier.width(4.dp))
                         Text(
                             receipt,
-                            color = if (message.status == MessageStatus.READ) Color(0xFF3B82F6) else palette.textSecondary,
+                            color = if (message.status == MessageStatus.READ) Color(BlinkDesignTokens.Brand.Blue) else palette.textSecondary,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -2946,7 +2948,7 @@ private fun MessageActionsPopover(
                 color = if (palette.isLight) {
                     Color.White.copy(alpha = .98f)
                 } else {
-                    Color(0xFF171717).copy(alpha = .98f)
+                    palette.glassElevated.copy(alpha = .98f)
                 },
                 contentColor = palette.textPrimary,
                 shape = RoundedCornerShape(18.dp),
@@ -2980,7 +2982,7 @@ private fun MessageActionsPopover(
                 color = if (palette.isLight) {
                     Color.White.copy(alpha = .99f)
                 } else {
-                    Color(0xFF171717).copy(alpha = .99f)
+                    palette.glassElevated.copy(alpha = .99f)
                 },
                 contentColor = palette.textPrimary,
                 shape = RoundedCornerShape(18.dp),
@@ -4381,7 +4383,7 @@ private fun RingAvatar(
                 .fillMaxSize()
                 .background(
                     brush = if (emphasizeRing) {
-                        Brush.linearGradient(listOf(palette.accent, palette.accentSecondary, Color(0xFF8B5CF6)))
+                        Brush.linearGradient(listOf(palette.accent, palette.accentSecondary, palette.accent))
                     } else {
                         Brush.linearGradient(listOf(palette.border, palette.border))
                     },

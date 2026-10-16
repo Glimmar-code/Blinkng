@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import com.example.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.animation.AnimatedVisibility
@@ -182,7 +184,7 @@ fun PostCard(
     val profileTarget = resolvedAuthorUsername.ifBlank { post.author }
     val displayedViewsCount = rememberDelayedContentViewCount(post.id, post.viewsCount)
     val surfaceColor = if (xFeedStyle) {
-        if (isDark) Color(0xFF17191D) else Color.White
+        if (isDark) FeedCardSurface else Color.White
     } else if (isDark) FeedCardSurface else LightSurface
     val primaryText = if (isDark) FeedTextPrimary else LightTextPrimary
     val secondaryText = if (isDark) FeedTextSecondary else LightTextSecondary
@@ -325,7 +327,7 @@ fun PostCard(
                                 .size(14.dp)
                                 .align(Alignment.BottomEnd)
                                 .background(
-                                    Color(0xFF22C55E),
+                                    Color(BlinkDesignTokens.Semantic.Success),
                                     CircleShape
                                 )
                                 .border(2.dp, surfaceColor, CircleShape)

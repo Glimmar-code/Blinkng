@@ -1,3 +1,21 @@
+## 2026-10-16 — Legacy dark-color cleanup, Android and Windows (Testlab)
+
+- **Per-screen dark backgrounds replaced:** Feed home, post cards, reels skeleton/disc, profile skeleton/avatar, admin sidebar/dialogs, verified panels, market-seller header, seller confirmation, message action menus and story media fallback now consume semantic colors or shared platform-neutral design tokens.
+- **AI surface parity:** BLINK AI previously rendered hardcoded green-black surfaces and turquoise controls irrespective of app dark styling. In Dark Mode, Android now uses the Auth-like black/near-black/purple palette; Windows AI icon and selection accents use the same purple. Original AI Light Mode styling is preserved.
+- **Status tokens unified:** Existing brand-purple, blue, success and warning hex values were replaced with equivalent `BlinkDesignTokens` references in affected Android and Windows screens and badge components, without changing their visible color meaning.
+- **Deliberate exceptions, not remaining migration errors:** Photo/video scrims stay black for legibility; users' chosen post/theme colors, Google sign-in brand, verification/online status colors, WhatsApp, custom VIP cosmetics, feature-specific celebrations and selected Light Mode promotional art keep distinct colors where their meaning would be lost by forcing the dark surface palette. The Auth screens remain the canonical reference.
+- **Regression guard:** `scripts/check_premium_dark_tokens.py` runs in Android and Windows CI and fails if covered screens reintroduce obsolete hardcoded dark surfaces or diverge from the shared Auth design contract. Full real-device visual and accessibility QA is still required; static checks alone are insufficient.
+- **Main stays untouched:** Draft PR #308 remains confined to the fresh main-based `Testlab-auth-premium-dark-20261016` branch, pending fully successful test gates and review.
+
+## 2026-10-16 — Auth-inspired premium dark design system (Testlab only)
+
+- **Shared-first:** `BlinkDesignTokens.Dark` and `BlinkDesignTokens.PremiumDark` define the Auth-inspired pure-black/near-black layers, white-on-black glass opacity, 8%-white borders, purple accents, pill buttons and readable typography for Android and Windows.
+- **Android:** Material 3 dark surface containers are explicitly populated to eliminate auto-tinted/mismatched cards. Shared premium cards, search/text inputs and primary buttons use Auth-like dark styling; Feed navigation and chrome highlights use purple in dark mode. The independent dark Messages palette is aligned; custom Pink/Light chat themes remain available.
+- **Windows:** The real desktop root used an ad-hoc dark palette that bypassed `BlinkDesktopTheme`; it now uses the actual shared brand/dark/light/system tokens and dark Material 3 surfaces. Desktop navigation accent now uses its active theme.
+- **Light Mode:** Existing light tokens and light-specific component styling remain unchanged. The native Auth screen itself remains unchanged. No backend, ads, auth flows, game rules or paid services are modified.
+- **Scope:** This central theme/component rollout improves all MaterialTheme-based screens. It does not claim that every legacy hardcoded color has been migrated; per-route visual QA remains necessary.
+- **Release gate:** Branch based on current `main` because the old `Testlab` branch has substantially diverged. Validate Android unit tests, lint, debug APK, Android instrumentation compilation, Windows build/parity, screenshot/UI and real-device accessibility checks before review/merge. Main and public APK must remain unchanged until those checks pass.
+
 ## 2026-10-15 — Website BLINK LIFE background Web download (Option B / Android-only delivery)
 
 - **PARITY-EXCEPTION: blink-life-website-webgl-on-demand-20261015** — Website-installed Android users get a signed, compact base APK; Android DownloadManager fetches a version-pinned, SHA-256-verified Godot 4.3 WebAssembly/WebGL game archive only after the player requests it. Verification/unpacking runs in WorkManager, and an internal sandboxed WebView provides an in-app Play screen without a second APK installation. This is Android delivery and WebView integration, not a change to shared account, coin, or social-game rules.

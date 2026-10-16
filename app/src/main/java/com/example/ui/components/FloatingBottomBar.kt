@@ -93,7 +93,8 @@ fun FeedBottomBar(
 
     val reduceMotion = rememberBlinkReduceMotion()
     val navigationSurface = if (isDark) Color.Black else Color.White
-    val navigationBorder = if (isDark) Color(0xFF242424) else Color(0xFFE1E4E8)
+    // Mirror Auth's restrained translucent-white borders, not gray blocks.
+    val navigationBorder = if (isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFE1E4E8)
 
     Surface(
         // Paint behind gesture navigation and keep destinations above the
@@ -120,6 +121,7 @@ fun FeedBottomBar(
                 FeedBottomBarItem(
                     item = item,
                     selected = selected,
+                    isDark = isDark,
                     reduceMotion = reduceMotion,
                     onClick = {
                         when (item.destination) {
@@ -140,11 +142,13 @@ fun FeedBottomBar(
 private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
     item: FeedBottomItem,
     selected: Boolean,
+    isDark: Boolean,
     reduceMotion: Boolean,
     onClick: () -> Unit
 ) {
+    val activeAccent = if (isDark) MaterialTheme.colorScheme.primary else FeedBlue
     val tint by animateColorAsState(
-        targetValue = if (selected) FeedBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (selected) activeAccent else MaterialTheme.colorScheme.onSurfaceVariant,
         animationSpec = tween(if (reduceMotion) 0 else BlinkMotion.revealMillis),
         label = "bottomNavTint"
     )
@@ -154,7 +158,7 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
         label = "bottomNavIconScale"
     )
     val indicatorColor by animateColorAsState(
-        targetValue = if (selected) FeedBlue else Color.Transparent,
+        targetValue = if (selected) activeAccent else Color.Transparent,
         animationSpec = tween(if (reduceMotion) 0 else BlinkMotion.revealMillis),
         label = "bottomNavIndicator"
     )
@@ -173,7 +177,7 @@ private fun androidx.compose.foundation.layout.RowScope.FeedBottomBarItem(
             modifier = Modifier
                 .fillMaxWidth(0.62f)
                 .height(3.dp)
-                .background(indicatorColor)
+                .background(indicatorColor, RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
         )
         Spacer(Modifier.height(5.dp))
         Icon(

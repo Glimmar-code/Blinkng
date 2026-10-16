@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import com.example.ui.components.BlinkSkeletonList
 
 import com.example.R
@@ -141,7 +143,7 @@ fun GetVerifiedSheet(
             item {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = if (isDark) Color(0xFF1E1729) else Color(0xFFF6F4FA),
+                    color = if (isDark) MaterialTheme.colorScheme.surfaceContainerHigh else Color(0xFFF6F4FA),
                     border = BorderStroke(1.dp, borderColor),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -409,7 +411,7 @@ fun GetVerifiedSheet(
                             color = if (isGoldEligible) Color(0xFF132818) else if (isDark) Color(0xFF281C10) else Color(0xFFFFF7ED),
                             border = BorderStroke(
                                 1.dp,
-                                if (isGoldEligible) Color(0xFF22C55E).copy(alpha = 0.5f) else BlinkGold.copy(alpha = 0.4f)
+                                if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success).copy(alpha = 0.5f) else BlinkGold.copy(alpha = 0.4f)
                             ),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -423,21 +425,21 @@ fun GetVerifiedSheet(
                                         Icon(
                                             imageVector = if (isGoldEligible) Icons.Default.CheckCircle else Icons.Default.Lock,
                                             contentDescription = null,
-                                            tint = if (isGoldEligible) Color(0xFF22C55E) else BlinkGold,
+                                            tint = if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success) else BlinkGold,
                                             modifier = Modifier.size(14.dp)
                                         )
                                         Text(
                                             text = if (isGoldEligible) "Follower Requirement Met!" else "Requirement: 1,000 Followers",
                                             fontSize = 11.5.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (isGoldEligible) Color(0xFF22C55E) else if (isDark) Color.White else Color(0xFF9A3412)
+                                            color = if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success) else if (isDark) Color.White else Color(0xFF9A3412)
                                         )
                                     }
                                     Text(
                                         text = "${profile.followerCount} / 1,000",
                                         fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isGoldEligible) Color(0xFF22C55E) else BlinkGold
+                                        color = if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success) else BlinkGold
                                     )
                                 }
 
@@ -446,7 +448,7 @@ fun GetVerifiedSheet(
                                 val progress = (profile.followerCount.toFloat() / 1000f).coerceIn(0f, 1f)
                                 LinearProgressIndicator(
                                     progress = { progress },
-                                    color = if (isGoldEligible) Color(0xFF22C55E) else BlinkGold,
+                                    color = if (isGoldEligible) Color(BlinkDesignTokens.Semantic.Success) else BlinkGold,
                                     trackColor = if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.08f),
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -918,5 +920,5 @@ private fun VerificationFeatureItem(
 
 @Composable
 private fun cardBg(isDark: Boolean): Color {
-    return if (isDark) Color(0xFF1B1424) else Color.White
+    return if (isDark) MaterialTheme.colorScheme.surfaceContainer else Color.White
 }
