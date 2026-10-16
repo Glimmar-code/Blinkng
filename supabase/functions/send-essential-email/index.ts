@@ -156,26 +156,6 @@ async function socialUnsubscribeUrl(userId: string, kind: SocialKind): Promise<s
   return url.toString().replaceAll("&", "&amp;");
 }
 
-async function setStatus(
-  admin: ReturnType<typeof createClient>,
-  row: QueueRow,
-  status: "sent" | "pending" | "failed",
-  error: string | null = null,
-) {
-  const nextAttempts = row.attempts + 1;
-  const minutes = Math.min(240, 15 * 2 ** Math.max(0, nextAttempts - 1));
-  await admin.from("blink_essential_email_outbox")
-    .update({
-      status,
-      last_error: error,
-      updated_at: new Date().toISOString(),
-      available_at: status === "pending" ? new Date(Date.now() + minutes * 60_000).toISOString() : new Date().toISOString(),
-      ...(status === "sent" ? { sent_at: new Date().toISOString() } : {}),
-    })
-    .eq("id", row.id)
-    .eq("status", "sending");
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "POST required" }, 405);
 
@@ -197,6 +177,27 @@ Deno.serve(async (req: Request) => {
   const admin = createClient(url, role, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  async function setStatus(
+    row: QueueRow,
+    status: "sent" | "pending" | "failed",
+    error: string | null = null,
+  ) {
+    const nextAttempts = row.attempts + 1;
+    const minutes = Math.min(240, 15 * 2 ** Math.max(0, nextAttempts - 1));
+    await admin.from("blink_essential_email_outbox")
+      .update({
+        status,
+        last_error: error,
+        updated_at: new Date().toISOString(),
+        available_at: status === "pending" ? new Date(Date.now() + minutes * 60_000).toISOString() : new Date().toISOString(),
+        ...(status === "sent" ? { sent_at: new Date().toISOString() } : {}),
+      })
+      .eq("id", row.id)
+      .eq("status", "sending");
+  }
+  
+  
 
   // Social emails default OFF. Requires an explicit schedule and working one-click
   // unsubscribe endpoint. A missing social environment config is fail-closed.
@@ -251,12 +252,12 @@ Deno.serve(async (req: Request) => {
     if (claimError || !claimed) { skipped++; continue; }
     const message = MESSAGES[row.kind];
     if (isSocial(row.kind) && !socialEnabled) {
-      await setStatus(admin, row, "failed", "social_delivery_disabled");
+      await setStatus(row, "failed", "social_delivery_disabled");
       skipped++;
       continue;
     }
     if (!message) {
-      await setStatus(admin, row, "failed", "unsupported_email_kind");
+      await setStatus(row, "failed", "unsupported_email_kind");
       failed++;
       continue;
     }
@@ -265,8 +266,9 @@ Deno.serve(async (req: Request) => {
       const { data: fetched, error: userError } = await admin.auth.admin.getUserById(row.user_id);
       const user = fetched?.user;
       const recipientEmail = user?.email;
-      if (userError || !user || !recipientEmail || !user.email_confirmed_at || user.banned_until && new Date(user.banned_until) > new Date()) {
-        await setStatus(admin, row, "failed", "recipient_not_eligible");
+      const bannedUntil = (user as (typeof user & { banned_until?: string }))?.banned_until;
+      if (userError || !user || !recipientEmail || !user.email_confirmed_at || bannedUntil && new Date(bannedUntil) > new Date()) {
+        await setStatus(row, "failed", "recipient_not_eligible");
         failed++;
         continue;
       }
@@ -286,19 +288,19 @@ Deno.serve(async (req: Request) => {
           .eq("user_id", row.user_id)
           .maybeSingle();
         if (prefsError || settingsError) {
-          await setStatus(admin, row, "failed", "preferences_lookup_failed");
+          await setStatus(row, "failed", "preferences_lookup_failed");
           failed++;
           continue;
         }
-        if (socialPrefs?.[SOCIAL_FLAGS[row.kind]] !== true
+        if ((socialPrefs as Record<string, unknown> | null)?.[SOCIAL_FLAGS[row.kind]] !== true
           || userSettings?.email_notifs_enabled === false) {
-          await setStatus(admin, row, "failed", "user_opted_out");
+          await setStatus(row, "failed", "user_opted_out");
           skipped++;
           continue;
         }
         unsubscribeUrl = await socialUnsubscribeUrl(row.user_id, row.kind);
         if (!unsubscribeUrl) {
-          await setStatus(admin, row, "failed", "unsubscribe_link_not_ready");
+          await setStatus(row, "failed", "unsubscribe_link_not_ready");
           failed++;
           continue;
         }
@@ -326,17 +328,17 @@ Deno.serve(async (req: Request) => {
         }),
       });
       if (response.ok) {
-        await setStatus(admin, row, "sent");
+        await setStatus(row, "sent");
         sent++;
       } else {
         // Brevo may reject invalid senders or credentials; don't flood/retry those.
         const retry = (response.status === 429 || response.status >= 500) && row.attempts + 1 < 4;
-        await setStatus(admin, row, retry ? "pending" : "failed", `brevo_http_${response.status}`);
+        await setStatus(row, retry ? "pending" : "failed", `brevo_http_${response.status}`);
         failed++;
       }
     } catch (_err) {
       // Network errors may be ambiguous; stop automatic retries to avoid duplicate alerts.
-      await setStatus(admin, row, "failed", "delivery_result_unknown");
+      await setStatus(row, "failed", "delivery_result_unknown");
       failed++;
     }
   }
