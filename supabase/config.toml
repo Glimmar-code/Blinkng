@@ -37,6 +37,12 @@ verify_jwt = true
 [functions.verify-payment]
 verify_jwt = true
 
+# Internal email worker must not accept end-user JWTs as authorization.
+# This endpoint is protected by a separate strong server-only secret header.
+# Do not deploy it until staging configuration and event-level tests pass.
+[functions.send-essential-email]
+verify_jwt = false
+
 [functions.send-push-notification]
 verify_jwt = true
 
