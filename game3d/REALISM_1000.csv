@@ -872,7 +872,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 871,Clear installed-content management,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 872,Delete optional districts individually,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 873,Preserve account progress after removal,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-874,Separate cache and permanent content,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+874,Separate cache and permanent content,Delivery and reliability,partial,scripts/solo_progress.gd;scripts/world.gd,tests/solo_progress_smoke.gd;tests/smoke.gd,Standalone user:// solo demo save does not share session cache or server-owned state; production account cache/content segregation remains unfinished.
 875,Offline tutorial access,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 876,Offline practice activities,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 877,Clear labels for online-only features,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -888,12 +888,12 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 887,Server capacity limits with queues,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 888,Clear queue status,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 889,Automatic server health monitoring,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-890,Crash recovery with progress preservation,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-891,Frequent safe progress checkpoints,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-892,Versioned player save formats,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+890,Crash recovery with progress preservation,Delivery and reliability,partial,scripts/solo_progress.gd;scripts/world.gd,tests/solo_progress_smoke.gd;tests/smoke.gd,"Confirmed solo jobs and purchases survive restart and valid backup recovers corrupt primary; scene crashes, player movement and multiplayer are not fully recoverable."
+891,Frequent safe progress checkpoints,Delivery and reliability,partial,scripts/solo_progress.gd;scripts/world.gd,tests/solo_progress_smoke.gd;tests/smoke.gd,"Solo local balance and plant commit on successful jobs/purchases, not arbitrary world position or server-backed tasks. Real device validation pending."
+892,Versioned player save formats,Delivery and reliability,partial,scripts/solo_progress.gd;scripts/world.gd,tests/solo_progress_smoke.gd;tests/smoke.gd,Strict version 1 offline solo progress with rejection of unknown future format; account/server save formats and migration framework still pending.
 893,Tested save-data migrations,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 894,Backups for persistent world data,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-895,Safe rollback after faulty updates,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+895,Safe rollback after faulty updates,Delivery and reliability,partial,scripts/solo_progress.gd;scripts/world.gd,tests/solo_progress_smoke.gd;tests/smoke.gd,Backup can recover corrupt local solo save without wiping future formats; end-to-end game update and server rollback still pending.
 896,Performance budgets for each district,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 897,Long-session memory stability checks,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 898,Testing on affordable Android devices,Delivery and reliability,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
