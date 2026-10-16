@@ -164,3 +164,35 @@ saved settings, bounded rendering) and `tests/smoke.gd` (scene attachment,
 actual rain visibility) under native Godot CI. Fresh CI and physical
 Android/Windows rendering, thermal and battery tests must pass before promotion.
 The branch does not publish an APK or authorize a main merge.
+
+## Batch 5: named local residents, home/work routines and visibility budgets
+
+The shared Godot scene now includes eight original mesh-only **fictional NPCs**.
+They have fixed local names/IDs, home/work/leisure locations and day/evening/night
+destination choices using the local visual clock. Actors follow existing connected
+sidewalk lanes (not direct paths through solid buildings), visually hold umbrellas
+while walking in rain, and offer short accessible text greetings when approached.
+Heavy rain redirects leisure travel toward shelter. Clear **NPC** labels distinguish
+them from real BLINK multiplayer participants; these NPCs never increase online
+counts or impersonate BLINK accounts.
+
+The battery saver displays at most four NPCs instead of eight, and actors beyond
+32 meters are culled. Simulation is local and updates at 10 Hz with no avatar
+physics bodies. NPC visits remain decorative: no interior occupancy, dynamic
+NavMesh obstacle avoidance, server-side persistence, human-authored voice,
+friendship or player trade and no real-world location data.
+
+Current evidence-only tracker totals: **31 implemented in source, 27 partial,
+942 pending audit, zero device-verified and zero released**. The changed IDs are
+80, 81, 83, 98, 401–403, 407–408, 410, 421, 430, 442, 448–450 and 500.
+
+Acceptance checks: `tests/npc_smoke.gd` verifies unique stable IDs, valid
+home/work targets, day/night/rain schedules, no building-wall route crossings and
+4/8 graphics budgets; `tests/smoke.gd` validates actual scene NPC nameplates,
+rain umbrellas, greetings and population caps. Both are gated by Godot CI;
+the APK packaging and isolation checks now include the two NPC scripts.
+
+The exact branch build, Windows packaging, rendered gameplay and physical-phone
+battery, UI and motion tests still require independent validation. This batch does
+not certify the other pending requirements or the launch readiness of public
+Internet multiplayer, property persistence or optional game-download delivery.
