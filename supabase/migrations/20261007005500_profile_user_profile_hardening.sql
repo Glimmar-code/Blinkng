@@ -772,8 +772,10 @@ begin
     - 'current_wallet_balance'
     - 'fcm_token'
     - 'profile_views_this_week'
-    - 'campus_hostel_location')
+    - 'campus_hostel_location'
+    - 'current_city_state')
     || jsonb_build_object(
+      'current_city_state', case when v_viewer = v_profile.id then v_profile.current_city_state else '' end,
       'email', case
         when v_viewer=v_profile.id then v_profile.email
         when v_profile.email_visibility='PUBLIC' then v_profile.email
