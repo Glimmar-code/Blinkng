@@ -1,5 +1,7 @@
 package com.example
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -382,14 +384,14 @@ private fun AdminNotificationHealthCard(health: AdminNotificationDeliveryHealth)
                         if (healthy) "Healthy • no recorded failures in the last 24 hours"
                         else health.failuresLast24h.toString() + " failed dispatches in the last 24 hours",
                         fontSize = 10.sp,
-                        color = if (healthy) Color(0xFF22C55E) else BlinkPink
+                        color = if (healthy) Color(BlinkDesignTokens.Semantic.Success) else BlinkPink
                     )
                 }
                 Text(
                     if (healthy) "HEALTHY" else "CHECK",
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Black,
-                    color = if (healthy) Color(0xFF22C55E) else BlinkPink
+                    color = if (healthy) Color(BlinkDesignTokens.Semantic.Success) else BlinkPink
                 )
             }
             Spacer(Modifier.height(10.dp))
