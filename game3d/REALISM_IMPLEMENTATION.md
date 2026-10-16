@@ -254,3 +254,41 @@ Now **36 implemented in source, 34 partial, 930 pending audit,
 0 device verified, 0 released**. No migration is claimed for #893.
 Android+Windows packaging, real-device app interruption, Android battery,
 low-storage behavior and production isolation still require verification.
+
+## Batch 8: playable starter-room preview with safe return
+
+A small original furnished room is created only when a player explicitly
+chooses **Enter free starter room (offline)** at the existing Homes frontage.
+A menu also preserves the separate multiplayer-homes flow. This Godot room has
+physical floor and four low-poly walls, a bed, study desk, chair, wardrobe,
+window, modest lighting and a visible purchased desk plant. The room occupies
+a separate instance above the local city and is freed after leaving,
+so it does not consume resources during normal BLINK browsing or ordinary
+in-game city exploration. The player can walk inside, use INTERACT/F or Escape
+to leave and return to the original exterior entrance; movement and input
+are reset on teleport. Out-of-bounds recovery stays inside the room.
+
+Shared multiplayer property interiors, dedicated property data and server
+authorization remain unchanged. Local solo rooms are **not** public homes,
+tradeable/rentable property, or server-authoritative rewards. Bed/desk furniture
+is presentation only, not functional study or cooking. Fixed plants do not
+constitute free-placement decoration.
+
+Specific roadmap impact: **#264 implemented in source** (on-demand scene
+lifecycle), **#251, #265, #279, #300 partial**; total **37 source
+implemented, 38 partial, 925 pending audit, zero device verified,
+zero released**. Scene smoke checks menu choice, no involuntary teleport,
+usable room boundaries, plant display, indoor-only interaction, return position,
+no currency change and no multiplayer connection.
+APK packaging asserts scripts/solo_home.gd is embedded.
+
+The previous Godot CI failure was examined: tests intentionally supplying
+corrupt JSON caused Godot JSON.parse_string to print engine errors, and
+a future-version comparison mismatched Godot decoded numeric types. The
+reader now uses JSON.new().parse() to reject corrupted save data without
+unnecessary engine errors. Tests compare saved integer semantics, retaining
+strict rejection of fractional amounts, and add explicit JSON float roundtrip
+coverage. New GitHub Actions on the **latest commit** must pass before any
+merge to Testlab. Physical Android/Windows usability and broader release
+acceptance remain mandatory before main.
+
