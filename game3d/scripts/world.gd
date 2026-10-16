@@ -39,6 +39,7 @@ var home_plant_z: int = SoloHome.PLANT_DEFAULT_Z
 var home_plant_rotation: int = 0
 var home_furniture: Dictionary = SoloHome.FURNITURE_DEFAULTS.duplicate()
 var home_layout_slots: Dictionary = {}
+var home_light_mode: int = 0
 var decor_undo: Array[Dictionary] = []
 var decor_redo: Array[Dictionary] = []
 var progress_store: RefCounted = SoloProgress.new()
@@ -88,6 +89,7 @@ func _ready() -> void:
     for key in SoloHome.FURNITURE_DEFAULTS:
         home_furniture[key] = int(recovered[key])
     home_layout_slots = recovered["layout_slots"].duplicate(true)
+    home_light_mode = int(recovered["light_mode"])
     camera_distance = preferences.camera_distance
     day_cycle.enabled = preferences.day_cycle_enabled
     day_cycle.day_minutes = preferences.day_minutes
@@ -922,6 +924,7 @@ func _enter_solo_home() -> void:
     solo_room.call("apply_decoration", home_wall_style, home_floor_style,
         home_plant_spot, home_plant_custom, home_plant_x, home_plant_z,
         home_plant_rotation, home_furniture)
+    solo_room.call("apply_light_mode", home_light_mode)
     decor_undo.clear()
     decor_redo.clear()
     home_inside = true
@@ -963,7 +966,7 @@ func _home_save_snapshot() -> Dictionary:
         "table_rotation": int(home_furniture["table_rotation"]),
         "bed_layout": int(home_furniture["bed_layout"]),
         "wardrobe_layout": int(home_furniture["wardrobe_layout"]),
-        "layout_slots": home_layout_slots.duplicate(true)}
+        "layout_slots": home_layout_slots.duplicate(true), "light_mode": home_light_mode}
 
 
 func _show_home_decor() -> void:
@@ -984,6 +987,9 @@ func _show_home_decor() -> void:
     var heading := Label.new()
     heading.text = "Free solo-room decoration • saved locally"
     rows.add_child(heading)
+    var lighting := _new_button("Lighting: " + ["Warm", "Bright", "Dim"][home_light_mode])
+    rows.add_child(lighting)
+    lighting.pressed.connect(_cycle_home_light)
     var wall := _new_button("Wall palette %d/3" % (home_wall_style + 1))
     rows.add_child(wall)
     wall.pressed.connect(_cycle_home_decoration.bind("wall_style"))
@@ -1104,6 +1110,8 @@ func _apply_home_decor(candidate: Dictionary) -> bool:
     for key in SoloHome.FURNITURE_DEFAULTS:
         home_furniture[key] = int(candidate[key])
     home_layout_slots = candidate["layout_slots"].duplicate(true)
+    home_light_mode = int(candidate["light_mode"])
+    solo_room.call("apply_light_mode", home_light_mode)
     solo_room.call("apply_decoration", home_wall_style, home_floor_style,
         home_plant_spot, home_plant_custom, home_plant_x, home_plant_z,
         home_plant_rotation, home_furniture)
@@ -1134,6 +1142,14 @@ func _cycle_home_decoration(field: String) -> void:
     candidate[field] = (int(candidate[field]) + 1) % 3
     if field == "plant_spot":
         candidate["plant_custom"] = false
+    _commit_home_decor(candidate)
+
+
+func _cycle_home_light() -> void:
+    if not home_inside:
+        return
+    var candidate: Dictionary = _home_save_snapshot()
+    candidate["light_mode"] = (home_light_mode + 1) % 3
     _commit_home_decor(candidate)
 
 
