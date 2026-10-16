@@ -58,15 +58,17 @@ func _question_event(id: int) -> Dictionary:
     }
 
 
-func answer(peer_id: int, choice: int, now_ms: int) -> Dictionary:
+func answer(peer_id: int, round_number: int, choice: int, now_ms: int) -> Dictionary:
     if not participant_matches.has(peer_id):
         return {}
     var id: int = int(participant_matches[peer_id])
     if not matches.has(id):
         return {}
     var match_state: Dictionary = matches[id]
-    if now_ms > int(match_state["deadline"]):
-        return _advance(id, now_ms)
+    # A late/replayed answer from an earlier question must never score in a new round.
+    # The deadline is checked using server time; a late answer does not advance play.
+    if round_number != int(match_state["round"]) + 1 or now_ms > int(match_state["deadline"]):
+        return {}
     if choice < 0 or choice >= 3:
         return {}
     var answers: Dictionary = match_state["answers"]
