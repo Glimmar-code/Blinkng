@@ -156,3 +156,12 @@ not remove its ownership or modify Game Cash. This is not customizable
 online property, arbitrary bed dragging, public multiplayer housing or
 production in-game currency.
 
+## Your own saved room arrangements (Testlab preview)
+
+Inside your free private starter room, open **INTERACT** and use
+**Save layout 1** or **Save layout 2**. Later use **Apply layout 1/2**
+to restore your favourite furniture positions and wall/floor colours.
+Both slots persist in the solo local save, survive game restarts and
+remain available after using Undo/Redo. Saving or applying is free and
+doesn't change Game Cash, completed jobs or purchased items. Layouts
+are **not** server-backed, public, tradeable or cross-device synced.
