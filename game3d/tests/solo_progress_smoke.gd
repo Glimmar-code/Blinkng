@@ -90,6 +90,23 @@ func _initialize() -> void:
         "Furniture rotation may not be fractional")
     check(_store().call("load_state") == Progress.valid_state(furnishing),
         "Blocked furniture placements never overwrite saved home state")
+    for preset in range(3):
+        var candidate: Dictionary = furnishing.duplicate()
+        candidate["plant_custom"] = false
+        candidate["plant_spot"] = 0
+        candidate["bed_layout"] = preset
+        candidate["wardrobe_layout"] = preset
+        check(store.call("save_state", candidate), "Curated bed/wardrobe position %d must save safely" % preset)
+        check(_store().call("load_state") == Progress.valid_state(candidate),
+            "Bed/wardrobe layout %d must survive file reload" % preset)
+    var bad_bed: Dictionary = furnishing.merged({"bed_layout": 3}, true)
+    check(not fresh.call("save_state", bad_bed), "Bed position outside approved range is rejected")
+    var bad_closet: Dictionary = furnishing.merged({"wardrobe_layout": -1}, true)
+    check(not fresh.call("save_state", bad_closet), "Negative wardrobe position is rejected")
+    check(not fresh.call("save_state", furnishing.merged({"bed_layout": 1.5}, true)),
+        "Fractional bed layout IDs cannot be persisted")
+    check(not fresh.call("save_state", furnishing.merged({"chair_x": -2, "chair_z": -2}, true)),
+        "Furniture may not overlap a bed by moving into its footprint")
     check(store.call("save_state", painted), "Restore preset placement for later rollback checks")
     check(not fresh.call("save_state", painted.merged({"wall_style": -1}, true)), "Negative palette is refused")
     check(not fresh.call("save_state", painted.merged({"floor_style": 3}, true)), "Out-of-range floor is refused")
