@@ -1,5 +1,7 @@
 package com.blinkng.desktop.ui
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -245,7 +247,7 @@ fun StoreProScreen(state: DesktopAppState) {
                         .fillMaxWidth()
                         .background(
                             Brush.linearGradient(
-                                listOf(Color(0xFF3B0764), Color(0xFF6D28D9), Color(0xFFDB2777)),
+                                listOf(Color(0xFF3B0764), Color(BlinkDesignTokens.Brand.PrimaryDeep), Color(0xFFDB2777)),
                             ),
                         )
                         .padding(22.dp),
@@ -820,7 +822,7 @@ private fun DesktopStoreGroupDialog(
                                     equipped -> PremiumStatusPill("APPLIED", Color(0xFF16A34A))
                                     active -> PremiumStatusPill("LIVE", Color(0xFF16A34A))
                                     ownedPermanent -> PremiumStatusPill("OWNED", accent)
-                                    item.vipOnly -> PremiumStatusPill("VIP", Color(0xFFF59E0B))
+                                    item.vipOnly -> PremiumStatusPill("VIP", Color(BlinkDesignTokens.Semantic.Warning))
                                 }
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
