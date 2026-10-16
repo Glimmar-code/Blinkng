@@ -2946,7 +2946,7 @@ private fun MessageActionsPopover(
                 color = if (palette.isLight) {
                     Color.White.copy(alpha = .98f)
                 } else {
-                    Color(0xFF171717).copy(alpha = .98f)
+                    palette.glassElevated.copy(alpha = .98f)
                 },
                 contentColor = palette.textPrimary,
                 shape = RoundedCornerShape(18.dp),
@@ -2980,7 +2980,7 @@ private fun MessageActionsPopover(
                 color = if (palette.isLight) {
                     Color.White.copy(alpha = .99f)
                 } else {
-                    Color(0xFF171717).copy(alpha = .99f)
+                    palette.glassElevated.copy(alpha = .99f)
                 },
                 contentColor = palette.textPrimary,
                 shape = RoundedCornerShape(18.dp),
