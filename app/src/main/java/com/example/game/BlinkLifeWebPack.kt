@@ -36,15 +36,23 @@ object BlinkLifeWebPack {
     private fun validConfig(): Boolean = expectedSha.matches(Regex("[a-f0-9]{64}"))
 
     fun gameDirectory(context: Context): File = File(context.filesDir, "blink_life_web")
+    private fun gameArchive(context: Context): File = File(
+        context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
+        "blink-life-${expectedSha.take(16)}.zip",
+    )
     private fun prefs(context: Context) = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
     private fun downloadManager(context: Context) =
         context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
     private fun packageUrl(): String =
         "https://github.com/Glimmar-code/Blinkng/releases/download/v${BuildConfig.VERSION_NAME}/blink-life-web.zip"
 
+    @Synchronized
     fun isInstalled(context: Context): Boolean {
         if (!validConfig()) return false
         val root = gameDirectory(context)
+        val backup = File(context.filesDir, "blink_life_web_backup")
+        // Recover an interrupted directory swap before checking the signed marker.
+        if (!root.exists() && backup.isDirectory) backup.renameTo(root)
         return File(root, ".verified-sha256").takeIf { it.isFile }?.readText() == expectedSha &&
             required.all { File(root, it).isFile }
     }
@@ -75,7 +83,9 @@ object BlinkLifeWebPack {
     fun download(context: Context) {
         require(validConfig()) { "No signed game pack is configured for this APK" }
         cancel(context)
-        val filename = "blink-life-${expectedSha.take(16)}.zip"
+        val archive = gameArchive(context)
+        // DownloadManager refuses an existing destination, including after a failed transfer.
+        if (archive.exists()) check(archive.delete()) { "Unable to clear the previous game download" }
         val request = DownloadManager.Request(Uri.parse(packageUrl()))
             .setTitle("BLINK LIFE 3D")
             .setDescription("Downloading optional game files")
@@ -83,7 +93,7 @@ object BlinkLifeWebPack {
             .setAllowedOverMetered(true)
             .setAllowedOverRoaming(false)
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, filename)
+            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, archive.name)
         val id = downloadManager(context).enqueue(request)
         prefs(context).edit().putLong(KEY_DOWNLOAD_ID, id).apply()
     }
@@ -99,8 +109,7 @@ object BlinkLifeWebPack {
     fun verifyAndInstall(context: Context): Boolean {
         if (isInstalled(context)) return true
         if (snapshot(context).phase != Phase.VERIFYING) return false
-        val filename = "blink-life-${expectedSha.take(16)}.zip"
-        val archive = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), filename)
+        val archive = gameArchive(context)
         val parent = gameDirectory(context).parentFile ?: return false
         val stage = File(parent, "blink_life_web_stage")
         return try {
@@ -133,19 +142,35 @@ object BlinkLifeWebPack {
                     val target = File(stage, name)
                     zip.getInputStream(item).use { input ->
                         FileOutputStream(target).use { output ->
-                            val written = input.copyTo(output)
+                            val buffer = ByteArray(64 * 1024)
+                            var written = 0L
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                written += count
+                                extracted += count
+                                check(written <= MAX_EXTRACTED_BYTES && extracted <= MAX_EXTRACTED_BYTES) {
+                                    "Game archive exceeds safe extracted size"
+                                }
+                                output.write(buffer, 0, count)
+                            }
                             if (written != item.size) error("Game asset length differs from ZIP entry")
                         }
                     }
-                    extracted += item.size
                 }
                 check(required.all(names::contains)) { "Game package is incomplete" }
             }
             File(stage, ".verified-sha256").writeText(expectedSha)
-            // Swap only after every file is validated; otherwise leave prior version.
+            // Keep the last playable copy until the verified replacement is active.
             val destination = gameDirectory(context)
-            if (destination.exists()) check(destination.deleteRecursively())
-            check(stage.renameTo(destination)) { "Could not activate verified game files" }
+            val backup = File(parent, "blink_life_web_backup")
+            if (backup.exists()) check(backup.deleteRecursively()) { "Could not clear stale game backup" }
+            if (destination.exists()) check(destination.renameTo(backup)) { "Could not back up current game files" }
+            if (!stage.renameTo(destination)) {
+                check(!backup.exists() || backup.renameTo(destination)) { "Could not restore previous game files" }
+                error("Could not activate verified game files")
+            }
+            if (backup.exists() && !backup.deleteRecursively()) Log.w(TAG, "Old game backup needs cleanup")
             cancel(context)
             true
         } catch (e: Exception) {
@@ -156,8 +181,10 @@ object BlinkLifeWebPack {
         }
     }
 
+    @Synchronized
     fun remove(context: Context) {
         cancel(context)
         gameDirectory(context).deleteRecursively()
+        File(context.filesDir, "blink_life_web_backup").deleteRecursively()
     }
 }
