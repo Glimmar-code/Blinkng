@@ -1041,8 +1041,8 @@ fun MainAppContent(
                         onOpenBecomeSeller = { viewModel.openBecomeSeller(true) },
                         onOpenGetVerified = { viewModel.openGetVerified(true) },
                         onToggleSave = { viewModel.toggleMarketSaved(it) },
-                        onSearch = { query, category, sort, minPrice, maxPrice ->
-                            viewModel.searchMarketItems(query, category, sort, minPrice, maxPrice)
+                        onSearch = { query, category, sort, minPrice, maxPrice, savedOnly, verifiedOnly ->
+                            viewModel.searchMarketItems(query, category, sort, minPrice, maxPrice, savedOnly, verifiedOnly)
                         },
                         onRefresh = { viewModel.refreshMarketItems() },
                         onLoadMore = { viewModel.loadMoreMarketItems() },
