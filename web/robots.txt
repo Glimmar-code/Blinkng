@@ -4,4 +4,4 @@ Allow: /
 User-agent: Google-adstxt
 Disallow:
 
-Sitemap: https://www.blink.com.ng/sitemap.xml
+Sitemap: https://blink.com.ng/sitemap.xml
