@@ -165,3 +165,12 @@ Both slots persist in the solo local save, survive game restarts and
 remain available after using Undo/Redo. Saving or applying is free and
 doesn't change Game Cash, completed jobs or purchased items. Layouts
 are **not** server-backed, public, tradeable or cross-device synced.
+
+## Solo home lighting and study practice
+
+Inside the optional starter room, use **INTERACT** to open room controls.
+Choose **Study desk** for three brief offline, reward-free practice questions
+and explanatory answers. No fictional cash or BLINK Coins are paid.
+Use **Lighting** to switch among Warm, Bright and Dim; the choice saves on
+this device and supports Undo/Redo. Room-light settings use one existing
+low-cost light and do not connect to multiplayer or change ownership.
