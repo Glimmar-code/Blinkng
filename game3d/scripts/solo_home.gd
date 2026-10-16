@@ -15,10 +15,37 @@ const PLANT_DEFAULT_Z: int = 3
 const GRID_LIMIT: int = 3
 const GRID_SPACING: float = 1.0
 const HISTORY_LIMIT: int = 20
-const FURNITURE_DEFAULTS = {"chair_x": 2, "chair_z": -1, "chair_rotation": 0, "table_x": 2, "table_z": 2, "table_rotation": 0}
+const FURNITURE_DEFAULTS = {"chair_x": 2, "chair_z": -1, "chair_rotation": 0,
+    "table_x": 2, "table_z": 2, "table_rotation": 0,
+    "bed_layout": 0, "wardrobe_layout": 0}
+const BED_PLACEMENTS = [
+    {"center": Vector2(-2.5, -2.5), "turn": 0},
+    {"center": Vector2(-2.5, -2.5), "turn": 1},
+    {"center": Vector2(-2.5, -1.5), "turn": 0}
+]
+const WARDROBE_PLACEMENTS = [
+    {"center": Vector2(-3.55, 1.8), "turn": 0},
+    {"center": Vector2(-3.10, 2.8), "turn": 0},
+    {"center": Vector2(-2.80, 3.0), "turn": 1}
+]
+## Room plans reset furniture positioning, not the player's cash or ownership.
+## Keep presets bounded and opt-in so older solo saves are not modified.
+const ROOM_PLANS = [
+    {"name": "Original room", "bed_layout": 0, "wardrobe_layout": 0,
+        "chair_x": 2, "chair_z": -1, "chair_rotation": 0,
+        "table_x": 2, "table_z": 2, "table_rotation": 0},
+    {"name": "Study corner", "bed_layout": 1, "wardrobe_layout": 1,
+        "chair_x": 1, "chair_z": -1, "chair_rotation": 1,
+        "table_x": 3, "table_z": 2, "table_rotation": 0},
+    {"name": "Open floor", "bed_layout": 2, "wardrobe_layout": 2,
+        "chair_x": 1, "chair_z": 0, "chair_rotation": 0,
+        "table_x": 2, "table_z": 2, "table_rotation": 1}
+]
 var desk_plant: Node3D
 var movable_chair: Node3D
 var movable_table: Node3D
+var movable_bed: Node3D
+var movable_wardrobe: Node3D
 var floor_visual: MeshInstance3D
 var wall_visuals: Array[MeshInstance3D] = []
 
@@ -31,9 +58,12 @@ func configure() -> void:
     wall_visuals.append(_solid_box("South wall", Vector3(0, HEIGHT / 2.0, 4.4), Vector3(8.8, HEIGHT, 0.25), WALL_COLORS[0]))
     wall_visuals.append(_solid_box("East wall", Vector3(4.4, HEIGHT / 2.0, 0), Vector3(0.25, HEIGHT, 8.8), WALL_COLORS[0]))
     wall_visuals.append(_solid_box("West wall", Vector3(-4.4, HEIGHT / 2.0, 0), Vector3(0.25, HEIGHT, 8.8), WALL_COLORS[0]))
-    _box(self, Vector3(-2.5, 0.42, -2.5), Vector3(2.15, 0.45, 2.8), Color(0.29, 0.32, 0.39))
-    _box(self, Vector3(-2.5, 0.70, -2.5), Vector3(1.9, 0.18, 2.55), Color(0.84, 0.81, 0.67))
-    _box(self, Vector3(-2.5, 0.9, -3.35), Vector3(1.55, 0.25, 0.5), Color(0.47, 0.62, 0.70))
+    movable_bed = Node3D.new()
+    movable_bed.name = "MovableBed"
+    add_child(movable_bed)
+    _box(movable_bed, Vector3(0, 0.42, 0), Vector3(2.15, 0.45, 2.8), Color(0.29, 0.32, 0.39))
+    _box(movable_bed, Vector3(0, 0.70, 0), Vector3(1.9, 0.18, 2.55), Color(0.84, 0.81, 0.67))
+    _box(movable_bed, Vector3(0, 0.9, -0.85), Vector3(1.55, 0.25, 0.5), Color(0.47, 0.62, 0.70))
     _box(self, Vector3(2.3, 0.72, -2.5), Vector3(2.2, 0.15, 1.0), Color(0.50, 0.34, 0.25))
     for x in [1.35, 3.25]:
         for z in [-2.8, -2.2]:
@@ -50,7 +80,10 @@ func configure() -> void:
     for leg_x in [-0.45, 0.45]:
         for leg_z in [-0.34, 0.34]:
             _box(movable_table, Vector3(leg_x, 0.35, leg_z), Vector3(0.12, 0.70, 0.12), Color(0.37, 0.27, 0.21))
-    _box(self, Vector3(-3.55, 1.2, 1.8), Vector3(0.65, 2.4, 1.45), Color(0.49, 0.40, 0.34))
+    movable_wardrobe = Node3D.new()
+    movable_wardrobe.name = "MovableWardrobe"
+    add_child(movable_wardrobe)
+    _box(movable_wardrobe, Vector3(0, 1.2, 0), Vector3(0.65, 2.4, 1.45), Color(0.49, 0.40, 0.34))
     _box(self, Vector3(0.0, 1.8, -4.25), Vector3(2.1, 1.0, 0.05), Color(0.46, 0.68, 0.78))
     _box(self, Vector3(0.0, 1.8, -4.19), Vector3(0.08, 1.1, 0.06), Color(0.92, 0.92, 0.90))
     _caption("YOUR SOLO STARTER ROOM", Vector3(0, 2.5, -3.9))
@@ -85,6 +118,10 @@ static func _half_size(kind: String, rotation: int) -> Vector2:
     var base: Vector2 = Vector2(0.45, 0.43)
     if kind == "table":
         base = Vector2(0.62, 0.52)
+    elif kind == "bed":
+        base = Vector2(1.075, 1.40)
+    elif kind == "wardrobe":
+        base = Vector2(0.325, 0.725)
     elif kind == "plant":
         base = Vector2(0.30, 0.30)
     if rotation % 2 == 1:
@@ -101,9 +138,7 @@ static func _fixed_clear(kind: String, position: Vector2, rotation: int = 0) -> 
     if absf(position.x) + half.x > 4.0 or absf(position.y) + half.y > 4.0:
         return false
     var reserved: Array[Dictionary] = [
-        {"center": Vector2(-2.5, -2.5), "half": Vector2(1.075, 1.4)},
         {"center": Vector2(2.3, -2.5), "half": Vector2(1.10, 0.50)},
-        {"center": Vector2(-3.55, 1.8), "half": Vector2(0.325, 0.725)},
         {"center": Vector2(0.0, 1.25), "half": Vector2(0.38, 0.38)}
     ]
     for obstacle in reserved:
@@ -130,6 +165,17 @@ static func layout_allowed(layout: Dictionary) -> bool:
         if not _fixed_clear(kind, point, turn):
             return false
         footprints.append({"point": point, "half": _half_size(kind, turn)})
+    for kind in ["bed", "wardrobe"]:
+        var preset: int = int(layout.get(kind + "_layout", 0))
+        var options: Array = BED_PLACEMENTS if kind == "bed" else WARDROBE_PLACEMENTS
+        if preset < 0 or preset >= options.size():
+            return false
+        var placement: Dictionary = options[preset]
+        var position: Vector2 = placement["center"]
+        var turn: int = int(placement["turn"])
+        if not _fixed_clear(kind, position, turn):
+            return false
+        footprints.append({"point": position, "half": _half_size(kind, turn)})
     if bool(layout.get("plant_custom", false)):
         var px: int = int(layout.get("plant_x", 0))
         var pz: int = int(layout.get("plant_z", PLANT_DEFAULT_Z))
@@ -179,6 +225,16 @@ func apply_decoration(wall_style: int, floor_style: int, plant_spot: int,
     if movable_table != null:
         movable_table.position = Vector3(float(layout["table_x"]), 0, float(layout["table_z"]))
         movable_table.rotation.y = deg_to_rad(float(layout["table_rotation"]) * 90.0)
+    if movable_bed != null:
+        var bed: Dictionary = BED_PLACEMENTS[int(layout["bed_layout"])]
+        var bed_center: Vector2 = bed["center"]
+        movable_bed.position = Vector3(bed_center.x, 0, bed_center.y)
+        movable_bed.rotation.y = deg_to_rad(float(bed["turn"]) * 90.0)
+    if movable_wardrobe != null:
+        var wardrobe: Dictionary = WARDROBE_PLACEMENTS[int(layout["wardrobe_layout"])]
+        var closet_center: Vector2 = wardrobe["center"]
+        movable_wardrobe.position = Vector3(closet_center.x, 0, closet_center.y)
+        movable_wardrobe.rotation.y = deg_to_rad(float(wardrobe["turn"]) * 90.0)
     return true
 
 
