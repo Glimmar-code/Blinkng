@@ -3541,7 +3541,6 @@ suspend fun uploadPostMedia(
     suspend fun fetchProfileMarketItems(sellerId: String): List<MarketItem> = withContext(Dispatchers.IO) {
         require(isValidUuid(sellerId)) { "Seller profile is required." }
         if (getCurrentUserId() == null) throw IllegalStateException("Not authenticated.")
-        val wishlistIds = fetchMyMarketWishlistIds()
         val items = mutableListOf<MarketItem>()
         var offset = 0
         while (true) {
@@ -3557,13 +3556,18 @@ suspend fun uploadPostMedia(
             }
             for (i in 0 until rows.length()) {
                 parseMarketItem(rows.getJSONObject(i))?.let { item ->
-                    items += item.copy(isSaved = item.id in wishlistIds)
+                    items += item
                 }
             }
             if (rows.length() < 100) break
             offset += rows.length()
         }
-        items
+        // Profile listings can span more than 200 items; fetch saved IDs only
+        // for the loaded results in bounded batches, without losing later saves.
+        val wishlistIds = items.chunked(200).flatMap { chunk ->
+            fetchMyMarketWishlistIds(chunk.map { it.id })
+        }.toSet()
+        items.map { item -> item.copy(isSaved = item.id in wishlistIds) }
     }
 
     suspend fun fetchMyMarketItems(limit: Int = 100): List<MarketItem> = withContext(Dispatchers.IO) {
