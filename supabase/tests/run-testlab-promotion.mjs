@@ -52,6 +52,9 @@ try {
     await db.exec(fs.readFileSync(new URL('../migrations/' + name, import.meta.url), 'utf8'));
     console.log('PASS reapply:', name);
   }
+  // Independent disposable DB validates marketplace order contracts against
+  // the actual tracked SQL migration; no production credentials are used.
+  await (await import('./marketplace-order-tests.mjs')).marketplaceOrderTests();
 } catch (error) {
   console.error('Testlab migration regression failed:', error.message);
   process.exitCode = 1;
