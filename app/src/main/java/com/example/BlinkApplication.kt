@@ -46,6 +46,14 @@ class BlinkApplication : Application(), ImageLoaderFactory {
             }?.processName
         }
         if (processName?.endsWith(":blink_life") == true) return
+        if (processName?.endsWith(":blink_life_web") == true) {
+            // A WebView hosted in another process must never share Chromium data-dir
+            // with BLINK's normal web/auth screens (Android 9+ requirement).
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                android.webkit.WebView.setDataDirectorySuffix("blink_life_web")
+            }
+            return // Game crash/renderer must not initialize BLINK social workers.
+        }
 
         // Apply Blink's 120 Hz-class preference to every Activity before its UI is created.
         HighRefreshRateController.install(this)

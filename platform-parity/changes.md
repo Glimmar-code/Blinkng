@@ -1,3 +1,10 @@
+## 2026-10-15 — Website BLINK LIFE background Web download (Option B / Android-only delivery)
+
+- **PARITY-EXCEPTION: blink-life-website-webgl-on-demand-20261015** — Website-installed Android users get a signed, compact base APK; Android DownloadManager fetches a version-pinned, SHA-256-verified Godot 4.3 WebAssembly/WebGL game archive only after the player requests it. Verification/unpacking runs in WorkManager, and an internal sandboxed WebView provides an in-app Play screen without a second APK installation. This is Android delivery and WebView integration, not a change to shared account, coin, or social-game rules.
+- **Windows equivalent:** The desktop Games page continues using the bundled native Godot launcher built from the same game3d project; Windows does not have Android DownloadManager, WebViewAssetLoader, or Google Play Feature Delivery. The new on-demand ZIP is not a Windows package and must not replace native Windows assets.
+- **Play Store:** Its signed dynamic feature remains Play-delivered on demand. The website/WebGL and Play/native variants require separate hardware validation; the WebGL version does not claim to have native LAN/UDP multiplayer or server-backed social gameplay.
+- **Release safeguards:** Require both APK + ZIP hashes, signed upgrade continuity, website link checks, full Android CI, Windows parity/build, background download, offline WebGL playback, notification and storage controls, and real Redmi-class testing before production. This remains a draft Testlab PR and is not approved for automatic merge.
+
 ## 2026-10-15 — Search real feed-card rendering (Testlab)
 
 - **Android:** Phase 3 universal Search post/reel results use the same `PostCard` as Feed and Profile. Search index rows are used for discovery and ranking only; if a result is not already in the live feed cache, its full post is fetched through the authenticated `PostRepository.fetchPostById`. A missing or private post shows an unavailable/retry state rather than a synthetic FeedPost, and the existing profile/entity result cards remain unchanged.
