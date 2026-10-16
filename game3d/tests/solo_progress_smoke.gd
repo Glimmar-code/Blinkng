@@ -107,6 +107,30 @@ func _initialize() -> void:
         "Fractional bed layout IDs cannot be persisted")
     check(not fresh.call("save_state", furnishing.merged({"chair_x": -2, "chair_z": -2}, true)),
         "Furniture may not overlap a bed by moving into its footprint")
+    var sanitized_furniture: Dictionary = Progress.valid_state(furnishing)
+    var saved_bookmark: Dictionary = {}
+    for key in Progress.DECOR_KEYS:
+        saved_bookmark[key] = sanitized_furniture[key]
+    var with_slot: Dictionary = furnishing.duplicate()
+    with_slot["layout_slots"] = {"slot_1": saved_bookmark}
+    check(store.call("save_state", with_slot), "Complete safe room layout bookmarks can save")
+    check(_store().call("load_state") == Progress.valid_state(with_slot),
+        "A saved room bookmark must survive a fresh load")
+    var invalid_bookmark: Dictionary = saved_bookmark.duplicate()
+    invalid_bookmark["cash"] = 1000000
+    check(not store.call("save_state", with_slot.merged({"layout_slots": {"slot_1": invalid_bookmark}}, true)),
+        "No money or reward fields may be included in a layout bookmark")
+    check(not store.call("save_state", with_slot.merged({"layout_slots": {"slot_3": saved_bookmark}}, true)),
+        "Only the two named private layout slots are permitted")
+    check(not store.call("save_state", with_slot.merged({"layout_slots": {"slot_1": {"chair_x": 2}}}, true)),
+        "Partial layout bookmarks cannot overwrite complete saved plans")
+    var blocking_bookmark: Dictionary = saved_bookmark.duplicate()
+    blocking_bookmark["table_x"] = int(blocking_bookmark["chair_x"])
+    blocking_bookmark["table_z"] = int(blocking_bookmark["chair_z"])
+    check(not store.call("save_state", with_slot.merged({"layout_slots": {"slot_1": blocking_bookmark}}, true)),
+        "Saved bookmarks must not contain overlapping furniture")
+    check(_store().call("load_state") == Progress.valid_state(with_slot),
+        "Rejected bookmarks preserve the previous valid save and account fields")
     check(store.call("save_state", painted), "Restore preset placement for later rollback checks")
     check(not fresh.call("save_state", painted.merged({"wall_style": -1}, true)), "Negative palette is refused")
     check(not fresh.call("save_state", painted.merged({"floor_style": 3}, true)), "Out-of-range floor is refused")
