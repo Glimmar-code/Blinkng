@@ -55,6 +55,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,6 +75,7 @@ import com.example.call.CallHistoryActivity
 import com.example.call.CallSoundPreferences
 import com.example.call.CallType
 import com.example.call.IncomingCallNotification
+import com.blinkng.shared.notification.BlinkSocialEmailCategory
 import com.example.ui.theme.BlinkPink
 import com.example.ui.theme.BlinkTheme
 import kotlinx.coroutines.delay
@@ -483,6 +485,10 @@ private fun NotificationAndCallSettingsScreen(onBack: () -> Unit) {
             }
 
             item {
+                BlinkSocialEmailPreferencesPanel()
+            }
+
+            item {
                 Text(
                     "Notification categories",
                     modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
@@ -549,6 +555,77 @@ private fun CallToneCard(
                     Text("Preview")
                 }
             }
+        }
+    }
+}
+
+
+/**
+ * Shared server-side opt-in flags: email digests are independent of Android push
+ * channels. A failed network request never changes a displayed preference.
+ */
+@Composable
+private fun BlinkSocialEmailPreferencesPanel() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var preferences by remember { mutableStateOf<Map<BlinkSocialEmailCategory, Boolean>>(emptyMap()) }
+    var ready by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf<BlinkSocialEmailCategory?>(null) }
+    var feedback by remember { mutableStateOf("Loading email notification preferences...") }
+
+    LaunchedEffect(Unit) {
+        BlinkSocialEmailPreferencesClient.load(context).fold(
+            onSuccess = {
+                preferences = it
+                ready = true
+                feedback = "All social emails are optional and off by default."
+            },
+            onFailure = {
+                ready = false
+                feedback = "Email alert settings are not available yet. Please try later."
+            }
+        )
+    }
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(11.dp)
+        ) {
+            Text("Email reminders", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "Choose which BLINK social summaries arrive by email. Password and account-security messages are managed separately.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
+            for (type in BlinkSocialEmailCategory.entries) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.weight(1f)) {
+                        Text(type.title, fontWeight = FontWeight.SemiBold)
+                        Text(type.description, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = preferences[type] == true,
+                        enabled = ready && saving == null,
+                        onCheckedChange = { enabled ->
+                            saving = type
+                            feedback = "Saving..."
+                            scope.launch {
+                                BlinkSocialEmailPreferencesClient.update(context, type, enabled).fold(
+                                    onSuccess = {
+                                        preferences = preferences + (type to enabled)
+                                        feedback = "Email preference saved."
+                                    },
+                                    onFailure = {
+                                        feedback = "Couldn't save this preference. Please try again."
+                                    }
+                                )
+                                saving = null
+                            }
+                        }
+                    )
+                }
+            }
+            Text(feedback, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         }
     }
 }
