@@ -5,6 +5,7 @@ import com.blinkng.shared.ProfileVisibilityScope
 import com.example.data.local.rememberPersistentTextState
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
@@ -255,6 +256,62 @@ fun EditProfileScreen(
         mutableStateOf<String?>(null)
     }
 
+    var showDiscardChangesDialog by rememberSaveable(profile.id) { mutableStateOf(false) }
+    val hasUnsavedChanges =
+        fullName != profile.fullName ||
+        username != profile.username ||
+        avatarUrl != profile.avatarUrl ||
+        coverUrl != profile.coverPhotoUrl ||
+        headline != profile.professionalHeadline ||
+        jobTitle != profile.currentJobTitle ||
+        bio != profile.bio ||
+        university != profile.university ||
+        faculty != profile.faculty ||
+        department != profile.department ||
+        courseOfStudy != profile.courseOfStudy ||
+        academicLevel != profile.academicLevel ||
+        graduationYear != profile.graduationYear ||
+        relationshipStatus != profile.relationshipStatus ||
+        email != profile.email.value ||
+        phone != profile.phone.value ||
+        whatsapp != profile.whatsapp.value ||
+        emailVisibility != profile.emailVisibility ||
+        phoneVisibility != profile.phoneVisibility ||
+        whatsappVisibility != profile.whatsappVisibility ||
+        presenceVisibility != profile.presenceVisibility ||
+        website != profile.links.website ||
+        linkedin != profile.links.linkedin ||
+        twitter != profile.links.twitter ||
+        instagram != profile.links.instagram ||
+        featuredLink != profile.links.featuredLink ||
+        featuredLinkLabel != profile.links.featuredLinkLabel ||
+        selectedAvatarUri != null || selectedCoverUri != null
+
+    fun requestLeaveEditor() {
+        if (saving) return
+        if (hasUnsavedChanges) showDiscardChangesDialog = true
+        else onBack()
+    }
+
+    BackHandler(enabled = !saving) { requestLeaveEditor() }
+
+    if (showDiscardChangesDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardChangesDialog = false },
+            title = { Text("Discard profile changes?") },
+            text = { Text("You have changes that haven't been saved.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardChangesDialog = false
+                    onBack()
+                }) { Text("Discard") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardChangesDialog = false }) { Text("Keep editing") }
+            }
+        )
+    }
+
     val avatarPicker =
         rememberLauncherForActivityResult(
             ActivityResultContracts.GetContent()
@@ -373,8 +430,7 @@ fun EditProfileScreen(
                 navigationIcon = {
 
                     IconButton(
-                        onClick =
-                            onBack,
+                        onClick = { requestLeaveEditor() },
                         enabled =
                             !saving
                     ) {
