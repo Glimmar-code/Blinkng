@@ -18,7 +18,8 @@ var warning: String = ""
 
 
 static func fresh_state() -> Dictionary:
-    return {"version": 1, "cash": 500, "jobs": 0, "plant": false}
+    return {"version": 1, "cash": 500, "jobs": 0, "plant": false,
+        "wall_style": 0, "floor_style": 0, "plant_spot": 0}
 
 
 static func _is_integer_number(value: Variant, from_json: bool) -> bool:
@@ -44,7 +45,21 @@ static func valid_state(data: Variant, from_json: bool = false) -> Dictionary:
     var jobs: int = int(data["jobs"])
     if cash < 0 or cash > MAX_CASH or jobs < 0 or jobs > MAX_JOBS:
         return {}
-    return {"version": 1, "cash": cash, "jobs": jobs, "plant": data["plant"]}
+    # Optional fields are backward compatible with existing v1 game saves.
+    # Every supplied value is strictly checked, not clamped, to avoid
+    # silently corrupting a player's saved decoration.
+    var styles: Dictionary = {}
+    for key in ["wall_style", "floor_style", "plant_spot"]:
+        var value: Variant = data.get(key, 0)
+        if not _is_integer_number(value, from_json):
+            return {}
+        var style: int = int(value)
+        if style < 0 or style > 2:
+            return {}
+        styles[key] = style
+    return {"version": 1, "cash": cash, "jobs": jobs, "plant": data["plant"],
+        "wall_style": styles["wall_style"], "floor_style": styles["floor_style"],
+        "plant_spot": styles["plant_spot"]}
 
 
 func _read_json(path: String) -> Variant:
