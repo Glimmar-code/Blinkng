@@ -135,7 +135,7 @@
             </intent-filter>
 
             <!-- Verified public BLINK links. Production builds resolve shareHost to
-                 www.blink.com.ng; sharePathPrefix is empty on the canonical domain. -->
+                 blink.com.ng (unless explicitly overridden); sharePathPrefix is empty on the canonical domain. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
