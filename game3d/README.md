@@ -82,3 +82,14 @@ brief text greetings and show umbrellas when they walk in rain. Battery-saver
 mode limits the visible cast to four. Residents are decorative and use no
 BLINK social identity, online-server attendance or production wallet.
 This is still a staging prototype, not a finished population or live economy.
+
+## Offline progress checkpoints (Testlab source)
+
+Successful offline job earnings and the fictional desk-plant purchase are
+saved locally with a versioned file and a recovery backup. Failed storage
+writes reject the transaction instead of claiming the reward is preserved.
+This progress is a **solo demo only**: it is not BLINK Coins, never redeemable,
+never moved to multiplayer accounts or accepted by the dedicated server,
+and must not be used for competitive scoring. The engine still starts only
+when the player deliberately launches BLINK LIFE; shared sessions do not
+pay local demo rewards.
