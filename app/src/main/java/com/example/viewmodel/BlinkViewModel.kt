@@ -2799,9 +2799,12 @@ private suspend fun restoreSupabaseSession() {
         if (identifier.isNullOrBlank()) return false
         val clean = identifier.trim().removePrefix("@").trim()
         val myUser = _uiState.value.myProfile.username.trim().removePrefix("@").trim()
-        val myName = _uiState.value.myProfile.fullName.trim()
         val myId = _uiState.value.myProfile.id.trim()
-        return clean.equals("you", true) || clean.equals("me", true) || clean.equals(myUser, true) || clean.equals(myName, true) || clean.equals(myId, true) || clean.replace(" ", ".").equals(myUser, true) || myUser.replace(".", " ").equals(clean, true)
+        // Display names are not unique. Never equate someone else's identity to
+        // the signed-in account because they happen to have the same name.
+        return clean.equals("you", true) || clean.equals("me", true) ||
+            (myUser.isNotBlank() && clean.equals(myUser, true)) ||
+            (myId.isNotBlank() && clean.equals(myId, true))
     }
 
     private fun cachedProfile(identifier: String): UserProfile? {
