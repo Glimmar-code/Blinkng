@@ -959,6 +959,9 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             if _is_blocked(sender, target):
                 if bool(duel_game.call("are_opponents", sender, target)):
                     var cancelled_duel: Dictionary = duel_game.call("disconnect", sender)
+                    # A block is not a network disconnect: clear the quiz UI for
+                    # both players, including the person who pressed BLOCK.
+                    cancelled_duel["missing"] = -1
                     _emit_duel_event(cancelled_duel)
                 for pending in [visit_requests, ride_requests]:
                     for owner in pending.keys():
