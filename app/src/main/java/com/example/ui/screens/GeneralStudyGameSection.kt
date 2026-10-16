@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -98,20 +100,28 @@ fun GeneralStudyGameSection(
     LaunchedEffect(pane) { onRoundActiveChange(pane == GeneralStudyPane.PLAY) }
     var difficultyName by rememberSaveable { mutableStateOf(GeneralStudyDifficulty.EASY.name) }
     val difficulty = remember(difficultyName) { GeneralStudyDifficulty.valueOf(difficultyName) }
+    var selectedCategory by rememberSaveable { mutableStateOf("") }
     var seed by rememberSaveable { mutableLongStateOf(0L) }
     var questionIndex by rememberSaveable { mutableIntStateOf(0) }
     var score by rememberSaveable { mutableIntStateOf(0) }
     var selectedOption by rememberSaveable { mutableIntStateOf(-1) }
     var answered by rememberSaveable { mutableStateOf(false) }
+    var confirmExit by rememberSaveable { mutableStateOf(false) }
+    val gameListState = rememberLazyListState()
+    LaunchedEffect(pane, questionIndex) { gameListState.scrollToItem(0) }
 
-    val questions = remember(difficulty, seed) {
+    val questions = remember(difficulty, seed, selectedCategory) {
         if (seed == 0L) emptyList()
-        else GeneralStudyBank.round(difficulty, seed, GeneralStudyBank.DEFAULT_ROUND_SIZE)
+        else GeneralStudyBank.round(
+            difficulty, seed, GeneralStudyBank.DEFAULT_ROUND_SIZE,
+            category = selectedCategory.takeIf { it.isNotBlank() },
+        )
     }
     val question = questions.getOrNull(questionIndex)
 
     fun startRound() {
-        seed = System.currentTimeMillis()
+        seed = System.nanoTime().takeIf { it != 0L } ?: 1L
+        confirmExit = false
         questionIndex = 0
         score = 0
         selectedOption = -1
@@ -138,6 +148,7 @@ fun GeneralStudyGameSection(
     }
 
     LazyColumn(
+        state = gameListState,
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(bottom = 120.dp),
     ) {
@@ -172,6 +183,8 @@ fun GeneralStudyGameSection(
                     )
                     GeneralStudyPane.SETUP -> SetupPane(
                         difficulty = difficulty,
+                        selectedCategory = selectedCategory,
+                        onCategory = { selectedCategory = it },
                         onDifficulty = { difficultyName = it.name },
                         onBack = { paneName = GeneralStudyPane.CATALOG.name },
                         onStart = ::startRound,
@@ -184,10 +197,7 @@ fun GeneralStudyGameSection(
                         score = score,
                         selectedOption = selectedOption,
                         answered = answered,
-                        onBack = {
-                            paneName = GeneralStudyPane.SETUP.name
-                            seed = 0L
-                        },
+                        onBack = { confirmExit = true },
                         onAnswer = ::answer,
                         onNext = ::next,
                     )
@@ -208,6 +218,23 @@ fun GeneralStudyGameSection(
                 }
             }
         }
+    }
+    if (confirmExit && pane == GeneralStudyPane.PLAY) {
+        AlertDialog(
+            onDismissRequest = { confirmExit = false },
+            title = { Text("Leave General Study?") },
+            text = { Text("Your unfinished quiz round will be discarded.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmExit = false
+                    seed = 0L
+                    paneName = GeneralStudyPane.SETUP.name
+                }) { Text("Leave round") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmExit = false }) { Text("Keep playing") }
+            },
+        )
     }
 }
 
@@ -345,6 +372,8 @@ private fun CountPill(label: String, value: String) {
 @Composable
 private fun SetupPane(
     difficulty: GeneralStudyDifficulty,
+    selectedCategory: String,
+    onCategory: (String) -> Unit,
     onDifficulty: (GeneralStudyDifficulty) -> Unit,
     onBack: () -> Unit,
     onStart: () -> Unit,
@@ -410,6 +439,30 @@ private fun SetupPane(
         }
 
         Spacer(Modifier.height(14.dp))
+        Text("Study area", fontSize = 14.sp, fontWeight = FontWeight.Black)
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            (listOf("") + GeneralStudyBank.categories).forEach { category ->
+                val selected = selectedCategory == category
+                Surface(
+                    modifier = Modifier.clickable { onCategory(category) },
+                    shape = RoundedCornerShape(100.dp),
+                    color = if (selected) BlinkPink.copy(alpha = .14f) else MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, if (selected) BlinkPink else MaterialTheme.colorScheme.outlineVariant),
+                ) {
+                    Text(
+                        if (category.isBlank()) "All topics" else category,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(18.dp),
@@ -418,7 +471,9 @@ private fun SetupPane(
             Column(Modifier.padding(15.dp)) {
                 Text("Round format", fontSize = 12.5.sp, fontWeight = FontWeight.Black)
                 Text(
-                    "10 mixed questions per round • instant answer feedback • works without loading all 20,000 questions into memory.",
+                    "10 questions per round • " +
+                        (if (selectedCategory.isBlank()) "mixed study areas" else selectedCategory) +
+                        " • instant feedback • works offline.",
                     fontSize = 10.5.sp,
                     lineHeight = 16.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -483,7 +538,8 @@ private fun PlayPane(
             }
         }
 
-        val progress = if (totalQuestions == 0) 0f else questionNumber.toFloat() / totalQuestions
+        val completed = (questionNumber - 1 + (if (answered) 1 else 0)).coerceIn(0, totalQuestions)
+        val progress = if (totalQuestions == 0) 0f else completed.toFloat() / totalQuestions
         LinearProgressIndicator(
             progress = progress,
             modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
@@ -666,7 +722,7 @@ private fun GameHeader(
     onProfileClick: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 34.dp, bottom = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onMenuClick, modifier = Modifier.size(44.dp)) {
