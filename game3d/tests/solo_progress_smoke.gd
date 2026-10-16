@@ -46,6 +46,12 @@ func _initialize() -> void:
     check(store.call("load_state") == Progress.fresh_state(), "Uncommitted temp files are never treated as saves")
     clean_files()
 
+    var parsed_numbers: Dictionary = JSON.parse_string('{"version":1,"cash":620,"jobs":1,"plant":false}')
+    check(typeof(parsed_numbers["cash"]) == TYPE_FLOAT, "Godot JSON reader yields floats for numeric fields")
+    check(Progress.valid_state(parsed_numbers, true)["cash"] == 620, "Whole JSON float amounts restore as integers")
+    check(Progress.valid_state({"version": 1.0, "cash": 500.5, "jobs": 1.0, "plant": false}, true).is_empty(), "Fractional on-disk currency cannot be accepted")
+    check(Progress.valid_state(parsed_numbers).is_empty(), "Parsed floats cannot be sent as new reward transactions")
+
     var first: Dictionary = {"version": 1, "cash": 620, "jobs": 1, "plant": false}
     var second: Dictionary = {"version": 1, "cash": 370, "jobs": 1, "plant": true}
     check(store.call("save_state", first), "Valid first solo result must save")
