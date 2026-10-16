@@ -57,7 +57,12 @@ func _read_json(path: String) -> Variant:
         return null
     var raw: String = source.get_as_text()
     source.close()
-    return JSON.parse_string(raw)
+    # JSON.parse_string prints engine errors on corrupt inputs. The instance
+    # parser returns a normal error code so recoverable save damage stays quiet.
+    var parser := JSON.new()
+    if parser.parse(raw) != OK:
+        return null
+    return parser.data
 
 
 func load_state() -> Dictionary:
