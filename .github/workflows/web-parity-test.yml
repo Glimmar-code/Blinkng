@@ -8,11 +8,13 @@ on:
       - 'web/**'
       - '.github/workflows/web-parity-test.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_domain_auth_links.mjs'
   pull_request:
     paths:
       - 'web/**'
       - '.github/workflows/web-parity-test.yml'
       - 'scripts/check_github_pages_site.py'
+      - 'scripts/test_domain_auth_links.mjs'
 
 permissions:
   contents: read
@@ -27,6 +29,9 @@ jobs:
 
       - name: BLINK official domain, SEO, routes and APK alias
         run: python3 scripts/check_github_pages_site.py
+
+      - name: Verify canonical web OAuth and token-safe password reset redirects
+        run: node scripts/test_domain_auth_links.mjs
 
       - name: JavaScript syntax
         run: |
