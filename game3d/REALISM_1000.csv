@@ -56,9 +56,9 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 55,Soft twilight transitions,Time and weather,implemented_in_source,scripts/world.gd;scripts/player_preferences.gd;scripts/day_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Continuous twilight brightness and color around the horizon. Android/Windows packaged-device verification outstanding.
 56,Visible moon phases,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 57,Stars under clear skies,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-58,Moving cloud formations,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-59,Light rain showers,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-60,Heavy tropical rainfall,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+58,Moving cloud formations,Time and weather,implemented_in_source,scripts/weather_visuals.gd;scripts/weather_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Two low-poly cloud groups drift locally; verify physical Android and Windows rendering.
+59,Light rain showers,Time and weather,implemented_in_source,scripts/weather_cycle.gd;scripts/weather_visuals.gd;scripts/world.gd,tests/controls_smoke.gd;tests/smoke.gd,Optional light rain uses 24 batched drops; indoor occlusion and wet-road effects pending physical device checks.
+60,Heavy tropical rainfall,Time and weather,implemented_in_source,scripts/weather_cycle.gd;scripts/weather_visuals.gd;scripts/world.gd,tests/controls_smoke.gd;tests/smoke.gd,Optional tropical rain uses 80 batched drops; storm audio and lightning pending physical device checks.
 61,Distant thunder before storms,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 62,Lightning with adjustable intensity,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 63,Wet roads after rain,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
@@ -88,7 +88,7 @@ id,requirement,workstream,status,source_evidence,validation_evidence,remaining
 87,Festivals changing local scenery,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 88,Maintenance crews after storms,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 89,Optional weather-sensitive clothing bonuses,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
-90,Comfortable weather accessibility settings,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
+90,Comfortable weather accessibility settings,Time and weather,partial,scripts/player_preferences.gd;scripts/world.gd;scripts/weather_cycle.gd,tests/controls_smoke.gd;tests/smoke.gd,Saved clear/light/heavy/auto weather choice offers rain-off setting; accessibility review and controls polish pending.
 91,No unavoidable weather damage,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 92,Shared weather within multiplayer sessions,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
 93,Indoor weather sound filtering,Time and weather,pending_audit,,,"Audit, acceptance, implementation, Android/Windows verification."
