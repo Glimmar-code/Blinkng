@@ -3499,7 +3499,10 @@ suspend fun uploadPostMedia(
                     parseMarketItem(array.getJSONObject(i))?.let(::add)
                 }
             }
-            val savedIds = fetchMyMarketWishlistIds(parsed.map { it.id })
+            // The authenticated inner join already proves wishlist membership.
+            // Do not clear saved badges if an unnecessary second request fails.
+            val savedIds = if (savedOnly) parsed.mapTo(mutableSetOf()) { it.id }
+                else fetchMyMarketWishlistIds(parsed.map { it.id })
             parsed.map { item -> item.copy(isSaved = item.id in savedIds) }
         } catch (e: Exception) {
             Log.e(TAG, "MARKET_FETCH exception", e)
