@@ -3,6 +3,8 @@ extends SceneTree
 # Headless regression checks for BLINK LIFE's native Godot 3D scene.
 # This is a runtime smoke test, not a substitute for actual Android hardware testing.
 
+const SoloProgress = preload("res://scripts/solo_progress.gd")
+const TEST_SAVE: String = "user://blink_life_scene_smoke_save.json"
 var failed: bool = false
 
 
@@ -24,6 +26,14 @@ func _run() -> void:
     if world == null:
         quit(1)
         return
+    var demo_progress := SoloProgress.new()
+    demo_progress.save_path = TEST_SAVE
+    demo_progress.backup_path = TEST_SAVE + ".bak"
+    demo_progress.temp_path = TEST_SAVE + ".tmp"
+    for file in [demo_progress.save_path, demo_progress.backup_path, demo_progress.temp_path]:
+        if FileAccess.file_exists(file):
+            DirAccess.remove_absolute(ProjectSettings.globalize_path(file))
+    world.set("progress_store", demo_progress)
     root.add_child(world)
     await process_frame
     await physics_frame
@@ -268,6 +278,13 @@ func _run() -> void:
         social.call("_disconnect")
         _assert_true(not bool(social.get("is_online")), "Disconnect must return to offline mode")
 
+    var saved_demo: Dictionary = demo_progress.load_state()
+    _assert_true(int(saved_demo["cash"]) == 370, "Solo job and purchase balance must persist on disk")
+    _assert_true(int(saved_demo["jobs"]) == 1, "Completed solo job count must persist on disk")
+    _assert_true(bool(saved_demo["plant"]), "Purchased desk plant must persist between launches")
+    for file in [demo_progress.save_path, demo_progress.backup_path, demo_progress.temp_path]:
+        if FileAccess.file_exists(file):
+            DirAccess.remove_absolute(ProjectSettings.globalize_path(file))
     # Give the 3D meshes and physics resources time to leave the scene tree
     # before stopping the headless runtime.
     world.queue_free()
