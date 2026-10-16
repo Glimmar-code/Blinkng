@@ -3,6 +3,14 @@ extends Node3D
 ## Fictional local Game Cash only. No Supabase, payments, BLINK Coins, or cashout.
 
 const WALK_SPEED: float = 5.0
+# Lightweight kinematic vehicle: gradual acceleration, drag and steer at speed.
+# Not a wheel/suspension or realistic car-collision simulator.
+const CAR_MAX_SPEED: float = 8.0
+const CAR_REVERSE_SPEED: float = 3.0
+const CAR_ACCELERATION: float = 7.0
+const CAR_BRAKE_DECELERATION: float = 11.0
+const CAR_DRAG: float = 4.5
+const CAR_TURN_RATE: float = 1.6
 const INTERACT_DISTANCE: float = 5.1
 const WORLD_STEP: float = 6.0
 
@@ -19,6 +27,9 @@ var completed_jobs: int = 0
 var owns_plant: bool = false
 var places: Array[Dictionary] = []
 var active_quiz: Dictionary = {}
+var car_speed: float = 0.0
+var car_heading: float = 0.0
+var was_driving: bool = false
 var social: Node3D
 
 
@@ -64,6 +75,8 @@ func _physics_process(delta: float) -> void:
     # Approved passengers follow their driver's networked vehicle.
     # Driving remains a client-side visual preview; the host validates moves.
     if social != null and bool(social.call("is_local_passenger")):
+        car_speed = 0.0
+        was_driving = false
         player.velocity = Vector3.ZERO
         player.global_position = social.call("passenger_position")
         return
@@ -82,18 +95,39 @@ func _physics_process(delta: float) -> void:
         direction = touch_axis
 
     direction = direction.normalized()
-    var speed: float = WALK_SPEED
-    if social != null and bool(social.call("is_local_driver")):
-        speed *= 1.6
-    player.velocity.x = direction.x * speed
-    player.velocity.z = direction.y * speed
+    var driving: bool = social != null and bool(social.call("is_local_driver"))
+    if driving:
+        if not was_driving:
+            car_speed = 0.0
+            car_heading = player.rotation.y
+        was_driving = true
+        # Forward/backward is throttle/brake; horizontal input steers the car.
+        var throttle: float = -direction.y
+        if absf(throttle) < 0.05:
+            car_speed = move_toward(car_speed, 0.0, CAR_DRAG * delta)
+        elif throttle > 0.0:
+            car_speed = move_toward(car_speed, CAR_MAX_SPEED, CAR_ACCELERATION * delta)
+        else:
+            car_speed = move_toward(car_speed, -CAR_REVERSE_SPEED, CAR_BRAKE_DECELERATION * delta)
+        if absf(car_speed) > 0.15:
+            var steering: float = direction.x
+            var direction_sign: float = 1.0 if car_speed >= 0.0 else -1.0
+            var steering_fraction: float = absf(car_speed) / CAR_MAX_SPEED
+            car_heading += steering * CAR_TURN_RATE * direction_sign * steering_fraction * delta
+        player.rotation.y = car_heading
+        player.velocity.x = -sin(car_heading) * car_speed
+        player.velocity.z = -cos(car_heading) * car_speed
+    else:
+        was_driving = false
+        car_speed = 0.0
+        player.velocity.x = direction.x * WALK_SPEED
+        player.velocity.z = direction.y * WALK_SPEED
+        if direction.length_squared() > 0.001:
+            player.rotation.y = atan2(-direction.x, -direction.y)
     if not player.is_on_floor():
         player.velocity.y -= 18.0 * delta
     else:
         player.velocity.y = 0.0
-
-    if direction.length_squared() > 0.001:
-        player.rotation.y = atan2(-direction.x, -direction.y)
     player.move_and_slide()
 
 
