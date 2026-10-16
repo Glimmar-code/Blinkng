@@ -111,6 +111,7 @@ DECLARE
  v_since timestamptz;
  v_last timestamptz;
  v_rank bigint;
+ v_current_rank bigint;
  v_count bigint;
  v_milestone integer;
  v_reel record;
@@ -153,6 +154,7 @@ BEGIN
    -- The queue only delivers important, new, opt-in events. Never replay old data.
    IF v_last IS NOT NULL AND now() - v_last < v_interval THEN CONTINUE; END IF;
    v_count := 0;
+   v_current_rank := NULL;
 
    IF v_kind = 'new_follower' THEN
     SELECT count(*) INTO v_count
@@ -208,22 +210,19 @@ BEGIN
     END LOOP;
 
    ELSIF v_kind = 'leaderboard' THEN
-    SELECT ls.world_rank INTO v_rank
+    SELECT ls.world_rank INTO v_current_rank
     FROM public.leaderboard_snapshots ls
     WHERE ls.user_id=r.user_id LIMIT 1;
-    IF v_rank IS NOT NULL THEN
-      PERFORM 1 FROM public.blink_social_email_progress x
-      WHERE x.user_id=r.user_id AND x.kind='leaderboard' AND x.previous_world_rank IS NOT NULL
-        AND x.previous_world_rank<>v_rank
-        AND x.last_queued_at>=v_since;
-      IF FOUND THEN v_count := 1; END IF;
+    IF v_current_rank IS NOT NULL AND v_rank IS NOT NULL
+       AND v_current_rank <> v_rank THEN
+      v_count := 1;
     END IF;
    END IF;
 
    -- For a leaderboard first opt-in, record baseline but do not email.
    IF v_kind = 'leaderboard' THEN
      INSERT INTO public.blink_social_email_progress(user_id,kind,previous_world_rank)
-     VALUES(r.user_id,v_kind,v_rank)
+     VALUES(r.user_id,v_kind,v_current_rank)
      ON CONFLICT(user_id,kind) DO UPDATE
       SET previous_world_rank=excluded.previous_world_rank;
    END IF;
