@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://glimmar-code.github.io/Blinkng/sitemap.xml
+Sitemap: https://blink.com.ng/sitemap.xml
