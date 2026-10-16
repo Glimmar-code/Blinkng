@@ -2,9 +2,12 @@ extends Node3D
 ## BLINK LIFE 3D: Testlab-only native Godot scene.
 ## Fictional local Game Cash only. No Supabase, payments, BLINK Coins, or cashout.
 
+const Layout = preload("res://scripts/neighborhood_layout.gd")
+const Details = preload("res://scripts/neighborhood_details.gd")
+
 const WALK_SPEED: float = 5.0
 const INTERACT_DISTANCE: float = 5.1
-const WORLD_STEP: float = 6.0
+const WORLD_STEP: float = Layout.GRID_METRES
 
 var player: CharacterBody3D
 var follow_camera: Camera3D
@@ -25,6 +28,9 @@ var social: Node3D
 func _ready() -> void:
     _create_lights()
     _create_city()
+    var details := Details.new()
+    add_child(details)
+    details.configure(self)
     _create_player()
     _create_camera()
     _create_hud()
@@ -55,7 +61,7 @@ func _process(delta: float) -> void:
     if nearby.is_empty():
         hud_location.text = "Explore the 3D city — approach a marked building"
     else:
-        hud_location.text = "%s • Press INTERACT" % str(nearby["name"])
+        hud_location.text = "%s • %s • INTERACT" % [nearby["name"], nearby["address"]]
 
 
 func _physics_process(delta: float) -> void:
@@ -163,34 +169,26 @@ func _add_static_box(label: String, center: Vector3, dimensions: Vector3, tint: 
 
 
 func _location_position(col: int, row: int) -> Vector3:
-    return Vector3((col - 3) * WORLD_STEP, 0.0, (row - 2) * WORLD_STEP)
+    return Layout.position_for(col, row)
 
 
 func _create_city() -> void:
     _add_static_box(
         "Grass foundation", Vector3(0, -0.3, 0),
-        Vector3(55, 0.6, 42), Color(0.37, 0.55, 0.41)
+        Layout.FOUNDATION_SIZE, Color(0.37, 0.55, 0.41)
     )
     # Roads are overlays, not obstacles.
     _add_visual_box(self, Vector3(0, 0.012, 0), Vector3(52, 0.025, 4.6), Color(0.35, 0.40, 0.46))
-    _add_visual_box(self, Vector3(0, 0.013, 0), Vector3(4.6, 0.028, 39), Color(0.35, 0.40, 0.46))
+    _add_visual_box(self, Vector3(0, 0.013, 4.5), Vector3(4.6, 0.028, 27), Color(0.35, 0.40, 0.46))
 
-    places = [
-        {"name": "Campus", "col": 3, "row": 0, "height": 5.1, "color": Color(0.45, 0.51, 0.59)},
-        {"name": "Café", "col": 0, "row": 1, "height": 3.1, "color": Color(0.75, 0.48, 0.36)},
-        {"name": "Tech hub", "col": 6, "row": 1, "height": 4.4, "color": Color(0.40, 0.53, 0.67)},
-        {"name": "Market", "col": 0, "row": 3, "height": 3.2, "color": Color(0.79, 0.65, 0.39)},
-        {"name": "Delivery depot", "col": 2, "row": 4, "height": 3.2, "color": Color(0.50, 0.51, 0.59)},
-        {"name": "Hostel", "col": 6, "row": 4, "height": 5.3, "color": Color(0.63, 0.55, 0.47)},
-        {"name": "Homes", "col": 4, "row": 3, "height": 3.8, "color": Color(0.73, 0.59, 0.42)}
-    ]
+    places = Layout.places()
 
     for place in places:
         var location: Vector3 = _location_position(int(place["col"]), int(place["row"]))
         var height: float = float(place["height"])
         _add_static_box(
             str(place["name"]), location + Vector3(0, height / 2.0, 0),
-            Vector3(4.2, height, 4.2), place["color"]
+            Vector3(Layout.BUILDING_WIDTH, height, Layout.BUILDING_WIDTH), place["color"]
         )
         _add_visual_box(
             self, location + Vector3(0, height + 0.15, 0),
@@ -354,15 +352,20 @@ func _orbit(degrees: float) -> void:
 
 
 func _nearest_place() -> Dictionary:
+    # Use the closest frontage, not array order or a point inside the building.
+    # Vertical separation prevents selecting a city business from another level.
+    if player == null or absf(player.global_position.y) > 3.0:
+        return {}
+    var nearest: Dictionary = {}
+    var best_distance: float = 2.8
     for place in places:
-        var location: Vector3 = _location_position(int(place["col"]), int(place["row"]))
-        var horizontal_distance: float = Vector2(
-            player.global_position.x - location.x,
-            player.global_position.z - location.z
-        ).length()
-        if horizontal_distance <= INTERACT_DISTANCE:
-            return place
-    return {}
+        var entry: Vector3 = Layout.entrance_for(place)
+        var distance: float = Vector2(player.global_position.x - entry.x,
+            player.global_position.z - entry.z).length()
+        if distance < best_distance:
+            nearest = place
+            best_distance = distance
+    return nearest
 
 
 func _interact() -> void:
@@ -445,3 +448,4 @@ func _submit_quiz(choice_id: int) -> void:
 func _close_quiz() -> void:
     active_quiz = {}
     hud_modal.visible = false
+

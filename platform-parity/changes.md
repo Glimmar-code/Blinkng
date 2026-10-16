@@ -195,3 +195,13 @@ Windows equivalent or reason no equivalent is needed: Windows does not request A
 Backend/shared behavior preserved: Blink account, feed/reel ranking, messaging, moderation, wallet balances and the 10-coin reward business rule remain unchanged. The new SSV database fields are additive audit metadata and do not change Windows coin spending or shared wallet semantics.
 Tests/validation: Android unit/lint/instrumentation/debug APK/AAB and release-smoke gates, Windows desktop/parity gate, Web Parity/domain checks, and Supabase migration-safety must pass in Testlab before promotion to main.
 Owner/reviewer note: This exception covers only Android AdMob/UMP presentation and AdMob callback verification. It cannot be used to waive Windows parity for shared product features or wallet rules.
+
+
+
+## 2026-10-16 — BLINK LIFE realism batch 1 (Testlab)
+
+- Shared: `game3d/scripts/neighborhood_layout.gd` and `neighborhood_details.gd` define metric locations, connected paths, address/street labels and frontage geometry. `world.gd` uses that layout and nearest-frontage selection.
+- Android/Windows: both native hosts use the same Godot project; no Android-only gameplay or second backend was introduced. Existing projected fallback is not claimed to receive this native-scene upgrade.
+- Validation: Godot 4.3 import; layout invariants; scene assertions; existing ticket/persistence checks; 1,000-row tracker validation. Local dummy renderer emits null-mesh diagnostics; rendered CI and device validation remain gates.
+- Delivery: feature branch targets Testlab. No main merge or app publication. Android/Windows package builds and physical-device acceptance remain outstanding.
+- Scope: five requirements implemented in source, ten partial, 985 pending audit; see `game3d/REALISM_IMPLEMENTATION.md`.

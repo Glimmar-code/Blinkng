@@ -40,6 +40,24 @@ func _run() -> void:
     var places: Array = world.get("places")
     _assert_true(places.size() == 7, "World should include Homes and six original destinations")
 
+    var details: Node = world.get_node_or_null("NeighborhoodDetails")
+    _assert_true(details != null, "Shared neighborhood details must be present")
+    if details != null:
+        for place in places:
+            _assert_true(details.get_node_or_null("Address_" + str(place["id"])) != null, "Every destination needs its visible address")
+        _assert_true(details.get_node_or_null("Street_market_walk") != null, "Market Walk must have a street sign")
+        _assert_true(details.get_node_or_null("Street_campus_way") != null, "Campus Way must have a street sign")
+    if player != null:
+        var layout: Script = load("res://scripts/neighborhood_layout.gd")
+        for place in places:
+            player.global_position = layout.entrance_for(place) + Vector3.UP * 0.15
+            _assert_true(world.call("_nearest_place").get("id", "") == place["id"], "Every approach must select the correct destination")
+        player.global_position = Vector3(0, 0.15, 0)
+        _assert_true(world.call("_nearest_place").is_empty(), "The road intersection is not a building interaction")
+        player.global_position = Vector3(-18, 8, -3.25)
+        _assert_true(world.call("_nearest_place").is_empty(), "Interaction should not reach between floors")
+        player.global_position = Vector3.ZERO
+
     var initial_cash: int = int(world.get("game_cash"))
     _assert_true(initial_cash == 500, "Prototype Game Cash balance should start at 500")
 
@@ -114,3 +132,4 @@ func _run() -> void:
 
 func _initialize() -> void:
     call_deferred("_run")
+

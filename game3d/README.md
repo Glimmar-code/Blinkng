@@ -60,3 +60,8 @@ The native Godot world now adds `scripts/social_world.gd`. Its LAN preview is st
 - **Important tradeoff:** The Godot engine and scene are included in the downloaded APK/Windows installer, so they still increase **download size and installed storage** even for users who never play. Lazy *runtime* loading avoids paying the engine's normal memory/graphics/CPU cost before Play; it does not make APK downloads smaller. Optional on-demand content packs require a separately designed, verified delivery mechanism.
 - Godot first start may take longer as the native engine creates its graphics context and imports assets. Validate on Redmi-class physical hardware and verify memory returns to normal after exiting. The native Android/Windows integration is not production-verified.
 
+
+
+## Realism roadmap (16 October 2026)
+
+`REALISM_1000.csv` tracks the owner's 1,000 requested improvements with stable IDs and honest statuses. `REALISM_IMPLEMENTATION.md` describes the first shared-world batch, exact acceptance and release gaps. The scene now includes connected footpaths, street signs, building addresses and closer frontage interaction selection. These additions are Testlab source work, not a confirmed production update.

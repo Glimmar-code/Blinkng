@@ -47,6 +47,16 @@ jobs:
             echo 'Godot import failed.'
             exit 1
           fi
+      - name: Check neighborhood scale, entrance clearance and connected paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 game3d/tests/check_realism_tracker.py
+          timeout 60s godot --headless --path game3d --script res://tests/neighborhood_smoke.gd 2>&1 | tee /tmp/blink-neighborhood.log
+          if grep -Ei '(^ERROR:|^SCRIPT ERROR:|Parse Error|SMOKE FAILURE)' /tmp/blink-neighborhood.log; then
+            exit 1
+          fi
+
       - name: Test HMAC join tickets, replay protection and server-backed houses
         shell: bash
         run: |
@@ -69,3 +79,4 @@ jobs:
             echo 'Godot scene smoke tests failed.'
             exit 1
           fi
+
