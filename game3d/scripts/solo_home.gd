@@ -15,7 +15,10 @@ const PLANT_DEFAULT_Z: int = 3
 const GRID_LIMIT: int = 3
 const GRID_SPACING: float = 1.0
 const HISTORY_LIMIT: int = 20
+const FURNITURE_DEFAULTS = {"chair_x": 2, "chair_z": -1, "chair_rotation": 0, "table_x": 2, "table_z": 2, "table_rotation": 0}
 var desk_plant: Node3D
+var movable_chair: Node3D
+var movable_table: Node3D
 var floor_visual: MeshInstance3D
 var wall_visuals: Array[MeshInstance3D] = []
 
@@ -35,8 +38,18 @@ func configure() -> void:
     for x in [1.35, 3.25]:
         for z in [-2.8, -2.2]:
             _box(self, Vector3(x, 0.33, z), Vector3(0.12, 0.65, 0.12), Color(0.38, 0.27, 0.22))
-    _box(self, Vector3(2.3, 0.42, -0.8), Vector3(0.85, 0.15, 0.8), Color(0.53, 0.40, 0.29))
-    _box(self, Vector3(2.3, 0.78, -0.4), Vector3(0.85, 0.73, 0.13), Color(0.53, 0.40, 0.29))
+    movable_chair = Node3D.new()
+    movable_chair.name = "MovableChair"
+    add_child(movable_chair)
+    _box(movable_chair, Vector3(0, 0.42, 0), Vector3(0.85, 0.15, 0.8), Color(0.53, 0.40, 0.29))
+    _box(movable_chair, Vector3(0, 0.78, 0.4), Vector3(0.85, 0.73, 0.13), Color(0.53, 0.40, 0.29))
+    movable_table = Node3D.new()
+    movable_table.name = "MovableTable"
+    add_child(movable_table)
+    _box(movable_table, Vector3(0, 0.8, 0), Vector3(1.15, 0.15, 0.95), Color(0.45, 0.32, 0.25))
+    for leg_x in [-0.45, 0.45]:
+        for leg_z in [-0.34, 0.34]:
+            _box(movable_table, Vector3(leg_x, 0.35, leg_z), Vector3(0.12, 0.70, 0.12), Color(0.37, 0.27, 0.21))
     _box(self, Vector3(-3.55, 1.2, 1.8), Vector3(0.65, 2.4, 1.45), Color(0.49, 0.40, 0.34))
     _box(self, Vector3(0.0, 1.8, -4.25), Vector3(2.1, 1.0, 0.05), Color(0.46, 0.68, 0.78))
     _box(self, Vector3(0.0, 1.8, -4.19), Vector3(0.08, 1.1, 0.06), Color(0.92, 0.92, 0.90))
@@ -58,6 +71,7 @@ func configure() -> void:
     _box(desk_plant, Vector3(0, 0.48, 0), Vector3(0.55, 0.5, 0.55), Color(0.19, 0.48, 0.24))
     desk_plant.position = PLANT_SPOTS[0]
     desk_plant.visible = false
+    apply_decoration(0, 0, 0)
 
 
 func update_owned_decor(has_plant: bool) -> void:
@@ -65,30 +79,78 @@ func update_owned_decor(has_plant: bool) -> void:
         desk_plant.visible = has_plant
 
 
-## Small collision-safe integer floor grid. The desk, bed, wardrobe, chair
-## and player's spawn/entry corridor retain a 0.45m extra margin.
-static func floor_cell_allowed(x: int, z: int) -> bool:
-    if absi(x) > GRID_LIMIT or absi(z) > GRID_LIMIT:
+## Bounded solo-only furniture layout: chair, table and optional plant.
+## Every check uses each item's rotated footprint, plus an entry clearance.
+static func _half_size(kind: String, rotation: int) -> Vector2:
+    var base: Vector2 = Vector2(0.45, 0.43)
+    if kind == "table":
+        base = Vector2(0.62, 0.52)
+    elif kind == "plant":
+        base = Vector2(0.30, 0.30)
+    if rotation % 2 == 1:
+        return Vector2(base.y, base.x)
+    return base
+
+
+static func _rect_overlaps(a: Vector2, a_half: Vector2, b: Vector2, b_half: Vector2) -> bool:
+    return absf(a.x - b.x) < a_half.x + b_half.x + 0.12 and absf(a.y - b.y) < a_half.y + b_half.y + 0.12
+
+
+static func _fixed_clear(kind: String, position: Vector2, rotation: int = 0) -> bool:
+    var half: Vector2 = _half_size(kind, rotation)
+    if absf(position.x) + half.x > 4.0 or absf(position.y) + half.y > 4.0:
         return false
-    var candidate := Vector2(float(x), float(z))
     var reserved: Array[Dictionary] = [
         {"center": Vector2(-2.5, -2.5), "half": Vector2(1.075, 1.4)},
-        {"center": Vector2(2.3, -2.5), "half": Vector2(1.1, 0.5)},
-        {"center": Vector2(2.3, -0.8), "half": Vector2(0.425, 0.4)},
+        {"center": Vector2(2.3, -2.5), "half": Vector2(1.10, 0.50)},
         {"center": Vector2(-3.55, 1.8), "half": Vector2(0.325, 0.725)},
         {"center": Vector2(0.0, 1.25), "half": Vector2(0.38, 0.38)}
     ]
     for obstacle in reserved:
-        var center: Vector2 = obstacle["center"]
-        var half: Vector2 = obstacle["half"]
-        if absf(candidate.x - center.x) < half.x + 0.48 and absf(candidate.y - center.y) < half.y + 0.48:
+        if _rect_overlaps(position, half, obstacle["center"], obstacle["half"]):
             return false
+    return true
+
+
+static func floor_cell_allowed(x: int, z: int) -> bool:
+    if absi(x) > GRID_LIMIT or absi(z) > GRID_LIMIT:
+        return false
+    return _fixed_clear("plant", Vector2(float(x), float(z)))
+
+
+static func layout_allowed(layout: Dictionary) -> bool:
+    var footprints: Array[Dictionary] = []
+    for kind in ["chair", "table"]:
+        var x: int = int(layout.get(kind + "_x", FURNITURE_DEFAULTS[kind + "_x"]))
+        var z: int = int(layout.get(kind + "_z", FURNITURE_DEFAULTS[kind + "_z"]))
+        var turn: int = int(layout.get(kind + "_rotation", 0))
+        if abs(x) > GRID_LIMIT or abs(z) > GRID_LIMIT or turn < 0 or turn > 3:
+            return false
+        var point := Vector2(float(x), float(z))
+        if not _fixed_clear(kind, point, turn):
+            return false
+        footprints.append({"point": point, "half": _half_size(kind, turn)})
+    if bool(layout.get("plant_custom", false)):
+        var px: int = int(layout.get("plant_x", 0))
+        var pz: int = int(layout.get("plant_z", PLANT_DEFAULT_Z))
+        if not floor_cell_allowed(px, pz):
+            return false
+        footprints.append({"point": Vector2(float(px), float(pz)),
+            "half": _half_size("plant", 0)})
+    # The owned plant's THREE pre-existing presets include raised desktop
+    # positions; they intentionally do not occupy the new floor grid.
+    for i in footprints.size():
+        for j in range(i + 1, footprints.size()):
+            if _rect_overlaps(footprints[i]["point"], footprints[i]["half"],
+                    footprints[j]["point"], footprints[j]["half"]):
+                return false
     return true
 
 
 func apply_decoration(wall_style: int, floor_style: int, plant_spot: int,
         plant_custom: bool = false, plant_x: int = PLANT_DEFAULT_X,
-        plant_z: int = PLANT_DEFAULT_Z, plant_rotation: int = 0) -> bool:
+        plant_z: int = PLANT_DEFAULT_Z, plant_rotation: int = 0,
+        furniture: Dictionary = {}) -> bool:
     if wall_style < 0 or wall_style >= WALL_COLORS.size():
         return false
     if floor_style < 0 or floor_style >= FLOOR_COLORS.size():
@@ -97,7 +159,12 @@ func apply_decoration(wall_style: int, floor_style: int, plant_spot: int,
         return false
     if plant_rotation < 0 or plant_rotation >= 4:
         return false
-    if plant_custom and not floor_cell_allowed(plant_x, plant_z):
+    var layout: Dictionary = FURNITURE_DEFAULTS.duplicate()
+    layout.merge(furniture, true)
+    layout["plant_custom"] = plant_custom
+    layout["plant_x"] = plant_x
+    layout["plant_z"] = plant_z
+    if not layout_allowed(layout):
         return false
     for wall in wall_visuals:
         _repaint(wall, WALL_COLORS[wall_style])
@@ -106,6 +173,12 @@ func apply_decoration(wall_style: int, floor_style: int, plant_spot: int,
         desk_plant.position = Vector3(float(plant_x) * GRID_SPACING, 0.15,
             float(plant_z) * GRID_SPACING) if plant_custom else PLANT_SPOTS[plant_spot]
         desk_plant.rotation.y = deg_to_rad(float(plant_rotation) * 90.0)
+    if movable_chair != null:
+        movable_chair.position = Vector3(float(layout["chair_x"]), 0, float(layout["chair_z"]))
+        movable_chair.rotation.y = deg_to_rad(float(layout["chair_rotation"]) * 90.0)
+    if movable_table != null:
+        movable_table.position = Vector3(float(layout["table_x"]), 0, float(layout["table_z"]))
+        movable_table.rotation.y = deg_to_rad(float(layout["table_rotation"]) * 90.0)
     return true
 
 
