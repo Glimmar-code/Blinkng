@@ -1119,10 +1119,12 @@ fun MarketplaceScreen(state: DesktopAppState) {
     var marketSort by remember { mutableStateOf("newest") }
     var minPriceText by remember { mutableStateOf("") }
     var maxPriceText by remember { mutableStateOf("") }
+    var marketSavedOnly by remember { mutableStateOf(false) }
+    var marketVerifiedOnly by remember { mutableStateOf(false) }
     var refreshRevision by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(state.client, marketQuery, marketCategory, marketSort, minPriceText, maxPriceText, refreshRevision) {
+    LaunchedEffect(state.client, marketQuery, marketCategory, marketSort, minPriceText, maxPriceText, marketSavedOnly, marketVerifiedOnly, refreshRevision) {
         val min = minPriceText.toLongOrNull()
         val max = maxPriceText.toLongOrNull()
         if (min != null && max != null && min > max) {
@@ -1139,7 +1141,9 @@ fun MarketplaceScreen(state: DesktopAppState) {
                 category = marketCategory,
                 sort = marketSort,
                 minPrice = min,
-                maxPrice = max
+                maxPrice = max,
+                savedOnly = marketSavedOnly,
+                verifiedOnly = marketVerifiedOnly
             )
         }.onSuccess { itemsList = it }
             .onFailure { marketError = it.message ?: "Unable to load Market listings." }
@@ -1186,6 +1190,12 @@ fun MarketplaceScreen(state: DesktopAppState) {
                             label = { Text(option) }
                         )
                     }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = marketSavedOnly, onCheckedChange = { marketSavedOnly = it })
+                    Text("Saved only")
+                    Checkbox(checked = marketVerifiedOnly, onCheckedChange = { marketVerifiedOnly = it })
+                    Text("Verified sellers")
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("newest" to "Newest", "price_low" to "Lowest price", "price_high" to "Highest price").forEach { (code, label) ->
