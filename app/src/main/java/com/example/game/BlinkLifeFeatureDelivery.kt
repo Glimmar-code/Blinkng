@@ -75,6 +75,8 @@ class BlinkLifeFeatureDelivery(private val applicationContext: Context) {
 
     private var subscribed = false
     private var installId = 0
+    private var cancelRequested = false
+    private var confirmationSessionId = 0
     private var playAfterInstall = false
     private var activity: Activity? = null
     var onReady: (() -> Unit)? = null
@@ -112,6 +114,10 @@ class BlinkLifeFeatureDelivery(private val applicationContext: Context) {
             else if (snapshot.phase != Phase.REMOVING && snapshot.phase != Phase.FAILED) {
                 snapshot = Snapshot(Phase.NOT_INSTALLED)
             }
+        }.addOnFailureListener {
+            if (!isInstalled() && snapshot.phase != Phase.REMOVING) {
+                snapshot = Snapshot(Phase.FAILED, message = "Couldn't check the game download. Please retry.")
+            }
         }
     }
 
@@ -123,12 +129,18 @@ class BlinkLifeFeatureDelivery(private val applicationContext: Context) {
         }
         if (snapshot.phase in listOf(Phase.REQUESTING, Phase.DOWNLOADING, Phase.INSTALLING)) return
         playAfterInstall = true
+        cancelRequested = false
+        installId = 0
         snapshot = Snapshot(Phase.REQUESTING, message = "Requesting secure download from Google Play…")
         val request = SplitInstallRequest.newBuilder().addModule(MODULE).build()
         manager.startInstall(request)
-            .addOnSuccessListener { installId = it }
+            .addOnSuccessListener {
+                installId = it
+                if (cancelRequested) cancel()
+            }
             .addOnFailureListener {
                 playAfterInstall = false
+                cancelRequested = false
                 snapshot = Snapshot(
                     Phase.FAILED,
                     message = "Could not download. Use the Google Play version of BLINK, " +
@@ -138,7 +150,12 @@ class BlinkLifeFeatureDelivery(private val applicationContext: Context) {
     }
 
     fun cancel() {
-        if (installId == 0) return
+        playAfterInstall = false
+        if (installId == 0) {
+            cancelRequested = true
+            snapshot = Snapshot(Phase.REQUESTING, message = "Cancelling the game request…")
+            return
+        }
         manager.cancelInstall(installId)
             .addOnFailureListener {
                 snapshot = Snapshot(Phase.FAILED, message = "Cannot cancel at this stage.")
@@ -173,7 +190,8 @@ class BlinkLifeFeatureDelivery(private val applicationContext: Context) {
                 SplitInstallSessionStatus.REQUIRES_USER_CONFIRMATION -> {
                     snapshot = Snapshot(Phase.REQUESTING, message = "Confirm the download in Google Play.")
                     val visibleActivity = activity
-                    if (visibleActivity != null) {
+                    if (visibleActivity != null && confirmationSessionId != state.sessionId()) {
+                        confirmationSessionId = state.sessionId()
                         runCatching {
                             manager.startConfirmationDialogForResult(state, visibleActivity, 4808)
                         }.onFailure {
@@ -185,6 +203,8 @@ class BlinkLifeFeatureDelivery(private val applicationContext: Context) {
                     SplitCompat.install(applicationContext)
                     snapshot = Snapshot(Phase.INSTALLED)
                     installId = 0
+                    confirmationSessionId = 0
+                    cancelRequested = false
                     if (playAfterInstall) {
                         playAfterInstall = false
                         onReady?.invoke()
@@ -193,11 +213,15 @@ class BlinkLifeFeatureDelivery(private val applicationContext: Context) {
                 SplitInstallSessionStatus.CANCELED -> {
                     playAfterInstall = false
                     installId = 0
+                    cancelRequested = false
+                    confirmationSessionId = 0
                     snapshot = Snapshot(Phase.NOT_INSTALLED, message = "Download cancelled.")
                 }
                 SplitInstallSessionStatus.FAILED -> {
                     playAfterInstall = false
                     installId = 0
+                    cancelRequested = false
+                    confirmationSessionId = 0
                     snapshot = Snapshot(
                         Phase.FAILED,
                         message = "Game download failed (" + state.errorCode() +

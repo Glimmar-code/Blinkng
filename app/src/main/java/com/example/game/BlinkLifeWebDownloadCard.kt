@@ -9,12 +9,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,6 +38,7 @@ fun BlinkLifeWebDownloadCard() {
     val context = LocalContext.current
     var progress by remember(context) { mutableStateOf(BlinkLifeWebPack.snapshot(context)) }
     var localError by remember { mutableStateOf("") }
+    var confirmRemoval by remember { mutableStateOf(false) }
 
     LaunchedEffect(context) {
         while (isActive) {
@@ -71,10 +74,9 @@ fun BlinkLifeWebDownloadCard() {
                         Button(onClick = { context.startActivity(Intent(context, BlinkLifeWebActivity::class.java)) }) {
                             Text("Play BLINK LIFE")
                         }
-                        OutlinedButton(onClick = {
-                            BlinkLifeWebPack.remove(context)
-                            progress = BlinkLifeWebPack.snapshot(context)
-                        }) { Text("Remove files") }
+                        OutlinedButton(onClick = { confirmRemoval = true }) {
+                            Text("Remove files")
+                        }
                     }
                 }
                 BlinkLifeWebPack.Phase.DOWNLOADING, BlinkLifeWebPack.Phase.VERIFYING -> {
@@ -131,5 +133,22 @@ fun BlinkLifeWebDownloadCard() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+    if (confirmRemoval) {
+        AlertDialog(
+            onDismissRequest = { confirmRemoval = false },
+            title = { Text("Remove BLINK LIFE files?") },
+            text = { Text("The downloaded game will be removed. Your BLINK account, chats and posts will remain unchanged.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRemoval = false
+                    BlinkLifeWebPack.remove(context)
+                    progress = BlinkLifeWebPack.snapshot(context)
+                }) { Text("Remove game") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRemoval = false }) { Text("Keep game") }
+            },
+        )
     }
 }

@@ -1,4 +1,4 @@
-> **PRODUCTION NOTE — 15 October 2026:** The `main` branch contains these Godot 3D **source files and automated engine smoke tests only**. Its Android APK and Windows desktop app are **not wired to launch this project**, and no Internet multiplayer server or game-login Edge Function is deployed by this change. The Android/Windows native host from Testlab PR #283 is deliberately excluded to avoid overwriting newer `main` features. This is an inactive source promotion, not a playable production release. Never interpret the Testlab packaging description below as a description of the `main` APK. Physical device and security checks are still required before live integration.
+> **DELIVERY NOTE — 16 October 2026:** `main` now contains the small signed **website APK** and its SHA-pinned optional WebGL game download, plus the separate Google Play **native on-demand** Godot dynamic feature. The two game runtimes are not identical: the website WebGL preview does **not** support native ENet LAN multiplayer. Physical-device WebGL and native on-demand verification remain outstanding, and no production public Internet multiplayer service is confirmed deployed. The 3D scene must never be treated as a fully tested production multiplayer game.
 
 # BLINK LIFE — Native 3D Game (Experimental)
 
@@ -21,7 +21,7 @@ All shapes are generated from original procedural geometry. No licensed photos, 
 
 Open the `game3d/` folder as a project in **Godot 4 (Compatibility renderer)** and run `scenes/main.tscn`.
 
-**Packaging status (experimental PR #283):** Android now has a pinned Godot 4.3 AAR host and bundles this project's real 3D scene into APK assets at build time. The Games entry opens a dedicated landscape Godot activity in an isolated process. The Windows desktop installer build stages the same project with a pinned Godot 4.3 Windows runtime and launches it from Games; unbundled development builds retain a clearly labelled projected-3D fallback. **This code is under Testlab validation only; there is no verified production or physical-device native 3D release yet.** Check PR #283 CI and real Redmi/Windows installs before promoting to main.
+**Packaging status:** The Play AAB delivers the pinned Godot 4.3 AAR host, engine and scene separately on request, starting a landscape activity in a separate process. The standalone website APK stays smaller and downloads a hash-verified Godot WebGL archive only when the player chooses BLINK LIFE; it runs in an internal WebView, not a separate APK. Windows stages a pinned native Godot runtime. **Do not assume the Android WebGL version supports native multiplayer or that any variant has passed physical-device QA.** See `ON_DEMAND_DELIVERY.md` and `OPTION_B_TESTLAB.md` for the delivery distinctions.
 
 **Validation:** `.github/workflows/blink-life-3d-check.yml` installs Godot 4.3, imports the scene and runs runtime smoke tests under an OpenGL-compatible virtual display. GitHub CI does not replace installation on Android phones and Windows PCs.
 
@@ -54,11 +54,11 @@ The native Godot world now adds `scripts/social_world.gd`. Its LAN preview is st
 
 **Before real online multiplayer:** Use a secure, server-authoritative Internet architecture with account-bound identities, interest management, validation, staging RLS, invites restricted by friendship and consent, accessible reporting/moderation, parental-age-appropriate protections, and server-owned inventories. Do not deploy this trust-based LAN session protocol as an Internet endpoint.
 
-## Launch and performance isolation (Testlab)
+## Launch and performance isolation
 
 - Normal BLINK usage (Feed, Reels, Market, Connect, Messages and other Games) **does not start the native Godot renderer or open its scene**.
-- Only a deliberate **Play BLINK LIFE 3D** tap uses `BlinkLifeLaunchGate` to start a separate Android process `:blink_life`; the UI launcher does not reference Godot classes. Windows also starts the native executable only on Play.
+- On Google Play, only a deliberate **Play BLINK LIFE 3D** tap starts the separate Android Godot process `:blink_life`; the UI launcher does not reference Godot classes. The standalone website APK instead launches the verified WebGL archive in a WebView only after Play. Windows starts its native executable on Play.
 - The secondary process bypasses the BLINK social app's Supabase, Firebase, notification-worker and other startup initialization. Exit is available inside the scene. A launch failure should leave the social app usable.
-- **Important tradeoff:** The Godot engine and scene are included in the downloaded APK/Windows installer, so they still increase **download size and installed storage** even for users who never play. Lazy *runtime* loading avoids paying the engine's normal memory/graphics/CPU cost before Play; it does not make APK downloads smaller. Optional on-demand content packs require a separately designed, verified delivery mechanism.
+- **Download size:** The website APK no longer includes the large Godot engine: the game ZIP downloads separately, with its SHA-256 pinned in the signed app. Play users receive the native engine as an on-demand feature module. Windows native installers still package their selected Godot runtime. Normal BLINK screens do not load the 3D renderer.
 - Godot first start may take longer as the native engine creates its graphics context and imports assets. Validate on Redmi-class physical hardware and verify memory returns to normal after exiting. The native Android/Windows integration is not production-verified.
 
