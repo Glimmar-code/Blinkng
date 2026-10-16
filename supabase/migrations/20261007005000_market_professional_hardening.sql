@@ -98,9 +98,19 @@ SET public = true,
     file_size_limit = EXCLUDED.file_size_limit,
     allowed_mime_types = EXCLUDED.allowed_mime_types;
 
+DROP POLICY IF EXISTS market_media_select_own ON storage.objects;
 DROP POLICY IF EXISTS market_media_insert_own ON storage.objects;
 DROP POLICY IF EXISTS market_media_update_own ON storage.objects;
 DROP POLICY IF EXISTS market_media_delete_own ON storage.objects;
+-- Allow signed-in sellers to inspect their own object rows so Storage DELETE
+-- can locate partially uploaded photos. Public image URLs remain unaffected.
+CREATE POLICY market_media_select_own ON storage.objects
+FOR SELECT TO authenticated
+USING (
+  bucket_id='market-media'
+  AND (storage.foldername(name))[1]='users'
+  AND (storage.foldername(name))[2]=(select auth.uid())::text
+);
 CREATE POLICY market_media_insert_own ON storage.objects
 FOR INSERT TO authenticated
 WITH CHECK (
