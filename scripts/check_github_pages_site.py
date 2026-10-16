@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web"
-SITE = "https://www.blink.com.ng"
+SITE = "https://blink.com.ng"
 
 
 def check(condition, message):
@@ -22,7 +22,7 @@ def read(name):
     return (WEB / name).read_text(encoding="utf-8")
 
 
-check(read("CNAME").strip() == "www.blink.com.ng", "CNAME must match the canonical custom domain")
+check(read("CNAME").strip() == "blink.com.ng", "CNAME must match the canonical custom domain")
 config = read("config.js")
 check(f'siteUrl: "{SITE}"' in config, "client siteUrl must use the canonical custom domain")
 check("glimmar-code.github.io/Blinkng" not in config, "temporary site URL still in client config")
@@ -53,7 +53,7 @@ sw = read("sw.js")
 check("blink-web-v15-blink-com-ng-primary" in sw, "web service worker version must be bumped for URL migration")
 
 workflow = (ROOT / ".github/workflows/deploy-web-preview.yml").read_text(encoding="utf-8")
-check("web/CNAME" in workflow and "www.blink.com.ng" in workflow, "deploy must assert the canonical custom domain")
+check("web/CNAME" in workflow and "blink.com.ng" in workflow, "deploy must assert the canonical custom domain")
 check("scripts/check_github_pages_site.py" in workflow, "deployment must validate Pages project setup")
 
 import json
