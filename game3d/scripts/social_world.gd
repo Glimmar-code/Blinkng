@@ -99,14 +99,28 @@ func _start_dedicated_server() -> void:
         return # Browser-hosted on-demand game must never run a dedicated UDP server.
     auth_secret = OS.get_environment("BLINK_LIFE_AUTH_SECRET")
     var port_str := OS.get_environment("BLINK_LIFE_SERVER_PORT")
-    var port := int(port_str) if port_str.is_valid_int() else PORT
+    var port := int(port_str) if port_str.is_valid_int() else 24568
+    var key_path := OS.get_environment("BLINK_LIFE_TLS_KEY_PATH")
+    var cert_path := OS.get_environment("BLINK_LIFE_TLS_CERT_PATH")
     if auth_secret.length() < 32 or port < 1024 or port > 65535:
         push_error("Dedicated server disabled: missing secret or invalid configured port.")
         return
-    var peer := ENetMultiplayerPeer.new()
-    var result := peer.create_server(port, MAX_PLAYERS)
+    # A dedicated Internet server NEVER accepts plaintext ENet connections.
+    # Both key and full-chain certificate must be mounted from external secrets.
+    if key_path.is_empty() or cert_path.is_empty():
+        push_error("Dedicated server requires TLS key and certificate paths.")
+        return
+    var private_key := CryptoKey.new()
+    var certificate := X509Certificate.new()
+    if private_key.load(key_path) != OK or certificate.load(cert_path) != OK:
+        push_error("Dedicated server TLS credentials failed to load.")
+        return
+    var peer := WebSocketMultiplayerPeer.new()
+    peer.handshake_timeout = 5.0
+    peer.max_queued_packets = 128
+    var result := peer.create_server(port, "*", TLSOptions.server(private_key, certificate))
     if result != OK:
-        push_error("Dedicated server unable to bind UDP port (code: %d)." % result)
+        push_error("Dedicated TLS WebSocket server could not bind TCP port (code: %d)." % result)
         return
     multiplayer.multiplayer_peer = peer
     secure_dedicated = true
@@ -118,7 +132,7 @@ func _start_dedicated_server() -> void:
     slot_counter = 0
     status_label.text = "Dedicated session online: authenticated tickets required."
     # No fake host appears in the roster; only authenticated human peers.
-    print("BLINK LIFE dedicated session listening on UDP port %d" % port)
+    print("BLINK LIFE dedicated encrypted session listening on TLS WebSocket TCP port %d" % port)
 
 
 func _make_button(title: String, callback: Callable, container: Node) -> Button:
@@ -215,7 +229,7 @@ func _build_ui() -> void:
     _make_button("DISCONNECT", _disconnect, connection_row)
 
     status_label = _make_label("Offline single-player · no game server connected.", rows)
-    var help := _make_label("Host shares their LOCAL Wi-Fi IP privately with a friend. No public matchmaking or account verification yet.", rows)
+    var help := _make_label("LAN is for a trusted network only. Dedicated Internet sessions require a verified encrypted server and BLINK ticket.", rows)
     help.add_theme_color_override("font_color", Color(0.80, 0.80, 0.84))
 
     var actions := HBoxContainer.new()
@@ -368,15 +382,18 @@ func _join_online() -> void:
     var port := int(online_port_input.text) if online_port_input.text.is_valid_int() else 0
     var ticket := ticket_input.text.strip_edges()
     if host.is_empty() or host.length() > 253 or host.contains("/") or host.contains(" ") or port < 1024 or port > 65535:
-        status_label.text = "The dedicated game host or UDP port is invalid."
+        status_label.text = "The dedicated game host or TLS port is invalid."
         return
     if ticket.length() < 110 or ticket.length() > 240 or ticket.split(".").size() != 4:
         status_label.text = "Request a new short-lived ticket while signed into BLINK."
         return
-    var peer := ENetMultiplayerPeer.new()
-    var code := peer.create_client(host, port)
+    # No ws:// fallback and no certificate-validation bypass: public sessions are TLS-only.
+    var peer := WebSocketMultiplayerPeer.new()
+    peer.handshake_timeout = 5.0
+    peer.max_queued_packets = 128
+    var code := peer.create_client("wss://%s:%d" % [host, port])
     if code != OK:
-        status_label.text = "Could not connect to the dedicated game server."
+        status_label.text = "Could not establish an encrypted game connection."
         return
     joining_secure = true
     online_ticket = ticket
@@ -852,7 +869,7 @@ func passenger_position() -> Vector3:
 
 func _action(kind: String, target: int) -> void:
     if not is_online:
-        status_label.text = "Host or join a trusted LAN session to use multiplayer features."
+        status_label.text = "Join a trusted LAN or authenticated encrypted dedicated world to use multiplayer."
         return
     if multiplayer.is_server():
         _server_action(1, kind, target)
