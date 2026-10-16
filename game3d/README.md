@@ -118,3 +118,15 @@ being applied. Press **Done** to return to the room or **F** to exit.
 Older solo saves load using the original design. This is a small offline
 demo; it is not a multiplayer property editor, free-form furniture
 placement, server account progress or redeemable currency.
+
+## Offline starter-room furniture controls
+
+Inside the optional private starter room, tap **INTERACT** for a scrollable
+decoration menu. Move the purchased desk plant to a safe one-metre floor
+grid, adjust by directional buttons, turn it in 90-degree steps, and
+**Undo/Redo** edits (up to 20 recent edits while the room is open).
+Blocked cells cannot be saved. Existing wall/floor palette selection and
+three plant display presets still work. Floor-grid position and orientation
+survive restart; the undo history intentionally resets between sessions.
+No virtual Game Cash is charged, and this offline feature does not alter
+BLINK Coins or any public online property.
