@@ -12,6 +12,7 @@ const WeatherCycle = preload("res://scripts/weather_cycle.gd")
 const WeatherVisuals = preload("res://scripts/weather_visuals.gd")
 const NpcWorld = preload("res://scripts/npc_world.gd")
 const PublicSpaces = preload("res://scripts/public_spaces.gd")
+const SoloProgress = preload("res://scripts/solo_progress.gd")
 
 const WALK_SPEED: float = 5.0
 const INTERACT_DISTANCE: float = 5.1
@@ -28,6 +29,7 @@ var orbit_angle: float = 40.0
 var game_cash: int = 500
 var completed_jobs: int = 0
 var owns_plant: bool = false
+var progress_store: RefCounted = SoloProgress.new()
 var places: Array[Dictionary] = []
 var active_quiz: Dictionary = {}
 var social: Node3D
@@ -57,6 +59,10 @@ var previous_fps_limit: int = 0
 func _ready() -> void:
     previous_fps_limit = Engine.max_fps
     preferences.read_settings()
+    var recovered: Dictionary = progress_store.call("load_state")
+    game_cash = int(recovered["cash"])
+    completed_jobs = int(recovered["jobs"])
+    owns_plant = bool(recovered["plant"])
     camera_distance = preferences.camera_distance
     day_cycle.enabled = preferences.day_cycle_enabled
     day_cycle.day_minutes = preferences.day_minutes
@@ -77,6 +83,8 @@ func _ready() -> void:
     _create_player()
     _create_camera()
     _create_hud()
+    if not str(progress_store.get("warning")).is_empty():
+        hud_status.text = str(progress_store.get("warning"))
     _apply_graphics()
     # Instantiate network UI only inside the already-launched Godot game.
     # Connections are opt-in: no socket opens until HOST LAN / JOIN LAN.
@@ -617,6 +625,9 @@ func _create_controls_panel(hud: Control) -> void:
     weather_choice.select(WeatherCycle.MODES.find(preferences.weather_mode))
     rows.add_child(weather_choice)
     weather_choice.item_selected.connect(_set_weather_mode)
+    var save_help := Label.new()
+    save_help.text = "Solo jobs and desk plant save locally after confirmation.\nThey never become BLINK Coins or shared online rewards."
+    rows.add_child(save_help)
     var graphics := Label.new()
     graphics.text = "Graphics (saved on this device)"
     rows.add_child(graphics)
@@ -835,9 +846,18 @@ func _confirm_plant_purchase() -> void:
         hud_status.text = "Purchase unavailable. Return to the market and check your balance."
         _close_quiz()
         return
+    if social != null and bool(social.get("is_online")):
+        hud_status.text = "Solo market purchases are disabled during a shared session."
+        _close_quiz()
+        return
+    var after_purchase: Dictionary = {"version": 1, "cash": game_cash - 250, "jobs": completed_jobs, "plant": true}
+    if not bool(progress_store.call("save_state", after_purchase)):
+        hud_status.text = "Purchase not completed: " + str(progress_store.get("warning"))
+        _close_quiz()
+        return
     game_cash -= 250
     owns_plant = true
-    hud_status.text = "Purchased a desk plant for 250 fictional GC."
+    hud_status.text = "Saved: purchased a desk plant for 250 fictional GC."
     _close_quiz()
 
 
@@ -880,10 +900,18 @@ func _submit_quiz(choice_id: int) -> void:
         hud_status.text = "Not quite — try another answer."
         return
 
+    if social != null and bool(social.get("is_online")):
+        hud_status.text = "Solo rewards are disabled in shared sessions; no online currency is awarded."
+        _close_quiz()
+        return
     var payout: int = int(active_quiz["payout"])
+    var after_job: Dictionary = {"version": 1, "cash": game_cash + payout, "jobs": completed_jobs + 1, "plant": owns_plant}
+    if not bool(progress_store.call("save_state", after_job)):
+        hud_status.text = "Job reward not saved: " + str(progress_store.get("warning"))
+        return
     game_cash += payout
     completed_jobs += 1
-    hud_status.text = "Job complete! Earned %d fictional Game Cash." % payout
+    hud_status.text = "Saved: earned %d fictional Game Cash." % payout
     _close_quiz()
 
 
