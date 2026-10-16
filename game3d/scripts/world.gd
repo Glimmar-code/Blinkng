@@ -10,6 +10,7 @@ const Preferences = preload("res://scripts/player_preferences.gd")
 const DayCycle = preload("res://scripts/day_cycle.gd")
 const WeatherCycle = preload("res://scripts/weather_cycle.gd")
 const WeatherVisuals = preload("res://scripts/weather_visuals.gd")
+const NpcWorld = preload("res://scripts/npc_world.gd")
 const PublicSpaces = preload("res://scripts/public_spaces.gd")
 
 const WALK_SPEED: float = 5.0
@@ -40,6 +41,7 @@ var day_cycle := DayCycle.new()
 var weather := WeatherCycle.new()
 var weather_visuals: Node3D
 var weather_label: Label
+var residents: Node3D
 var public_spaces: Node3D
 var seated_at: String = ""
 var seated_meshes: Array[Dictionary] = []
@@ -70,6 +72,8 @@ func _ready() -> void:
     public_spaces = PublicSpaces.new()
     add_child(public_spaces)
     public_spaces.call("configure", self)
+    residents = NpcWorld.new()
+    add_child(residents)
     _create_player()
     _create_camera()
     _create_hud()
@@ -92,6 +96,8 @@ func _process(delta: float) -> void:
         weather_visuals.call("update_weather", player.global_position, weather.condition(), delta if app_focused else 0.0)
     if weather_label != null:
         weather_label.text = "Fictional local weather: " + WeatherCycle.label_for(weather.condition())
+    if residents != null and player != null and app_focused:
+        residents.call("update_residents", player.global_position, float(day_cycle.sample()["hour"]), weather.condition(), preferences.battery_saver, delta)
     if player == null or follow_camera == null:
         return
 
@@ -766,7 +772,10 @@ func _interact() -> void:
         return
     var place: Dictionary = _nearest_place()
     if place.is_empty():
-        hud_status.text = "Move closer to a building before interacting."
+        var greeting: String = ""
+        if residents != null:
+            greeting = str(residents.call("nearby_greeting", player.global_position))
+        hud_status.text = greeting if not greeting.is_empty() else "Move closer to a building or NPC before interacting."
         return
 
     match str(place["name"]):
