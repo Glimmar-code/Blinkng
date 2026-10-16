@@ -182,7 +182,7 @@ fun PostCard(
     val profileTarget = resolvedAuthorUsername.ifBlank { post.author }
     val displayedViewsCount = rememberDelayedContentViewCount(post.id, post.viewsCount)
     val surfaceColor = if (xFeedStyle) {
-        if (isDark) Color(0xFF17191D) else Color.White
+        if (isDark) FeedCardSurface else Color.White
     } else if (isDark) FeedCardSurface else LightSurface
     val primaryText = if (isDark) FeedTextPrimary else LightTextPrimary
     val secondaryText = if (isDark) FeedTextSecondary else LightTextSecondary
