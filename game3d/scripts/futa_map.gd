@@ -81,8 +81,16 @@ func _ground_and_roads(parent: Node3D) -> void:
     var ground_length := CAMPUS_MAX_Z - CAMPUS_MIN_Z
     var center_x := (CAMPUS_MIN_X + CAMPUS_MAX_X) / 2.0
     var center_z := (CAMPUS_MIN_Z + CAMPUS_MAX_Z) / 2.0
-    _solid(parent, "FutaGameGround", Vector3(center_x, -0.31, center_z),
-        Vector3(ground_width, 0.62, ground_length), Color("#568351"))
+    # Avoid z-fighting with the existing starter block (-27.5..27.5, -21..21).
+    # Two touching physics slabs cover the west campus and south-east streets.
+    var west_edge := -27.5
+    _solid(parent, "FutaGameGround",
+        Vector3((CAMPUS_MIN_X + west_edge) / 2.0, -0.31, center_z),
+        Vector3(west_edge - CAMPUS_MIN_X, 0.62, ground_length), Color("#568351"))
+    var east_back := -21.0
+    _solid(parent, "FutaEasternGround",
+        Vector3((west_edge + CAMPUS_MAX_X) / 2.0, -0.31, (CAMPUS_MIN_Z + east_back) / 2.0),
+        Vector3(CAMPUS_MAX_X - west_edge, 0.62, east_back - CAMPUS_MIN_Z), Color("#568351"))
     var road_color := Color("#4c565e")
     for z in HORIZONTAL_ROADS:
         _visual(parent, Vector3(center_x, 0.015, z), Vector3(ground_width - 4, 0.03, 4.5), road_color)
