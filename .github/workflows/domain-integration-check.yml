@@ -39,7 +39,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Validate temporary Pages URL and evergreen APK downloads
+      - name: Validate GO54 domain and evergreen APK downloads
         shell: bash
         run: |
           set -euo pipefail
@@ -60,15 +60,17 @@ jobs:
           print("All BLINK website download buttons track future signed APK releases.")
           PY
           grep -F 'const url = SITE_URL + normalizedPath;' web/app.js >/dev/null
-          grep -F '<link rel="canonical" href="https://glimmar-code.github.io/Blinkng/" />' web/index.html >/dev/null
+          grep -F '<link rel="canonical" href="https://blink.com.ng/" />' web/index.html >/dev/null
           test -f web/privacy/index.html
-          grep -F '<link rel="canonical" href="https://glimmar-code.github.io/Blinkng/privacy/" />' web/privacy/index.html >/dev/null
-          grep -F 'https://glimmar-code.github.io/Blinkng/privacy/' web/sitemap.xml >/dev/null
+          test -f web/app-ads.txt
+          test "$(tr -d '\r\n' < web/CNAME)" = "blink.com.ng"
+          grep -F '<link rel="canonical" href="https://blink.com.ng/privacy/" />' web/privacy/index.html >/dev/null
+          grep -F 'https://blink.com.ng/privacy/' web/sitemap.xml >/dev/null
           grep -F 'android:autoVerify="true"' app/src/main/AndroidManifest.xml >/dev/null
           grep -F 'Uri.parse("https://www.blink.com.ng")' app/src/main/java/com/example/sharing/DeepLinkRouter.kt >/dev/null
 
-      # Native Android verification still targets the reserved www.blink.com.ng domain.
-      # The temporary Pages project host is a separate web-only URL until Android is updated.
+      # Android verification is published for the apex GO54 domain.
+      # Production APKs need a new release before existing installations pick up canonical links.
       - name: Validate existing Android signing association
         shell: bash
         run: |
