@@ -20,6 +20,12 @@ func is_busy(peer_id: int) -> bool:
     return participant_matches.has(peer_id)
 
 
+func are_opponents(first: int, second: int) -> bool:
+    if not is_busy(first) or not is_busy(second):
+        return false
+    return int(participant_matches[first]) == int(participant_matches[second])
+
+
 func start(first: int, second: int, now_ms: int) -> Dictionary:
     if first <= 0 or second <= 0 or first == second or is_busy(first) or is_busy(second):
         return {}
