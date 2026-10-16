@@ -70,7 +70,7 @@ CREATE OR REPLACE FUNCTION public.blink_set_social_email_preference(
  p_category text, p_enabled boolean
 ) RETURNS boolean
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = ''
-AS $
+AS $$
 DECLARE v_user uuid := auth.uid();
 BEGIN
  IF v_user IS NULL OR p_enabled IS NULL
@@ -91,7 +91,7 @@ BEGIN
  WHERE user_id = v_user;
  RETURN FOUND;
 END;
-$;
+$$;
 REVOKE ALL ON FUNCTION public.blink_set_social_email_preference(text,boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.blink_set_social_email_preference(text,boolean) TO authenticated;
 
