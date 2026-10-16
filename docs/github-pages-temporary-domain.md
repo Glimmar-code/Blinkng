@@ -1,30 +1,23 @@
-# BLINK temporary website: GitHub Pages
+# BLINK production domain cutover — 16 October 2026
 
-**Current public website:** https://glimmar-code.github.io/Blinkng/
+**Domain:** `blink.com.ng`, purchased through **GO54 (Whogohost)**.
+**Canonical HTTPS website:** https://blink.com.ng/
 
-Until the developer purchases and configures their own domain, treat GitHub Pages as the canonical **website**, not `www.blink.com.ng`.
+## Deployment and rollback
+- DNS at GO54 has the four GitHub Pages apex A addresses and a `www` CNAME to `glimmar-code.github.io`. Keep the registrar nameservers consistent with the GO54 DNS zone.
+- GitHub Pages (Settings > Pages) is configured for `blink.com.ng`, with successful DNS check and Enforce HTTPS enabled (user confirmed in screenshot).
+- The Pages GitHub Actions workflow uploads `web/`; `web/CNAME` must contain `blink.com.ng`. Do not delete this record, or switch back to an old project URL.
+- Every website Android APK button uses `releases/latest/download/Blink-latest.apk`. Check a real signed release exists and that its size and signature are expected before promoting or advertising it.
+- To roll back unverified code without discarding ownership, revert the domain cutover commit and restore all website metadata together; do not change GO54 DNS or GitHub Pages settings without an explicit rollback plan.
 
-## What this change does
+## External dashboard actions that code cannot perform
+1. **Supabase Auth > URL Configuration:** Add `https://blink.com.ng/` and the relevant narrow callback paths (`https://blink.com.ng/**` only if route changes require it). Keep existing Android `blink://reset-password`, Windows loopback callbacks and former web routes during migration. Do not change Supabase's Site URL unless all account flows have been tested.
+2. **Supabase Auth / Google:** Complete Google OAuth authorization for the existing Supabase callback and test login from `https://blink.com.ng/`. No new OAuth client secret belongs in web assets.
+3. **AdMob:** Set the official developer website for the app to `https://blink.com.ng` wherever the app's publishing details allow it. Verify `https://blink.com.ng/app-ads.txt` responds 200 with `google.com, pub-9152580730716304, DIRECT, f08c47fec0942fa0` and wait for the AdMob crawler status. Ads appearing or earning revenue cannot be inferred from the DNS change.
+4. **Android App Links:** Verify `https://blink.com.ng/.well-known/assetlinks.json` is served as JSON over HTTPS without redirect and matches the installed production signer and package `com.aistudio.blink.appvtwo`. A future signed Android release will be required for any new share-host defaults. Previous installed releases do not automatically change.
+5. **Google Search Console:** Verify `blink.com.ng` using the existing GO54 DNS, submit `https://blink.com.ng/sitemap.xml`, and check indexing. Google indexing is not instantaneous.
 
-- Removes `web/CNAME` (so the published Pages artifact does not request the unowned custom domain).
-- Points site metadata, privacy policy, sitemap, and web-client `siteUrl` to the Pages project URL, including the required **/Blinkng** path.
-- Preserves in-site SPA navigation and `web/404.html` routing under `/Blinkng`.
-- Increments the web service worker cache version to avoid stale URLs.
-- Keeps every Android APK download button pointed to the moving GitHub Releases URL:
-  `https://github.com/Glimmar-code/Blinkng/releases/latest/download/Blink-latest.apk`.
-- Changes the Pages workflow validation and adds a PR/CI test to prevent accidental custom-domain regressions.
-- Keeps the same Supabase project, published Android app, signing identity, and Android/Windows features.
-
-## External configuration checks
-
-1. **GitHub repository → Settings → Pages:** Under **Custom domain**, remove `www.blink.com.ng` if it is still present in GitHub Pages settings; the site source alone may not clear a repository-level setting. Leave the custom-domain box blank. The deploy uses GitHub Actions and uploads the `web/` directory. Once a deploy finishes, confirm the displayed live URL is `https://glimmar-code.github.io/Blinkng/`.
-2. **Supabase → Authentication → URL Configuration:** Allow `https://glimmar-code.github.io/Blinkng/` as a redirect URL for Google OAuth and email links. If password resets use the web, also allow `https://glimmar-code.github.io/Blinkng/settings/password` (or a narrow /Blinkng/* redirect pattern). Change the Site URL only if BLINK's Android and other auth clients do not rely on the existing value. Avoid broad redirect wildcards.
-3. **Verify with an actual browser:** Open the Pages URL, sign in, check password-reset and public profile deep links, and press Download Android App. The button should resolve to the latest **published, verified** GitHub APK. Production GitHub Releases remains the single source of signed builds.
-4. **Android App Links:** Existing app manifest/signature configuration targets `www.blink.com.ng`. Merely moving the website does **not** change Android App Links or make GitHub Pages links verifiable in the installed APK. A separate reviewed Android + assetlinks update is needed if verified app handoff from the GitHub Pages host is required before domain purchase.
-5. **AdMob app-ads.txt:** Publishing `app-ads.txt` beneath a GitHub Pages *project subpath* does not prove ownership of a publisher domain for AdMob. Leave publisher-domain verification pending until a real domain is bought and configured.
-
-## Validation and rollback
-
-`python3 scripts/check_github_pages_site.py` checks the project-path URL, CNAME absence, sharing metadata, sitemap, auth redirect base, 404 routes, service-worker version, and latest signed APK link. The Web Parity Testlab Gate runs this on PRs and deploy uses the same check.
-
-When a domain is later purchased, create a new Testlab PR to restore `web/CNAME`, `web/config.js` URL, canonical links, sitemap, Auth redirect allowlist, Android App Links and relevant checks **together**. Do not prematurely reroute visitors to a domain that is not configured.
+## Verification steps
+- In Testlab: run `python3 scripts/check_github_pages_site.py`, web syntax/parity checks, Android unit tests, and the domain integration CI workflow before merging.
+- After production deploy: verify HTTPS home, HTTPS www redirect, privacy route, app-ads.txt, robots.txt, sitemap.xml, assetlinks.json, authentication callbacks and Android download on a physical device.
+- Avoid touching DNS, signer keys, the Supabase backend or Google developer dashboard from unrelated feature changes.
