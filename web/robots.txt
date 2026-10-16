@@ -1,4 +1,7 @@
 User-agent: *
 Allow: /
 
+User-agent: Google-adstxt
+Disallow:
+
 Sitemap: https://www.blink.com.ng/sitemap.xml
