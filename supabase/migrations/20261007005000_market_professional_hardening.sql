@@ -36,7 +36,25 @@ ALTER TABLE public.market_items
   ADD COLUMN IF NOT EXISTS saves_count bigint NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
-DO $$
+-- Existing installations use legacy order states such as paid/shipped/delivered.
+-- Preserve those states while allowing the new server-authoritative workflow.
+-- Without this compatibility check, acceptance and completion always fail
+-- with a marketplace_orders_status_check violation.
+ALTER TABLE public.marketplace_orders
+  DROP CONSTRAINT IF EXISTS marketplace_orders_status_check;
+ALTER TABLE public.marketplace_orders
+  ADD CONSTRAINT marketplace_orders_status_check
+  CHECK (status IN (
+    'pending','paid','shipped','delivered','cancelled','refunded',
+    'accepted','declined','completed'
+  ));
+
+-- Prevent a missing seller contact from receiving the legacy sample phone
+-- number. Existing user-supplied values remain unchanged.
+ALTER TABLE public.market_items ALTER COLUMN seller_phone SET DEFAULT '';
+ALTER TABLE public.market_items ALTER COLUMN seller_whatsapp SET DEFAULT '';
+
+DO $
 BEGIN
   ALTER TABLE public.market_items
     ADD CONSTRAINT market_items_quantity_check CHECK (quantity BETWEEN 0 AND 9999);
