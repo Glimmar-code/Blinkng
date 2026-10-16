@@ -76,7 +76,7 @@ fun MarketScreen(
     onOpenBecomeSeller: () -> Unit,
     onOpenGetVerified: () -> Unit = {},
     onToggleSave: (MarketItem) -> Unit = {},
-    onSearch: (query: String, category: String?, sort: String, minPrice: Long?, maxPrice: Long?) -> Unit = { _, _, _, _, _ -> },
+    onSearch: (query: String, category: String?, sort: String, minPrice: Long?, maxPrice: Long?, savedOnly: Boolean, verifiedOnly: Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
     onRefresh: () -> Unit = {},
     onLoadMore: () -> Unit = {},
     isLoading: Boolean = false,
@@ -112,10 +112,18 @@ fun MarketScreen(
     val maxPrice = maxPriceText.toLongOrNull()
     val validPriceRange = com.blinkng.shared.MarketQueryPolicy.validPriceRange(minPrice, maxPrice)
     val keyboardController = LocalSoftwareKeyboardController.current
-    LaunchedEffect(searchQuery, selectedCategory, selectedSort, minPrice, maxPrice, validPriceRange) {
+    LaunchedEffect(searchQuery, selectedCategory, selectedSort, minPrice, maxPrice, validPriceRange, savedOnly, verifiedOnly) {
         if (validPriceRange) {
             delay(350)
-            onSearch(searchQuery.trim(), selectedCategory.takeUnless { it == "All Categories" }, selectedSort, minPrice, maxPrice)
+            onSearch(
+                searchQuery.trim(),
+                selectedCategory.takeUnless { it == "All Categories" },
+                selectedSort,
+                minPrice,
+                maxPrice,
+                savedOnly,
+                verifiedOnly
+            )
         }
     }
     val visibleItems = remember(items, savedOnly, verifiedOnly, minPrice, maxPrice) {
