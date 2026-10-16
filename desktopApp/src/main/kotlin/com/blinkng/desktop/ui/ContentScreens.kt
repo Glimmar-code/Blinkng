@@ -85,6 +85,7 @@ import com.blinkng.shared.BlinkDailyMission
 import com.blinkng.shared.BlinkEconomyDefaults
 import com.blinkng.shared.BlinkEconomyPolicy
 import com.blinkng.shared.BlinkRewardMilestone
+import com.blinkng.shared.notification.BlinkSocialEmailCategory
 import com.blinkng.shared.xpProgress
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -1074,6 +1075,7 @@ fun SettingsScreen(state: DesktopAppState) {
         item { SettingToggle("Read receipts", local.readReceipts) { local = local.copy(readReceipts = it); saved = false } }
         item { SettingToggle("Push notifications", local.pushNotificationsEnabled) { local = local.copy(pushNotificationsEnabled = it); saved = false } }
         item { SettingToggle("Email notifications", local.emailNotificationsEnabled) { local = local.copy(emailNotificationsEnabled = it); saved = false } }
+        item { DesktopSocialEmailPreferencesPanel(state) }
         item { SettingToggle("Autoplay videos", local.autoplayVideos) { local = local.copy(autoplayVideos = it); saved = false } }
         item { SettingToggle("Data saver", local.dataSaver) { local = local.copy(dataSaver = it); saved = false } }
         item { SettingToggle("Reduce motion", local.reduceMotion) { local = local.copy(reduceMotion = it); saved = false } }
@@ -1089,6 +1091,78 @@ fun SettingsScreen(state: DesktopAppState) {
         }
         item {
             OutlinedButton(onClick = state::signOut) { Text("Sign out") }
+        }
+    }
+}
+
+/** Windows parity with Android's opt-in social email controls. */
+@Composable
+private fun DesktopSocialEmailPreferencesPanel(state: DesktopAppState) {
+    var flags by remember(state.session?.userId) {
+        mutableStateOf<Map<BlinkSocialEmailCategory, Boolean>>(emptyMap())
+    }
+    var loaded by remember(state.session?.userId) { mutableStateOf(false) }
+    var pending by remember { mutableStateOf<BlinkSocialEmailCategory?>(null) }
+    var status by remember { mutableStateOf("Loading email reminders...") }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(state.session?.userId) {
+        runCatching { state.client.fetchSocialEmailPreferences() }.fold(
+            onSuccess = {
+                flags = it
+                loaded = true
+                status = "Social email summaries are optional and off by default."
+            },
+            onFailure = {
+                loaded = false
+                status = "Social email settings are not yet available."
+            },
+        )
+    }
+
+    Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 2.dp) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Social email reminders", fontWeight = FontWeight.Bold)
+            Text(
+                "Manage follower, message, post, reel and leaderboard summaries. " +
+                    "These do not control essential account-security emails.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+            )
+            BlinkSocialEmailCategory.entries.forEach { category ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(category.title, fontWeight = FontWeight.SemiBold)
+                        Text(category.description, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    }
+                    Switch(
+                        checked = flags[category] == true,
+                        enabled = loaded && pending == null,
+                        onCheckedChange = { checked ->
+                            pending = category
+                            status = "Saving..."
+                            scope.launch {
+                                runCatching {
+                                    state.client.updateSocialEmailPreference(category, checked)
+                                }.fold(
+                                    onSuccess = {
+                                        flags = flags + (category to checked)
+                                        status = "Email preference saved."
+                                    },
+                                    onFailure = {
+                                        status = "Could not save your preference. Please try again."
+                                    },
+                                )
+                                pending = null
+                            }
+                        }
+                    )
+                }
+            }
+            Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         }
     }
 }
