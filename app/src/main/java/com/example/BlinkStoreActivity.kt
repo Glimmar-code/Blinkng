@@ -1,5 +1,7 @@
 package com.example
 
+import com.blinkng.shared.BlinkDesignTokens
+
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -968,7 +970,7 @@ private fun StoreGroupDialog(
                                     equipped -> PremiumPill("APPLIED", Color(0xFF16A34A))
                                     active -> PremiumPill("LIVE", Color(0xFF16A34A))
                                     owned -> PremiumPill("OWNED", accent)
-                                    variant.vipOnly -> PremiumPill("VIP", Color(0xFFF59E0B))
+                                    variant.vipOnly -> PremiumPill("VIP", Color(BlinkDesignTokens.Semantic.Warning))
                                 }
                             }
                             Spacer(Modifier.height(9.dp))
@@ -1401,7 +1403,7 @@ private fun VipTab(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .background(Brush.linearGradient(listOf(Color(0xFF4C1D95), Color(0xFF7C3AED), Color(0xFFF59E0B))))
+                        .background(Brush.linearGradient(listOf(Color(0xFF4C1D95), Color(0xFF7C3AED), Color(BlinkDesignTokens.Semantic.Warning))))
                         .padding(19.dp)
                 ) {
                     Text("👑 Blink VIP — 10 Days", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
@@ -1890,10 +1892,10 @@ private fun premiumAccent(experience: BlinkStoreExperience): Color = when (exper
     BlinkExperienceVisibility.PUBLIC_IDENTITY -> Color(0xFF7C3AED)
     BlinkExperienceVisibility.PUBLIC_CONTENT -> Color(0xFFDB2777)
     BlinkExperienceVisibility.SHARED_SOCIAL -> Color(0xFF2563EB)
-    BlinkExperienceVisibility.DISTRIBUTION -> Color(0xFFF59E0B)
+    BlinkExperienceVisibility.DISTRIBUTION -> Color(BlinkDesignTokens.Semantic.Warning)
     BlinkExperienceVisibility.PRIVATE_UTILITY -> Color(0xFF64748B)
     BlinkExperienceVisibility.RECIPIENT_VISIBLE -> Color(0xFF0EA5E9)
-    BlinkExperienceVisibility.BUNDLE -> Color(0xFF8B5CF6)
+    BlinkExperienceVisibility.BUNDLE -> Color(BlinkDesignTokens.Brand.Primary)
 }
 
 private fun tabIcon(tab: BlinkStoreTab): ImageVector = when (tab) {
