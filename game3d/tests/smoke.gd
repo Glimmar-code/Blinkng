@@ -53,6 +53,7 @@ func _run() -> void:
         _assert_true(not position_keys.has(coordinate), "Campus building coordinates must be unique")
         position_keys[coordinate] = true
     _assert_true(world.get_node_or_null("FutaGameGround") is StaticBody3D, "Campus requires solid physical ground")
+    _assert_true(world.get_node_or_null("FutaEasternGround") is StaticBody3D, "Campus south-east roads need contiguous ground")
     _assert_true(world.get_node_or_null("CampusLibrary") is StaticBody3D, "Campus library must have 3D collision")
     var map_panel: Control = world.get("map_panel")
     _assert_true(map_panel != null and not map_panel.visible, "Campus map must start closed")
