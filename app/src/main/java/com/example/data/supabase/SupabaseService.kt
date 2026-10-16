@@ -2160,18 +2160,25 @@ fun getCurrentUserId(): String? {
         // a missing enrichment RPC must never turn a populated feed into "no posts".
         val profiles = mutableMapOf<String, JSONObject>()
         if (userIds.isNotEmpty()) {
-            val profilePath = "/rest/v1/profiles?select=id,username,full_name,avatar_url,is_verified,verification_badge" +
-                "&id=in.(${userIds.joinToString(",")})"
-            executeRequest(newRequestBuilder(profilePath, true).get().build()).use { response ->
+            // Profiles contain email, phone and other private data. Always use the
+            // server's redacted author projection, never raw rows of other users.
+            val authorBody = JSONObject().put("p_ids", JSONArray(userIds.toList()))
+            val authorRows = executeRequest(
+                newRequestBuilder("/rest/v1/rpc/get_public_profiles_by_ids", true)
+                    .post(authorBody.toString().toRequestBody(jsonMediaType))
+                    .build()
+            ).use { response ->
                 val raw = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    throw IllegalStateException(parseSupabaseError(raw, "Could not load post authors."))
+                    throw IllegalStateException(
+                        parseSupabaseError(raw, "Could not securely load post authors.")
+                    )
                 }
-                val array = JSONArray(raw.ifBlank { "[]" })
-                for (i in 0 until array.length()) {
-                    val profile = array.getJSONObject(i)
-                    profiles[profile.optString("id")] = profile
-                }
+                JSONArray(raw.ifBlank { "[]" })
+            }
+            for (i in 0 until authorRows.length()) {
+                val author = authorRows.getJSONObject(i)
+                profiles[author.optString("id")] = author
             }
         }
 
