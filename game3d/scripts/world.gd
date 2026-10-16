@@ -155,8 +155,16 @@ func _physics_process(delta: float) -> void:
     if direction.length_squared() > 0.001:
         player.rotation.y = lerp_angle(player.rotation.y, atan2(-direction.x, -direction.y), minf(delta * 12.0, 1.0))
     player.move_and_slide()
-    if player.is_on_floor() and absf(player.global_position.x) < 25.0 and absf(player.global_position.z) < 19.0:
+    if player.is_on_floor() and _is_play_area(player.global_position):
         last_safe_position = player.global_position
+
+
+func _is_play_area(position: Vector3) -> bool:
+    if absf(position.x) < 28.0 and absf(position.z) < 22.0:
+        return true
+    # Campus is west of the small original district. Keep private interiors
+    # on the positive-X side out of this public-world collision/recovery area.
+    return position.x >= -170.0 and position.x <= 0.0 and position.z >= -145.0 and position.z <= 0.0
 
 
 func _movement_blocked() -> bool:
@@ -166,6 +174,8 @@ func _movement_blocked() -> bool:
         return true
     if controls_panel != null and controls_panel.visible:
         return true
+    if map_panel != null and map_panel.visible:
+        return true
     if social != null and social.get("panel") != null and social.get("panel").visible:
         return true
     var focused: Control = get_viewport().gui_get_focus_owner()
@@ -174,7 +184,7 @@ func _movement_blocked() -> bool:
 
 func _recover_if_needed() -> void:
     var position: Vector3 = player.global_position
-    if not position.is_finite() or position.y < -3.0 or absf(position.x) > 28.0 or absf(position.z) > 22.0:
+    if not position.is_finite() or position.y < -3.0 or not _is_play_area(position):
         player.global_position = last_safe_position + Vector3.UP * 0.1
         player.velocity = Vector3.ZERO
         _stop_touch_axis()
@@ -194,6 +204,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
         if event.keycode == KEY_ESCAPE:
             if controls_panel != null and controls_panel.visible:
                 controls_panel.hide()
+            elif map_panel != null and map_panel.visible:
+                map_panel.hide()
             elif hud_modal != null and hud_modal.visible:
                 _close_quiz()
             elif social != null and social.get("panel").visible:
@@ -475,7 +487,14 @@ func _create_map_hud(hud: Control) -> void:
     map_panel.custom_minimum_size = Vector2(335, 0)
     map_panel.visible = false
     hud.add_child(map_panel)
-    map_button.pressed.connect(func(): map_panel.visible = not map_panel.visible)
+    map_button.pressed.connect(func():
+        if (controls_panel != null and controls_panel.visible) or (hud_modal != null and hud_modal.visible):
+            return
+        if social != null and social.get("panel") != null and social.get("panel").visible:
+            return
+        map_panel.visible = not map_panel.visible
+        _stop_touch_axis()
+    )
 
     var layout := VBoxContainer.new()
     map_panel.add_child(layout)
@@ -508,6 +527,7 @@ func _select_waypoint(landmark: Dictionary) -> void:
     selected_waypoint = landmark.duplicate()
     map_panel.visible = false
     hud_status.text = "Waypoint selected: %s. This is a fictional game location." % landmark["name"]
+    _stop_touch_axis()
 
 
 func _set_touch_axis(axis: Vector2) -> void:
@@ -563,7 +583,7 @@ func _create_controls_panel(hud: Control) -> void:
     hud.add_child(controls_panel)
     controls_panel.hide()
     toggle.pressed.connect(func():
-        if hud_modal.visible or (social != null and social.get("panel").visible):
+        if hud_modal.visible or (map_panel != null and map_panel.visible) or (social != null and social.get("panel").visible):
             return
         controls_panel.visible = not controls_panel.visible
         _stop_touch_axis())
