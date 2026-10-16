@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { resolve4 } from 'node:dns/promises';
 
 const APEX = 'blink.com.ng';
-const HOST = 'www.blink.com.ng';
+const HOST = 'blink.com.ng';
 const ORIGIN = `https://${HOST}`;
 const EXPECTED_ADS = 'google.com, pub-9152580730716304, DIRECT, f08c47fec0942fa0';
 
@@ -24,7 +24,7 @@ async function checkUrl(path, validate) {
 
 async function main() {
   // Existence checks; do not assume a specific CDN or nameserver provider.
-  for (const hostname of [APEX, HOST]) {
+  for (const hostname of [APEX]) {
     const addresses = await resolve4(hostname);
     assert.ok(addresses.length > 0, `${hostname} has no public IPv4 record`);
     console.log(`PASS DNS ${hostname}: ${addresses.join(', ')}`);
@@ -34,12 +34,12 @@ async function main() {
     signal: AbortSignal.timeout(12000),
   });
   assert.equal(apex.status, 200, 'Root domain must respond successfully');
-  assert.equal(new URL(apex.url).origin, ORIGIN, 'Apex must redirect to canonical www');
-  console.log('PASS HTTPS apex → www');
+  assert.equal(new URL(apex.url).origin, ORIGIN, 'Apex must remain on canonical host');
+  console.log('PASS HTTPS apex canonical');
 
   await checkUrl('/', body => {
     assert.ok(body.includes('Blink'), 'BLINK homepage missing');
-    assert.ok(body.includes('<link rel="canonical" href="https://www.blink.com.ng/"'), 'Canonical tag mismatch');
+    assert.ok(body.includes('<link rel="canonical" href="https://blink.com.ng/"'), 'Canonical tag mismatch');
   });
   await checkUrl('/privacy/', body => assert.ok(body.includes('Privacy Policy'), 'Privacy document missing'));
   await checkUrl('/app-ads.txt', (body, response) => {
@@ -55,13 +55,13 @@ async function main() {
     ), 'Android production signing fingerprint invalid');
   });
   await checkUrl('/config.js', body => {
-    assert.ok(body.includes('siteUrl: "https://www.blink.com.ng"'), 'Web Supabase OAuth redirect base incorrect');
+    assert.ok(body.includes('siteUrl: "https://blink.com.ng"'), 'Web Supabase OAuth redirect base incorrect');
   });
   await checkUrl('/sitemap.xml', body => {
-    assert.ok(body.includes('https://www.blink.com.ng/privacy/'), 'Sitemap references old host');
+    assert.ok(body.includes('https://blink.com.ng/privacy/'), 'Sitemap references old host');
   });
   await checkUrl('/robots.txt', body => {
-    assert.ok(body.includes('https://www.blink.com.ng/sitemap.xml'), 'Robots references old sitemap');
+    assert.ok(body.includes('https://blink.com.ng/sitemap.xml'), 'Robots references old sitemap');
   });
   await checkUrl('/manifest.webmanifest', body => {
     const data = JSON.parse(body);
