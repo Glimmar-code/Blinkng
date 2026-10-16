@@ -130,3 +130,15 @@ three plant display presets still work. Floor-grid position and orientation
 survive restart; the undo history intentionally resets between sessions.
 No virtual Game Cash is charged, and this offline feature does not alter
 BLINK Coins or any public online property.
+
+## Free chair and table placement (staging source)
+
+The offline starter room's **INTERACT** decoration menu now offers
+directional positioning and 90-degree rotation for the original chair
+and an additional small side table, alongside the purchased desk plant.
+All three are restricted to a low-poly 1-metre floor grid with blocking
+rules for walls, permanent furniture and the doorway. Room editing is
+free and reversible with Undo/Redo; new furniture positions save
+locally and survive restarting the game. These changes do not operate
+inside shared homes or award any BLINK Coins. This is not yet arbitrary
+bed placement, furniture physics or a full online property editor.
