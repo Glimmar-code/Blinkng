@@ -7,6 +7,8 @@ extends Node3D
 const PORT: int = 24567
 const MAX_PLAYERS: int = 8
 const SYNC_SECONDS: float = 0.12
+const REQUEST_COOLDOWN_MS: int = 10000
+const REQUEST_EXPIRY_MS: int = 60000
 const WORLD_LIMIT: float = 26.0
 const HOME_START_X: float = 53.0
 const HOME_Z: float = 32.0
@@ -20,9 +22,19 @@ var home_models: Dictionary = {}
 var vehicle_models: Dictionary = {}
 var visit_requests: Dictionary = {}
 var ride_requests: Dictionary = {}
+var duel_requests: Dictionary = {}
+var duel_game: RefCounted
+var duel_status: Label
+var duel_choices: HBoxContainer
+var active_duel_round: int = 0
+var pending_duel_from: int = -1
+var last_request_ms: Dictionary = {}
+var blocked_peers: Dictionary = {} # Server-only per-session blocking; never published to roster.
+var local_blocks: Dictionary = {} # This player's session UI state, not an account-wide block.
 var cars: Dictionary = {}
 var last_motion_ms: Dictionary = {}
 var last_chat_ms: Dictionary = {}
+var last_wave_ms: Dictionary = {}
 var muted_peers: Dictionary = {}
 var pending_visit_from: int = -1
 var pending_ride_from: int = -1
@@ -38,6 +50,7 @@ var status_label: Label
 var chat_log: Label
 var show_location_button: Button
 var car_button: Button
+var invite_button: Button
 var social_layer: CanvasLayer
 var chat_lines: Array[String] = []
 var secure_dedicated: bool = false
@@ -58,6 +71,7 @@ var account_status: Label
 func configure(game_world: Node3D, avatar: CharacterBody3D) -> void:
     world = game_world
     local_player = avatar
+    duel_game = load("res://scripts/duel_rounds.gd").new()
     multiplayer.connected_to_server.connect(_on_connected_to_server)
     multiplayer.connection_failed.connect(_on_connection_failed)
     multiplayer.server_disconnected.connect(_on_server_lost)
@@ -213,6 +227,7 @@ func _build_ui() -> void:
     var property_actions := HBoxContainer.new()
     rows.add_child(property_actions)
     _make_button("BUY HOME (400 GC)", func(): _action("buy_home", 0), property_actions)
+    _make_button("BUY CAR (300 GC)", func(): _action("buy_car", 0), property_actions)
     _make_button("FURNITURE (150 GC)", func(): _action("furnish", 0), property_actions)
     _make_button("DEPOT SHIFT (+80 GC)", func(): _action("work", 0), property_actions)
     account_status = _make_label("Persistent property needs a signed-in dedicated world.", rows)
@@ -220,15 +235,23 @@ func _build_ui() -> void:
 
     var privacy := HBoxContainer.new()
     rows.add_child(privacy)
+    invite_button = _make_button("INVITES: OFF", func(): _action("invites", 0), privacy)
     show_location_button = _make_button("VIRTUAL MAP: OFF", func(): _action("location", 0), privacy)
     _make_label("Opt-in virtual coordinates only. This does not access phone location.", privacy)
 
     var approvals := HBoxContainer.new()
     rows.add_child(approvals)
     _make_button("APPROVE HOME VISIT", _approve_visit, approvals)
+    _make_button("DECLINE VISIT", _decline_visit, approvals)
     _make_button("APPROVE PASSENGER", _approve_ride, approvals)
+    _make_button("DECLINE RIDE", _decline_ride, approvals)
+    _make_button("ACCEPT 1V1", _approve_duel, rows)
+    _make_button("DECLINE 1V1", _decline_duel, rows)
+    duel_status = _make_label("1v1 campus quiz: friendly, no wagers or coin rewards.", rows)
+    duel_choices = HBoxContainer.new()
+    rows.add_child(duel_choices)
 
-    _make_label("PLAYERS (tap VISIT or RIDE to request permission)", rows)
+    _make_label("PLAYERS (invites are OFF by default; session blocks are not permanent)", rows)
     player_rows = VBoxContainer.new()
     rows.add_child(player_rows)
 
@@ -282,6 +305,11 @@ func _host_lan() -> void:
     cars.clear()
     visit_requests.clear()
     ride_requests.clear()
+    duel_requests.clear()
+    duel_game = load("res://scripts/duel_rounds.gd").new()
+    last_request_ms.clear()
+    blocked_peers.clear()
+    local_blocks.clear()
     status_label.text = "Hosting on port %d. Friends must be on the same trusted Wi-Fi." % PORT
     _reconcile_people()
     _refresh_player_rows()
@@ -380,13 +408,33 @@ func _on_peer_left(peer_id: int) -> void:
     if not people.has(peer_id):
         return
     var departed_slot := int(people[peer_id]["slot"])
+    var duel_end: Dictionary = duel_game.call("leave_match", peer_id)
     people.erase(peer_id)
+    if not duel_end.is_empty():
+        _emit_duel_event(duel_end)
     peer_auth_ids.erase(peer_id)
     last_work_ms.erase(peer_id)
     last_motion_ms.erase(peer_id)
     last_chat_ms.erase(peer_id)
+    last_wave_ms.erase(peer_id)
+    last_request_ms.erase(peer_id)
+    blocked_peers.erase(peer_id)
+    for blocker in blocked_peers.keys():
+        blocked_peers[blocker].erase(peer_id)
     visit_requests.erase(peer_id)
     ride_requests.erase(peer_id)
+    duel_requests.erase(peer_id)
+    local_blocks.erase(peer_id)
+    muted_peers.erase(peer_id)
+    for target in duel_requests.keys():
+        if int(duel_requests[target].get("source", -1)) == peer_id:
+            duel_requests.erase(target)
+    for target in visit_requests.keys():
+        if int(visit_requests[target].get("source", -1)) == peer_id:
+            visit_requests.erase(target)
+    for target in ride_requests.keys():
+        if int(ride_requests[target].get("source", -1)) == peer_id:
+            ride_requests.erase(target)
     cars.erase(peer_id)
     for driver in cars.keys():
         if int(cars[driver]) == peer_id:
@@ -418,8 +466,21 @@ func _disconnect() -> void:
     cars.clear()
     visit_requests.clear()
     ride_requests.clear()
+    duel_requests.clear()
+    duel_game = load("res://scripts/duel_rounds.gd").new()
+    pending_duel_from = -1
+    active_duel_round = 0
+    if duel_choices != null:
+        for child in duel_choices.get_children():
+            child.queue_free()
+    if duel_status != null:
+        duel_status.text = "1v1 campus quiz: friendly, no wagers or coin rewards."
     last_motion_ms.clear()
     last_chat_ms.clear()
+    last_wave_ms.clear()
+    last_request_ms.clear()
+    blocked_peers.clear()
+    local_blocks.clear()
     pending_visit_from = -1
     pending_ride_from = -1
     for entry in remote_avatars.values():
@@ -447,9 +508,11 @@ func _make_profile(display_name: String, room_slot: int) -> Dictionary:
         "slot": room_slot,
         "visiting": -1,
         "map_opt_in": false,
+        "allow_requests": false,
         "car_enabled": false,
         "outfit": 0,
         "home_owned": false,
+        "vehicle_owned": false,
         "furniture": 0
     }
 
@@ -477,6 +540,7 @@ func _register(display_name: String, signed_ticket: String = "") -> void:
     if secure_dedicated and persistent_store != null:
         var saved: Dictionary = persistent_store.call("get_profile", peer_auth_ids[id])
         member["home_owned"] = bool(saved.get("house_owned", false))
+        member["vehicle_owned"] = bool(saved.get("vehicle_owned", false))
         member["furniture"] = int(saved.get("furniture", 0))
     else:
         member["home_owned"] = true # LAN demonstration has free temporary homes.
@@ -504,6 +568,12 @@ func _receive_roster(roster: Dictionary, shared_cars: Dictionary) -> void:
 func _apply_roster(roster: Dictionary, shared_cars: Dictionary) -> void:
     people = roster.duplicate(true)
     cars = shared_cars.duplicate(true)
+    for peer_id in local_blocks.keys():
+        if not people.has(peer_id):
+            local_blocks.erase(peer_id)
+    for peer_id in muted_peers.keys():
+        if not people.has(peer_id):
+            muted_peers.erase(peer_id)
     _reconcile_people()
     _refresh_player_rows()
     var my_id := multiplayer.get_unique_id()
@@ -516,6 +586,7 @@ func _apply_roster(roster: Dictionary, shared_cars: Dictionary) -> void:
         is_connected_to_authoritative_server = true
         var my_profile: Dictionary = people[my_id]
         show_location_button.text = "VIRTUAL MAP: ON" if bool(my_profile.get("map_opt_in", false)) else "VIRTUAL MAP: OFF"
+        invite_button.text = "INVITES: ON" if bool(my_profile.get("allow_requests", false)) else "INVITES: OFF"
         car_button.text = "CAR READY" if bool(my_profile.get("car_enabled", false)) else "GET CAR"
 
 
@@ -659,6 +730,10 @@ func _create_vehicle() -> Node3D:
 func _process(delta: float) -> void:
     if not is_online or local_player == null:
         return
+    if multiplayer.is_server() and duel_game != null:
+        var expired: Array[Dictionary] = duel_game.call("tick", Time.get_ticks_msec())
+        for event in expired:
+            _emit_duel_event(event)
     var my_id := multiplayer.get_unique_id()
     # Prevent stepping into an unapproved player's home even locally.
     if people.has(my_id) and not _allowed_position(my_id, local_player.global_position):
@@ -787,9 +862,38 @@ func _action(kind: String, target: int) -> void:
 
 @rpc("any_peer", "reliable")
 func _request_action(kind: String, target: int) -> void:
-    if not multiplayer.is_server():
+    if not multiplayer.is_server() or kind.length() > 32:
         return
     _server_action(multiplayer.get_remote_sender_id(), kind, target)
+
+
+func _is_blocked(first: int, second: int) -> bool:
+    return bool(blocked_peers.get(first, {}).get(second, false)) or \
+        bool(blocked_peers.get(second, {}).get(first, false))
+
+
+func _can_request(sender: int, target: int) -> bool:
+    if sender == target or not people.has(sender) or not people.has(target):
+        return false
+    if _is_blocked(sender, target):
+        return false
+    return bool(people[target].get("allow_requests", false))
+
+
+func _fresh_request(requests: Dictionary, owner: int, sender: int) -> bool:
+    var invite: Dictionary = requests.get(owner, {})
+    var issued: int = int(invite.get("issued", -1))
+    return int(invite.get("source", -1)) == sender and issued >= 0 and \
+        Time.get_ticks_msec() - issued <= REQUEST_EXPIRY_MS and \
+        _can_request(sender, owner)
+
+
+func _request_rate_ok(sender: int) -> bool:
+    var now := Time.get_ticks_msec()
+    if last_request_ms.has(sender) and now - int(last_request_ms[sender]) < REQUEST_COOLDOWN_MS:
+        return false
+    last_request_ms[sender] = now
+    return true
 
 
 func _server_action(sender: int, kind: String, target: int) -> void:
@@ -797,10 +901,95 @@ func _server_action(sender: int, kind: String, target: int) -> void:
         return
     var profile: Dictionary = people[sender]
     match kind:
+        "duel_invite":
+            if not _can_request(sender, target):
+                _notify(sender, "This player is not accepting 1v1 invitations.")
+                return
+            if bool(duel_game.call("is_busy", sender)) or bool(duel_game.call("is_busy", target)):
+                _notify(sender, "One of these players is already in a quiz match.")
+                return
+            if not _request_rate_ok(sender):
+                _notify(sender, "Please slow down before inviting another player.")
+                return
+            duel_requests[target] = {"source": sender, "issued": Time.get_ticks_msec()}
+            _deliver_request(target, sender, "duel")
+            return
+        "duel_accept":
+            if not _fresh_request(duel_requests, sender, target):
+                duel_requests.erase(sender)
+                return
+            duel_requests.erase(sender)
+            var first_event: Dictionary = duel_game.call("start", sender, target, Time.get_ticks_msec())
+            if first_event.is_empty():
+                _notify(sender, "This quiz invitation is no longer available.")
+                return
+            _emit_duel_event(first_event)
+            return
+        "duel_decline":
+            if _fresh_request(duel_requests, sender, target):
+                duel_requests.erase(sender)
+                _notify(target, "Your friendly 1v1 quiz invite was declined.")
+            return
+        "duel_answer":
+            var sent_round: int = target / 10
+            var selected_option: int = target % 10
+            var answer_event: Dictionary = duel_game.call("answer", sender, sent_round, selected_option, Time.get_ticks_msec())
+            if answer_event.is_empty():
+                return
+            if str(answer_event.get("type", "")) == "waiting":
+                _notify(sender, "Answer recorded. Waiting for the other player.")
+            else:
+                _emit_duel_event(answer_event)
+            return
+        "invites":
+            profile["allow_requests"] = not bool(profile.get("allow_requests", false))
+            people[sender] = profile
+            if not bool(profile["allow_requests"]):
+                visit_requests.erase(sender)
+                ride_requests.erase(sender)
+        "block":
+            if not people.has(target) or target == sender:
+                return
+            var blocked: Dictionary = blocked_peers.get(sender, {})
+            if blocked.has(target):
+                blocked.erase(target)
+            else:
+                blocked[target] = true
+            blocked_peers[sender] = blocked
+            if _is_blocked(sender, target):
+                if bool(duel_game.call("are_opponents", sender, target)):
+                    var cancelled_duel: Dictionary = duel_game.call("leave_match", sender)
+                    # A block is not a network disconnect: clear the quiz UI for
+                    # both players, including the person who pressed BLOCK.
+                    cancelled_duel["missing"] = -1
+                    _emit_duel_event(cancelled_duel)
+                for pending in [visit_requests, ride_requests]:
+                    for owner in pending.keys():
+                        if (owner == sender and int(pending[owner].get("source", -1)) == target) or \
+                            (owner == target and int(pending[owner].get("source", -1)) == sender):
+                            pending.erase(owner)
+                if cars.has(sender) and int(cars[sender]) == target:
+                    cars[sender] = -1
+                if cars.has(target) and int(cars[target]) == sender:
+                    cars[target] = -1
+                # Blocking immediately revokes any existing permission to enter a home.
+                if people.has(sender) and int(people[sender].get("visiting", -1)) == int(people[target]["slot"]):
+                    var sender_profile: Dictionary = people[sender]
+                    sender_profile["visiting"] = -1
+                    people[sender] = sender_profile
+                    _teleport(sender, -1, false)
+                if people.has(target) and int(people[target].get("visiting", -1)) == int(people[sender]["slot"]):
+                    var target_profile: Dictionary = people[target]
+                    target_profile["visiting"] = -1
+                    people[target] = target_profile
+                    _teleport(target, -1, false)
         "location":
             profile["map_opt_in"] = not bool(profile["map_opt_in"])
             people[sender] = profile
         "car":
+            if secure_dedicated and not bool(profile.get("vehicle_owned", false)):
+                _notify(sender, "Purchase a virtual vehicle for 300 fictional GC first.")
+                return
             profile["car_enabled"] = true
             people[sender] = profile
             if not cars.has(sender):
@@ -819,16 +1008,26 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             people[sender] = profile
             _teleport(sender, -1, false)
         "visit":
-            if target == sender or not people.has(target):
+            if not _can_request(sender, target):
+                _notify(sender, "Home invitations are disabled or this player is unavailable.")
+                return
+            if not _request_rate_ok(sender):
+                _notify(sender, "Please slow down before sending another invitation.")
                 return
             if secure_dedicated and not bool(people[target].get("home_owned", false)):
                 _notify(sender, "This player has not bought a virtual home yet.")
                 return
-            visit_requests[target] = sender
+            visit_requests[target] = {"source": sender, "issued": Time.get_ticks_msec()}
             _deliver_request(target, sender, "home")
             return
+        "decline_visit":
+            if _fresh_request(visit_requests, sender, target):
+                visit_requests.erase(sender)
+                _notify(target, "Your home visit request was declined.")
+            return
         "approve_visit":
-            if int(visit_requests.get(sender, -1)) != target or not people.has(target):
+            if not _fresh_request(visit_requests, sender, target):
+                visit_requests.erase(sender)
                 return
             visit_requests.erase(sender)
             var guest: Dictionary = people[target]
@@ -836,20 +1035,35 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             people[target] = guest
             _teleport(target, int(profile["slot"]), true)
         "ride":
-            if target == sender or not people.has(target) or not cars.has(target):
+            if not _can_request(sender, target) or not cars.has(target):
+                _notify(sender, "Passenger invitations are disabled or this driver is unavailable.")
+                return
+            if not _request_rate_ok(sender):
+                _notify(sender, "Please slow down before requesting another ride.")
                 return
             var source_pos: Vector3 = people[sender]["pos"]
             var driver_pos: Vector3 = people[target]["pos"]
+            if cars.values().has(sender):
+                _notify(sender, "Leave your current ride before requesting another.")
+                return
             if source_pos.distance_to(driver_pos) > 7.0:
                 _notify(sender, "Move near the vehicle before requesting a ride.")
                 return
-            ride_requests[target] = sender
+            ride_requests[target] = {"source": sender, "issued": Time.get_ticks_msec()}
             _deliver_request(target, sender, "ride")
             return
+        "decline_ride":
+            if _fresh_request(ride_requests, sender, target):
+                ride_requests.erase(sender)
+                _notify(target, "Your passenger request was declined.")
+            return
         "approve_ride":
-            if int(ride_requests.get(sender, -1)) != target or not people.has(target) or not cars.has(sender):
+            if not _fresh_request(ride_requests, sender, target) or not cars.has(sender):
+                ride_requests.erase(sender)
                 return
-            if cars[sender] != -1:
+            if cars[sender] != -1 or cars.values().has(target):
+                _notify(sender, "That passenger is already in another car.")
+                ride_requests.erase(sender)
                 return
             var source_pos: Vector3 = people[sender]["pos"]
             var rider_pos: Vector3 = people[target]["pos"]
@@ -859,12 +1073,45 @@ func _server_action(sender: int, kind: String, target: int) -> void:
             cars[sender] = target
             ride_requests.erase(sender)
         "wave":
-            _wave.rpc(sender)
-            _append_chat(str(profile["name"]) + " waved hello!")
+            var now := Time.get_ticks_msec()
+            if last_wave_ms.has(sender) and now - int(last_wave_ms[sender]) < 2500:
+                return
+            last_wave_ms[sender] = now
+            for recipient in people.keys():
+                if _is_blocked(recipient, sender):
+                    continue
+                if recipient == 1:
+                    if not muted_peers.has(sender):
+                        _append_chat(str(profile["name"]) + " waved hello!")
+                else:
+                    _wave.rpc_id(recipient, sender)
             return
         "outfit":
             profile["outfit"] = posmod(int(profile["outfit"]) + 1, 4)
             people[sender] = profile
+        "buy_car":
+            if not secure_dedicated or persistent_store == null:
+                _notify(sender, "Vehicle ownership needs an authenticated dedicated session.")
+                return
+            var account: String = str(peer_auth_ids.get(sender, ""))
+            var saved: Dictionary = persistent_store.call("get_profile", account)
+            if saved.is_empty():
+                return
+            if bool(saved.get("vehicle_owned", false)):
+                _notify(sender, "You already own a virtual car. Tap GET CAR to use it.")
+                return
+            if int(saved.get("cash", 0)) < 300:
+                _notify(sender, "You need 300 fictional GC to buy a virtual car.")
+                return
+            saved["cash"] = int(saved["cash"]) - 300
+            saved["vehicle_owned"] = true
+            if not bool(persistent_store.call("update_profile", account, saved)):
+                _notify(sender, "Vehicle purchase could not be saved.")
+                return
+            profile["vehicle_owned"] = true
+            people[sender] = profile
+            _send_private_wallet(sender)
+            _notify(sender, "Virtual vehicle purchased! Tap GET CAR to use it.")
         "buy_home":
             if not secure_dedicated or persistent_store == null:
                 _notify(sender, "Permanent homes are only available in account-backed dedicated sessions.")
@@ -974,6 +1221,9 @@ func _incoming_request(kind: String, source: int) -> void:
     elif kind == "ride":
         pending_ride_from = source
         status_label.text = "%s wants a passenger seat. Approve or ignore." % name
+    elif kind == "duel":
+        pending_duel_from = source
+        status_label.text = "%s invited you to a 3-question 1v1 quiz. Accept or decline." % name
     panel.visible = true
 
 
@@ -993,6 +1243,104 @@ func _approve_ride() -> void:
     pending_ride_from = -1
 
 
+func _decline_visit() -> void:
+    if pending_visit_from == -1:
+        status_label.text = "No home visit requests pending."
+        return
+    _action("decline_visit", pending_visit_from)
+    pending_visit_from = -1
+    status_label.text = "Home visit declined."
+
+
+func _decline_ride() -> void:
+    if pending_ride_from == -1:
+        status_label.text = "No passenger requests pending."
+        return
+    _action("decline_ride", pending_ride_from)
+    pending_ride_from = -1
+    status_label.text = "Passenger request declined."
+
+
+func _approve_duel() -> void:
+    if pending_duel_from == -1:
+        status_label.text = "No friendly quiz invitation pending."
+        return
+    _action("duel_accept", pending_duel_from)
+    pending_duel_from = -1
+
+
+func _decline_duel() -> void:
+    if pending_duel_from == -1:
+        status_label.text = "No friendly quiz invitation pending."
+        return
+    _action("duel_decline", pending_duel_from)
+    pending_duel_from = -1
+    status_label.text = "1v1 invitation declined."
+
+
+func _emit_duel_event(event: Dictionary) -> void:
+    if event.is_empty() or not multiplayer.is_server():
+        return
+    var first: int = int(event.get("first", -1))
+    var second: int = int(event.get("second", -1))
+    var kind: String = str(event.get("type", ""))
+    for recipient in [first, second]:
+        if not people.has(recipient):
+            continue
+        if kind == "question":
+            if recipient == 1:
+                _show_duel_question(int(event["round"]), int(event["total"]), str(event["prompt"]), event["options"])
+            else:
+                _show_duel_question.rpc_id(recipient, int(event["round"]), int(event["total"]), str(event["prompt"]), event["options"])
+        elif kind == "finished":
+            var your_score: int = int(event["first_score"]) if recipient == first else int(event["second_score"])
+            var their_score: int = int(event["second_score"]) if recipient == first else int(event["first_score"])
+            if recipient == 1:
+                _show_duel_result(your_score, their_score, int(event["total"]), false)
+            else:
+                _show_duel_result.rpc_id(recipient, your_score, their_score, int(event["total"]), false)
+        elif kind == "cancelled" and recipient != int(event.get("missing", -1)):
+            if recipient == 1:
+                _show_duel_result(0, 0, 0, true)
+            else:
+                _show_duel_result.rpc_id(recipient, 0, 0, 0, true)
+
+
+@rpc("authority", "reliable")
+func _show_duel_question(round_number: int, total: int, prompt: String, options: Array) -> void:
+    if not multiplayer.is_server() and multiplayer.get_remote_sender_id() != 1:
+        return
+    panel.visible = true
+    active_duel_round = round_number
+    duel_status.text = "Friendly 1v1 · Question %d/%d: %s" % [round_number, total, prompt]
+    for child in duel_choices.get_children():
+        child.queue_free()
+    for index in range(options.size()):
+        _make_button(str(options[index]), _submit_duel_choice.bind(index), duel_choices)
+
+
+func _submit_duel_choice(choice: int) -> void:
+    for child in duel_choices.get_children():
+        if child is Button:
+            child.disabled = true
+    duel_status.text = "Answer submitted · waiting for other player or round timer."
+    _action("duel_answer", active_duel_round * 10 + choice)
+
+
+@rpc("authority", "reliable")
+func _show_duel_result(your_score: int, opponent_score: int, total: int, cancelled: bool) -> void:
+    if not multiplayer.is_server() and multiplayer.get_remote_sender_id() != 1:
+        return
+    for child in duel_choices.get_children():
+        child.queue_free()
+    active_duel_round = 0
+    if cancelled:
+        duel_status.text = "1v1 quiz cancelled because a player disconnected."
+    else:
+        var outcome: String = "Tie" if your_score == opponent_score else ("Win" if your_score > opponent_score else "Loss")
+        duel_status.text = "1v1 finished · %s · You %d/%d vs opponent %d/%d · no GC or BLINK Coin rewards." % [outcome, your_score, total, opponent_score, total]
+
+
 func _send_private_wallet(peer_id: int) -> void:
     if not secure_dedicated or persistent_store == null:
         return
@@ -1001,20 +1349,21 @@ func _send_private_wallet(peer_id: int) -> void:
     if saved.is_empty():
         return
     if peer_id == 1:
-        _receive_private_wallet(int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"]))
+        _receive_private_wallet(int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"]), bool(saved.get("vehicle_owned", false)))
     else:
         _receive_private_wallet.rpc_id(
-            peer_id, int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"])
+            peer_id, int(saved["cash"]), bool(saved["house_owned"]), int(saved["furniture"]), bool(saved.get("vehicle_owned", false))
         )
 
 
 @rpc("authority", "reliable")
-func _receive_private_wallet(cash: int, owns_home: bool, furnishing: int) -> void:
+func _receive_private_wallet(cash: int, owns_home: bool, furnishing: int, owns_vehicle: bool) -> void:
     if multiplayer.get_remote_sender_id() != 1:
         return
     if account_status != null:
-        account_status.text = "My private Game Cash: %d GC · Home: %s · Furniture: %d" % [
-            cash, "owned" if owns_home else "not owned", furnishing
+        account_status.text = "My fictional GC: %d · Home: %s · Furniture: %d · Car: %s" % [
+            cash, "owned" if owns_home else "not owned", furnishing,
+            "owned" if owns_vehicle else "not owned"
         ]
 
 
@@ -1062,6 +1411,9 @@ func _send_chat(message: String) -> void:
 func _server_chat(sender: int, message: String) -> void:
     if not people.has(sender):
         return
+    if secure_dedicated:
+        _notify(sender, "Public session chat is disabled until moderation is enabled.")
+        return
     var now := Time.get_ticks_msec()
     if last_chat_ms.has(sender) and now - int(last_chat_ms[sender]) < 1500:
         _notify(sender, "Please slow down before sending another message.")
@@ -1070,8 +1422,14 @@ func _server_chat(sender: int, message: String) -> void:
     if safe.is_empty():
         return
     last_chat_ms[sender] = now
-    _append_chat(str(people[sender]["name"]) + ": " + safe)
-    _receive_chat.rpc(sender, safe)
+    for recipient in people.keys():
+        if _is_blocked(recipient, sender):
+            continue
+        if recipient == 1:
+            if not muted_peers.has(sender):
+                _append_chat(str(people[sender]["name"]) + ": " + safe)
+        else:
+            _receive_chat.rpc_id(recipient, sender, safe)
 
 
 @rpc("authority", "reliable")
@@ -1094,7 +1452,7 @@ func _refresh_player_rows() -> void:
     var my_id := multiplayer.get_unique_id()
     for peer_id in people.keys():
         var state: Dictionary = people[peer_id]
-        var row := HBoxContainer.new()
+        var row := VBoxContainer.new()
         player_rows.add_child(row)
         var display := str(state["name"])
         if peer_id == my_id:
@@ -1104,12 +1462,28 @@ func _refresh_player_rows() -> void:
             display += " · virtual (%.0f, %.0f)" % [where.x, where.z]
         _make_label(display, row)
         if peer_id != my_id:
-            _make_button("VISIT", func(): _action("visit", peer_id), row)
-            _make_button("RIDE", func(): _action("ride", peer_id), row)
+            var actions := HBoxContainer.new()
+            row.add_child(actions)
+            _make_button("VISIT", func(): _action("visit", peer_id), actions)
+            _make_button("RIDE", func(): _action("ride", peer_id), actions)
+            _make_button("1V1", func(): _action("duel_invite", peer_id), actions)
+            var blocked_here: bool = local_blocks.has(peer_id)
+            _make_button("UNBLOCK" if blocked_here else "BLOCK", func(): _toggle_block(peer_id), actions)
             var muted := muted_peers.has(peer_id)
-            _make_button("UNMUTE" if muted else "MUTE", func(): _toggle_mute(peer_id), row)
+            _make_button("UNMUTE" if muted else "MUTE", func(): _toggle_mute(peer_id), actions)
     if is_online:
         _make_button("CHANGE OUTFIT", func(): _action("outfit", 0), player_rows)
+
+
+func _toggle_block(peer_id: int) -> void:
+    if not people.has(peer_id) or peer_id == multiplayer.get_unique_id():
+        return
+    if local_blocks.has(peer_id):
+        local_blocks.erase(peer_id)
+    else:
+        local_blocks[peer_id] = true
+    _action("block", peer_id)
+    _refresh_player_rows()
 
 
 func _toggle_mute(peer_id: int) -> void:

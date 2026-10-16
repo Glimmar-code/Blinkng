@@ -57,6 +57,16 @@ jobs:
             exit 1
           fi
 
+      - name: Test server-scored 1v1 state machine and disconnect isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 60s godot --headless --path game3d --script res://tests/duel_smoke.gd 2>&1 | tee /tmp/blink-life-duel-tests.log
+          if grep -Ei '(^ERROR:|^SCRIPT ERROR:|Parse Error|SMOKE FAILURE)' /tmp/blink-life-duel-tests.log; then
+            echo 'BLINK LIFE 1v1 server scoring regression detected.'
+            exit 1
+          fi
+
       - name: Run native 3D interactive scene smoke tests
         shell: bash
         run: |

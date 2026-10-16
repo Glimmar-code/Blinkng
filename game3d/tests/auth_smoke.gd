@@ -53,6 +53,7 @@ func run_test() -> void:
     check(int(default.get("cash", -1)) == 500, "New account starts with fictional GC")
     default["cash"] = 100
     default["house_owned"] = true
+    default["vehicle_owned"] = true
     default["furniture"] = 2
     check(bool(store.call("update_profile", uid, default)), "Trusted save must succeed")
     var reopened: RefCounted = state_script.new()
@@ -61,8 +62,11 @@ func run_test() -> void:
     reopened.call("load_from_disk")
     var restored: Dictionary = reopened.call("get_profile", uid)
     check(bool(restored.get("house_owned", false)), "Virtual house ownership survives restart")
+    check(bool(restored.get("vehicle_owned", false)), "Account-owned virtual car survives restart")
     check(int(restored.get("furniture", -1)) == 2, "Furniture survives restart")
     check(int(restored.get("cash", -1)) == 100, "Fictional balance survives restart")
+    var default_other: Dictionary = reopened.call("get_profile", "12345678-1234-4123-8123-123456789abd")
+    check(not bool(default_other.get("vehicle_owned", true)), "Virtual vehicles must not default to owned")
     DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_path))
     DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_swap))
     if failed:
